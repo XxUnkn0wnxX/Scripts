@@ -1,15 +1,16 @@
 #!/usr/local/bin/zsh
 
- # Required third-party tools:
- # - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting,
- #   and editing tracks and metadata in Matroska files
- # - ffmpeg (and ffprobe): for multimedia processing, such as boosting audio volume and verifying video streams
- # - fzf: for interactive file selection via fuzzy finding
- # - jq: for processing JSON output (mkvmerge -J)
- # - rsync: for creating backups in safe mode
+# Required third-party tools:
+# - mkvmerge: for remuxing and identifying tracks in MKV files
+# - mkvextract: for extracting specific tracks from MKV files
+# - mkvpropedit: for editing properties of existing Matroska files
+# - ffmpeg: for multimedia processing, such as boosting audio volume
+# - fzf: for interactive file selection using fuzzy finding
+# - jq: for processing JSON output
+# - rsync: for backup copy function
 
 # Install these tools using Homebrew with the following command:
-# brew install mkvtoolnix ffmpeg fzf jq rsync
+# brew install mkvtoolnix ffmpeg fzf jq rsync -vd
 
 # Global variable for safe mode
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
@@ -24,6 +25,12 @@ print_help() {
   echo "  -y <file>                Remux to MKV, overwriting the existing file if it exists."
 }
 
+# Function to create a temporary directory
+create_temp_dir() {
+  local temp_dir="temp"
+  mkdir -p "$temp_dir"
+  echo "$temp_dir"
+}
 
 # Function to remove the temporary directory
 remove_temp_dir() {
@@ -97,26 +104,15 @@ boost_audio_volume() {
   local volume_changes="$3"
   local codec_extension="$4"
   local safe_mode_write="${5:-false}" # Default to false if not provided
-  # Determine output extension matching source (e.g., mkv, mka, mks, mk3d)
-  local ext="${source_file##*.}"
-  local output_file="${source_file%.*}.${ext}"
+  local output_file="${source_file%.*}.mkv"
   local boost_success=true # Flag to check if boosting was successful
-
-  # Create temporary working directory based on source file name
-  local src_basename="${source_file##*/}"
-  local base_name="${src_basename%.*}"
-  local work_dir="${base_name}_temp"
-  # Clean up any existing temp directory and create a fresh one
-  rm -rf "$work_dir"
-  mkdir -p "$work_dir"
-  echo "Created temporary working directory: $work_dir"
 
   # Split volume_changes into an array
   local -a volume_change_array
   IFS=',' read -r -A volume_change_array <<< "$volume_changes"
 
-  # Extract original audio track into a uniquely named file
-  local extracted_file="${work_dir}/${base_name}_source-audio.${codec_extension}"
+  # Extract original audio track
+  local extracted_file="extracted_audio.${codec_extension}"
   echo "Extracting audio track ID $track_id from $source_file..."
   mkvextract tracks "$source_file" "${track_id}:${extracted_file}"
   echo "Extracted audio track to $extracted_file"
@@ -125,8 +121,7 @@ boost_audio_volume() {
   for volume_change in "${volume_change_array[@]}"; do
     # Ensure the volume_change doesn't already include "dB"
     local clean_volume_change="${volume_change//dB/}"
-    # Name boosted audio files based on source filename and dB change
-    local boosted_file="${work_dir}/${base_name}_${clean_volume_change}dB.aac"
+    local boosted_file="./${clean_volume_change}dB.aac"
     local track_name="${clean_volume_change}dB"
 
     echo "Boosting volume by ${clean_volume_change}dB..."
@@ -139,8 +134,7 @@ boost_audio_volume() {
     echo "Boosted audio saved to $boosted_file"
 
     # Remux the boosted audio back into the original file
-    # Temporary MKV/MKA file with boosted audio in the working directory
-    local temp_file="${work_dir}/${base_name}_${clean_volume_change}dB_temp.${ext}"
+    local temp_file="${source_file%.*}_${clean_volume_change}dB_temp.mkv"
     echo "Remuxing the boosted audio back to $temp_file..."
     mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file"
 
@@ -161,10 +155,6 @@ boost_audio_volume() {
   rm "$extracted_file"
   echo "Temporary files removed."
 
-  # Clean up temporary working directory
-  remove_temp_dir "$work_dir"
-  echo "Removed temporary working directory: $work_dir"
-
   # Return status of the function
   if [ "$boost_success" = true ]; then
     return 0
@@ -180,15 +170,13 @@ boost_audio_volume_safe_sorting() {
 
   # Only proceed if safe_mode_write is true
   if [ "$safe_mode_write" = true ]; then
-    # Determine extension for boosted file, matching source
-    local ext="${source_file##*.}"
     local count=1
-    local boosted_file_name="${source_file%.*}_boosted (${count}).${ext}"
+    local boosted_file_name="${source_file%.*}_boosted (${count}).mkv"
 
     # Increment the number if the boosted file already exists
     while [ -f "$boosted_file_name" ]; do
       count=$((count + 1))
-      boosted_file_name="${source_file%.*}_boosted (${count}).${ext}"
+      boosted_file_name="${source_file%.*}_boosted (${count}).mkv"
     done
 
     # Rename the source file to the boosted file name
@@ -246,41 +234,116 @@ create_backup() {
   fi
 }
 
-
-# Function to check if the file has a Matroska extension
-validate_mkv_extension() {
-  local filename="$1"
-  case "${filename##*.}" in
-    mkv|mka|mks|mk3d) return 0 ;;  # Supported Matroska containers
-    *) return 1 ;;
-  esac
-}
-# Function to display mkvinfo and mkvmerge details, annotating track names
-display_track_info() {
+# Function to extract tracks from the MKV file, excluding specified tracks
+extract_tracks_excluding() {
   local source_file="$1"
-  # Cache full mkvinfo output for both sections
-  local info
-  info=$(mkvinfo "$source_file")
-
-  # (mkvinfo output trimmed)
-  echo "-----------------------  mkvmerge -----------------------"
-  # Annotate mkvmerge identify with Name metadata
-  local all_tracks line id name
-  all_tracks=$(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+:')
-  for line in ${(f)all_tracks}; do
-    id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
-    # Extract Name for this track from mkvinfo
-    name=$(echo "$info" | awk -v id="$id" '
-      /Track number:/ && $0 ~ "mkvextract: " id { in_block=1; next }
-      /^\| \+ Track/ && in_block { exit }
-      /Name:/ && in_block { sub(/.*Name:[ \t]*/, ""); print; exit }
-    ')
-    if [ -n "$name" ]; then
-      echo "$line [$name]"
+  local temp_dir="$2"
+  local exclude_tracks="$3"
+  
+  echo "Extracting tracks from $source_file excluding: $exclude_tracks"
+  
+  # Convert exclude_tracks to an array, handling ranges
+  exclude_tracks_array=()
+  IFS=',' read -r raw_ids_str <<< "$exclude_tracks"
+  raw_ids=(${(s:,:)raw_ids_str})
+  for id in "${raw_ids[@]}"; do
+    if [[ $id == *-* ]]; then
+      range_start=$(echo $id | cut -d '-' -f 1)
+      range_end=$(echo $id | cut -d '-' -f 2)
+      for ((i=range_start; i<=range_end; i++)); do
+        exclude_tracks_array+=($i)
+      done
     else
-      echo "$line"
+      exclude_tracks_array+=($id)
     fi
   done
+
+  # Remove duplicates and sort
+  exclude_tracks_array=($(echo "${exclude_tracks_array[@]}" | tr ' ' '\n' | sort -n | uniq))
+
+  # Identify all tracks and extract those not in exclude_tracks_array
+  all_tracks=$(mkvmerge -J "$source_file")
+  total_tracks=$(echo "$all_tracks" | jq '.tracks | length')
+  for (( i = 0; i < $total_tracks; i++ )); do
+    track_id=$(echo "$all_tracks" | jq -r ".tracks[$i].id")
+    track_type=$(echo "$all_tracks" | jq -r ".tracks[$i].type")
+    if ! [[ " ${exclude_tracks_array[@]} " =~ " $track_id " ]]; then
+      case $track_type in
+        video)
+          mkvextract tracks "$source_file" "${track_id}:${temp_dir}/${track_id}_video.webm" ;;
+        audio)
+          mkvextract tracks "$source_file" "${track_id}:${temp_dir}/${track_id}_audio.aac" ;;
+        subtitles)
+          mkvextract tracks "$source_file" "${track_id}:${temp_dir}/${track_id}_subtitles.srt" ;;
+        *)
+          mkvextract tracks "$source_file" "${track_id}:${temp_dir}/${track_id}_other.bin" ;;
+      esac
+    fi
+  done
+
+  echo "Extraction completed. Tracks are in $temp_dir"
+}
+
+# Function to remux extracted tracks into a new MKV file
+remux_tracks() {
+  local source_file="$1"
+  local temp_dir="$2"
+  local output_file
+
+  if [ "$safe_mode_write" = true ]; then
+    local base_name="${source_file%.*}_removed"
+    local i=1
+    output_file="${base_name} (${i}).mkv"
+    while [ -f "$output_file" ]; do
+      ((i++))
+      output_file="${base_name} (${i}).mkv"
+    done
+  else
+    output_file="$source_file"
+  fi
+
+  echo "Remuxing tracks from $temp_dir into $output_file..."
+
+  # Prepare mkvmerge input options for each file in temp_dir
+  local input_files=()
+  for file in "$temp_dir"/*; do
+    input_files+=("$file")
+  done
+
+  # Run mkvmerge to remux the file with the extracted tracks
+  mkvmerge -o "$output_file" "${input_files[@]}"
+  echo "Remuxing completed: $output_file"
+}
+
+# Function to check if the file has a .mkv extension
+validate_mkv_extension() {
+  local filename="$1"
+  if [[ "$filename" == *.mkv ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Function to display mkvinfo and mkvmerge details
+display_track_info() {
+  local source_file="$1"
+
+  echo "------------------------  mkvinfo ------------------------"
+
+  mkvinfo "$source_file" | awk '
+  /Track number:/ { in_track_block = 1; print; next }
+  in_track_block && /Track type:/ { print; next }
+  in_track_block && /Codec ID:/ { print; next }
+  in_track_block && /Name:/ { print; next }
+  in_track_block && (/Channels:/ || /Pixel width:/) {
+    in_track_block = 0;
+    print "----------------------------------------------------------"
+  }
+  ' | sed '/^$/d'  # Remove empty lines
+
+  echo "-----------------------  mkvmerge -----------------------"
+  mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+:'
 }
 
 #Function to rename tracks using mkvpropedit
@@ -379,8 +442,8 @@ else
   elif [ "$choice" -eq 2 ]; then
     local source_file=""
     while true; do
-      printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-      source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
+      printf "Select the source video file (.mkv):\n"
+      source_file=$(find . -maxdepth 1 -type f -name "*.mkv" | fzf --height 40% --reverse --border)
       if [ -z "$source_file" ]; then
         echo "No file selected. Exiting."
         exit 1
@@ -402,28 +465,10 @@ else
       fi
     fi
 
-    # Identify audio tracks (including any user-defined track names)
+    # Identify audio tracks
     echo "Identifying audio tracks in $source_file..."
-    local -a audio_tracks_arr
-    # Cache mkvinfo output for track name lookup
-    local info
-    info=$(mkvinfo "$source_file")
-    # Read each audio track from mkvmerge identify
-    while IFS= read -r line; do
-      # Extract the track ID and codec
-      local id=$(echo "$line" | sed -E 's/Track ID ([0-9]+): audio.*/\1/')
-      local codec=$(echo "$line" | sed -E 's/Track ID [0-9]+: audio \(([^)]+)\).*/\1/')
-      # Lookup track Name metadata via mkvinfo
-      local name=$(echo "$info" | awk -v id="$id" \
-        '/Track number:/ && $0 ~ "extract: " id { in_block=1; next } \
-         in_block && /Name:/ { sub(/.*Name:[ \t]*/, ""); print; exit }')
-      if [ -n "$name" ]; then
-        audio_tracks_arr+=("Track ID $id: audio ($codec) [$name]")
-      else
-        audio_tracks_arr+=("Track ID $id: audio ($codec)")
-      fi
-    done < <(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+: audio' | sed -E 's/Track ID ([0-9]+): audio \(([^)]+)\)/Track ID \1: audio (\2)/')
-    local audio_count=${#audio_tracks_arr[@]}
+    audio_tracks=$(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+: audio' | sed -E 's/Track ID ([0-9]+): audio \(([^)]+)\)/Track ID \1: audio (\2)/')
+    audio_count=$(echo "$audio_tracks" | wc -l)
 
     if [ "$audio_count" -eq 0 ]; then
       echo "No audio tracks found in the file."
@@ -432,25 +477,16 @@ else
 
     # Print the audio tracks found
     echo "Audio tracks found:"
-    for entry in "${audio_tracks_arr[@]}"; do
-      echo "$entry"
-    done
+    echo "$audio_tracks"
 
     if [ "$audio_count" -eq 1 ]; then
       # Automatically use the only audio track found
-      track_info="${audio_tracks_arr[1]}"
+      track_info=$(echo "$audio_tracks" | head -n 1)
     else
-      # Prompt the user to select the Track ID
+      # Prompt the user to select the track ID if more than one is found
       printf "Enter the Track ID to extract: "
       read track_id
-      # Find matching entry
-      track_info=""
-      for entry in "${audio_tracks_arr[@]}"; do
-        if [[ $entry == "Track ID $track_id:"* ]]; then
-          track_info="$entry"
-          break
-        fi
-      done
+      track_info=$(echo "$audio_tracks" | grep "Track ID $track_id: ")
     fi
 
     # Extract codec and track ID
@@ -471,12 +507,11 @@ else
       boost_audio_volume_safe_sorting "$source_file" "$safe_mode_write"
     fi
 
-
   elif [ "$choice" -eq 3 ]; then
     local source_file=""
     while true; do
-      printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-      source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
+      printf "Select the source video file (.mkv):\n"
+      source_file=$(find . -maxdepth 1 -type f -name "*.mkv" | fzf --height 40% --reverse --border)
       if [ -z "$source_file" ]; then
         echo "No file selected. Exiting."
         exit 1
@@ -489,9 +524,8 @@ else
       fi
     done
 
-    # Identify all tracks and include any user-defined Names
+    # Identify all tracks
     echo "Identifying all tracks in $source_file..."
-    # Get mkvmerge identify lines
     all_tracks=$(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+:')
     track_count=$(echo "$all_tracks" | wc -l)
 
@@ -500,133 +534,24 @@ else
       exit 1
     fi
 
-    # Print all tracks found, appending any Name: metadata
-    # Cache mkvinfo output for Name lookup
-    info=$(mkvinfo "$source_file")
+    # Print all tracks found
     echo "Tracks found:"
-    # Loop over each track line
-    for line in ${(f)all_tracks}; do
-      # Extract the track ID
-      id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
-      # Lookup Name from mkvinfo within this track block (stop at next track)
-      name=$(echo "$info" | awk -v id="$id" '
-        /Track number:/ && $0 ~ "extract: " id { in_block=1; next }
-        /^\| \+ Track/ && in_block { exit }
-        /Name:/ && in_block { sub(/.*Name:[ \t]*/, ""); print; exit }
-      ')
-      if [ -n "$name" ]; then
-        echo "$line [$name]"
-      else
-        echo "$line"
-      fi
-    done
+    echo "$all_tracks"
 
     printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
     read track_ids
 
-    # Convert track_ids to an array (handling ranges)
-    exclude_ids=()
-    IFS=',' read -r raw_ids_str <<< "$track_ids"
-    raw_ids=(${(s:,:)raw_ids_str})
-    for id in "${raw_ids[@]}"; do
-      if [[ $id == *-* ]]; then
-        range_start=${id%-*}; range_end=${id#*-}
-        for ((i=range_start; i<=range_end; i++)); do
-          exclude_ids+=($i)
-        done
-      else
-        exclude_ids+=($id)
-      fi
-    done
-    # Remove duplicates and sort
-    exclude_ids=($(printf "%s\n" "${exclude_ids[@]}" | sort -n | uniq))
-
-    # Read track info JSON and group IDs by type
-    info=$(mkvmerge -J "$source_file")
-    video_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="video") | .id'))
-    audio_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="audio") | .id'))
-    subtitle_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
-
-    # Build lists of tracks to keep
-    video_keep=()
-    for id in "${video_ids[@]}"; do
-      if [[ ! " ${exclude_ids[@]} " =~ " $id " ]]; then video_keep+=($id); fi
-    done
-    audio_keep=()
-    for id in "${audio_ids[@]}"; do
-      if [[ ! " ${exclude_ids[@]} " =~ " $id " ]]; then audio_keep+=($id); fi
-    done
-    subtitle_keep=()
-    for id in "${subtitle_ids[@]}"; do
-      if [[ ! " ${exclude_ids[@]} " =~ " $id " ]]; then subtitle_keep+=($id); fi
-    done
-
-    # Prepare temporary output filename using correct extension
-    src_basename=${source_file##*/}
-    base_name=${src_basename%.*}
-    # Determine output extension: if no video tracks, use .mka, else keep original
-    input_ext="${source_file##*.}"
-    if [ ${#video_keep[@]} -eq 0 ]; then
-      out_ext="mka"
-    else
-      out_ext="$input_ext"
-    fi
-    temp_file="${base_name}_temp.${out_ext}"
-
-    # Assemble mkvmerge command to preserve metadata and track order
-    echo "Removing tracks: $track_ids"
-    cmd=(mkvmerge -o "$temp_file")
-    # Video tracks: keep listed or exclude all
-    if [ ${#video_keep[@]} -gt 0 ]; then
-      vl=$(IFS=,; echo "${video_keep[*]}")
-      cmd+=(--video-tracks "$vl")
-    else
-      cmd+=(--no-video)
-    fi
-    # Audio tracks: keep listed or exclude all
-    if [ ${#audio_keep[@]} -gt 0 ]; then
-      al=$(IFS=,; echo "${audio_keep[*]}")
-      cmd+=(--audio-tracks "$al")
-    else
-      cmd+=(--no-audio)
-    fi
-    # Subtitle tracks: keep listed or exclude all
-    if [ ${#subtitle_keep[@]} -gt 0 ]; then
-      sl=$(IFS=,; echo "${subtitle_keep[*]}")
-      cmd+=(--subtitle-tracks "$sl")
-    else
-      cmd+=(--no-subtitles)
-    fi
-    # Input file
-    cmd+=("$source_file")
-
-    echo "Executing: ${cmd[*]}"
-    "${cmd[@]}"
-    if [ $? -ne 0 ]; then
-      echo "Error: mkvmerge failed to remove tracks."
-      exit 1
-    fi
-
-    # Finalize output: safe mode vs overwrite
-    if [ "$safe_mode_write" = true ]; then
-      count=1
-      output_file="${base_name}_removed (${count}).${out_ext}"
-      while [ -f "$output_file" ]; do
-        ((count++))
-        output_file="${base_name}_removed (${count}).${out_ext}"
-      done
-      mv "$temp_file" "$output_file"
-      echo "Created removed-version: $output_file"
-    else
-      # Overwrite original: remove it then rename temp to original base_name.ext
-      rm -f "$source_file"
-      mv "$temp_file" "${base_name}.${out_ext}"
-      echo "Replaced original file: ${base_name}.${out_ext}"
-    fi
+    # Create temporary directory and extract remaining tracks
+    temp_dir=$(create_temp_dir)
+    extract_tracks_excluding "$source_file" "$temp_dir" "$track_ids"
+    remux_tracks "$source_file" "$temp_dir"
+    
+    # Clean up temporary directory
+    remove_temp_dir "$temp_dir"
     
   elif [ "$choice" -eq 4 ]; then
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
+    printf "Select the source video file (.mkv):\n"
+    source_file=$(find . -maxdepth 1 -type f -name "*.mkv" | fzf --height 40% --reverse --border)
     if [ -z "$source_file" ]; then
       echo "No file selected. Exiting."
       exit 1
