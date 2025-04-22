@@ -1,0 +1,11 @@
+# Ignore common video and audio files
+*.mkv
+*.mka
+*.mk3d
+*.mks
+*.mp4
+*.m4a
+*.m4v
+
+# Ignore any folder whose name ends with "_temp"
+**/*_temp/
