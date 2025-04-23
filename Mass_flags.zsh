@@ -190,21 +190,39 @@ elif [ "$choice" = "8" ]; then
   audio_keep=(); for i in "${audio_ids[@]}";   do [[ ! " ${exclude_ids[@]} " =~ " $i " ]] && audio_keep+=($i); done
   subtitle_keep=(); for i in "${subtitle_ids[@]}"; do [[ ! " ${exclude_ids[@]} " =~ " $i " ]] && subtitle_keep+=($i); done
 
-  src_base=${source_file##*/}; base=${src_base%.*}; ext=${source_file##*.}
-  [ ${#video_keep[@]} -eq 0 ] && out_ext="mka" || out_ext="$ext"
-  tmp="${base}_temp.${out_ext}"
-
   echo "Removing tracks: $track_ids"
-  cmd=(mkvmerge -o "$tmp")
-  [[ ${#video_keep[@]} -gt 0 ]] && cmd+=(--video-tracks "$(IFS=,; echo ${video_keep[*]})") || cmd+=(--no-video)
-  [[ ${#audio_keep[@]} -gt 0 ]] && cmd+=(--audio-tracks "$(IFS=,; echo ${audio_keep[*]})") || cmd+=(--no-audio)
-  [[ ${#subtitle_keep[@]} -gt 0 ]] && cmd+=(--subtitle-tracks "$(IFS=,; echo ${subtitle_keep[*]})") || cmd+=(--no-subtitles)
-  cmd+=("$source_file")
 
-  echo "Executing: ${cmd[*]}"
-  "${cmd[@]}" || { echo "Error during mkvmerge."; rm -f "$tmp"; exit 1; }
-  mv "$tmp" "${base}.${out_ext}"
-  echo "Replaced original file: ${base}.${out_ext}"
+  echo "Select Matroska file(s) to apply removal:"
+  typeset -a targets
+  targets=()
+  # Read fzf multi-selection into targets array (zsh-compatible)
+  while IFS= read -r file; do
+    targets+=("$file")
+  done < <(find . -maxdepth 1 -type f \
+    \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+    | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+  if [ ${#targets[@]} -eq 0 ]; then
+    echo "No target files selected. Exiting."
+    exit 1
+  fi
+
+  for target in "${targets[@]}"; do
+    echo Processing file: $(basename "$target")
+    src_base=${target##*/}; base=${src_base%.*}; ext=${src_base##*.}
+    [ ${#video_keep[@]} -eq 0 ] && out_ext="mka" || out_ext="$ext"
+    tmp="${base}_temp.${out_ext}"
+
+    cmd=(mkvmerge -o "$tmp")
+    [[ ${#video_keep[@]} -gt 0 ]] && cmd+=(--video-tracks "$(IFS=,; echo ${video_keep[*]})") || cmd+=(--no-video)
+    [[ ${#audio_keep[@]} -gt 0 ]] && cmd+=(--audio-tracks "$(IFS=,; echo ${audio_keep[*]})") || cmd+=(--no-audio)
+    [[ ${#subtitle_keep[@]} -gt 0 ]] && cmd+=(--subtitle-tracks "$(IFS=,; echo ${subtitle_keep[*]})") || cmd+=(--no-subtitles)
+    cmd+=("$target")
+
+    echo "Executing: ${cmd[*]}"
+    "${cmd[@]}" || { echo "Error during mkvmerge on $target. Skipping."; rm -f "$tmp"; continue; }
+    mv "$tmp" "${base}.${out_ext}"
+    echo "Replaced file: ${base}.${out_ext}"
+  done
 
 else
   echo "Invalid choice."
