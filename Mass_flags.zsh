@@ -28,7 +28,7 @@ print -n "Select an option:
 5) Set language for a track
 6) Set name for a track
 7) Extract all attachments from MKV files
-8) Mass Remove a track from MKV files
+8) Mass Remove tracks from multi-MKV files
 Enter choice: "
 read choice
 
@@ -222,6 +222,11 @@ elif [ "$choice" = "8" ]; then
     "${cmd[@]}" || { echo "Error during mkvmerge on $target. Skipping."; rm -f "$tmp"; continue; }
     mv "$tmp" "${base}.${out_ext}"
     echo "Replaced file: ${base}.${out_ext}"
+    # If extension changed (e.g., mkv->mka), remove the original source file
+    if [ "$out_ext" != "$ext" ]; then
+      echo "Removed source file: $(basename "$target")"
+      rm -f "$target"
+    fi
   done
 
 else
