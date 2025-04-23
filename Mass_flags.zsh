@@ -1,5 +1,8 @@
 #!/usr/local/bin/zsh
 
+# Multi-file target selection mode for choice 8 (Y/N)
+MULTI_FILE_SELECTION=""
+
   function get_track_count() {
     local file="$1"
     local count=$(mkvmerge "$file" --identify | grep 'Track ID' | wc -l)
@@ -144,7 +147,13 @@ elif [ "$choice" = "7" ]; then
 
 elif [ "$choice" = "8" ]; then
   # Single-file Remove-Tracks flow (from mkv_mux choice 3)
-  echo "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):"
+  # Ask if user wants multi-file target selection or single-file
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+
+  echo "Select the source Matroska file (.mkv, .mka, .mks, .mk3d): to pull track ids"
   source_file=$(find . -maxdepth 1 -type f \
     \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
     | fzf --height 40% --reverse --border --prompt="Select Matroska file > ")
@@ -191,6 +200,7 @@ elif [ "$choice" = "8" ]; then
   subtitle_keep=(); for i in "${subtitle_ids[@]}"; do [[ ! " ${exclude_ids[@]} " =~ " $i " ]] && subtitle_keep+=($i); done
 
   echo "Removing tracks: $track_ids"
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
 
   echo "Select Matroska file(s) to apply removal:"
   typeset -a targets
@@ -204,6 +214,11 @@ elif [ "$choice" = "8" ]; then
   if [ ${#targets[@]} -eq 0 ]; then
     echo "No target files selected. Exiting."
     exit 1
+  fi
+
+  else
+    typeset -a targets
+    targets=("$source_file")
   fi
 
   for target in "${targets[@]}"; do
