@@ -453,9 +453,10 @@ rename_tracks() {
 }
 
 # Main script
-current_dir=$(pwd)
+# Use the directory from which the script was invoked as the working directory
+current_dir="$(pwd)"
 echo "Current Work Dir: $current_dir"
-cd "$current_dir"
+cd "$current_dir" || exit 1
 
 # Command-line arguments handling
 if [ $# -gt 0 ]; then
