@@ -1,5 +1,84 @@
 #!/usr/local/bin/zsh
 
+# Global variables for signal handling
+CHOICE=""
+SOURCE_FILE=""
+BACKUP_FILE=""
+WORK_DIR=""
+MKVMERGE_RUNNING=false
+MKVMERGE_PID=""
+RSYNC_PID=""
+TEMP_FILE=""
+
+# Handler for Ctrl+C
+handle_ctrl_c() {
+  trap '' INT
+  echo
+  case "$CHOICE" in
+    1|4)
+      # Cancel remux or edit operations: kill mkvmerge if running, remove temp file
+      if [ -n "$MKVMERGE_PID" ]; then
+        kill -9 $MKVMERGE_PID 2>/dev/null
+      fi
+      if [ -n "$TEMP_FILE" ] && [ -f "$TEMP_FILE" ]; then
+        rm -f "$TEMP_FILE"
+      fi
+      exit 0
+      ;;
+    2)
+      # If in-progress, wait for mkvmerge or rsync accordingly
+      if [ "$safe_mode_write" != true ] && [ "$MKVMERGE_RUNNING" = true ]; then
+        echo "Ctrl+C detected: waiting for mkvmerge to finish..."
+        return
+      fi
+      # Kill any ongoing mkvmerge to prevent sanitize warnings
+      if [ -n "$MKVMERGE_PID" ]; then
+        kill -9 $MKVMERGE_PID 2>/dev/null
+      fi
+      # Kill any ongoing rsync during backup
+      if [ -n "$RSYNC_PID" ]; then
+        kill -9 $RSYNC_PID 2>/dev/null
+      fi
+      # Restore backup in safe mode
+      if [ "$safe_mode_write" = true ] && [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+        echo "Restoring backup: $BACKUP_FILE -> $SOURCE_FILE"
+        mv "$BACKUP_FILE" "$SOURCE_FILE"
+      fi
+      # Cleanup working directory
+      if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
+        echo "Removing temporary directory: $WORK_DIR"
+        rm -rf "$WORK_DIR"
+      fi
+      exit 0
+      ;;
+    3)
+      # If a mkvmerge removal is in progress (non-safe mode), wait till it finishes
+      if [ "$safe_mode_write" != true ] && [ "$MKVMERGE_RUNNING" = true ]; then
+        echo "Ctrl+C detected: waiting for mkvmerge to finish..."
+        return
+      fi
+      # Kill any ongoing mkvmerge to prevent sanitize warnings
+      if [ -n "$MKVMERGE_PID" ]; then
+        kill -9 $MKVMERGE_PID 2>/dev/null
+      fi
+      # Kill any ongoing rsync
+      if [ -n "$RSYNC_PID" ]; then
+        kill -9 $RSYNC_PID 2>/dev/null
+      fi
+      # Remove temporary file created by mkvmerge
+      if [ -n "$TEMP_FILE" ] && [ -f "$TEMP_FILE" ]; then
+        echo "Removing temporary file: $TEMP_FILE"
+        rm -f "$TEMP_FILE"
+      fi
+      exit 0
+      ;;
+    *)
+      exit 1
+      ;;
+  esac
+}
+trap 'handle_ctrl_c' INT
+
  # Required third-party tools:
  # - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting,
  #   and editing tracks and metadata in Matroska files
@@ -82,7 +161,23 @@ remux_to_mkv() {
   fi
 
   echo "Remuxing $source_file to $temp_file..."
-  mkvmerge -o "$temp_file" "$source_file"
+  # In non-safe mode, disable Ctrl+C so mkvmerge can't be interrupted (no sanitize warnings)
+  TEMP_FILE="$temp_file"
+  MKVMERGE_RUNNING=true
+  if [ "$safe_mode_write" != true ]; then
+    stty intr ''
+    mkvmerge -o "$temp_file" "$source_file"
+    ret=$?
+    stty intr ^C
+  else
+    mkvmerge -o "$temp_file" "$source_file"
+    ret=$?
+  fi
+  MKVMERGE_RUNNING=false
+  if [ $ret -ne 0 ]; then
+    [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
+    exit 0
+  fi
   echo "Remuxing completed: $temp_file"
 
   # Replace the original file with the remuxed file
@@ -142,7 +237,25 @@ boost_audio_volume() {
     # Temporary MKV/MKA file with boosted audio in the working directory
     local temp_file="${work_dir}/${base_name}_${clean_volume_change}dB_temp.${ext}"
     echo "Remuxing the boosted audio back to $temp_file..."
-    mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file"
+    TEMP_FILE="$temp_file"
+    MKVMERGE_RUNNING=true
+    if [ "$safe_mode_write" != true ]; then
+      # Non-safe: disable Ctrl+C so mkvmerge runs uninterrupted, then restore
+      stty intr ''
+      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file"
+      ret=$?
+      stty intr ^C
+    else
+      # Safe mode: allow immediate interrupt
+      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file"
+      ret=$?
+    fi
+    MKVMERGE_RUNNING=false
+    if [ $ret -ne 0 ]; then
+      # Cleanup partial file and abort
+      [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
+      exit 0
+    fi
 
     if [ -f "$temp_file" ]; then
       mv "$temp_file" "$output_file"
@@ -219,29 +332,27 @@ boost_audio_volume_safe_sorting() {
 # Function to create a backup of the original file
 create_backup() {
   local source_file="$1"
-  local backup_file="${source_file%.*}_original.mkv"
+  # Determine extension of source file
+  local ext="${source_file##*.}"
+  # Initial backup filename
+  local backup_file="${source_file%.*}_original.${ext}"
   local count=2
 
   # Check if the backup file already exists and increment the count if it does
   while [ -f "$backup_file" ]; do
-    backup_file="${source_file%.*}_original ${count}.mkv"
+    backup_file="${source_file%.*}_original ${count}.${ext}"
     count=$((count + 1))
   done
 
-  # Add a line break and create the backup
-  echo -e "Creating a backup of the original file as $backup_file\n"
-  
-  #rsync output
+  # Create the backup using rsync, showing progress
+  echo "Creating a backup of the original file as $backup_file"
   echo "Rsync Copy"
   rsync -ah --info=progress2 "$source_file" "$backup_file"
-  
-  # Check if the backup was successful and add appropriate line breaks
   if [ $? -eq 0 ]; then
-    echo -e "\nBackup created successfully."
-    #echo "Listing directory contents:"
-    #ls -l
+    echo "\nBackup created successfully."
+    BACKUP_FILE="$backup_file"
   else
-    echo -e "\nError: Failed to create backup. Exiting."
+    echo "\nError: Failed to create backup. Exiting."
     return 1
   fi
 }
@@ -301,13 +412,15 @@ rename_tracks() {
         echo "--------------------  Track ID $i Name ---------------------"
         printf "Name: "
         read name
-        mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name"
+        # Run mkvpropedit uninterruptibly
+        (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name")
       done
     else
       echo "--------------------  Track ID $id Name ---------------------"
       printf "Name: "
       read name
-      mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name"
+      # Run mkvpropedit uninterruptibly
+      (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name")
     fi
   done
 }
@@ -348,6 +461,7 @@ else
   echo "4) Edit Tracks"
   printf "Enter choice: "
   read choice
+  CHOICE="$choice"
 
   if [ "$choice" -eq 1 ]; then
     echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
@@ -392,6 +506,10 @@ else
         echo "Invalid input. Please select a valid .mkv file."
       fi
     done
+
+    # Set context for signal handler
+    SOURCE_FILE="$source_file"
+    WORK_DIR="${source_file%.*}_temp"
 
     # Ensure backup is created if in safe mode
     if [ "$safe_mode_write" = true ]; then
@@ -489,6 +607,10 @@ else
       fi
     done
 
+    # Set context for signal handler
+    SOURCE_FILE="$source_file"
+
+
     # Identify all tracks and include any user-defined Names
     echo "Identifying all tracks in $source_file..."
     # Get mkvmerge identify lines
@@ -572,6 +694,8 @@ else
       out_ext="$input_ext"
     fi
     temp_file="${base_name}_temp.${out_ext}"
+    # Record temp file for cleanup on interrupt
+    TEMP_FILE="$temp_file"
 
     # Assemble mkvmerge command to preserve metadata and track order
     echo "Removing tracks: $track_ids"
@@ -600,9 +724,25 @@ else
     # Input file
     cmd+=("$source_file")
 
+    # Run mkvmerge to remove tracks
+    TEMP_FILE="$temp_file"
+    MKVMERGE_RUNNING=true
     echo "Executing: ${cmd[*]}"
-    "${cmd[@]}"
-    if [ $? -ne 0 ]; then
+    if [ "$safe_mode_write" != true ]; then
+      # Non-safe: disable Ctrl+C so mkvmerge finishes uninterrupted
+      stty intr ''
+      "${cmd[@]}"
+      ret=$?
+      stty intr ^C
+    else
+      # Safe mode: allow immediate interrupt
+      "${cmd[@]}"
+      ret=$?
+    fi
+    MKVMERGE_RUNNING=false
+    if [ $ret -ne 0 ]; then
+      # Cleanup temp file if interrupted or failed
+      [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
       echo "Error: mkvmerge failed to remove tracks."
       exit 1
     fi
@@ -619,9 +759,13 @@ else
       echo "Created removed-version: $output_file"
     else
       # Overwrite original: remove it then rename temp to original base_name.ext
+      # Disable Ctrl+C during cleanup
+      trap '' INT
       rm -f "$source_file"
       mv "$temp_file" "${base_name}.${out_ext}"
       echo "Replaced original file: ${base_name}.${out_ext}"
+      # Restore Ctrl+C handler
+      trap 'handle_ctrl_c' INT
     fi
     
   elif [ "$choice" -eq 4 ]; then
@@ -647,6 +791,7 @@ else
     printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
     read track_ids
 
+    # Edit track names (SIGINT enabled during prompts, disabled during mkvpropedit)
     rename_tracks "$source_file" "$track_ids"
 
   else
