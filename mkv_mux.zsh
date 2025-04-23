@@ -93,6 +93,15 @@ trap 'handle_ctrl_c' INT
 # Global variable for safe mode
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
 thread_count=8  # Hard-coded to use 8 threads
+# Open file descriptor 3 for the controlling terminal (used to flush input)
+# Try to attach FD3 to /dev/tty (suppress errors for this attempt only)
+{ exec 3</dev/tty; } 2>/dev/null || true
+# Function to flush pending terminal input (ignore keystrokes during external commands)
+flush_input() {
+  local _c
+  # Read and discard any pending characters from FD3 (/dev/tty)
+  while read -u 3 -t 0 -k 1 _c; do :; done
+}
 
 # Function to print the help message
 print_help() {
@@ -142,6 +151,7 @@ remux_to_mkv() {
       exit 1
     else
       echo "Warning: File $output_file already exists. Do you wish to replace it? (Y/N): "
+      flush_input
       read overwrite_choice
 
       case "$overwrite_choice" in
@@ -166,11 +176,11 @@ remux_to_mkv() {
   MKVMERGE_RUNNING=true
   if [ "$safe_mode_write" != true ]; then
     stty intr ''
-    mkvmerge -o "$temp_file" "$source_file"
+    mkvmerge -o "$temp_file" "$source_file" < /dev/null
     ret=$?
     stty intr ^C
   else
-    mkvmerge -o "$temp_file" "$source_file"
+    mkvmerge -o "$temp_file" "$source_file" < /dev/null
     ret=$?
   fi
   MKVMERGE_RUNNING=false
@@ -213,7 +223,7 @@ boost_audio_volume() {
   # Extract original audio track into a uniquely named file
   local extracted_file="${work_dir}/${base_name}_source-audio.${codec_extension}"
   echo "Extracting audio track ID $track_id from $source_file..."
-  mkvextract tracks "$source_file" "${track_id}:${extracted_file}"
+  mkvextract tracks "$source_file" "${track_id}:${extracted_file}" < /dev/null
   echo "Extracted audio track to $extracted_file"
 
   # Loop over each volume change, create a boosted audio file, and remux it
@@ -225,7 +235,7 @@ boost_audio_volume() {
     local track_name="${clean_volume_change}dB"
 
     echo "Boosting volume by ${clean_volume_change}dB..."
-    ffmpeg -y -i "$extracted_file" -filter:a "volume=${clean_volume_change}dB" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file"
+    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "volume=${clean_volume_change}dB" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file"
     if [ $? -ne 0 ]; then
       echo "Error: Boosting volume failed for ${clean_volume_change}dB."
       boost_success=false
@@ -242,12 +252,12 @@ boost_audio_volume() {
     if [ "$safe_mode_write" != true ]; then
       # Non-safe: disable Ctrl+C so mkvmerge runs uninterrupted, then restore
       stty intr ''
-      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file"
+      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file" < /dev/null
       ret=$?
       stty intr ^C
     else
       # Safe mode: allow immediate interrupt
-      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file"
+      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file" < /dev/null
       ret=$?
     fi
     MKVMERGE_RUNNING=false
@@ -347,7 +357,7 @@ create_backup() {
   # Create the backup using rsync, showing progress
   echo "Creating a backup of the original file as $backup_file"
   echo "Rsync Copy"
-  rsync -ah --info=progress2 "$source_file" "$backup_file"
+  rsync -ah --info=progress2 "$source_file" "$backup_file" < /dev/null
   if [ $? -eq 0 ]; then
     echo "\nBackup created successfully."
     BACKUP_FILE="$backup_file"
@@ -371,13 +381,13 @@ display_track_info() {
   local source_file="$1"
   # Cache full mkvinfo output for both sections
   local info
-  info=$(mkvinfo "$source_file")
+  info=$(mkvinfo "$source_file" < /dev/null)
 
   # (mkvinfo output trimmed)
   echo "-----------------------  mkvmerge -----------------------"
   # Annotate mkvmerge identify with Name metadata
   local all_tracks line id name
-  all_tracks=$(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+:')
+  all_tracks=$(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+:')
   for line in ${(f)all_tracks}; do
     id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
     # Extract Name for this track from mkvinfo
@@ -411,16 +421,18 @@ rename_tracks() {
       for ((i=start; i<=end; i++)); do
         echo "--------------------  Track ID $i Name ---------------------"
         printf "Name: "
+        flush_input
         read name
         # Run mkvpropedit uninterruptibly
-        (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name")
+        (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name" < /dev/null)
       done
     else
       echo "--------------------  Track ID $id Name ---------------------"
       printf "Name: "
+      flush_input
       read name
       # Run mkvpropedit uninterruptibly
-      (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name")
+      (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name" < /dev/null)
     fi
   done
 }
@@ -460,6 +472,7 @@ else
   echo "3) Remove Tracks"
   echo "4) Edit Tracks"
   printf "Enter choice: "
+  flush_input
   read choice
   CHOICE="$choice"
 
@@ -483,7 +496,7 @@ else
       #echo "Debug: Final source file path: \"$source_file\""
       
       # Verify the file is a video file using ffprobe
-      if ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$source_file" 2>/dev/null | grep -q '^video'; then
+      if ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$source_file" < /dev/null 2>/dev/null | grep -q '^video'; then
         remux_to_mkv "$source_file" "prompt"
       else
         echo "Warning: Skipping non-video file \"$source_file\"."
@@ -525,7 +538,7 @@ else
     local -a audio_tracks_arr
     # Cache mkvinfo output for track name lookup
     local info
-    info=$(mkvinfo "$source_file")
+    info=$(mkvinfo "$source_file" < /dev/null)
     # Read each audio track from mkvmerge identify
     while IFS= read -r line; do
       # Extract the track ID and codec
@@ -540,7 +553,7 @@ else
       else
         audio_tracks_arr+=("Track ID $id: audio ($codec)")
       fi
-    done < <(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+: audio' | sed -E 's/Track ID ([0-9]+): audio \(([^)]+)\)/Track ID \1: audio (\2)/')
+    done < <(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+: audio' | sed -E 's/Track ID ([0-9]+): audio \(([^)]+)\)/Track ID \1: audio (\2)/')
     local audio_count=${#audio_tracks_arr[@]}
 
     if [ "$audio_count" -eq 0 ]; then
@@ -560,6 +573,7 @@ else
     else
       # Prompt the user to select the Track ID
       printf "Enter the Track ID to extract: "
+      flush_input
       read track_id
       # Find matching entry
       track_info=""
@@ -579,6 +593,7 @@ else
     codec_extension=$(echo "$codec" | tr '[:upper:]' '[:lower:]' | sed 's/-/_/g')
 
     printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
+    flush_input
     read volume_changes
 
     # Call the function to boost audio volume
@@ -614,7 +629,7 @@ else
     # Identify all tracks and include any user-defined Names
     echo "Identifying all tracks in $source_file..."
     # Get mkvmerge identify lines
-    all_tracks=$(mkvmerge --identify "$source_file" | grep -E 'Track ID [0-9]+:')
+    all_tracks=$(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+:')
     track_count=$(echo "$all_tracks" | wc -l)
 
     if [ "$track_count" -eq 0 ]; then
@@ -624,7 +639,7 @@ else
 
     # Print all tracks found, appending any Name: metadata
     # Cache mkvinfo output for Name lookup
-    info=$(mkvinfo "$source_file")
+    info=$(mkvinfo "$source_file" < /dev/null)
     echo "Tracks found:"
     # Loop over each track line
     for line in ${(f)all_tracks}; do
@@ -644,6 +659,7 @@ else
     done
 
     printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
+    flush_input
     read track_ids
 
     # Convert track_ids to an array (handling ranges)
@@ -664,7 +680,7 @@ else
     exclude_ids=($(printf "%s\n" "${exclude_ids[@]}" | sort -n | uniq))
 
     # Read track info JSON and group IDs by type
-    info=$(mkvmerge -J "$source_file")
+    info=$(mkvmerge -J "$source_file" < /dev/null)
     video_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="video") | .id'))
     audio_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="audio") | .id'))
     subtitle_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
@@ -789,6 +805,7 @@ else
     display_track_info "$source_file"
 
     printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+    flush_input
     read track_ids
 
     # Edit track names (SIGINT enabled during prompts, disabled during mkvpropedit)
