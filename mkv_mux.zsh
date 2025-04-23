@@ -8,6 +8,7 @@ WORK_DIR=""
 MKVMERGE_RUNNING=false
 MKVMERGE_PID=""
 RSYNC_PID=""
+FFMPEG_PID=""
 TEMP_FILE=""
 
 # Handler for Ctrl+C
@@ -16,12 +17,17 @@ handle_ctrl_c() {
   echo
   case "$CHOICE" in
     1|4)
-      # Cancel remux or edit operations: kill mkvmerge if running, remove temp file
+      # Cancel remux or edit operations: kill any mkvmerge, remove temp file, and cleanup backup
       if [ -n "$MKVMERGE_PID" ]; then
         kill -9 $MKVMERGE_PID 2>/dev/null
       fi
       if [ -n "$TEMP_FILE" ] && [ -f "$TEMP_FILE" ]; then
         rm -f "$TEMP_FILE"
+      fi
+      # If safe mode was used to create a backup, delete the original backup file
+      if [ "$safe_mode_write" = true ] && [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+        echo "Deleting backup file: $BACKUP_FILE"
+        rm -f "$BACKUP_FILE"
       fi
       exit 0
       ;;
@@ -235,8 +241,17 @@ boost_audio_volume() {
     local track_name="${clean_volume_change}dB"
 
     echo "Boosting volume by ${clean_volume_change}dB..."
-    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "volume=${clean_volume_change}dB" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file"
-    if [ $? -ne 0 ]; then
+    # Prepare to catch Ctrl+C and kill ffmpeg immediately
+    FFMPEG_PID=""
+    trap 'kill -9 $FFMPEG_PID 2>/dev/null; handle_ctrl_c' INT
+    # Run ffmpeg in background so it won’t be in the foreground process group
+    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "volume=${clean_volume_change}dB" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file" &
+    FFMPEG_PID=$!
+    wait $FFMPEG_PID
+    ret=$?
+    # Restore the global Ctrl+C handler
+    trap 'handle_ctrl_c' INT
+    if [ $ret -ne 0 ]; then
       echo "Error: Boosting volume failed for ${clean_volume_change}dB."
       boost_success=false
       continue
