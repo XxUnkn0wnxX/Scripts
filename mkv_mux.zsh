@@ -99,7 +99,7 @@ print_help() {
   echo "Usage: [options] <file>"
   echo ""
   echo "Options:"
-  echo "  --help                   Display this help message."
+  echo "  -h, --help               Display this help message."
   echo "  -y <file>                Remux to MKV, overwriting the existing file if it exists."
 }
 
@@ -432,7 +432,7 @@ cd "$current_dir"
 
 # Command-line arguments handling
 if [ $# -gt 0 ]; then
-  if [ "$1" = "--help" ]; then
+  if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     print_help
     exit 0
   fi
