@@ -354,13 +354,35 @@ elif [ "$choice" = "4" ]; then
   rename_tracks "$track_ids"
 
 elif [ "$choice" = "5" ]; then
-  for file in *.mkv; do
+  echo "Select Matroska file(s) to extract attachments:"
+  typeset -a targets
+  targets=()
+  while IFS= read -r file; do
+    targets+=( "$file" )
+  done < <(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+
+  if [ ${#targets[@]} -eq 0 ]; then
+    echo "No target files selected. Exiting."
+    exit 1
+  fi
+  # Prepare output directory for attachments
+  mkdir -p "Attachments"
+
+  for file in "${targets[@]}"; do
     attachment_count=$(count_attachments "$file")
     echo "Processing $file: Extracting $attachment_count attachments..."
 
     if [ "$attachment_count" -gt 0 ]; then
-      attachment_ids=($(seq 1 $attachment_count))
-      mkvextract attachments "$file" "${attachment_ids[@]}"
+      # Compute attachment IDs
+      attachment_ids=( $(seq 1 $attachment_count) )
+      # Determine absolute path to source file
+      # Remove leading './' if present
+      relpath=${file#./}
+      filepath="$current_dir/$relpath"
+      # Extract into Attachments directory
+      (cd "Attachments" && mkvextract attachments "$filepath" "${attachment_ids[@]}")
     fi
   done
   echo "Attachments extraction completed."
