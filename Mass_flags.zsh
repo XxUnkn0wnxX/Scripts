@@ -259,18 +259,30 @@ elif [ "$choice" = "9" ]; then
     | fzf --height 40% --reverse --border --prompt="Select Matroska file > ")
   [ -z "$source_file" ] && { echo "No file selected. Exiting."; exit 1; }
 
-  # Identify tracks
-  echo "Identifying all tracks in $source_file..."
-  info=$(mkvinfo "$source_file" < /dev/null)
-  all_tracks=$(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+:')
+  # Identify tracks and get full JSON metadata
+  info_json=$(mkvmerge -J "$source_file")
 
-  # Display tracks with names if available
   echo "Tracks found:"
-  while IFS= read -r line; do
-    id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
-    name=$(echo "$info" | awk -v id="$id" '/Track number:/ && $0 ~ "extract: " id { in_block=1; next } /^\| \+ Track/ && in_block { exit } /Name:/ && in_block { sub(/.*Name:[ \t]*/, ""); print; exit }')
-    [ -n "$name" ] && echo "$line [$name]" || echo "$line"
-  done <<< "$all_tracks"
+  echo "$info_json" \
+    | jq -c '.tracks[]' \
+    | while IFS= read -r track; do
+        id=$(   echo "$track" | jq '.id')
+        type=$( echo "$track" | jq -r '.type')
+        codec=$(echo "$track" | jq -r '.properties.codec_id')
+        name=$( echo "$track" | jq -r '.properties.track_name // empty')
+        lang=$( echo "$track" | jq -r '.properties.language   // empty')
+
+        line="Track ID ${id}: ${type} (${codec})"
+        [[ -n $name ]] && line+=" [${name}]"
+        if [[ -n $lang ]]; then
+          if [[ -n $name ]]; then
+            line+=" - [${lang}]"
+          else
+            line+=" [${lang}]"
+          fi
+        fi
+        echo "$line"
+      done
 
   # Prompt for new order
   printf "Enter the new track order (e.g., 0:0,0:1,0:2,0:4,0:5,0:6,0:3): "
