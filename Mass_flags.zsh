@@ -37,31 +37,31 @@ display_track_info() {
 
 # Function to rename tracks using mkvpropedit
 rename_tracks() {
-  local source_file="$1"
-  local track_ids="$2"
-
-  # Split track_ids by comma and space
+  local track_ids="$1"
+  # Split track_ids by comma and space into array ids
   IFS=', ' read -rA ids <<< "$track_ids"
-
   # Loop over each track ID
   for id in "${ids[@]}"; do
-    # Check if it's a range (e.g., 1-3)
+    # Determine range or single ID
     if [[ $id == *-* ]]; then
-      local start=$(echo $id | cut -d '-' -f 1)
-      local end=$(echo $id | cut -d '-' -f 2)
+      local start=${id%-*}
+      local end=${id#*-}
       for ((i=start; i<=end; i++)); do
         echo "--------------------  Track ID $i Name ---------------------"
         printf "Name: "
         read name
-        # Run mkvpropedit uninterruptibly
-        (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name" < /dev/null)
+        # Apply name change to each target file
+        for file in "${targets[@]}"; do
+          (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((i+1)) --set name="$name" < /dev/null)
+        done
       done
     else
       echo "--------------------  Track ID $id Name ---------------------"
       printf "Name: "
       read name
-      # Run mkvpropedit uninterruptibly
-      (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name" < /dev/null)
+      for file in "${targets[@]}"; do
+        (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((id+1)) --set name="$name" < /dev/null)
+      done
     fi
   done
 }
@@ -174,19 +174,45 @@ elif [ "$choice" = "5" ]; then
   done
   
 elif [ "$choice" = "6" ]; then
-  printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-  source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
-  if [ -z "$source_file" ]; then
-    echo "No file selected. Exiting."
-    exit 1
+  # Prompt for multi-file or single-file selection
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+
+  # Determine target files
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+    echo "Select Matroska file(s) to apply name edits:"
+    typeset -a targets
+    targets=()
+    while IFS= read -r file; do
+      targets+=("$file")
+    done < <(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+    if [ ${#targets[@]} -eq 0 ]; then
+      echo "No target files selected. Exiting."
+      exit 1
+    fi
+  else
+    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+    source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --height 40% --reverse --border)
+    if [ -z "$source_file" ]; then
+      echo "No file selected. Exiting."
+      exit 1
+    fi
+    typeset -a targets
+    targets=("$source_file")
   fi
 
-  display_track_info "$source_file"
+  # Display track info for first target
+  display_track_info "${targets[1]}"
 
   printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
   read track_ids
 
-  rename_tracks "$source_file" "$track_ids"
+  # Perform renaming on selected files
+  rename_tracks "$track_ids"
 
 elif [ "$choice" = "7" ]; then
   for file in *.mkv; do
