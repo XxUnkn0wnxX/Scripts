@@ -31,7 +31,8 @@ print -n "Select an option:
 5) Set language for a track
 6) Set name for a track
 7) Extract all attachments from MKV files
-8) Mass Remove tracks from multi-MKV files
+8) Mass Remove tracks for multi-MKV files
+9) Mass Re-order tracks for multi-MKV files
 Enter choice: "
 read choice
 
@@ -242,6 +243,70 @@ elif [ "$choice" = "8" ]; then
       echo "Removed source file: $(basename "$target")"
       rm -f "$target"
     fi
+  done
+
+elif [ "$choice" = "9" ]; then
+  # Option 9: Reorder tracks via mkvmerge
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+
+  # Select source file for track IDs
+  echo "Select the source Matroska file (.mkv, .mka, .mks, .mk3d) to pull track IDs:"
+  source_file=$(find . -maxdepth 1 -type f \
+    \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+    | fzf --height 40% --reverse --border --prompt="Select Matroska file > ")
+  [ -z "$source_file" ] && { echo "No file selected. Exiting."; exit 1; }
+
+  # Identify tracks
+  echo "Identifying all tracks in $source_file..."
+  info=$(mkvinfo "$source_file" < /dev/null)
+  all_tracks=$(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+:')
+
+  # Display tracks with names if available
+  echo "Tracks found:"
+  while IFS= read -r line; do
+    id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
+    name=$(echo "$info" | awk -v id="$id" '/Track number:/ && $0 ~ "extract: " id { in_block=1; next } /^\| \+ Track/ && in_block { exit } /Name:/ && in_block { sub(/.*Name:[ \t]*/, ""); print; exit }')
+    [ -n "$name" ] && echo "$line [$name]" || echo "$line"
+  done <<< "$all_tracks"
+
+  # Prompt for new order
+  printf "Enter the new track order (e.g., 0:0,0:1,0:2,0:4,0:5,0:6,0:3): "
+  read track_order
+
+  # Determine target files
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+    echo "Select Matroska file(s) to apply reorder:"
+    typeset -a targets
+    targets=()
+    while IFS= read -r file; do
+      targets+=("$file")
+    done < <(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+    [ ${#targets[@]} -eq 0 ] && { echo "No target files selected. Exiting."; exit 1; }
+  else
+    targets=("$source_file")
+  fi
+
+  # Apply reordering
+  for target in "${targets[@]}"; do
+    echo "Processing file: $(basename "$target")"
+    src_base=${target##*/}
+    base=${src_base%.*}
+    ext=${src_base##*.}
+    tmp="${base}_temp.${ext}"
+
+    cmd=(mkvmerge -o "$tmp" --track-order "$track_order")
+    cmd+=("$target")
+
+    echo "Executing: ${cmd[*]}"
+    "${cmd[@]}" || { echo "Error during mkvmerge on $target. Skipping."; rm -f "$tmp"; continue; }
+
+    mv "$tmp" "${base}.${ext}"
+    echo "Replaced file: ${base}.${ext}"
   done
 
 else
