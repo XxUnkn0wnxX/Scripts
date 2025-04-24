@@ -3,11 +3,11 @@
 # Multi-file target selection mode for choice 8 (Y/N)
 MULTI_FILE_SELECTION=""
 
-  function get_track_count() {
-    local file="$1"
-    local count=$(mkvmerge "$file" --identify | grep 'Track ID' | wc -l)
-    echo $count
-  }
+function get_track_count() {
+  local file="$1"
+  local count=$(mkvmerge "$file" --identify | grep 'Track ID' | wc -l)
+  echo $count
+}
 
 function count_attachments() {
   local file="$1"

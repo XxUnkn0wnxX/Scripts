@@ -391,31 +391,24 @@ validate_mkv_extension() {
     *) return 1 ;;
   esac
 }
-# Function to display mkvinfo and mkvmerge details, annotating track names
+# Function to display track information using mkvmerge JSON output
 display_track_info() {
   local source_file="$1"
-  # Cache full mkvinfo output for both sections
-  local info
-  info=$(mkvinfo "$source_file" < /dev/null)
+  echo "-----------------------  mkvmerge JSON track listing -----------------------"
+  local info_json
+  info_json=$(mkvmerge -J "$source_file" < /dev/null)
+  # Parse and display all tracks
+  echo "$info_json" | jq -c '.tracks[]' | while IFS= read -r track; do
+    local id=$(echo "$track" | jq '.id')
+    local type=$(echo "$track" | jq -r '.type')
+    local codec=$(echo "$track" | jq -r '.properties.codec_id')
+    local name=$(echo "$track" | jq -r '.properties.track_name // empty')
+    local lang=$(echo "$track" | jq -r '.properties.language   // empty')
 
-  # (mkvinfo output trimmed)
-  echo "-----------------------  mkvmerge -----------------------"
-  # Annotate mkvmerge identify with Name metadata
-  local all_tracks line id name
-  all_tracks=$(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+:')
-  for line in ${(f)all_tracks}; do
-    id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
-    # Extract Name for this track from mkvinfo
-    name=$(echo "$info" | awk -v id="$id" '
-      /Track number:/ && $0 ~ "mkvextract: " id { in_block=1; next }
-      /^\| \+ Track/ && in_block { exit }
-      /Name:/ && in_block { sub(/.*Name:[ \t]*/, ""); print; exit }
-    ')
-    if [ -n "$name" ]; then
-      echo "$line [$name]"
-    else
-      echo "$line"
-    fi
+    local line="Track ID ${id}: ${type} (${codec})"
+    [[ -n $name ]] && line+=" [${name}]"
+    [[ -n $lang ]] && line+=" [${lang}]"
+    echo "$line"
   done
 }
 
@@ -549,27 +542,22 @@ else
       fi
     fi
 
-    # Identify audio tracks (including any user-defined track names)
+    # Identify audio tracks via JSON and jq
     echo "Identifying audio tracks in $source_file..."
     local -a audio_tracks_arr
-    # Cache mkvinfo output for track name lookup
-    local info
-    info=$(mkvinfo "$source_file" < /dev/null)
-    # Read each audio track from mkvmerge identify
-    while IFS= read -r line; do
-      # Extract the track ID and codec
-      local id=$(echo "$line" | sed -E 's/Track ID ([0-9]+): audio.*/\1/')
-      local codec=$(echo "$line" | sed -E 's/Track ID [0-9]+: audio \(([^)]+)\).*/\1/')
-      # Lookup track Name metadata via mkvinfo
-      local name=$(echo "$info" | awk -v id="$id" \
-        '/Track number:/ && $0 ~ "extract: " id { in_block=1; next } \
-         in_block && /Name:/ { sub(/.*Name:[ \t]*/, ""); print; exit }')
-      if [ -n "$name" ]; then
-        audio_tracks_arr+=("Track ID $id: audio ($codec) [$name]")
-      else
-        audio_tracks_arr+=("Track ID $id: audio ($codec)")
-      fi
-    done < <(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+: audio' | sed -E 's/Track ID ([0-9]+): audio \(([^)]+)\)/Track ID \1: audio (\2)/')
+    local info_json
+    info_json=$(mkvmerge -J "$source_file" < /dev/null)
+    # Parse and list audio tracks
+    while IFS= read -r track; do
+      local id=$(echo "$track" | jq '.id')
+      local codec=$(echo "$track" | jq -r '.properties.codec_id')
+      local name=$(echo "$track" | jq -r '.properties.track_name // empty')
+      local lang=$(echo "$track" | jq -r '.properties.language   // empty')
+      local line="Track ID ${id}: audio (${codec})"
+      [[ -n $name ]] && line+=" [${name}]"
+      [[ -n $lang ]] && line+=" [${lang}]"
+      audio_tracks_arr+=("$line")
+    done < <(echo "$info_json" | jq -c '.tracks[] | select(.type=="audio")')
     local audio_count=${#audio_tracks_arr[@]}
 
     if [ "$audio_count" -eq 0 ]; then
@@ -583,15 +571,13 @@ else
       echo "$entry"
     done
 
+    # Prompt the user to select the Track ID if multiple
     if [ "$audio_count" -eq 1 ]; then
-      # Automatically use the only audio track found
       track_info="${audio_tracks_arr[1]}"
     else
-      # Prompt the user to select the Track ID
       printf "Enter the Track ID to extract: "
       flush_input
       read track_id
-      # Find matching entry
       track_info=""
       for entry in "${audio_tracks_arr[@]}"; do
         if [[ $entry == "Track ID $track_id:"* ]]; then
@@ -642,36 +628,22 @@ else
     SOURCE_FILE="$source_file"
 
 
-    # Identify all tracks and include any user-defined Names
+    # Identify all tracks via JSON and jq
     echo "Identifying all tracks in $source_file..."
-    # Get mkvmerge identify lines
-    all_tracks=$(mkvmerge --identify "$source_file" < /dev/null | grep -E 'Track ID [0-9]+:')
-    track_count=$(echo "$all_tracks" | wc -l)
-
-    if [ "$track_count" -eq 0 ]; then
-      echo "No tracks found in the file."
-      exit 1
-    fi
-
-    # Print all tracks found, appending any Name: metadata
-    # Cache mkvinfo output for Name lookup
-    info=$(mkvinfo "$source_file" < /dev/null)
+    local info_json
+    info_json=$(mkvmerge -J "$source_file" < /dev/null)
     echo "Tracks found:"
-    # Loop over each track line
-    for line in ${(f)all_tracks}; do
-      # Extract the track ID
-      id=$(echo "$line" | sed -E 's/Track ID ([0-9]+):.*/\1/')
-      # Lookup Name from mkvinfo within this track block (stop at next track)
-      name=$(echo "$info" | awk -v id="$id" '
-        /Track number:/ && $0 ~ "extract: " id { in_block=1; next }
-        /^\| \+ Track/ && in_block { exit }
-        /Name:/ && in_block { sub(/.*Name:[ \t]*/, ""); print; exit }
-      ')
-      if [ -n "$name" ]; then
-        echo "$line [$name]"
-      else
-        echo "$line"
-      fi
+    echo "$info_json" | jq -c '.tracks[]' | while IFS= read -r track; do
+      local id=$(echo "$track" | jq '.id')
+      local type=$(echo "$track" | jq -r '.type')
+      local codec=$(echo "$track" | jq -r '.properties.codec_id')
+      local name=$(echo "$track" | jq -r '.properties.track_name // empty')
+      local lang=$(echo "$track" | jq -r '.properties.language   // empty')
+
+      local line="Track ID ${id}: ${type} (${codec})"
+      [[ -n $name ]] && line+=" [${name}]"
+      [[ -n $lang ]] && line+=" [${lang}]"
+      echo "$line"
     done
 
     printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
