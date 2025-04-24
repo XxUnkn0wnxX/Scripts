@@ -66,12 +66,48 @@ rename_tracks() {
   done
 }
 
+# Function to set language of tracks across multiple files
+# Function to set language of tracks across multiple files
+set_language_tracks() {
+  local track_ids="$1"
+  IFS=', ' read -rA ids <<< "$track_ids"
+  for id in "${ids[@]}"; do
+    if [[ $id == *-* ]]; then
+      local start=${id%-*}
+      local end=${id#*-}
+      for ((i=start; i<=end; i++)); do
+        echo "--------------------  Track ID $i Language ---------------------"
+        printf "Language: "
+        read lang
+        for file in "${targets[@]}"; do
+          mkvpropedit "$file" --edit track:$((i+1)) --set language="$lang"
+        done
+      done
+    else
+      echo "--------------------  Track ID $id Language ---------------------"
+      printf "Language: "
+      read lang
+      for file in "${targets[@]}"; do
+        mkvpropedit "$file" --edit track:$((id+1)) --set language="$lang"
+      done
+    fi
+  done
+}
+
 current_dir=$(pwd)
 echo "Current Work Dir: $current_dir"
 cd "$current_dir"
 
-if [ ! "$(ls -A "$current_dir"/*.mkv 2>/dev/null)" ]; then
-  echo "Please check if there are video files present before running this script again."
+# Collect Matroska files in current dir
+matroska_files=()
+for ext in mkv mka mks mk3d; do
+  # Use (N) glob qualifier to suppress nomatch errors
+  for f in "$current_dir"/*.$ext(N); do
+    [ -e "$f" ] && matroska_files+=("$f")
+  done
+done
+if [ ${#matroska_files[@]} -eq 0 ]; then
+  echo "Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again."
   exit 1
 fi
 
@@ -161,17 +197,47 @@ elif [ "$choice" = "4" ]; then
   done
   
 elif [ "$choice" = "5" ]; then
-  print -n "Enter the track number: "
-  read track_num
-  print -n "Enter the lang (eng, jpn, und): "
-  read flag_lang
-  flag_lang=${flag_lang:-jpn}
-  track_num=${track_num:-2}
+  # Prompt for multi-file or single-file selection
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
-  for file in *.mkv; do
-    echo "Editing file: $(basename "$file")"
-    mkvpropedit "$file" --edit track:$track_num --set language=$flag_lang
-  done
+  # Determine target files
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+    echo "Select Matroska file(s) to apply language edits:"
+    typeset -a targets
+    targets=()
+    while IFS= read -r file; do
+      targets+=("$file")
+    done < <(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+    if [ ${#targets[@]} -eq 0 ]; then
+      echo "No target files selected. Exiting."
+      exit 1
+    fi
+  else
+    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+    source_file=$(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --height 40% --reverse --border)
+    if [ -z "$source_file" ]; then
+      echo "No file selected. Exiting."
+      exit 1
+    fi
+    typeset -a targets
+    targets=("$source_file")
+  fi
+
+  # Display track info for first target
+  display_track_info "${targets[1]}"
+
+  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+  read track_ids
+
+  # Perform language setting on selected files (prompting per track)
+  set_language_tracks "$track_ids"
   
 elif [ "$choice" = "6" ]; then
   # Prompt for multi-file or single-file selection
