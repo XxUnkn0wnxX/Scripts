@@ -67,7 +67,6 @@ rename_tracks() {
 }
 
 # Function to set language of tracks across multiple files
-# Function to set language of tracks across multiple files
 set_language_tracks() {
   local track_ids="$1"
   IFS=', ' read -rA ids <<< "$track_ids"
@@ -112,15 +111,13 @@ if [ ${#matroska_files[@]} -eq 0 ]; then
 fi
 
 print -n "Select an option:
-1) Set flag-forced for a track
-2) Set flag-default for all tracks
-3) Set flag-default for a track
-4) Remove flag-forced for all tracks
-5) Set language for a track
-6) Set name for a track
-7) Extract all attachments from MKV files
-8) Mass Remove tracks for multi-MKV files
-9) Mass Re-order tracks for multi-MKV files
+1) Set flag-forced for tracks
+2) Set flag-default for tracks
+3) Set language for tracks
+4) Set name for tracks
+5) Extract all attachments from MK files
+6) Mass Remove tracks for multi-MK files
+7) Mass Re-order tracks for multi-MK files
 Enter choice: "
 read choice
 
@@ -164,39 +161,6 @@ elif [ "$choice" = "2" ]; then
   done
   
 elif [ "$choice" = "3" ]; then
-  print -n "Enter the track number: "
-  read track_num
-  print -n "Enter flag-default value (1 or 0, blank for 1): "
-  read flag_value
-  flag_value=${flag_value:-1}
-  track_num=${track_num:-4}
-
-  for file in *.mkv; do
-    echo "Editing file: $(basename "$file")"
-    mkvpropedit "$file" --edit track:$track_num --set flag-default=$flag_value
-  done
-  
-elif [ "$choice" = "4" ]; then
-#  function get_track_count() {
-#    local file="$1"
-#    local count=$(mkvmerge "$file" --identify | grep 'Track ID' | wc -l)
-#    echo $count
-#  }
-
-  flag_value=${flag_value:-0}
-
-  for file in *.mkv; do
-    track_count=$(get_track_count "$file")
-    typeset -a edit_flags
-    edit_flags=()
-    for (( i=1; i<=track_count; i++ )); do
-      edit_flags+=(--edit track:$i --set flag-forced=$flag_value)
-    done
-    echo "Editing file: $(basename "$file")"
-    mkvpropedit "$file" "${edit_flags[@]}"
-  done
-  
-elif [ "$choice" = "5" ]; then
   # Prompt for multi-file or single-file selection
   print -n "Enable multi-file target selection? (Y/N) [N]: "
   read MULTI_FILE_SELECTION
@@ -239,7 +203,7 @@ elif [ "$choice" = "5" ]; then
   # Perform language setting on selected files (prompting per track)
   set_language_tracks "$track_ids"
   
-elif [ "$choice" = "6" ]; then
+elif [ "$choice" = "4" ]; then
   # Prompt for multi-file or single-file selection
   print -n "Enable multi-file target selection? (Y/N) [N]: "
   read MULTI_FILE_SELECTION
@@ -280,7 +244,7 @@ elif [ "$choice" = "6" ]; then
   # Perform renaming on selected files
   rename_tracks "$track_ids"
 
-elif [ "$choice" = "7" ]; then
+elif [ "$choice" = "5" ]; then
   for file in *.mkv; do
     attachment_count=$(count_attachments "$file")
     echo "Processing $file: Extracting $attachment_count attachments..."
@@ -292,7 +256,7 @@ elif [ "$choice" = "7" ]; then
   done
   echo "Attachments extraction completed."
 
-elif [ "$choice" = "8" ]; then
+elif [ "$choice" = "6" ]; then
   # Single-file Remove-Tracks flow (from mkv_mux choice 3)
   # Ask if user wants multi-file target selection or single-file
   print -n "Enable multi-file target selection? (Y/N) [N]: "
@@ -391,7 +355,7 @@ elif [ "$choice" = "8" ]; then
     fi
   done
 
-elif [ "$choice" = "9" ]; then
+elif [ "$choice" = "7" ]; then
   # Option 9: Reorder tracks via mkvmerge
   print -n "Enable multi-file target selection? (Y/N) [N]: "
   read MULTI_FILE_SELECTION
