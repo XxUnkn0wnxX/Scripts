@@ -13,6 +13,58 @@ function count_attachments() {
   local file="$1"
   mkvmerge --identify "$file" | grep -c "Attachment ID"
 }
+ 
+
+# Function to display track information using mkvmerge JSON output
+display_track_info() {
+  local source_file="$1"
+  echo "-----------------------  mkvmerge JSON track listing -----------------------"
+  local info_json
+  info_json=$(mkvmerge -J "$source_file" < /dev/null)
+  echo "$info_json" | jq -c '.tracks[]' | while IFS= read -r track; do
+    local id=$(echo "$track" | jq '.id')
+    local type=$(echo "$track" | jq -r '.type')
+    local codec=$(echo "$track" | jq -r '.properties.codec_id')
+    local name=$(echo "$track" | jq -r '.properties.track_name // empty')
+    local lang=$(echo "$track" | jq -r '.properties.language   // empty')
+
+    local line="Track ID ${id}: ${type} (${codec})"
+    [[ -n $name ]] && line+=" [${name}]"
+    [[ -n $lang ]] && line+=" [${lang}]"
+    echo "$line"
+  done
+}
+
+# Function to rename tracks using mkvpropedit
+rename_tracks() {
+  local source_file="$1"
+  local track_ids="$2"
+
+  # Split track_ids by comma and space
+  IFS=', ' read -rA ids <<< "$track_ids"
+
+  # Loop over each track ID
+  for id in "${ids[@]}"; do
+    # Check if it's a range (e.g., 1-3)
+    if [[ $id == *-* ]]; then
+      local start=$(echo $id | cut -d '-' -f 1)
+      local end=$(echo $id | cut -d '-' -f 2)
+      for ((i=start; i<=end; i++)); do
+        echo "--------------------  Track ID $i Name ---------------------"
+        printf "Name: "
+        read name
+        # Run mkvpropedit uninterruptibly
+        (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name" < /dev/null)
+      done
+    else
+      echo "--------------------  Track ID $id Name ---------------------"
+      printf "Name: "
+      read name
+      # Run mkvpropedit uninterruptibly
+      (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name" < /dev/null)
+    fi
+  done
+}
 
 current_dir=$(pwd)
 echo "Current Work Dir: $current_dir"
@@ -122,17 +174,19 @@ elif [ "$choice" = "5" ]; then
   done
   
 elif [ "$choice" = "6" ]; then
-  print -n "Enter the track number: "
-  read track_num
-  print -n "Enter the track name: "
-  read title_name
-  title_name=${title_name:-""}
-  track_num=${track_num:-3}
+  printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+  source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
+  if [ -z "$source_file" ]; then
+    echo "No file selected. Exiting."
+    exit 1
+  fi
 
-  for file in *.mkv; do
-    echo "Editing file: $(basename "$file")"
-    mkvpropedit "$file" --edit track:$track_num --set name="$title_name"
-  done
+  display_track_info "$source_file"
+
+  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+  read track_ids
+
+  rename_tracks "$source_file" "$track_ids"
 
 elif [ "$choice" = "7" ]; then
   for file in *.mkv; do
