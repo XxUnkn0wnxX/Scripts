@@ -14,7 +14,6 @@ function count_attachments() {
   mkvmerge --identify "$file" | grep -c "Attachment ID"
 }
  
-
 # Function to display track information using mkvmerge JSON output
 display_track_info() {
   local source_file="$1"
@@ -66,6 +65,7 @@ rename_tracks() {
   done
 }
 
+
 # Function to set language of tracks across multiple files
 set_language_tracks() {
   local track_ids="$1"
@@ -88,6 +88,66 @@ set_language_tracks() {
       read lang
       for file in "${targets[@]}"; do
         mkvpropedit "$file" --edit track:$((id+1)) --set language="$lang"
+      done
+    fi
+  done
+}
+
+# Function to set forced flag for tracks across multiple files
+set_flag_forced_tracks() {
+  local track_ids="$1"
+  IFS=', ' read -rA ids <<< "$track_ids"
+  for id in "${ids[@]}"; do
+    # Determine range or single ID
+    if [[ $id == *-* ]]; then
+      local start=${id%-*}
+      local end=${id#*-}
+      for ((i=start; i<=end; i++)); do
+        echo "--------------------  Track ID $i Forced Flag ---------------------"
+        printf "Flag-forced (1 or 0) [1]: "
+        read value
+        value=${value:-1}
+        for file in "${targets[@]}"; do
+          mkvpropedit "$file" --edit track:$((i+1)) --set flag-forced=$value
+        done
+      done
+    else
+      echo "--------------------  Track ID $id Forced Flag ---------------------"
+      printf "Flag-forced (1 or 0) [1]: "
+      read value
+      value=${value:-1}
+      for file in "${targets[@]}"; do
+        mkvpropedit "$file" --edit track:$((id+1)) --set flag-forced=$value
+      done
+    fi
+  done
+}
+
+# Function to set default flag for tracks across multiple files
+set_flag_default_tracks() {
+  local track_ids="$1"
+  IFS=', ' read -rA ids <<< "$track_ids"
+  for id in "${ids[@]}"; do
+    # Determine range or single ID
+    if [[ $id == *-* ]]; then
+      local start=${id%-*}
+      local end=${id#*-}
+      for ((i=start; i<=end; i++)); do
+        echo "--------------------  Track ID $i Default Flag ---------------------"
+        printf "Flag-default (1 or 0) [1]: "
+        read value
+        value=${value:-1}
+        for file in "${targets[@]}"; do
+          mkvpropedit "$file" --edit track:$((i+1)) --set flag-default=$value
+        done
+      done
+    else
+      echo "--------------------  Track ID $id Default Flag ---------------------"
+      printf "Flag-default (1 or 0) [1]: "
+      read value
+      value=${value:-1}
+      for file in "${targets[@]}"; do
+        mkvpropedit "$file" --edit track:$((id+1)) --set flag-default=$value
       done
     fi
   done
@@ -124,41 +184,90 @@ read choice
 choice=${choice:-1}
 
 if [ "$choice" = "1" ]; then
-  print -n "Enter the track number: "
-  read track_num
-  print -n "Enter flag-forced value (1 or 0, blank for 1): "
-  read flag_value
-  flag_value=${flag_value:-1}
-  track_num=${track_num:-4}
+  # Prompt for multi-file or single-file selection
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
-  for file in *.mkv; do
-    echo "Editing file: $(basename "$file")"
-    mkvpropedit "$file" --edit track:$track_num --set flag-forced=$flag_value
-  done
-  # Re-enable Ctrl+C after processing
-  trap - INT
+  # Determine target files
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+    echo "Select Matroska file(s) to apply forced-flag edits:"
+    typeset -a targets
+    targets=()
+    while IFS= read -r file; do
+      targets+=("$file")
+    done < <(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+    if [ ${#targets[@]} -eq 0 ]; then
+      echo "No target files selected. Exiting."
+      exit 1
+    fi
+  else
+    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+    source_file=$(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --height 40% --reverse --border)
+    if [ -z "$source_file" ]; then
+      echo "No file selected. Exiting."
+      exit 1
+    fi
+    typeset -a targets
+    targets=("$source_file")
+  fi
+
+  # Display track info for first target
+  display_track_info "${targets[1]}"
+
+  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+  read track_ids
+
+  # Apply forced-flag edits (prompting per track)
+  set_flag_forced_tracks "$track_ids"
 
 elif [ "$choice" = "2" ]; then
-#  function get_track_count() {
-#    local file="$1"
-#    local count=$(mkvmerge "$file" --identify | grep 'Track ID' | wc -l)
-#    echo $count
-#  }
+  # Prompt for multi-file or single-file selection
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
-  print -n "Enter flag-default value (1 or 0, blank for 1): "
-  read flag_value
-  flag_value=${flag_value:-1}
+  # Determine target files
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+    echo "Select Matroska file(s) to apply default-flag edits:"
+    typeset -a targets
+    targets=()
+    while IFS= read -r file; do
+      targets+=("$file")
+    done < <(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+    if [ ${#targets[@]} -eq 0 ]; then
+      echo "No target files selected. Exiting."
+      exit 1
+    fi
+  else
+    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+    source_file=$(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --height 40% --reverse --border)
+    if [ -z "$source_file" ]; then
+      echo "No file selected. Exiting."
+      exit 1
+    fi
+    typeset -a targets
+    targets=("$source_file")
+  fi
 
-  for file in *.mkv; do
-    track_count=$(get_track_count "$file")
-    typeset -a edit_flags
-    edit_flags=()
-    for (( i=1; i<=track_count; i++ )); do
-      edit_flags+=(--edit track:$i --set flag-default=$flag_value)
-    done
-    echo "Editing file: $(basename "$file")"
-    mkvpropedit "$file" "${edit_flags[@]}"
-  done
+  # Display track info for first target
+  display_track_info "${targets[1]}"
+
+  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+  read track_ids
+
+  # Apply default-flag edits (prompting per track)
+  set_flag_default_tracks "$track_ids"
   
 elif [ "$choice" = "3" ]; then
   # Prompt for multi-file or single-file selection
