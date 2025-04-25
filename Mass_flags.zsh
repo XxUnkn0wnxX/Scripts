@@ -1,5 +1,18 @@
 #!/usr/local/bin/zsh
 
+# Required third-party tools:
+# - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting, and editing tracks and metadata in Matroska files
+# - jq: for processing JSON output from mkvmerge (-J)
+# - fzf: for interactive file and track selection via fuzzy finding
+# - python3: for inline Python scripting support
+# - pymkv2, pymkv Python library: provides the type_files mapping for codec→extension resolution (install via python3 -m pip install pymkv2 pymkv)
+#
+# On macOS, install dependencies via Homebrew:
+#   brew install mkvtoolnix jq fzf python3
+#   python3 -m pip install pymkv pymkv2
+#
+# Ensure that python3 and pip are in your PATH.
+
 # Extension overrides for Plex / VLC compatibility
 typeset -A ext_override=(
   # Video elementary streams
@@ -19,12 +32,6 @@ typeset -A ext_override=(
 
 # Multi-file target selection mode for choice 8 (Y/N)
 MULTI_FILE_SELECTION=""
-
-function get_track_count() {
-  local file="$1"
-  local count=$(mkvmerge "$file" --identify | grep 'Track ID' | wc -l)
-  echo $count
-}
 
 function count_attachments() {
   local file="$1"

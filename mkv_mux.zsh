@@ -1,5 +1,16 @@
 #!/usr/local/bin/zsh
 
+ # Required third-party tools:
+ # - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting,
+ #   and editing tracks and metadata in Matroska files
+ # - ffmpeg (and ffprobe): for multimedia processing, such as boosting audio volume and verifying video streams
+ # - fzf: for interactive file selection via fuzzy finding
+ # - jq: for processing JSON output (mkvmerge -J)
+ # - rsync: for creating backups in safe mode
+
+# Install these tools using Homebrew with the following command:
+# brew install mkvtoolnix ffmpeg fzf jq rsync
+
 # Global variables for signal handling
 CHOICE=""
 SOURCE_FILE=""
@@ -84,17 +95,6 @@ handle_ctrl_c() {
   esac
 }
 trap 'handle_ctrl_c' INT
-
- # Required third-party tools:
- # - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting,
- #   and editing tracks and metadata in Matroska files
- # - ffmpeg (and ffprobe): for multimedia processing, such as boosting audio volume and verifying video streams
- # - fzf: for interactive file selection via fuzzy finding
- # - jq: for processing JSON output (mkvmerge -J)
- # - rsync: for creating backups in safe mode
-
-# Install these tools using Homebrew with the following command:
-# brew install mkvtoolnix ffmpeg fzf jq rsync
 
 # Global variable for safe mode
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
