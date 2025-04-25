@@ -1,5 +1,22 @@
 #!/usr/local/bin/zsh
 
+# Extension overrides for Plex / VLC compatibility
+typeset -A ext_override=(
+  # Video elementary streams
+  ["V_MPEG4/ISO/AVC"]="h264"     # raw H.264 → .h264
+  ["V_MPEGH/ISO/HEVC"]="h265"    # raw HEVC/H.265 → .h265
+
+  # Audio elementary streams
+  ["A_AAC"]="aac"                # AAC audio → .aac
+  ["A_AC3"]="ac3"                # AC-3 (Dolby Digital) → .ac3
+  ["A_DTS"]="dts"                # DTS audio → .dts
+
+  # Subtitle sidecars
+  ["S_TEXT/SRT"]="srt"           # SubRip → .srt
+  ["S_TEXT/ASS"]="ass"           # SubStation Alpha → .ass
+  ["S_HDMV/PGS"]="pgs"           # PGS subtitles → .pgs
+)
+
 # Multi-file target selection mode for choice 8 (Y/N)
 MULTI_FILE_SELECTION=""
 
@@ -153,6 +170,59 @@ set_flag_default_tracks() {
   done
 }
 
+# Helper: extract one track by id, with enhanced output
+extract_single() {
+  local tid=$1
+  local cid=$(jq -r ".tracks[] | select(.id==${tid}) | .properties.codec_id" <<<"$info_json")
+  local src_base=${source_file##*/}; local base=${src_base%.*}
+
+  # 1) check override by full id
+  local ext=${ext_override[$cid]:-}
+  if [[ -z $ext ]]; then
+    # 2) check override by short key
+    local key=${cid##*/}
+    ext=${ext_override[$key]:-}
+    if [[ -z $ext ]]; then
+      # 3) fallback to pymkv2 map
+      ext=${codec_ext[$key]:-}
+      [[ -z $ext ]] && ext=${(L)${key//[^[:alnum:]]/}}
+    fi
+  fi
+
+  echo "Matched codec ID: ${cid} → extension: .${ext}"
+  echo "Extracting track ${tid} (${cid}) → ${base} - Track [${tid}].${ext}"
+  mkvextract tracks "$source_file" \
+    ${tid}:"${base} - Track [${tid}].${ext}"
+}
+
+# Function to extract selected tracks from a single MKV
+extract_tracks() {
+  local track_ids="$1"
+  IFS=', ' read -rA ids <<<"$track_ids"
+
+  # build the codec→ext map
+  typeset -A codec_ext
+  eval "$(
+    python3 - <<'PYCODE'
+from pymkv.TypeTrack import type_files
+flat = {k:v for cat in type_files.values() for k,v in cat.items()}
+items = ' '.join(f"['{k}']='{v}'" for k, v in flat.items())
+print(f"typeset -A codec_ext=( {items} )")
+PYCODE
+  )"
+
+  for id in "${ids[@]}"; do
+    if [[ $id == *-* ]]; then
+      local start=${id%-*} end=${id#*-}
+      for ((i=start; i<=end; i++)); do
+        extract_single "$i"
+      done
+    else
+      extract_single "$id"
+    fi
+  done
+}
+
 current_dir=$(pwd)
 echo "Current Work Dir: $current_dir"
 cd "$current_dir"
@@ -178,6 +248,7 @@ print -n "Select an option:
 5) Extract all attachments from MK files
 6) Mass Remove tracks for multi-MK files
 7) Mass Re-order tracks for multi-MK files
+8) Extract Tracks for a single MK file
 Enter choice: "
 read choice
 
@@ -561,6 +632,24 @@ elif [ "$choice" = "7" ]; then
     mv "$tmp" "${base}.${ext}"
     echo "Replaced file: ${base}.${ext}"
   done
+  
+# --- Choice 8: Extract Tracks ---
+elif [ "$choice" = "8" ]; then
+  # single-file only
+  printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+  source_file=$(find . -maxdepth 1 -type f \
+    \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+    | fzf --height 40% --reverse --border)
+  [ -z "$source_file" ] && { echo "No file selected. Exiting."; exit 1; }
+
+  # Display track info
+  info_json=$(mkvmerge -J "$source_file" < /dev/null)
+  display_track_info "$source_file"
+
+  printf "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): "
+  read track_ids
+
+  extract_tracks "$track_ids"
 
 else
   echo "Invalid choice."
