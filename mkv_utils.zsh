@@ -466,50 +466,63 @@ elif [ "$choice" = "5" ]; then
   echo "Attachments extraction completed."
 
 elif [ "$choice" = "6" ]; then
-  # --- Choice 6: Mass Remove tracks for one or more MKV files ---
-  # 1) Multi-file or single-file?
+  # --- Choice 6: Mass Remove tracks ---
   print -n "Enable multi-file target selection? (Y/N) [N]: "
   read MULTI_FILE_SELECTION
   MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
   MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
-  # 2) Pick the source file (used only to show track IDs)
-  echo "Select the source Matroska file (.mkv, .mka, .mks, .mk3d): to pull track ids"
-  source_file=$(find . -maxdepth 1 -type f \
-    \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-    | fzf --height 40% --reverse --border --prompt="Select Matroska file > ")
-  [ -z "$source_file" ] && { echo "No file selected. Exiting."; exit 1; }
+  # Build fzf args
+  fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
+  [[ $MULTI_FILE_SELECTION == "Y" ]] && fzf_args+=(--multi)
 
-  # 3) Display tracks via JSON → identical to choice 7's listing
+  # Single fzf to pick targets
+  targets=()
+  while IFS= read -r f; do
+    targets+=("$f")
+  done < <(
+    find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+    | fzf "${fzf_args[@]}"
+  )
+  [ ${#targets[@]} -eq 0 ] && { echo "No files selected. Exiting."; exit 1; }
+
+  # Show JSON-based track list for first file
+  source_file=${targets[1]}
   display_track_info "$source_file"
 
-  # 4) Ask which track IDs to remove
+  # Ask which track IDs to remove
   printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
   read track_ids
 
-  # 5) Build exclude_ids array (handles comma and ranges)
+  # Build exclude_ids[] by splitting on commas and ranges
   exclude_ids=()
-  IFS=',' read -r raw <<< "$track_ids"
-  for token in ${(s:,:)raw}; do
-    if [[ $token == *-* ]]; then
-      start=${token%-*}; end=${token#*-}
+  for tok in ${(s:,:)track_ids}; do
+    if [[ $tok == *-* ]]; then
+      start=${tok%-*}; end=${tok#*-}
       for ((i=start; i<=end; i++)); do
         exclude_ids+=($i)
       done
     else
-      exclude_ids+=($token)
+      exclude_ids+=($tok)
     fi
   done
+  # sort & dedupe
   exclude_ids=($(printf "%s\n" "${exclude_ids[@]}" | sort -n | uniq))
 
-  # 6) Compute which tracks to keep
-  video_keep=($(jq -r '.tracks[] | select(.type=="video") | .id' <<<"$info_json"))
-  audio_keep=($(jq -r '.tracks[] | select(.type=="audio") | .id' <<<"$info_json"))
-  subtitle_keep=($(jq -r '.tracks[] | select(.type=="subtitles") | .id' <<<"$info_json"))
+  echo "Removing tracks: ${exclude_ids[*]}"
 
-  # Filter out the excluded IDs
+  # Grab JSON metadata once
+  info_json=$(mkvmerge -J "$source_file")
+
+  # Build keep lists
+  video_keep=($(jq -r '.tracks[]|select(.type=="video")|.id' <<<"$info_json"))
+  audio_keep=($(jq -r '.tracks[]|select(.type=="audio")|.id' <<<"$info_json"))
+  subtitle_keep=($(jq -r '.tracks[]|select(.type=="subtitles")|.id' <<<"$info_json"))
+
+  # Helper to filter out excluded IDs
   filter_keep() {
-    local arr=($@) keep=()
+    local arr=("$@") keep=()
     for id in "${arr[@]}"; do
       [[ ! " ${exclude_ids[*]} " == *" $id "* ]] && keep+=($id)
     done
@@ -519,133 +532,75 @@ elif [ "$choice" = "6" ]; then
   audio_keep=($(filter_keep "${audio_keep[@]}"))
   subtitle_keep=($(filter_keep "${subtitle_keep[@]}"))
 
-  echo "Removing tracks: ${exclude_ids[*]}"
-
-  # 7) Select target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to apply removal:"
-    targets=()
-    while IFS= read -r f; do targets+=("$f"); done < <(
-      find . -maxdepth 1 -type f \
-        \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-        | fzf --multi --height 40% --reverse --border --prompt="Select files > "
-    )
-    [ ${#targets[@]} -eq 0 ] && { echo "No target files. Exiting."; exit 1; }
-  else
-    targets=("$source_file")
-  fi
-
-  # 8) Run mkvmerge remove on each target
+  # Apply removal to each file
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
-    # if no video left → MKA; else keep same ext
     [[ ${#video_keep[@]} -eq 0 ]] && out_ext=mka || out_ext=$ext
     tmp="${base}_temp.${out_ext}"
 
     cmd=(mkvmerge -o "$tmp")
-    # choose which track options to pass
-    if [[ ${#video_keep[@]} -gt 0 ]]; then
-      cmd+=(--video-tracks "$(IFS=,; echo "${video_keep[*]}")")
-    else
-      cmd+=(--no-video)
-    fi
-    if [[ ${#audio_keep[@]} -gt 0 ]]; then
-      cmd+=(--audio-tracks "$(IFS=,; echo "${audio_keep[*]}")")
-    else
-      cmd+=(--no-audio)
-    fi
-    if [[ ${#subtitle_keep[@]} -gt 0 ]]; then
-      cmd+=(--subtitle-tracks "$(IFS=,; echo "${subtitle_keep[*]}")")
-    else
-      cmd+=(--no-subtitles)
-    fi
+    [[ ${#video_keep[@]} -gt 0 ]] \
+      && cmd+=(--video-tracks "$(IFS=,; echo "${video_keep[*]}")") \
+      || cmd+=(--no-video)
+    [[ ${#audio_keep[@]} -gt 0 ]] \
+      && cmd+=(--audio-tracks "$(IFS=,; echo "${audio_keep[*]}")") \
+      || cmd+=(--no-audio)
+    [[ ${#subtitle_keep[@]} -gt 0 ]] \
+      && cmd+=(--subtitle-tracks "$(IFS=,; echo "${subtitle_keep[*]}")") \
+      || cmd+=(--no-subtitles)
     cmd+=("$target")
 
     echo "Executing: ${cmd[*]}"
     if "${cmd[@]}"; then
       mv "$tmp" "${base}.${out_ext}"
       echo "Replaced: ${base}.${out_ext}"
-      [[ "$out_ext" != "$ext" ]] && rm -f "$target" && echo "Removed source: $target"
+      [[ "$out_ext" != "$ext" ]] && rm -f "$target" && echo "Removed original: $target"
     else
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
     fi
   done
 
+
 elif [ "$choice" = "7" ]; then
-  # Option 9: Reorder tracks via mkvmerge
+  # --- Choice 7: Mass Re-order tracks ---
   print -n "Enable multi-file target selection? (Y/N) [N]: "
   read MULTI_FILE_SELECTION
   MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
   MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
-  # Select source file for track IDs
-  echo "Select the source Matroska file (.mkv, .mka, .mks, .mk3d) to pull track IDs:"
-  source_file=$(find . -maxdepth 1 -type f \
-    \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-    | fzf --height 40% --reverse --border --prompt="Select Matroska file > ")
-  [ -z "$source_file" ] && { echo "No file selected. Exiting."; exit 1; }
+  fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
+  [[ $MULTI_FILE_SELECTION == "Y" ]] && fzf_args+=(--multi)
 
-  # Identify tracks and get full JSON metadata
-  info_json=$(mkvmerge -J "$source_file")
+  targets=()
+  while IFS= read -r f; do
+    targets+=("$f")
+  done < <(
+    find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+    | fzf "${fzf_args[@]}"
+  )
+  [ ${#targets[@]} -eq 0 ] && { echo "No files selected. Exiting."; exit 1; }
 
-  echo "Tracks found:"
-  echo "$info_json" \
-    | jq -c '.tracks[]' \
-    | while IFS= read -r track; do
-        id=$(   echo "$track" | jq '.id')
-        type=$( echo "$track" | jq -r '.type')
-        codec=$(echo "$track" | jq -r '.properties.codec_id')
-        name=$( echo "$track" | jq -r '.properties.track_name // empty')
-        lang=$( echo "$track" | jq -r '.properties.language   // empty')
+  source_file=${targets[1]}
+  display_track_info "$source_file"
 
-        line="Track ID ${id}: ${type} (${codec})"
-        [[ -n $name ]] && line+=" [${name}]"
-        if [[ -n $lang ]]; then
-          if [[ -n $name ]]; then
-            line+=" - [${lang}]"
-          else
-            line+=" [${lang}]"
-          fi
-        fi
-        echo "$line"
-      done
-
-  # Prompt for new order
-  printf "Enter the new track order (e.g., 0:0,0:1,0:2,0:4,0:5,0:6,0:3): "
+  printf "Enter the new track order (e.g., 0:0,0:1,0:2,…): "
   read track_order
 
-  # Determine target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to apply reorder:"
-    typeset -a targets
-    targets=()
-    while IFS= read -r file; do
-      targets+=("$file")
-    done < <(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-    [ ${#targets[@]} -eq 0 ] && { echo "No target files selected. Exiting."; exit 1; }
-  else
-    targets=("$source_file")
-  fi
-
-  # Apply reordering
   for target in "${targets[@]}"; do
-    echo "Processing file: $(basename "$target")"
-    src_base=${target##*/}
-    base=${src_base%.*}
-    ext=${src_base##*.}
+    base=${target##*/}; base=${base%.*}; ext=${target##*.}
     tmp="${base}_temp.${ext}"
-
-    cmd=(mkvmerge -o "$tmp" --track-order "$track_order")
-    cmd+=("$target")
+    cmd=(mkvmerge -o "$tmp" --track-order "$track_order" "$target")
 
     echo "Executing: ${cmd[*]}"
-    "${cmd[@]}" || { echo "Error during mkvmerge on $target. Skipping."; rm -f "$tmp"; continue; }
-
-    mv "$tmp" "${base}.${ext}"
-    echo "Replaced file: ${base}.${ext}"
+    if "${cmd[@]}"; then
+      mv "$tmp" "${base}.${ext}"
+      echo "Replaced: ${base}.${ext}"
+    else
+      echo "Error on $target; cleaning up."
+      rm -f "$tmp"
+    fi
   done
   
 # --- Choice 8: Extract Tracks ---
