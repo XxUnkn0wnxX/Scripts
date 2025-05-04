@@ -99,6 +99,16 @@ trap 'handle_ctrl_c' INT
 # Global variable for safe mode
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
 thread_count=8  # Hard-coded to use 8 threads
+# ——————————————————————————————
+# Extension overrides for Plex/VLC (audio only)
+typeset -A ext_override=(
+  ["A_AAC"]="aac"                # AAC audio → .aac
+  ["A_AC3"]="ac3"                # AC-3 (Dolby Digital) → .ac3
+  ["A_DTS"]="dts"                # DTS audio → .dts
+  ["A_PCM/INT/LIT"]="pcm"       # PCM → .pcm
+)
+# ——————————————————————————————
+
 # Open file descriptor 3 for the controlling terminal (used to flush input)
 # Try to attach FD3 to /dev/tty (suppress errors for this attempt only)
 { exec 3</dev/tty; } 2>/dev/null || true
@@ -591,8 +601,13 @@ else
     codec=$(echo "$track_info" | awk '{print $5}' | tr -d '()')
     track_id=$(echo "$track_info" | awk '{print $3}' | tr -d ':')
 
-    # Generate file extension from codec information
-    codec_extension=$(echo "$codec" | tr '[:upper:]' '[:lower:]' | sed 's/-/_/g')
+    # Determine file extension via ext_override, or fall back to codec suffix
+    if [[ -n "${ext_override[$codec]}" ]]; then
+      codec_extension="${ext_override[$codec]}"
+    else
+      key="${codec##*/}"                       # e.g. "INT" from "A_PCM/INT/LIT"
+      codec_extension="${ext_override[$key]:-${key,,}}"  # lowercased fallback
+    fi
 
     printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
     flush_input
