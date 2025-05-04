@@ -106,6 +106,7 @@ typeset -A ext_override=(
   ["A_AC3"]="ac3"                # AC-3 (Dolby Digital) → .ac3
   ["A_DTS"]="dts"                # DTS audio → .dts
   ["A_PCM/INT/LIT"]="pcm"       # PCM → .pcm
+  ["A_OPUS"]="opus"     # Opus → .opus
 )
 # ——————————————————————————————
 
@@ -605,8 +606,9 @@ else
     if [[ -n "${ext_override[$codec]}" ]]; then
       codec_extension="${ext_override[$codec]}"
     else
-      key="${codec##*/}"                       # e.g. "INT" from "A_PCM/INT/LIT"
-      codec_extension="${ext_override[$key]:-${key,,}}"  # lowercased fallback
+      key="${codec##*/}"     # strip off everything before the last “/”
+      # In Z-shell, `${var:l}` lowercases var
+      codec_extension=${ext_override[$key]:-${key:l}}
     fi
 
     printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
