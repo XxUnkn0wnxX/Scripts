@@ -23,6 +23,7 @@ typeset -A ext_override=(
   ["A_AAC"]="aac"                # AAC audio → .aac
   ["A_AC3"]="ac3"                # AC-3 (Dolby Digital) → .ac3
   ["A_DTS"]="dts"                # DTS audio → .dts
+  ["A_OPUS"]="opus"              # Opus → .opus
 
   # Subtitle sidecars
   ["S_TEXT/SRT"]="srt"           # SubRip → .srt
