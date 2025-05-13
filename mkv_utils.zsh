@@ -256,7 +256,7 @@ print -n "Select an option:
 5) Extract all attachments from MK files
 6) Mass Remove tracks for multi-MK files
 7) Mass Re-order tracks for multi-MK files
-8) Extract Tracks for a single MK file
+8) Extract Tracks for multi-MK files
 Enter choice: "
 read choice
 
