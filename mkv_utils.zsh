@@ -606,21 +606,54 @@ elif [ "$choice" = "7" ]; then
   
 # --- Choice 8: Extract Tracks ---
 elif [ "$choice" = "8" ]; then
-  # single-file only
-  printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-  source_file=$(find . -maxdepth 1 -type f \
-    \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-    | fzf --height 40% --reverse --border)
-  [ -z "$source_file" ] && { echo "No file selected. Exiting."; exit 1; }
+  # Prompt for multi-file or single-file selection
+  print -n "Enable multi-file target selection? (Y/N) [N]: "
+  read MULTI_FILE_SELECTION
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
-  # Display track info
+  # Determine target files
+  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+    echo "Select Matroska file(s) to extract tracks:"
+    typeset -a targets
+    targets=()
+    while IFS= read -r file; do
+      targets+=("$file")
+    done < <(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+    if [ ${#targets[@]} -eq 0 ]; then
+      echo "No target files selected. Exiting."
+      exit 1
+    fi
+  else
+    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+    source_file=$(find . -maxdepth 1 -type f \
+      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+      | fzf --height 40% --reverse --border)
+    if [ -z "$source_file" ]; then
+      echo "No file selected. Exiting."
+      exit 1
+    fi
+    typeset -a targets
+    targets=("$source_file")
+  fi
+
+  # Display track info for the first target
+  source_file=${targets[1]}
   info_json=$(mkvmerge -J "$source_file" < /dev/null)
   display_track_info "$source_file"
 
+  # Ask once for which tracks to extract
   printf "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): "
   read track_ids
 
-  extract_tracks "$track_ids"
+  # Loop over all selected files
+  for source_file in "${targets[@]}"; do
+    echo "→ Extracting tracks ${track_ids} from $source_file"
+    info_json=$(mkvmerge -J "$source_file" < /dev/null)
+    extract_tracks "$track_ids"
+  done
 
 else
   echo "Invalid choice."
