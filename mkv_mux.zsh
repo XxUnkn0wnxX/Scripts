@@ -579,21 +579,8 @@ else
     fi
 
     # Identify audio tracks via JSON and jq
-    echo "Identifying audio tracks in $source_file..."
     local -a audio_tracks_arr
-    local info_json
-    info_json=$(mkvmerge -J "$source_file" < /dev/null)
-    # Parse and list audio tracks
-    while IFS= read -r track; do
-      local id=$(echo "$track" | jq '.id')
-      local codec=$(echo "$track" | jq -r '.properties.codec_id')
-      local name=$(echo "$track" | jq -r '.properties.track_name // empty')
-      local lang=$(echo "$track" | jq -r '.properties.language   // empty')
-      local line="Track ID ${id}: audio (${codec})"
-      [[ -n $name ]] && line+=" [${name}]"
-      [[ -n $lang ]] && line+=" [${lang}]"
-      audio_tracks_arr+=("$line")
-    done < <(echo "$info_json" | jq -c '.tracks[] | select(.type=="audio")')
+    collect_audio_tracks "$source_file"
     local audio_count=${#audio_tracks_arr[@]}
 
     if [ "$audio_count" -eq 0 ]; then
