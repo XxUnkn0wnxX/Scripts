@@ -424,28 +424,28 @@ display_track_info() {
       '
 }
 
-# Function to populate the array audio_tracks_arr with "Track ID …" lines
-get_audio_tracks() {
+# Function to collect audio tracks into $audio_tracks_arr
+collect_audio_tracks() {
   local source_file="$1"
-  echo "Identifying audio tracks in $source_file..."
-  # Initialize (or clear) the array
-  audio_tracks_arr=()
 
-  # Grab the raw JSON once
+  # Identify audio tracks via JSON and jq
+  echo "Identifying audio tracks in $source_file..."
   local info_json
   info_json=$(mkvmerge -J "$source_file" < /dev/null)
 
-  # Loop exactly as before
+  # Parse and list audio tracks
   while IFS= read -r track; do
-    local id   =$(echo "$track" | jq '.id')
+    local id=$(echo "$track" | jq '.id')
     local codec=$(echo "$track" | jq -r '.properties.codec_id')
-    local name =$(echo "$track" | jq -r '.properties.track_name // empty')
+    local name=$(echo "$track" | jq -r '.properties.track_name // empty')
     local lang=$(echo "$track" | jq -r '.properties.language   // empty')
     local line="Track ID ${id}: audio (${codec})"
     [[ -n $name ]] && line+=" [${name}]"
     [[ -n $lang ]]  && line+=" [${lang}]"
     audio_tracks_arr+=("$line")
   done < <(echo "$info_json" | jq -c '.tracks[] | select(.type=="audio")')
+
+  # Count is available in choice 2 as ${#audio_tracks_arr[@]}
 }
 
 #Function to rename tracks using mkvpropedit
