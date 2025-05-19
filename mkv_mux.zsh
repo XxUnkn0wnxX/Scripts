@@ -403,25 +403,49 @@ validate_mkv_extension() {
     *) return 1 ;;
   esac
 }
-# Function to display track information using mkvmerge JSON output
+# Function to display track information safely, projecting only needed fields
 display_track_info() {
   local source_file="$1"
+
   echo "-----------------------  mkvmerge JSON track listing -----------------------"
+  mkvmerge -J "$source_file" < /dev/null \
+    | jq -r '
+        .tracks[]
+        | {
+            id:    .id,
+            type:  .type,
+            codec: .properties.codec_id,
+            name:  (.properties.track_name // ""),
+            lang:  (.properties.language      // .properties.language_ietf // "")
+          }
+        | "Track ID \(.id): \(.type) (\(.codec))" +
+          (if .name != "" then " [\(.name)]" else "" end) +
+          (if .lang != "" then " [\(.lang)]" else "" end)
+      '
+}
+
+# Function to populate the array audio_tracks_arr with "Track ID …" lines
+get_audio_tracks() {
+  local source_file="$1"
+  echo "Identifying audio tracks in $source_file..."
+  # Initialize (or clear) the array
+  audio_tracks_arr=()
+
+  # Grab the raw JSON once
   local info_json
   info_json=$(mkvmerge -J "$source_file" < /dev/null)
-  # Parse and display all tracks
-  echo "$info_json" | jq -c '.tracks[]' | while IFS= read -r track; do
-    local id=$(echo "$track" | jq '.id')
-    local type=$(echo "$track" | jq -r '.type')
-    local codec=$(echo "$track" | jq -r '.properties.codec_id')
-    local name=$(echo "$track" | jq -r '.properties.track_name // empty')
-    local lang=$(echo "$track" | jq -r '.properties.language   // empty')
 
-    local line="Track ID ${id}: ${type} (${codec})"
+  # Loop exactly as before
+  while IFS= read -r track; do
+    local id   =$(echo "$track" | jq '.id')
+    local codec=$(echo "$track" | jq -r '.properties.codec_id')
+    local name =$(echo "$track" | jq -r '.properties.track_name // empty')
+    local lang=$(echo "$track" | jq -r '.properties.language   // empty')
+    local line="Track ID ${id}: audio (${codec})"
     [[ -n $name ]] && line+=" [${name}]"
-    [[ -n $lang ]] && line+=" [${lang}]"
-    echo "$line"
-  done
+    [[ -n $lang ]]  && line+=" [${lang}]"
+    audio_tracks_arr+=("$line")
+  done < <(echo "$info_json" | jq -c '.tracks[] | select(.type=="audio")')
 }
 
 #Function to rename tracks using mkvpropedit
@@ -645,24 +669,8 @@ else
     # Set context for signal handler
     SOURCE_FILE="$source_file"
 
-
-    # Identify all tracks via JSON and jq
-    echo "Identifying all tracks in $source_file..."
-    local info_json
-    info_json=$(mkvmerge -J "$source_file" < /dev/null)
-    echo "Tracks found:"
-    echo "$info_json" | jq -c '.tracks[]' | while IFS= read -r track; do
-      local id=$(echo "$track" | jq '.id')
-      local type=$(echo "$track" | jq -r '.type')
-      local codec=$(echo "$track" | jq -r '.properties.codec_id')
-      local name=$(echo "$track" | jq -r '.properties.track_name // empty')
-      local lang=$(echo "$track" | jq -r '.properties.language   // empty')
-
-      local line="Track ID ${id}: ${type} (${codec})"
-      [[ -n $name ]] && line+=" [${name}]"
-      [[ -n $lang ]] && line+=" [${lang}]"
-      echo "$line"
-    done
+    # Show all tracks via the unified helper (projects only the fields we need)
+    display_track_info "$source_file"
 
     printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
     flush_input
@@ -685,11 +693,14 @@ else
     # Remove duplicates and sort
     exclude_ids=($(printf "%s\n" "${exclude_ids[@]}" | sort -n | uniq))
 
-    # Read track info JSON and group IDs by type
-    info=$(mkvmerge -J "$source_file" < /dev/null)
-    video_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="video") | .id'))
-    audio_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="audio") | .id'))
-    subtitle_ids=($(echo "$info" | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
+    # Read track info JSON and group IDs by type, streaming directly into jq
+    local -a video_ids audio_ids subtitle_ids
+    video_ids=($(mkvmerge -J "$source_file" < /dev/null \
+                   | jq -r '.tracks[] | select(.type=="video")      | .id'))
+    audio_ids=($(mkvmerge -J "$source_file" < /dev/null \
+                   | jq -r '.tracks[] | select(.type=="audio")      | .id'))
+    subtitle_ids=($(mkvmerge -J "$source_file" < /dev/null \
+                   | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
 
     # Build lists of tracks to keep
     video_keep=()
