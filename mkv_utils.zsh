@@ -40,24 +40,25 @@ function count_attachments() {
   mkvmerge --identify "$file" | grep -c "Attachment ID"
 }
  
-# Function to display track information using mkvmerge JSON output
+# Function to display track information safely, projecting only the fields we need
 display_track_info() {
   local source_file="$1"
-  echo "-----------------------  mkvmerge JSON track listing -----------------------"
-  local info_json
-  info_json=$(mkvmerge -J "$source_file" < /dev/null)
-  echo "$info_json" | jq -c '.tracks[]' | while IFS= read -r track; do
-    local id=$(echo "$track" | jq '.id')
-    local type=$(echo "$track" | jq -r '.type')
-    local codec=$(echo "$track" | jq -r '.properties.codec_id')
-    local name=$(echo "$track" | jq -r '.properties.track_name // empty')
-    local lang=$(echo "$track" | jq -r '.properties.language   // empty')
 
-    local line="Track ID ${id}: ${type} (${codec})"
-    [[ -n $name ]] && line+=" [${name}]"
-    [[ -n $lang ]] && line+=" [${lang}]"
-    echo "$line"
-  done
+  echo "-----------------------  mkvmerge JSON track listing -----------------------"
+  mkvmerge -J "$source_file" < /dev/null \
+    | jq -r '
+        .tracks[]
+        | {
+            id:    .id,
+            type:  .type,
+            codec: .properties.codec_id,
+            name:  (.properties.track_name // ""),
+            lang:  (.properties.language      // .properties.language_ietf // "")
+          }
+        | "Track ID \(.id): \(.type) (\(.codec))"
+          + (if .name != "" then " [\(.name)]" else "" end)
+          + (if .lang != "" then " [\(.lang)]" else "" end)
+      '
 }
 
 # Function to rename tracks using mkvpropedit
@@ -182,20 +183,27 @@ set_flag_default_tracks() {
 # Helper: extract one track by id, with enhanced output
 extract_single() {
   local tid=$1
-  local cid=$(jq -r ".tracks[] | select(.id==${tid}) | .properties.codec_id" <<<"$info_json")
-  local src_base=${source_file##*/}; local base=${src_base%.*}
+  local src_base=${source_file##*/}
+  local base=${src_base%.*}
 
-  # 1) check override by full id
+  # Pull the JSON for this file directly, then grab codec_id
+  local cid
+  cid=$(mkvmerge -J "$source_file" < /dev/null \
+        | jq -r ".tracks[] | select(.id==${tid}) | .properties.codec_id")
+
+  # 1) Try a full‐ID override
   local ext=${ext_override[$cid]:-}
+
+  # 2) Fallback to the short key
   if [[ -z $ext ]]; then
-    # 2) check override by short key
     local key=${cid##*/}
     ext=${ext_override[$key]:-}
-    if [[ -z $ext ]]; then
-      # 3) fallback to pymkv2 map
-      ext=${codec_ext[$key]:-}
-      [[ -z $ext ]] && ext=${(L)${key//[^[:alnum:]]/}}
-    fi
+  fi
+
+  # 3) Fallback to pymkv2 map or lowercase key
+  if [[ -z $ext ]]; then
+    ext=${codec_ext[$key]:-}
+    [[ -z $ext ]] && ext=${(L)${key//[^[:alnum:]]/}}
   fi
 
   echo "Matched codec ID: ${cid} → extension: .${ext}"
@@ -514,13 +522,13 @@ elif [ "$choice" = "6" ]; then
 
   echo "Removing tracks: ${exclude_ids[*]}"
 
-  # Grab JSON metadata once
-  info_json=$(mkvmerge -J "$source_file")
-
-  # Build keep lists
-  video_keep=($(jq -r '.tracks[]|select(.type=="video")|.id' <<<"$info_json"))
-  audio_keep=($(jq -r '.tracks[]|select(.type=="audio")|.id' <<<"$info_json"))
-  subtitle_keep=($(jq -r '.tracks[]|select(.type=="subtitles")|.id' <<<"$info_json"))
+  # Build keep lists by streaming mkvmerge JSON directly into jq
+  video_keep=($(mkvmerge -J "$source_file" < /dev/null \
+                 | jq -r '.tracks[] | select(.type=="video")      | .id'))
+  audio_keep=($(mkvmerge -J "$source_file" < /dev/null \
+                 | jq -r '.tracks[] | select(.type=="audio")      | .id'))
+  subtitle_keep=($(mkvmerge -J "$source_file" < /dev/null \
+                 | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
 
   # Helper to filter out excluded IDs
   filter_keep() {
@@ -562,7 +570,6 @@ elif [ "$choice" = "6" ]; then
       rm -f "$tmp"
     fi
   done
-
 
 elif [ "$choice" = "7" ]; then
   # --- Choice 7: Mass Re-order tracks ---
@@ -642,7 +649,6 @@ elif [ "$choice" = "8" ]; then
 
   # Display track info for the first target
   source_file=${targets[1]}
-  info_json=$(mkvmerge -J "$source_file" < /dev/null)
   display_track_info "$source_file"
 
   # Ask once for which tracks to extract
@@ -652,7 +658,6 @@ elif [ "$choice" = "8" ]; then
   # Loop over all selected files
   for source_file in "${targets[@]}"; do
     echo "→ Extracting tracks ${track_ids} from $source_file"
-    info_json=$(mkvmerge -J "$source_file" < /dev/null)
     extract_tracks "$track_ids"
   done
 
