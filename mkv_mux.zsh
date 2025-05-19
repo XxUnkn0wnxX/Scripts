@@ -424,28 +424,31 @@ display_track_info() {
       '
 }
 
-# Function to collect audio tracks into $audio_tracks_arr
+# Function to collect audio tracks into $audio_tracks_arr safely
 collect_audio_tracks() {
   local source_file="$1"
 
-  # Identify audio tracks via JSON and jq
   echo "Identifying audio tracks in $source_file..."
-  local info_json
-  info_json=$(mkvmerge -J "$source_file" < /dev/null)
-
-  # Parse and list audio tracks
-  while IFS= read -r track; do
-    local id=$(echo "$track" | jq '.id')
-    local codec=$(echo "$track" | jq -r '.properties.codec_id')
-    local name=$(echo "$track" | jq -r '.properties.track_name // empty')
-    local lang=$(echo "$track" | jq -r '.properties.language   // empty')
-    local line="Track ID ${id}: audio (${codec})"
-    [[ -n $name ]] && line+=" [${name}]"
-    [[ -n $lang ]]  && line+=" [${lang}]"
-    audio_tracks_arr+=("$line")
-  done < <(echo "$info_json" | jq -c '.tracks[] | select(.type=="audio")')
-
-  # Count is available in choice 2 as ${#audio_tracks_arr[@]}
+  # Stream mkvmerge JSON straight into jq, selecting only audio tracks and
+  # projecting id, codec_id, track_name, and language—any other properties
+  # (including control-character ones) are ignored.
+  mkvmerge -J "$source_file" < /dev/null \
+    | jq -r '
+        .tracks[]
+        | select(.type=="audio")
+        | {
+            id:    .id,
+            codec: .properties.codec_id,
+            name:  (.properties.track_name // ""),
+            lang:  (.properties.language // .properties.language_ietf // "")
+          }
+        | "Track ID \(.id): audio (\(.codec))"
+          + (if .name != "" then " [\(.name)]" else "" end)
+          + (if .lang != "" then " [\(.lang)]" else "" end)
+      ' \
+    | while IFS= read -r line; do
+        audio_tracks_arr+=("$line")
+      done
 }
 
 #Function to rename tracks using mkvpropedit
