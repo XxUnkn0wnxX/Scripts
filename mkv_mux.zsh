@@ -213,15 +213,111 @@ remux_to_mkv() {
   echo "Replaced the original file with the remuxed file: $output_file"
 }
 
+# Helper for ffmpeg full audio re-encode for all tracks (all tracks, all names/langs preserved, temp work dir auto-cleans)
+reencode_all_audio_tracks_aac_ffmpeg() {
+  local source_file="$1"
+  local output_file="$2"
+  local src_basename="${source_file##*/}"
+  local base_name="${src_basename%.*}"
+  local WORK_DIR="${base_name}_temp"
+  rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
+
+  local -a audio_tracks
+  local -a audio_metadata
+  local -a mkvmerge_audio_opts
+  local audio_idx=0
+  local ret=0
+
+  while IFS="|" read -r idx codec lang name; do
+    audio_tracks+=("$idx")
+    audio_metadata+=("$codec|$lang|$name")
+  done < <(
+    ffprobe -loglevel error \
+            -select_streams a \
+            -show_entries stream=index,codec_name:stream_tags=language,title \
+            -of csv="p=0" "$source_file" \
+    | awk -F',' '{OFS="|"; print $1, $2, $3, $4}'
+  )
+
+  if [ ${#audio_tracks[@]} -eq 0 ]; then
+    echo "No audio tracks found; skipping audio re-encode."
+    ffmpeg -nostdin -y -i "$source_file" -map 0 -c copy "$output_file"
+    rm -rf "$WORK_DIR"
+    return $?
+  fi
+
+  for idx in "${audio_tracks[@]}"; do
+    local meta="${audio_metadata[$audio_idx]}"
+    local _codec="$(echo "$meta" | cut -d'|' -f2)"
+    local _lang="$(echo "$meta" | cut -d'|' -f3)"
+    local _name="$(echo "$meta" | cut -d'|' -f4)"
+    local out_audio="$WORK_DIR/${base_name}_track${idx}.m4a"
+
+    ffmpeg -nostdin -y \
+           -i "$source_file" \
+           -vn \
+           -map 0:a:$audio_idx \
+           -c:a aac \
+           -q:a 0 \
+           -threads "$thread_count" \
+           "$out_audio"
+
+    local lang_opt=""
+    if [ -n "$_lang" ]; then
+      lang_opt="--language 0:$_lang"
+    fi
+
+    local name_opt=""
+    if [ -n "$_name" ]; then
+      name_opt="--track-name 0:$_name"
+    fi
+
+    mkvmerge_audio_opts+=("$lang_opt" "$name_opt" "$out_audio")
+    ((audio_idx++))
+  done
+
+  local mkvmerge_json="$WORK_DIR/mkvinfo.json"
+  mkvmerge -J "$source_file" > "$mkvmerge_json"
+
+  local non_audio_tracks
+  non_audio_tracks=$(
+    jq -r '
+      .tracks[] |
+      select(.type != "audio") |
+      "--language \(.id):\(.properties.language // \"und\") " +
+      "--track-name \(.id):\(.properties.track_name // \"\") " +
+      "--default-track \(.id):" + (if .properties.default_track_id==1 then "yes" else "no" end) + " " +
+      "--forced-track \(.id):" + (if .properties.forced_track_id==1 then "yes" else "no" end) + " " +
+      "--no-audio --no-chapters --no-tags --tracks \(.id)\n"
+    ' "$mkvmerge_json" | tr '\n' ' '
+  )
+
+  local cmd=(mkvmerge -o "$output_file")
+  cmd+=( $non_audio_tracks )
+
+  for ((i=0; i<${#mkvmerge_audio_opts[@]}; i+=3)); do
+    local ao1="${mkvmerge_audio_opts[$i]}"
+    local ao2="${mkvmerge_audio_opts[$i+1]}"
+    local afile="${mkvmerge_audio_opts[$i+2]}"
+    cmd+=( $ao1 $ao2 "$afile" )
+  done
+
+  echo "Muxing output..."
+  "${cmd[@]}"
+  ret=$?
+
+  rm -rf "$WORK_DIR"
+  return $ret
+}
+
 # New version of remux_to_mkv_ffmpeg to remux with ffprobe-based stream detection and mapping
 remux_to_mkv_ffmpeg() {
   local source_file="$1"
-  local overwrite_flag="${2:-}"    # pass “-y” to skip overwrite prompt
+  local overwrite_flag="${2:-}"
+  local replace_audio_tracks="${3:-N}"
   local output_file
 
-  # ─── 1) Decide on the output filename ────────────────────────────
   if [ "$safe_mode_write" = "true" ]; then
-    # Safe mode → unique “_remuxed (N).mkv”
     local base="${source_file%.*}_remuxed"
     local i=1
     output_file="${base} (${i}).mkv"
@@ -230,15 +326,12 @@ remux_to_mkv_ffmpeg() {
       output_file="${base} (${i}).mkv"
     done
   else
-    # Non-safe → overwrite original with .mkv
     output_file="${source_file%.*}.mkv"
   fi
 
-  # ─── 2) In non-safe mode, prompt if it already exists ─────────────
   if [ "$safe_mode_write" != "true" ] && [ -f "$output_file" ] && [ "$overwrite_flag" != "-y" ]; then
     printf "Warning: File %s already exists. Overwrite? (Y/N): " "$output_file"
     read resp
-    # default empty answer to “N”
     resp=${resp:-N}
     case "$resp" in
       [Yy]*)
@@ -251,29 +344,40 @@ remux_to_mkv_ffmpeg() {
     esac
   fi
 
-  # ─── 3) Probe for actual streams ─────────────────────────────────
-  local map_opts=()
-  if ffprobe -v error -select_streams v -show_entries stream=index \
-       -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
-    map_opts+=(-map 0:v)
-  fi
-  if ffprobe -v error -select_streams a -show_entries stream=index \
-       -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
-    map_opts+=(-map 0:a)
-  fi
-  if ffprobe -v error -select_streams s -show_entries stream=index \
-       -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
-    map_opts+=(-map 0:s)
-  fi
-  # Always attempt attachments, but ‘?’ silences the error if none exist
-  map_opts+=(-map '0:t?')
+  local ret=0
 
-  # ─── 4) Run ffmpeg ───────────────────────────────────────────────
+  if [ "$replace_audio_tracks" = "Y" ] || [ "$replace_audio_tracks" = "y" ]; then
+    if ! reencode_all_audio_tracks_aac_ffmpeg "$source_file" "$output_file"; then
+      echo "Error: Audio re-encode failed for $source_file."
+      return 1
+    fi
+    return 0
+  fi
+
+  local map_opts=()
+
+  if ffprobe -v error -select_streams v -show_entries stream=index -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=( -map 0:v )
+  fi
+
+  if ffprobe -v error -select_streams a -show_entries stream=index -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=( -map 0:a )
+  fi
+
+  if ffprobe -v error -select_streams s -show_entries stream=index -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=( -map 0:s )
+  fi
+
+  map_opts+=( -map '0:t?' )
+
   echo "Remuxing → $output_file  (maps: ${map_opts[*]})"
   ffmpeg -nostdin -y -i "$source_file" \
          "${map_opts[@]}" \
-         -map_metadata 0 -map_chapters 0 -c copy \
+         -map_metadata 0 \
+         -map_chapters 0 \
+         -c copy \
          "$output_file"
+
   if [ $? -ne 0 ]; then
     echo "Error: ffmpeg remux failed."
     rm -f "$output_file" 2>/dev/null
@@ -283,6 +387,7 @@ remux_to_mkv_ffmpeg() {
   echo "Done: $output_file"
   return 0
 }
+
 
 # Function to boost audio volume
 boost_audio_volume() {
