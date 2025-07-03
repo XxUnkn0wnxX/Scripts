@@ -266,7 +266,7 @@ remux_to_mkv_ffmpeg() {
   echo "Remuxing $source_file to $temp_file using ffmpeg..."
   TEMP_FILE="$temp_file"
   FFMPEG_PID=""
-  ffmpeg -nostdin -y -i "$source_file" -c copy "$temp_file"
+  ffmpeg -nostdin -y -i "$source_file" -map 0 -map_metadata 0 -map_chapters 0 -c copy "$temp_file"
   ret=$?
   if [ $ret -ne 0 ]; then
     [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
@@ -581,17 +581,17 @@ if [ $# -gt 0 ]; then
 else
   # No arguments provided, ask for input via the menu
   echo "Select an option:"
-  echo "0) Remux to MKV (ffmpeg)"
-  echo "1) Remux to MKV"
-  echo "2) Volume Boost"
-  echo "3) Remove Tracks"
-  echo "4) Edit Tracks"
+  echo "1) Remux to MKV (ffmpeg)"
+  echo "2) Remux to MKV"
+  echo "3) Volume Boost"
+  echo "4) Remove Tracks"
+  echo "5) Edit Tracks"
   printf "Enter choice: "
   flush_input
   read choice
   CHOICE="$choice"
 
-  if [ "$choice" -eq 0 ]; then
+  if [ "$choice" -eq 1 ]; then
     echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
     
     # Use fzf to select one or multiple files
@@ -612,7 +612,7 @@ else
       fi
     done
   
-  elif [ "$choice" -eq 1 ]; then
+  elif [ "$choice" -eq 2 ]; then
     echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
     
     # Use fzf to select one or multiple files
@@ -638,7 +638,7 @@ else
       fi
     done
 
-  elif [ "$choice" -eq 2 ]; then
+  elif [ "$choice" -eq 3 ]; then
     local source_file=""
     while true; do
       printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
@@ -726,7 +726,7 @@ else
     fi
 
 
-  elif [ "$choice" -eq 3 ]; then
+  elif [ "$choice" -eq 4 ]; then
     local source_file=""
     while true; do
       printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
@@ -878,7 +878,7 @@ else
       trap 'handle_ctrl_c' INT
     fi
     
-  elif [ "$choice" -eq 4 ]; then
+  elif [ "$choice" -eq 5 ]; then
     printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
     source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
     if [ -z "$source_file" ]; then
