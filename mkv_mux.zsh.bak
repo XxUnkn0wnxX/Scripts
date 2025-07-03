@@ -284,6 +284,76 @@ remux_to_mkv_ffmpeg() {
   return 0
 }
 
+# Helper function to re-encode audio and remux with ffmpeg for a source file
+remux_to_mkv_ffmpeg_audio_reencode() {
+  local source_file="$1"
+  local base_name="${source_file%.*}"
+  local work_dir="${base_name}_temp"
+  rm -rf "$work_dir"
+  mkdir -p "$work_dir"
+  echo "Created temporary working directory: $work_dir"
+
+  # get audio stream ids
+  local -a audio_ids
+  mapfile -t audio_ids < <(ffprobe -v error -select_streams a \
+    -show_entries stream=index -of csv=p=0 "$source_file")
+
+  local -a encoded_audio_files=()
+  local i=0
+  for aid in "${audio_ids[@]}"; do
+    # Probe codec for audio track $aid
+    codec=$(ffprobe -v error -select_streams a:$aid -show_entries stream=codec_name -of default=nw=1:nk=1 "$source_file" 2>/dev/null)
+    # Determine file extension
+    local codec_extension
+    # Use ext_override map if found
+    if [[ -n "${ext_override[$codec]}" ]]; then
+      codec_extension="${ext_override[$codec]}"
+    else
+      # Fallback to the codec name, sanitized and lowercased
+      codec_lower=$(echo "$codec" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9')
+      codec_extension="$codec_lower"
+    fi
+
+    local extracted_file="$work_dir/audio_track_${aid}.${codec_extension}"
+    ffmpeg -nostdin -y -i "$source_file" -map 0:a:$aid "$extracted_file"
+    # encode to AAC with true VBR, 8 threads, output as m4a
+    local encoded_file="$work_dir/encoded_audio_${aid}.m4a"
+    ffmpeg -nostdin -y -i "$extracted_file" -vn -map 0:a -c:a aac -q:a 0 -threads 8 "$encoded_file"
+    encoded_audio_files+=("$encoded_file")
+    ((i++))
+  done
+
+  # remux using ffmpeg - map video, subtitle streams as is
+  # replace audio streams with encoded ones
+  local map_opts=()
+  if ffprobe -v error -select_streams v -show_entries stream=index \
+    -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=(-map 0:v)
+  fi
+  if ffprobe -v error -select_streams s -show_entries stream=index \
+    -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=(-map 0:s)
+  fi
+  for encoded_audio in "${encoded_audio_files[@]}"; do
+    map_opts+=(-map "$encoded_audio:a:0")
+  done
+
+  local output_file
+  if [ "$safe_mode_write" = true ]; then
+    output_file="${base_name}_remuxed (1).mkv"
+  else
+    output_file="${base_name}.mkv"
+  fi
+
+  echo "Remuxing $source_file with re-encoded audio to $output_file"
+  ffmpeg -nostdin -y -i "$source_file" -i "${encoded_audio_files[@]}" "${map_opts[@]}" -map_metadata 0 -map_chapters 0 -c copy "$output_file"
+
+  local ret=$?
+  rm -rf "$work_dir"
+  echo "Cleaned up temporary directory $work_dir"
+  return $ret
+}
+
 # Function to boost audio volume
 boost_audio_volume() {
   local source_file="$1"
@@ -608,20 +678,15 @@ else
       exit 1
     fi
 
-    # Iterate over each selected file and pass it to the remux_to_mkv_ffmpeg function (no ffprobe check)
-    for source_file in "${video_files[@]}"; do
-      source_file="${source_file#./}"  # Remove leading ./ if present
-      
-      if ! remux_to_mkv_ffmpeg "$source_file" "prompt"; then
-        echo "Error processing \"$source_file\". Skipping."
-      fi
-    done
-  
-  elif [ "$choice" -eq 2 ]; then
-    echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
-    
-    # Use fzf to select one or multiple files
-    IFS=$'\n' video_files=($(find . -maxdepth 1 -type f | fzf --height 40% --reverse --border --multi))
+    # Prompt once for audio re-encode replacement for entire queue
+    echo "Do you wish to replace incompatible audio tracks (Y/N): "
+    read replace_audio_tracks
+    replace_audio_tracks=${replace_audio_tracks:-N}
+    if [[ "$replace_audio_tracks" =~ ^[Yy]$ ]]; then
+      do_reencode_audio=true
+    else
+      do_reencode_audio=false
+    fi
     
     # Check if any files were selected
     if [ ${#video_files[@]} -eq 0 ]; then
