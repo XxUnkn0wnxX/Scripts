@@ -630,7 +630,7 @@ else
   echo "2) Remux to MKV (mkvmerge)"
   echo "3) Volume Boost"
   echo "4) Remove Tracks"
-  echo "5) Edit Tracks"
+  echo "5) Edit Track Names"
   printf "Enter choice: "
   flush_input
   read choice
