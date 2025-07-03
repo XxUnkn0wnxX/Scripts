@@ -627,7 +627,7 @@ else
   # No arguments provided, ask for input via the menu
   echo "Select an option:"
   echo "1) Remux to MKV (ffmpeg)"
-  echo "2) Remux to MKV"
+  echo "2) Remux to MKV (mkvmerge)"
   echo "3) Volume Boost"
   echo "4) Remove Tracks"
   echo "5) Edit Tracks"
