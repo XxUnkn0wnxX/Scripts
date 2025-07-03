@@ -204,7 +204,7 @@ remux_to_mkv() {
   MKVMERGE_RUNNING=false
   if [ $ret -ne 0 ]; then
     [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
-    exit 0
+    return 1
   fi
   echo "Remuxing completed: $temp_file"
 
@@ -545,7 +545,9 @@ else
       
       # Verify the file is a video file using ffprobe
       if ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$source_file" < /dev/null 2>/dev/null | grep -q '^video'; then
-        remux_to_mkv "$source_file" "prompt"
+        if ! remux_to_mkv "$source_file" "prompt"; then
+          echo "Error processing \"$source_file\". Skipping."
+        fi
       else
         echo "Warning: Skipping non-video file \"$source_file\"."
       fi
