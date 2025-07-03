@@ -213,6 +213,72 @@ remux_to_mkv() {
   echo "Replaced the original file with the remuxed file: $output_file"
 }
 
+# New function: remux to mkv using ffmpeg instead of mkvmerge
+remux_to_mkv_ffmpeg() {
+  local source_file="$1"
+  local overwrite_flag="$2"
+  local temp_file="${source_file%.*}_temp_ffmpeg.mkv"
+  local output_file
+
+  if [ "$safe_mode_write" = true ]; then
+    if [ "$overwrite_flag" = "-y" ]; then
+      echo "Error: safe mode enabled. Remuxing and overwriting are not allowed."
+      exit 1
+    fi
+    # In safe mode, generate a new output file name to avoid overwriting
+    local base_name="${source_file%.*}_remuxed"
+    local i=1
+    output_file="${base_name} (${i}).mkv"
+    while [ -f "$output_file" ]; do
+      ((i++))
+      output_file="${base_name} (${i}).mkv"
+    done
+  else
+    output_file="${source_file%.*}.mkv"
+  fi
+
+  if [ -f "$output_file" ] && [ "$safe_mode_write" != true ]; then
+    if [ "$overwrite_flag" = "-y" ]; then
+      echo "Overwriting existing file: $output_file"
+    elif [ -z "$overwrite_flag" ]; then
+      echo "Error: File $output_file already exists. Use -y option to overwrite."
+      exit 1
+    else
+      echo "Warning: File $output_file already exists. Do you wish to replace it? (Y/N): "
+      flush_input
+      read overwrite_choice
+      case "$overwrite_choice" in
+        Y|y)
+          echo "Overwriting existing file: $output_file"
+          ;;
+        N|n)
+          echo "Operation aborted. File not overwritten."
+          exit 1
+          ;;
+        *)
+          echo "Invalid choice. Operation aborted."
+          exit 1
+          ;;
+      esac
+    fi
+  fi
+
+  echo "Remuxing $source_file to $temp_file using ffmpeg..."
+  TEMP_FILE="$temp_file"
+  FFMPEG_PID=""
+  ffmpeg -nostdin -y -i "$source_file" -c copy "$temp_file"
+  ret=$?
+  if [ $ret -ne 0 ]; then
+    [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
+    echo "Error: ffmpeg remux failed."
+    return 1
+  fi
+  echo "Remuxing completed: $temp_file"
+
+  mv "$temp_file" "$output_file"
+  echo "Replaced the original file with the remuxed file: $output_file"
+}
+
 # Function to boost audio volume
 boost_audio_volume() {
   local source_file="$1"
@@ -515,6 +581,7 @@ if [ $# -gt 0 ]; then
 else
   # No arguments provided, ask for input via the menu
   echo "Select an option:"
+  echo "0) Remux to MKV (ffmpeg)"
   echo "1) Remux to MKV"
   echo "2) Volume Boost"
   echo "3) Remove Tracks"
@@ -524,7 +591,28 @@ else
   read choice
   CHOICE="$choice"
 
-  if [ "$choice" -eq 1 ]; then
+  if [ "$choice" -eq 0 ]; then
+    echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
+    
+    # Use fzf to select one or multiple files
+    IFS=$'\n' video_files=($(find . -maxdepth 1 -type f | fzf --height 40% --reverse --border --multi))
+    
+    # Check if any files were selected
+    if [ ${#video_files[@]} -eq 0 ]; then
+      echo "No files selected. Exiting."
+      exit 1
+    fi
+
+    # Iterate over each selected file and pass it to the remux_to_mkv_ffmpeg function (no ffprobe check)
+    for source_file in "${video_files[@]}"; do
+      source_file="${source_file#./}"  # Remove leading ./ if present
+      
+      if ! remux_to_mkv_ffmpeg "$source_file" "prompt"; then
+        echo "Error processing \"$source_file\". Skipping."
+      fi
+    done
+  
+  elif [ "$choice" -eq 1 ]; then
     echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
     
     # Use fzf to select one or multiple files
@@ -539,9 +627,6 @@ else
     # Iterate over each selected file and pass it to the remux_to_mkv function
     for source_file in "${video_files[@]}"; do
       source_file="${source_file#./}"  # Remove leading ./ if present
-      
-      # Encapsulate the source file in quotes to handle spaces correctly
-      #echo "Debug: Final source file path: \"$source_file\""
       
       # Verify the file is a video file using ffprobe
       if ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$source_file" < /dev/null 2>/dev/null | grep -q '^video'; then
