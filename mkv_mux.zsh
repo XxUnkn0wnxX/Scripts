@@ -213,70 +213,75 @@ remux_to_mkv() {
   echo "Replaced the original file with the remuxed file: $output_file"
 }
 
-# New function: remux to mkv using ffmpeg instead of mkvmerge
+# New version of remux_to_mkv_ffmpeg to remux with ffprobe-based stream detection and mapping
 remux_to_mkv_ffmpeg() {
   local source_file="$1"
-  local overwrite_flag="$2"
-  local temp_file="${source_file%.*}_temp_ffmpeg.mkv"
+  local overwrite_flag="${2:-}"    # pass “-y” to skip overwrite prompt
   local output_file
 
-  if [ "$safe_mode_write" = true ]; then
-    if [ "$overwrite_flag" = "-y" ]; then
-      echo "Error: safe mode enabled. Remuxing and overwriting are not allowed."
-      exit 1
-    fi
-    # In safe mode, generate a new output file name to avoid overwriting
-    local base_name="${source_file%.*}_remuxed"
+  # ─── 1) Decide on the output filename ────────────────────────────
+  if [ "$safe_mode_write" = "true" ]; then
+    # Safe mode → unique “_remuxed (N).mkv”
+    local base="${source_file%.*}_remuxed"
     local i=1
-    output_file="${base_name} (${i}).mkv"
+    output_file="${base} (${i}).mkv"
     while [ -f "$output_file" ]; do
       ((i++))
-      output_file="${base_name} (${i}).mkv"
+      output_file="${base} (${i}).mkv"
     done
   else
+    # Non-safe → overwrite original with .mkv
     output_file="${source_file%.*}.mkv"
   fi
 
-  if [ -f "$output_file" ] && [ "$safe_mode_write" != true ]; then
-    if [ "$overwrite_flag" = "-y" ]; then
-      echo "Overwriting existing file: $output_file"
-    elif [ -z "$overwrite_flag" ]; then
-      echo "Error: File $output_file already exists. Use -y option to overwrite."
-      exit 1
-    else
-      echo "Warning: File $output_file already exists. Do you wish to replace it? (Y/N): "
-      flush_input
-      read overwrite_choice
-      case "$overwrite_choice" in
-        Y|y)
-          echo "Overwriting existing file: $output_file"
-          ;;
-        N|n)
-          echo "Operation aborted. File not overwritten."
-          exit 1
-          ;;
-        *)
-          echo "Invalid choice. Operation aborted."
-          exit 1
-          ;;
-      esac
-    fi
+  # ─── 2) In non-safe mode, prompt if it already exists ─────────────
+  if [ "$safe_mode_write" != "true" ] && [ -f "$output_file" ] && [ "$overwrite_flag" != "-y" ]; then
+    printf "Warning: File %s already exists. Overwrite? (Y/N): " "$output_file"
+    read resp
+    # default empty answer to “N”
+    resp=${resp:-N}
+    case "$resp" in
+      [Yy]*)
+        echo "Overwriting $output_file…"
+        ;;
+      *)
+        echo "Aborted; $output_file not changed."
+        return 1
+        ;;
+    esac
   fi
 
-  echo "Remuxing $source_file to $temp_file using ffmpeg..."
-  TEMP_FILE="$temp_file"
-  FFMPEG_PID=""
-  ffmpeg -nostdin -y -i "$source_file" -map 0 -map_metadata 0 -map_chapters 0 -c copy "$temp_file"
-  ret=$?
-  if [ $ret -ne 0 ]; then
-    [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
+  # ─── 3) Probe for actual streams ─────────────────────────────────
+  local map_opts=()
+  if ffprobe -v error -select_streams v -show_entries stream=index \
+       -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=(-map 0:v)
+  fi
+  if ffprobe -v error -select_streams a -show_entries stream=index \
+       -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=(-map 0:a)
+  fi
+  if ffprobe -v error -select_streams s -show_entries stream=index \
+       -of csv=p=0 "$source_file" 2>/dev/null | grep -q .; then
+    map_opts+=(-map 0:s)
+  fi
+  # Always attempt attachments, but ‘?’ silences the error if none exist
+  map_opts+=(-map '0:t?')
+
+  # ─── 4) Run ffmpeg ───────────────────────────────────────────────
+  echo "Remuxing → $output_file  (maps: ${map_opts[*]})"
+  ffmpeg -nostdin -y -i "$source_file" \
+         "${map_opts[@]}" \
+         -map_metadata 0 -map_chapters 0 -c copy \
+         "$output_file"
+  if [ $? -ne 0 ]; then
     echo "Error: ffmpeg remux failed."
+    rm -f "$output_file" 2>/dev/null
     return 1
   fi
-  echo "Remuxing completed: $temp_file"
 
-  mv "$temp_file" "$output_file"
-  echo "Replaced the original file with the remuxed file: $output_file"
+  echo "Done: $output_file"
+  return 0
 }
 
 # Function to boost audio volume
@@ -910,3 +915,4 @@ else
     exit 1
   fi
 fi
+
