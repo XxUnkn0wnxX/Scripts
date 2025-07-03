@@ -27,7 +27,7 @@ handle_ctrl_c() {
   trap '' INT
   echo
   case "$CHOICE" in
-    1|5)
+    1|2|5)
       # Cancel remux or edit operations: kill any mkvmerge, remove temp file, and cleanup backup
       if [ -n "$MKVMERGE_PID" ]; then
         kill -9 $MKVMERGE_PID 2>/dev/null
