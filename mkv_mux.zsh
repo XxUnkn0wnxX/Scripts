@@ -278,7 +278,7 @@ fi
   local WORK_DIR="${base_name}_temp"
   rm -rf "$WORK_DIR"; mkdir -p "$WORK_DIR"
 
-  local -a ffmpeg_inputs ffmpeg_maps video_map
+  local -a ffmpeg_inputs ffmpeg_maps
   local ai=0
 
   # 1) extract & re-encode each audio track
@@ -302,15 +302,6 @@ fi
       -of csv=p=0 \
       "$source_file"
   )
-
-  # 2) map video if present
-  if ffprobe -v error \
-      -select_streams v:0 \
-      -show_entries stream=index \
-      -of csv=p=0 \
-      "$source_file" | grep -q .; then
-    video_map+=("-map" "0:v:0")
-  fi
 
   # 3) run the final merge
   noglob ffmpeg -nostdin -y \
