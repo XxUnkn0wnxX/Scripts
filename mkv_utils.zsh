@@ -131,18 +131,18 @@ set_flag_forced_tracks() {
       local end=${id#*-}
       for ((i=start; i<=end; i++)); do
         echo "--------------------  Track ID $i Forced Flag ---------------------"
-        printf "Flag-forced (1 or 0) [1]: "
+        printf "Flag-forced (1 or 0) [0]: "
         read value
-        value=${value:-1}
+        value=${value:-0}
         for file in "${targets[@]}"; do
           mkvpropedit "$file" --edit track:$((i+1)) --set flag-forced=$value
         done
       done
     else
       echo "--------------------  Track ID $id Forced Flag ---------------------"
-      printf "Flag-forced (1 or 0) [1]: "
+      printf "Flag-forced (1 or 0) [0]: "
       read value
-      value=${value:-1}
+      value=${value:-0}
       for file in "${targets[@]}"; do
         mkvpropedit "$file" --edit track:$((id+1)) --set flag-forced=$value
       done

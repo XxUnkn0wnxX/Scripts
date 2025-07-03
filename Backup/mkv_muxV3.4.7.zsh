@@ -251,7 +251,7 @@ remux_to_mkv_ffmpeg() {
 
   # ——————— prompt to overwrite if not safe-mode ———————
   if [[ "$safe_mode_write" != "true" && -f "$output_file" && "$overwrite_flag" != "-y" ]]; then
-    printf "Warning: File %s already exists. Overwrite? (Y/N): " "$output_file"
+    printf "Warning: File %s already exists. Overwrite? (Y/N) [N]: " "$output_file"
     read resp
     resp=${resp:-N}
     case "$resp" in
