@@ -654,7 +654,7 @@ else
     fi
 
     # ASK FOR AUDIO RECODE PROMPT BEFORE THE QUEUE
-    echo -n "Do you wish to replace incompatible audio tracks (Y/N): "
+    echo -n "Do you wish to replace incompatible audio tracks (Y/N) [N]: "
     flush_input
     read replace_audio_tracks
     replace_audio_tracks=${replace_audio_tracks:-N}
