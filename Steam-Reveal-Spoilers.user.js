@@ -5,6 +5,7 @@
 // @description  Reveal hidden spoilers by unwrapping span.bb_spoiler elements on Steam community pages.
 // @author       OpenAI
 // @match        *://steamcommunity.com/*
+// @homepageURL  https://discord.gg/slayersicerealm
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/Steam-Reveal-Spoilers.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/Steam-Reveal-Spoilers.user.js
 // @grant        none
