@@ -3,6 +3,7 @@
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
 // @version      1.0.0
 // @description  Reveal hidden spoilers by unwrapping span.bb_spoiler elements on Steam community pages.
+// @author       OpenAI
 // @match        *://steamcommunity.com/*
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/Steam-Reveal-Spoilers.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/Steam-Reveal-Spoilers.user.js
