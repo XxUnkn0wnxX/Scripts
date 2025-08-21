@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         StackExchange Reveal All Spoilers (Hybrid Timing)
+// @name         StackExchange Reveal All Spoilers
 // @namespace    https://github.com/XxUnkn0wnxX
 // @version      1.0.0
-// @description  Reveal all Stack Exchange spoilers by adding "is-visible". Sets up observers at document-start, but delays bulk reveal until DOM is ready to minimize flicker while still catching dynamic inserts immediately.
+// @description  Reveal all Stack Exchange spoilers by adding "is-visible".
 // @homepageURL  https://discord.gg/slayersicerealm
 // @author       OpenAI
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/StackExchange-Reveal-Spoilers.user.js
