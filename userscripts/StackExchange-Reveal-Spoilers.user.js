@@ -5,8 +5,8 @@
 // @description  Reveal all Stack Exchange spoilers by adding "is-visible".
 // @homepageURL  https://discord.gg/slayersicerealm
 // @author       OpenAI
-// @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/StackExchange-Reveal-Spoilers.user.js
-// @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/StackExchange-Reveal-Spoilers.user.js
+// @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
+// @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
 // @run-at       document-start
 // @noframes
 // @grant        none
