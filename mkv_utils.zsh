@@ -310,6 +310,11 @@ if [ "$choice" = "1" ]; then
 
   printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
   read track_ids
+  while [[ -z "$track_ids" ]]; do
+    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+    read track_ids
+  done
 
   # Apply forced-flag edits (prompting per track)
   set_flag_forced_tracks "$track_ids"
@@ -353,6 +358,11 @@ elif [ "$choice" = "2" ]; then
 
   printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
   read track_ids
+  while [[ -z "$track_ids" ]]; do
+    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+    read track_ids
+  done
 
   # Apply default-flag edits (prompting per track)
   set_flag_default_tracks "$track_ids"
@@ -396,6 +406,11 @@ elif [ "$choice" = "3" ]; then
 
   printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
   read track_ids
+  while [[ -z "$track_ids" ]]; do
+    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+    read track_ids
+  done
 
   # Perform language setting on selected files (prompting per track)
   set_language_tracks "$track_ids"
@@ -437,6 +452,11 @@ elif [ "$choice" = "4" ]; then
 
   printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
   read track_ids
+  while [[ -z "$track_ids" ]]; do
+    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+    read track_ids
+  done
 
   # Perform renaming on selected files
   rename_tracks "$track_ids"
@@ -504,6 +524,11 @@ elif [ "$choice" = "6" ]; then
   # Ask which track IDs to remove
   printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
   read track_ids
+  while [[ -z "$track_ids" ]]; do
+    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+    printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
+    read track_ids
+  done
 
   # Build exclude_ids[] by splitting on commas and ranges
   exclude_ids=()
@@ -596,6 +621,11 @@ elif [ "$choice" = "7" ]; then
 
   printf "Enter the new track order (e.g., 0:0,0:1,0:2,…): "
   read track_order
+  while [[ -z "$track_order" ]]; do
+    echo "Track order cannot be empty. Please enter at least one mapping."
+    printf "Enter the new track order (e.g., 0:0,0:1,0:2,…): "
+    read track_order
+  done
 
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
@@ -654,6 +684,11 @@ elif [ "$choice" = "8" ]; then
   # Ask once for which tracks to extract
   printf "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): "
   read track_ids
+  while [[ -z "$track_ids" ]]; do
+    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+    printf "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): "
+    read track_ids
+  done
 
   # Loop over all selected files
   for source_file in "${targets[@]}"; do
