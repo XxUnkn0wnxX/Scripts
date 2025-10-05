@@ -10,3 +10,4 @@
 # Ignore any folder whose name ends with "_temp"
 **/*_temp/
 tmp/
+AGENTS.md

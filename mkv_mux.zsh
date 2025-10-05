@@ -749,6 +749,12 @@ else
       printf "Enter the Track ID to extract: "
       flush_input
       read track_id
+      while [[ -z "$track_id" ]]; do
+        echo "Track ID cannot be empty. Please enter a Track ID."
+        printf "Enter the Track ID to extract: "
+        flush_input
+        read track_id
+      done
       track_info=""
       for entry in "${audio_tracks_arr[@]}"; do
         if [[ $entry == "Track ID $track_id:"* ]]; then
@@ -774,6 +780,12 @@ else
     printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
     flush_input
     read volume_changes
+    while [[ -z "$volume_changes" ]]; do
+      echo "Volume change value cannot be empty. Please enter a dB adjustment."
+      printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
+      flush_input
+      read volume_changes
+    done
 
     # Call the function to boost audio volume
     boost_audio_volume "$source_file" "$track_id" "$volume_changes" "$codec_extension" "$safe_mode_write"
@@ -810,6 +822,12 @@ else
     printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
     flush_input
     read track_ids
+    while [[ -z "$track_ids" ]]; do
+      echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+      printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
+      flush_input
+      read track_ids
+    done
 
     # Convert track_ids to an array (handling ranges)
     exclude_ids=()
@@ -959,6 +977,12 @@ else
     printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
     flush_input
     read track_ids
+    while [[ -z "$track_ids" ]]; do
+      echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
+      printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
+      flush_input
+      read track_ids
+    done
 
     # Edit track names (SIGINT enabled during prompts, disabled during mkvpropedit)
     rename_tracks "$source_file" "$track_ids"
@@ -968,4 +992,3 @@ else
     exit 1
   fi
 fi
-
