@@ -697,103 +697,125 @@ else
     done
 
   elif [ "$choice" -eq 3 ]; then
-    local source_file=""
-    while true; do
-      printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-      source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
-      if [ -z "$source_file" ]; then
-        echo "No file selected. Exiting."
-        exit 1
-      fi
-      validate_mkv_extension "$source_file"
-      if [ $? -eq 0 ]; then
-        break
-      else
-        echo "Invalid input. Please select a valid .mkv file."
-      fi
-    done
-
-    # Set context for signal handler
-    SOURCE_FILE="$source_file"
-    WORK_DIR="${source_file%.*}_temp"
-
-    # Ensure backup is created if in safe mode
-    if [ "$safe_mode_write" = true ]; then
-      create_backup "$source_file"
-      if [ $? -ne 0 ]; then
-        echo "Error: Failed to create backup. Exiting."
-        exit 1
-      fi
-    fi
-
-    # Identify audio tracks via JSON and jq
-    local -a audio_tracks_arr
-    collect_audio_tracks "$source_file"
-    local audio_count=${#audio_tracks_arr[@]}
-
-    if [ "$audio_count" -eq 0 ]; then
-      echo "No audio tracks found in the file."
+    printf "Select the source Matroska files (.mkv, .mka, .mks, .mk3d) (use Tab for multi-select):\n"
+    IFS=$'\n' local -a selected_files=($(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border --multi))
+    if [ ${#selected_files[@]} -eq 0 ]; then
+      echo "No files selected. Exiting."
       exit 1
     fi
 
-    # Print the audio tracks found
-    echo "Audio tracks found:"
-    for entry in "${audio_tracks_arr[@]}"; do
-      echo "$entry"
-    done
+    local global_volume_changes=""
+    local is_first_file=true
+    for selected_path in "${selected_files[@]}"; do
+      local source_file="${selected_path#./}"
+      validate_mkv_extension "$source_file"
+      if [ $? -ne 0 ]; then
+        echo "Invalid input. Skipping \"$source_file\"."
+        continue
+      fi
 
-    # Prompt the user to select the Track ID if multiple
-    if [ "$audio_count" -eq 1 ]; then
-      track_info="${audio_tracks_arr[1]}"
-    else
-      printf "Enter the Track ID to extract: "
-      flush_input
-      read track_id
-      while [[ -z "$track_id" ]]; do
-        echo "Track ID cannot be empty. Please enter a Track ID."
-        printf "Enter the Track ID to extract: "
-        flush_input
-        read track_id
-      done
-      track_info=""
-      for entry in "${audio_tracks_arr[@]}"; do
-        if [[ $entry == "Track ID $track_id:"* ]]; then
-          track_info="$entry"
-          break
+      # Reset context for signal handler and shared state per file
+      SOURCE_FILE="$source_file"
+      WORK_DIR="${source_file%.*}_temp"
+      BACKUP_FILE=""
+      TEMP_FILE=""
+      MKVMERGE_RUNNING=false
+      MKVMERGE_PID=""
+      RSYNC_PID=""
+      FFMPEG_PID=""
+
+      # Ensure backup is created if in safe mode
+      if [ "$safe_mode_write" = true ]; then
+        create_backup "$source_file"
+        if [ $? -ne 0 ]; then
+          echo "Error: Failed to create backup for \"$source_file\". Skipping."
+          continue
         fi
+      fi
+
+      # Identify audio tracks via JSON and jq
+      local -a audio_tracks_arr=()
+      collect_audio_tracks "$source_file"
+      local audio_count=${#audio_tracks_arr[@]}
+
+      if [ "$audio_count" -eq 0 ]; then
+        echo "No audio tracks found in \"$source_file\"."
+        if [ "$safe_mode_write" = true ] && [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+          echo "Removing backup created for \"$source_file\"."
+          rm -f "$BACKUP_FILE"
+          BACKUP_FILE=""
+        fi
+        continue
+      fi
+
+      # Print the audio tracks found
+      echo "Audio tracks found:"
+      for entry in "${audio_tracks_arr[@]}"; do
+        echo "$entry"
       done
-    fi
 
-    # Extract codec and track ID
-    codec=$(echo "$track_info" | awk '{print $5}' | tr -d '()')
-    track_id=$(echo "$track_info" | awk '{print $3}' | tr -d ':')
+      # Prompt the user to select the Track ID if multiple
+      local track_info=""
+      local track_id=""
+      if [ "$audio_count" -eq 1 ]; then
+        track_info="${audio_tracks_arr[1]}"
+      else
+        while true; do
+          printf "Enter the Track ID to extract: "
+          flush_input
+          read track_id
+          if [[ -z "$track_id" ]]; then
+            echo "Track ID cannot be empty. Please enter a Track ID."
+            continue
+          fi
+          for entry in "${audio_tracks_arr[@]}"; do
+            if [[ $entry == "Track ID $track_id:"* ]]; then
+              track_info="$entry"
+              break
+            fi
+          done
+          if [[ -n "$track_info" ]]; then
+            break
+          fi
+          echo "Invalid Track ID \"$track_id\". Please choose from the list above."
+        done
+      fi
 
-    # Determine file extension via ext_override, or fall back to codec suffix
-    if [[ -n "${ext_override[$codec]}" ]]; then
-      codec_extension="${ext_override[$codec]}"
-    else
-      key="${codec##*/}"     # strip off everything before the last “/”
-      # In Z-shell, `${var:l}` lowercases var
-      codec_extension=${ext_override[$key]:-${key:l}}
-    fi
+      if [ "$is_first_file" = true ]; then
+        while true; do
+          printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
+          flush_input
+          read global_volume_changes
+          if [[ -n "$global_volume_changes" ]]; then
+            break
+          fi
+          echo "Volume change value cannot be empty. Please enter a dB adjustment."
+        done
+        is_first_file=false
+      fi
 
-    printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
-    flush_input
-    read volume_changes
-    while [[ -z "$volume_changes" ]]; do
-      echo "Volume change value cannot be empty. Please enter a dB adjustment."
-      printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
-      flush_input
-      read volume_changes
+      # Extract codec and track ID
+      local codec=$(echo "$track_info" | awk '{print $5}' | tr -d '()')
+      track_id=$(echo "$track_info" | awk '{print $3}' | tr -d ':')
+
+      # Determine file extension via ext_override, or fall back to codec suffix
+      local codec_extension
+      if [[ -n "${ext_override[$codec]}" ]]; then
+        codec_extension="${ext_override[$codec]}"
+      else
+        local key="${codec##*/}"
+        codec_extension=${ext_override[$key]:-${key:l}}
+      fi
+
+      # Call the function to boost audio volume
+      boost_audio_volume "$source_file" "$track_id" "$global_volume_changes" "$codec_extension" "$safe_mode_write"
+      local boost_status=$?
+
+      # Check if boost_audio_volume completed successfully and safe_mode_write is true
+      if [ $boost_status -eq 0 ] && [ "$safe_mode_write" = true ]; then
+        boost_audio_volume_safe_sorting "$source_file" "$safe_mode_write"
+      fi
     done
-
-    # Call the function to boost audio volume
-    boost_audio_volume "$source_file" "$track_id" "$volume_changes" "$codec_extension" "$safe_mode_write"
-
-    # Check if boost_audio_volume completed successfully and safe_mode_write is true
-    if [ $? -eq 0 ] && [ "$safe_mode_write" = true ]; then
-      boost_audio_volume_safe_sorting "$source_file" "$safe_mode_write"
-    fi
 
 
   elif [ "$choice" -eq 4 ]; then

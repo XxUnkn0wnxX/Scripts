@@ -11,3 +11,4 @@
 **/*_temp/
 tmp/
 AGENTS.md
+.venv/
