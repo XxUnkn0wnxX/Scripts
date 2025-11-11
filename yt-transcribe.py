@@ -240,11 +240,13 @@ def fetch_transcript(
     """Fetch a transcript according to the CLI options."""
     try:
         from youtube_transcript_api import (
-            NoTranscriptAvailable,
             NoTranscriptFound,
+            NotTranslatable,
             TranscriptsDisabled,
+            TranslationLanguageNotAvailable,
             VideoUnavailable,
             YouTubeTranscriptApi,
+            YouTubeTranscriptApiException,
         )
     except ImportError as exc:  # pragma: no cover - user environment issue
         raise CliError(
@@ -254,16 +256,17 @@ def fetch_transcript(
     language_preferences = list(dict.fromkeys(languages)) if languages else expand_language_list(DEFAULT_LANG_PREF)
     logging.debug("Language preferences: %s", language_preferences)
 
+    api = YouTubeTranscriptApi()
     transcripts = None
     for attempt in range(retries + 1):
         try:
-            transcripts = YouTubeTranscriptApi.list_transcripts(video_id)
+            transcripts = api.list(video_id)
             break
         except VideoUnavailable as err:
             raise CliError("The video is unavailable or restricted in this region.") from err
         except TranscriptsDisabled as err:
             raise CliError("Captions are disabled for this video.") from err
-        except Exception as err:
+        except YouTubeTranscriptApiException as err:
             if attempt == retries:
                 raise CliError(f"Failed to fetch transcript list: {err}") from err
             delay = min(5.0, 1.5 * (attempt + 1))
@@ -281,7 +284,7 @@ def fetch_transcript(
 
     search_order = [
         ("generated", transcripts.find_generated_transcript),
-        ("manual", transcripts.find_transcript),
+        ("manual", transcripts.find_manually_created_transcript),
     ]
     if not prefer_generated:
         search_order.reverse()
@@ -298,9 +301,6 @@ def fetch_transcript(
         except NoTranscriptFound:
             logging.debug("No %s transcripts for preferred languages: %s", kind, language_preferences)
             continue
-        except NoTranscriptAvailable:
-            logging.debug("%s transcripts are unavailable entirely.", kind)
-            continue
 
     if not chosen:
         raise CliError("No manual or auto captions available for this video.")
@@ -309,14 +309,14 @@ def fetch_transcript(
     translated_to = None
 
     try:
-        entries = chosen.fetch()
+        base_entries = chosen.fetch()
     except Exception as err:  # pragma: no cover - library/network errors
         raise CliError(f"Failed to download transcript entries: {err}") from err
 
     if translation_target:
         try:
             translated = chosen.translate(translation_target)
-            entries = translated.fetch()
+            translated_entries = translated.fetch()
             translated_to = translation_target
             logging.info(
                 "Using auto-translated captions → %s (source %s)",
@@ -324,30 +324,34 @@ def fetch_transcript(
                 chosen.language_code,
             )
             language_code = translated.language_code
-        except NoTranscriptFound:
+            normalized_entries = normalize_entries(translated_entries)
+        except (NoTranscriptFound, NotTranslatable, TranslationLanguageNotAvailable):
             logging.warning(
                 "Translation into %s is unavailable; using original %s captions.",
                 translation_target,
                 chosen.language_code,
             )
             language_code = chosen.language_code
-        except Exception as err:
+            normalized_entries = normalize_entries(base_entries)
+        except YouTubeTranscriptApiException as err:
             logging.warning(
                 "Translation into %s failed (%s); falling back to original captions.",
                 translation_target,
                 err,
             )
             language_code = chosen.language_code
+            normalized_entries = normalize_entries(base_entries)
         else:
             return TranscriptSelection(
                 kind="translated",
                 source_kind=chosen_kind or "manual",
                 language=language_code,
                 translated_to=translated_to,
-                entries=entries,
+                entries=normalized_entries,
             )
     else:
         language_code = chosen.language_code
+        normalized_entries = normalize_entries(base_entries)
 
     label = "auto-generated" if chosen_kind == "generated" else "manual"
     logging.info("Using %s captions (%s)", label, language_code)
@@ -357,7 +361,7 @@ def fetch_transcript(
         source_kind=chosen_kind or "manual",
         language=language_code,
         translated_to=translated_to,
-        entries=entries,
+        entries=normalized_entries,
     )
 
 
@@ -374,6 +378,22 @@ def clean_caption_text(text: str, keep_tags: bool = False) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned)
     cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
     return cleaned.strip()
+
+
+def normalize_entries(raw_entries: Sequence[object]) -> List[dict]:
+    """Convert transcript entries into dictionaries with text/start/duration."""
+    normalized: List[dict] = []
+    for item in raw_entries:
+        if isinstance(item, dict):
+            text = item.get("text", "")
+            start = item.get("start", 0.0)
+            duration = item.get("duration", 0.0)
+        else:
+            text = getattr(item, "text", "")
+            start = getattr(item, "start", 0.0)
+            duration = getattr(item, "duration", 0.0)
+        normalized.append({"text": text, "start": start, "duration": duration})
+    return normalized
 
 
 def format_timestamp(seconds: float) -> str:
