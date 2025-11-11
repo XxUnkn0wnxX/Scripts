@@ -465,6 +465,9 @@ def write_docx(
     try:
         from docx import Document  # type: ignore
         from docx.shared import Inches, Pt  # type: ignore
+        from docx.oxml import OxmlElement  # type: ignore
+        from docx.oxml.ns import qn  # type: ignore
+        from docx.opc.constants import RELATIONSHIP_TYPE  # type: ignore
     except ImportError as exc:  # pragma: no cover - user environment issue
         raise CliError(
             "Missing dependency 'python-docx'. Install it with pip before using --docx."
@@ -487,11 +490,32 @@ def write_docx(
     paragraph_format.space_before = Pt(0)
     paragraph_format.line_spacing = 1
 
-    document.add_heading(title or "YouTube Transcript", level=1)
+    def add_hyperlink(paragraph, text, url):
+        """Add a hyperlink to a paragraph."""
+        part = paragraph.part
+        r_id = part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+        hyperlink = OxmlElement("w:hyperlink")
+        hyperlink.set(qn("r:id"), r_id)
 
-    title_paragraph = document.add_paragraph()
-    title_paragraph.add_run("Title: ").bold = True
-    title_paragraph.add_run(title)
+        new_run = OxmlElement("w:r")
+        r_pr = OxmlElement("w:rPr")
+        r_style = OxmlElement("w:rStyle")
+        r_style.set(qn("w:val"), "Hyperlink")
+        r_pr.append(r_style)
+        new_run.append(r_pr)
+
+        text_element = OxmlElement("w:t")
+        text_element.text = text
+        new_run.append(text_element)
+        hyperlink.append(new_run)
+        paragraph._p.append(hyperlink)
+
+    heading_text = title or "YouTube Transcript"
+    heading_para = document.add_heading(level=1)
+    if canonical_url:
+        add_hyperlink(heading_para, heading_text, canonical_url)
+    else:
+        heading_para.add_run(heading_text)
 
     source_paragraph = document.add_paragraph()
     source_paragraph.add_run("Source: ").bold = True
