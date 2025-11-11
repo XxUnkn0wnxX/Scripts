@@ -517,10 +517,6 @@ def write_docx(
     else:
         heading_para.add_run(heading_text)
 
-    source_paragraph = document.add_paragraph()
-    source_paragraph.add_run("Source: ").bold = True
-    source_paragraph.add_run(canonical_url)
-
     document.add_paragraph()  # blank line
     previous_blank = True
 
