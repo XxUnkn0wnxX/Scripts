@@ -421,14 +421,22 @@ def write_txt(
 
     lines: List[str] = []
     if title:
-        lines.append(title)
+        lines.append(f"Title: {title}")
     lines.append(f"Source: {canonical_url}")
     lines.append("")
 
     for entry in transcript.entries:
-        text = clean_caption_text(entry.get("text", ""), keep_tags=keep_tags)
+        raw_text = entry.get("text", "")
+        text = clean_caption_text(raw_text, keep_tags=keep_tags)
+        is_stage_direction = False
+        if keep_tags and raw_text:
+            if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
+                is_stage_direction = True
+
         if not text:
             continue
+        if is_stage_direction and lines and lines[-1] != "":
+            lines.append("")
         if include_timestamps:
             timestamp = format_timestamp(entry.get("start", 0.0))
             lines.append(f"{timestamp} - {text}")
@@ -471,21 +479,38 @@ def write_docx(
 
     document.add_heading(title or "YouTube Transcript", level=1)
 
+    title_paragraph = document.add_paragraph()
+    title_paragraph.add_run("Title: ").bold = True
+    title_paragraph.add_run(title)
+
     source_paragraph = document.add_paragraph()
     source_paragraph.add_run("Source: ").bold = True
     source_paragraph.add_run(canonical_url)
 
     document.add_paragraph()  # blank line
+    previous_blank = True
 
     for entry in transcript.entries:
-        text = clean_caption_text(entry.get("text", ""), keep_tags=keep_tags)
+        raw_text = entry.get("text", "")
+        text = clean_caption_text(raw_text, keep_tags=keep_tags)
+        is_stage_direction = False
+        if keep_tags and raw_text:
+            if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
+                is_stage_direction = True
+
         if not text:
             continue
+
+        if is_stage_direction and not previous_blank:
+            document.add_paragraph()
+            previous_blank = True
+
         paragraph = document.add_paragraph()
         if include_timestamps:
             timestamp = format_timestamp(entry.get("start", 0.0))
             paragraph.add_run(f"{timestamp} - ").bold = True
         paragraph.add_run(text)
+        previous_blank = False
 
     path.parent.mkdir(parents=True, exist_ok=True)
     document.save(path)
