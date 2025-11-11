@@ -179,7 +179,7 @@ def get_video_title(yt_dlp_path: Path, canonical_url: str, timeout: float = 30.0
     return first_line or None
 
 
-def sanitize_filename(base: str, ascii_only: bool = False) -> str:
+def sanitize_filename(base: str) -> str:
     """Sanitize a title for filesystem usage."""
     if not base:
         return ""
@@ -204,16 +204,14 @@ def sanitize_filename(base: str, ascii_only: bool = False) -> str:
     sanitized = re.sub(r"\s+([,.!?;:])", r"\1", sanitized)
     sanitized = sanitized.strip(" .")
 
-    if ascii_only:
-        try:
-            from unidecode import unidecode  # type: ignore
-        except ImportError:
-            logging.debug("unidecode not installed; stripping non-ASCII characters for ASCII title.")
-            sanitized = sanitized.encode("ascii", "ignore").decode("ascii")
-        else:
-            sanitized = unidecode(sanitized)
+    try:
+        from unidecode import unidecode  # type: ignore
+    except ImportError:
         sanitized = sanitized.encode("ascii", "ignore").decode("ascii")
-        sanitized = re.sub(r"\s+", " ", sanitized).strip(" .")
+    else:
+        sanitized = unidecode(sanitized)
+    sanitized = sanitized.encode("ascii", "ignore").decode("ascii")
+    sanitized = re.sub(r"\s+", " ", sanitized).strip(" .")
 
     if len(sanitized) > 200:
         sanitized = sanitized[:200].rstrip()
@@ -498,11 +496,6 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     )
     parser.add_argument("--keep-tags", action="store_true", help="Keep stage directions like [Music].")
     parser.add_argument("--no-yt-dlp", action="store_true", help="Skip yt-dlp title lookup.")
-    parser.add_argument(
-        "--ascii-title",
-        action="store_true",
-        help="Force ASCII-safe filenames by transliterating or stripping non-ASCII characters.",
-    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
     return parser.parse_args(argv)
 
@@ -535,8 +528,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             logging.info("Timestamps disabled (--nostamp).")
         if args.keep_tags:
             logging.info("Stage direction tags will be preserved (--keep-tags).")
-        if args.ascii_title:
-            logging.debug("ASCII-safe filenames requested (--ascii-title).")
         if args.translate:
             logging.info("Requesting auto-translation into %s", args.translate)
 
@@ -549,7 +540,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
         include_timestamps = not args.nostamp
 
-        sanitized_base = sanitize_filename(title, ascii_only=args.ascii_title)
+        sanitized_base = sanitize_filename(title)
         if not sanitized_base:
             sanitized_base = video_id
 
