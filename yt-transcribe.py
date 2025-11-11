@@ -374,6 +374,9 @@ def clean_caption_text(text: str, keep_tags: bool = False) -> str:
     if not keep_tags:
         cleaned = STAGE_DIRECTION_PATTERN.sub("", cleaned)
 
+    if not keep_tags:
+        cleaned = re.sub(r"^\s*>>\s*", "", cleaned)
+
     cleaned = cleaned.replace("\n", " ")
     cleaned = re.sub(r"\s+", " ", cleaned)
     cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
