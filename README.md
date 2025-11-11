@@ -13,7 +13,7 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
   Hex/float conversion helper that reads binary values, enforces bounds, and prints them in multiple numeric formats. Useful when inspecting save files or binary blobs.
 
 - `MediaFire.py`  
-  Combines two MediaFire quickkeys (one trusted, one blocked) to generate an alternate download URL. Includes Ctrl+C handling so you can abort cleanly.
+  Automates MediaFire quickkey pairing. Supply a blocked file link while you’re logged in, and it builds a shareable URL by combining that ID with one from a folder you control. Includes Ctrl+C handling so you can abort cleanly.
 
 ## Shell Utilities
 
@@ -25,6 +25,14 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 
 - `mkv_utils.zsh`  
   Companion script for power users: enumerates MKV tracks, applies codec-to-extension overrides, extracts streams, and leverages Python helpers for tricky cases.
+
+### Audio Helpers (`Audio/`)
+
+- `strip_audio_tags.zsh`  
+  Removes all metadata tags from `.m4a` files in the current directory using `ffmpeg`, overwriting each file in place.
+
+- `fix_tags.zsh`  
+  Extracts `.m4a` metadata to a sidecar file, strips the tags, then re-applies the clean metadata—useful when tags get corrupted but you want to keep the originals.
 
 ## Userscripts (Tampermonkey)
 
