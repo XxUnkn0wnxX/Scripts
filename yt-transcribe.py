@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 from urllib.parse import parse_qs, urlparse
@@ -396,6 +396,34 @@ def normalize_entries(raw_entries: Sequence[object]) -> List[dict]:
     return normalized
 
 
+def parse_timecode(value: str) -> float:
+    """Convert a HH:MM:SS or MM:SS string into total seconds."""
+    parts = value.strip().split(":")
+    if not 1 <= len(parts) <= 3:
+        raise CliError(f"Invalid timecode format: {value!r}. Use HH:MM:SS or MM:SS.")
+    try:
+        parts_int = [int(part) for part in parts]
+    except ValueError as exc:
+        raise CliError(f"Invalid timecode format: {value!r}. Only digits are allowed.") from exc
+
+    while len(parts_int) < 3:
+        parts_int.insert(0, 0)
+    hours, minutes, seconds = parts_int
+    if minutes >= 60 or seconds >= 60 or hours < 0 or minutes < 0 or seconds < 0:
+        raise CliError(f"Invalid timecode value: {value!r}. Use HH:MM:SS with 0<=MM<60 and 0<=SS<60.")
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def apply_time_cutoff(transcript: TranscriptSelection, cutoff_seconds: float) -> TranscriptSelection:
+    """Return a copy of the transcript containing entries up to the cutoff (inclusive)."""
+    filtered_entries = [entry for entry in transcript.entries if entry.get("start", 0.0) <= cutoff_seconds]
+    if not filtered_entries:
+        logging.warning("No transcript entries fall within the specified cutoff at %s seconds.", cutoff_seconds)
+    else:
+        logging.info("Transcript truncated at %s seconds (%s entries retained).", cutoff_seconds, len(filtered_entries))
+    return replace(transcript, entries=filtered_entries)
+
+
 def format_timestamp(seconds: float) -> str:
     """Format caption start time as MM:SS or HH:MM:SS."""
     if seconds < 0:
@@ -579,6 +607,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--keep-tags", action="store_true", help="Keep stage directions like [Music].")
     parser.add_argument("--no-yt-dlp", action="store_true", help="Skip yt-dlp title lookup.")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
+    parser.add_argument(
+        "--time",
+        help="Cut off the transcript at the given time (HH:MM:SS or MM:SS). Entries after this point are omitted.",
+    )
     return parser.parse_args(argv)
 
 
@@ -621,6 +653,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
         include_timestamps = not args.nostamp
+
+        if args.time:
+            cutoff_seconds = parse_timecode(args.time)
+            transcript = apply_time_cutoff(transcript, cutoff_seconds)
 
         sanitized_base = sanitize_filename(title)
         if not sanitized_base:
