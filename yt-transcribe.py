@@ -564,17 +564,28 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if not sanitized_base:
             sanitized_base = video_id
 
+        extension = ".docx" if args.docx else ".txt"
+
         output_path: Path
         if args.out:
-            output_path = Path(args.out)
-        else:
-            extension = ".docx" if args.docx else ".txt"
-            output_path = Path(f"{sanitized_base}{extension}")
+            raw_out = Path(args.out)
+            treat_as_directory = False
 
-        if args.docx and output_path.suffix.lower() != ".docx":
-            output_path = output_path.with_suffix(".docx")
-        elif not args.docx and output_path.suffix.lower() != ".txt":
-            output_path = output_path.with_suffix(".txt")
+            if raw_out.exists() and raw_out.is_dir():
+                treat_as_directory = True
+            elif args.out.endswith(os.sep):
+                treat_as_directory = True
+
+            if treat_as_directory:
+                target_dir = raw_out
+                target_dir.mkdir(parents=True, exist_ok=True)
+                output_path = target_dir / f"{sanitized_base}{extension}"
+            else:
+                output_path = raw_out
+                if output_path.suffix.lower() != extension:
+                    output_path = output_path.with_suffix(extension)
+        else:
+            output_path = Path(f"{sanitized_base}{extension}")
 
         writer = write_docx if args.docx else write_txt
         writer(
