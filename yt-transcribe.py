@@ -427,11 +427,17 @@ def write_txt(
 
     for entry in transcript.entries:
         raw_text = entry.get("text", "")
-        text = clean_caption_text(raw_text, keep_tags=keep_tags)
         is_stage_direction = False
         if keep_tags and raw_text:
             if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
                 is_stage_direction = True
+
+        text = clean_caption_text(raw_text, keep_tags=keep_tags)
+
+        if not keep_tags and raw_text and STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
+            if lines and lines[-1] != "":
+                lines.append("")
+            continue
 
         if not text:
             continue
@@ -492,11 +498,18 @@ def write_docx(
 
     for entry in transcript.entries:
         raw_text = entry.get("text", "")
-        text = clean_caption_text(raw_text, keep_tags=keep_tags)
         is_stage_direction = False
         if keep_tags and raw_text:
             if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
                 is_stage_direction = True
+
+        text = clean_caption_text(raw_text, keep_tags=keep_tags)
+
+        if not keep_tags and raw_text and STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
+            if not previous_blank:
+                document.add_paragraph()
+                previous_blank = True
+            continue
 
         if not text:
             continue
