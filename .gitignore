@@ -12,3 +12,4 @@
 tmp/
 AGENTS.md
 .venv/
+__pycache__/
