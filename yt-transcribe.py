@@ -482,6 +482,10 @@ def write_docx(
     if font.name != "Calibri":
         font.name = "Calibri"
     font.size = Pt(11)
+    paragraph_format = style.paragraph_format
+    paragraph_format.space_after = Pt(0)
+    paragraph_format.space_before = Pt(0)
+    paragraph_format.line_spacing = 1
 
     document.add_heading(title or "YouTube Transcript", level=1)
 
