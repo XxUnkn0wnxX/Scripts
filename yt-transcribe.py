@@ -464,6 +464,8 @@ def write_txt(
             if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
                 is_stage_direction = True
 
+        is_speaker_marker = bool(re.match(r"^\s*>>", raw_text))
+
         text = clean_caption_text(raw_text, keep_tags=keep_tags)
 
         if not keep_tags and raw_text and STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
@@ -474,6 +476,8 @@ def write_txt(
         if not text:
             continue
         if is_stage_direction and lines and lines[-1] != "":
+            lines.append("")
+        if is_speaker_marker and lines and lines[-1] != "":
             lines.append("")
         if include_timestamps:
             timestamp = format_timestamp(entry.get("start", 0.0))
@@ -559,6 +563,8 @@ def write_docx(
             if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
                 is_stage_direction = True
 
+        is_speaker_marker = bool(re.match(r"^\s*>>", raw_text))
+
         text = clean_caption_text(raw_text, keep_tags=keep_tags)
 
         if not keep_tags and raw_text and STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
@@ -571,6 +577,9 @@ def write_docx(
             continue
 
         if is_stage_direction and not previous_blank:
+            document.add_paragraph()
+            previous_blank = True
+        if is_speaker_marker and not previous_blank:
             document.add_paragraph()
             previous_blank = True
 
