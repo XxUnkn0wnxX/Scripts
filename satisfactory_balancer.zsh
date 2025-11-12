@@ -200,7 +200,7 @@ __bal_main() {
       __bal_quiet_dirty_line "$n" "$r" "$m" "$k" "$bm" "$am" "$p"
     else
       echo "N=$n | NOT clean (leftover $r)"
-      printf "Next clean size: %s  → build 1→%s\n" "$m" "$m"
+      printf "Next clean size: %s → build 1→%s\n" "$m" "$m"
       printf "Loop back: %d outputs (merge them, feed back to input)\n" "$k"
       __bal_recipe_lines "$bm" "$am"
       if (( p > 0 )); then
