@@ -93,10 +93,10 @@ __bal_build_steps() {
     (( splitters != 1 )) && word+="s"
     next=$(( branches * factor ))
     if (( factor == 3 )); then
-      verbose="Layer ${layer} – place ${splitters} ${word} to create ${next} branches (${splitters}× 1→3)"
-      short="Layer ${layer} place ${splitters}×1→3"
+    verbose="Layer ${layer} – place ${splitters} ${word} to create ${next} outputs (${splitters}× 1→3)"
+    short="Layer ${layer} place ${splitters}×1→3"
     else
-      verbose="Layer ${layer} – place ${splitters} ${word} to double ${branches} → ${next} (${splitters}× 1→2)"
+      verbose="Layer ${layer} – place ${splitters} ${word} to create ${next} outputs (${splitters}× 1→2)"
       short="Layer ${layer} place ${splitters}×1→2"
     fi
     lines+=("${verbose}"$'\t'"${short}"$'\t'"${splitters}"$'\t'"${factor}")
@@ -235,7 +235,7 @@ __bal_recipe_lines() {
       for count in "${total_counts[@]}"; do
         (( total_splitters += count ))
       done
-      echo "  Note: This follows the ${factor_expr} branch sequence without skipping outputs, so you place ${sum_expr} = ${total_splitters} splitters."
+      echo "  Note: Layer order ${factor_expr} (branch sequence) → total splitters ${sum_expr} = ${total_splitters}."
     fi
   fi
 }
