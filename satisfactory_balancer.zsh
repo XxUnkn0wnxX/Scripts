@@ -36,9 +36,22 @@ __bal_join_fields() {
   printf "%s\n" "${(j: | :)fields}"
 }
 
+__bal_quiet_recipe_fragment() {
+  local count3=$1 count2=$2
+  local parts=()
+  (( count3 > 0 )) && parts+=("${count3}×(1→3)")
+  (( count2 > 0 )) && parts+=("${count2}×(1→2)")
+  if (( ${#parts[@]} == 0 )); then
+    echo "Recipe none"
+  else
+    echo "Recipe ${(j:, :)parts}"
+  fi
+}
+
 __bal_quiet_clean_line() {
   local n=$1 count3=$2 count2=$3 prev=$4
-  local fields=("N=$n" "CLEAN" "build 1→$n (no loopback)" "Recipe ${count3}×(1→3), ${count2}×(1→2)")
+  local recipe=$(__bal_quiet_recipe_fragment "$count3" "$count2")
+  local fields=("N=$n" "CLEAN" "build 1→$n (no loopback)" "$recipe")
   if (( prev > 0 && prev < n )); then
     fields+=("Prev clean $prev")
   fi
@@ -47,9 +60,10 @@ __bal_quiet_clean_line() {
 
 __bal_quiet_dirty_line() {
   local n=$1 leftover=$2 next=$3 loopback=$4 count3=$5 count2=$6 prev=$7
-  local fields=("N=$n" "NOT clean" "build 1→$next" "loop back $loopback output")
-  (( loopback != 1 )) && fields[-1]="loop back $loopback outputs"
-  fields+=("Recipe ${count3}×(1→3), ${count2}×(1→2)")
+  local loop_text="loop back $loopback outputs"
+  (( loopback == 1 )) && loop_text="loop back 1 output"
+  local recipe=$(__bal_quiet_recipe_fragment "$count3" "$count2")
+  local fields=("N=$n" "NOT clean" "build 1→$next" "$loop_text" "$recipe")
   if (( prev > 0 )); then
     fields+=("Prev clean $prev")
   fi
@@ -59,11 +73,24 @@ __bal_quiet_dirty_line() {
 __bal_recipe_lines() {
   local count3=$1 count2=$2
   echo "Recipe: x${count3} of 1→3 splitters, x${count2} of 1→2 splitters (order doesn’t matter)"
-  local word3="times"
-  local word2="times"
-  (( count3 == 1 )) && word3="time"
-  (( count2 == 1 )) && word2="time"
-  echo "  Do: split by 3, ${count3} ${word3}; then split each branch by 2, ${count2} ${word2}."
+  local steps=()
+  if (( count3 > 0 )); then
+    local word3="times"
+    (( count3 == 1 )) && word3="time"
+    steps+=("split by 3, ${count3} ${word3}")
+  fi
+  if (( count2 > 0 )); then
+    local word2="times"
+    (( count2 == 1 )) && word2="time"
+    steps+=("split each branch by 2, ${count2} ${word2}")
+  fi
+  if (( ${#steps[@]} == 0 )); then
+    echo "  Do: no splitter layers required."
+  elif (( ${#steps[@]} == 1 )); then
+    echo "  Do: ${steps[1]}."
+  else
+    echo "  Do: ${steps[1]}; then ${steps[2]}."
+  fi
 }
 
 # Smallest clean m = 2^A * 3^B such that m >= n
