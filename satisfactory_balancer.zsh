@@ -1,24 +1,27 @@
 #!/usr/bin/env zsh
 # Satisfactory load-balancer helper — pure CLI (zsh)
 # Usage:
-#   zsh satisfactory_balancer.zsh [options] <N...>
+#   zsh satisfactory_balancer.zsh [options] <1:n ...>
 # Options:
 #   -q, --quiet  Compact one-line output
 #   -h, --help   Show help and exit
 
 __bal_usage() {
   cat <<'USAGE'
-Usage: satisfactory_balancer.zsh [options] <N...>
+Usage: satisfactory_balancer.zsh [options] <1:n ...>
   Friendly helper for 1→n Satisfactory load balancers (splitters only 1→2 / 1→3).
 
 Options:
-  -q, --quiet  Compact, single-line output (Prev clean shows the largest clean size below N).
+  -q, --quiet  Compact, single-line output (Prev clean shows the largest clean size below the requested outputs).
   -h, --help   Show this help
 
+Notes:
+  • Only 1:n targets with n > 1 are supported today; other modes are work in progress.
+
 Examples:
-  zsh satisfactory_balancer.zsh 48
-  zsh satisfactory_balancer.zsh 52
-  zsh satisfactory_balancer.zsh 44 95 72
+  zsh satisfactory_balancer.zsh 1:48
+  zsh satisfactory_balancer.zsh 1:52
+  zsh satisfactory_balancer.zsh 1:44 1:95 1:72
 USAGE
 }
 
@@ -161,9 +164,9 @@ __bal_recipe_summary() {
 }
 
 __bal_quiet_clean_line() {
-  local n=$1 count3=$2 count2=$3 prev=$4
+  local inputs=$1 outputs=$2 count3=$3 count2=$4 prev=$5
   local recipe=$(__bal_recipe_summary "$count3" "$count2")
-  local fields=("N=$n" "CLEAN" "build 1→$n (no loopback)" "$recipe")
+  local fields=("${inputs}:${outputs}" "LOAD BALANCER" "CLEAN → build 1→$outputs (no loopback)" "$recipe")
   local step_lines=$(__bal_build_steps "$count3" "$count2")
   if [[ -n "$step_lines" ]]; then
     local -a steps_short=()
@@ -175,18 +178,19 @@ __bal_quiet_clean_line() {
     done
     fields+=("Steps: ${(j:; :)steps_short}")
   fi
-  if (( prev > 0 && prev < n )); then
-    fields+=("Prev clean $prev")
+  if (( prev > 0 && prev < outputs )); then
+    fields+=("Prev clean 1:$prev")
   fi
   __bal_join_fields "${fields[@]}"
 }
 
 __bal_quiet_dirty_line() {
-  local n=$1 leftover=$2 next=$3 loopback=$4 count3=$5 count2=$6 prev=$7
+  local inputs=$1 outputs=$2 leftover=$3 next=$4 loopback=$5 count3=$6 count2=$7 prev=$8
+  local descriptor="${inputs}:${outputs}"
   local loop_text="loop back $loopback outputs"
   (( loopback == 1 )) && loop_text="loop back 1 output"
   local recipe=$(__bal_recipe_summary "$count3" "$count2")
-  local fields=("N=$n" "NOT clean" "build 1→$next" "$loop_text" "$recipe")
+  local fields=("$descriptor" "LOAD BALANCER" "NOT clean (leftover $leftover)" "build 1→$next" "$loop_text" "$recipe")
   local step_lines=$(__bal_build_steps "$count3" "$count2")
   if [[ -n "$step_lines" ]]; then
     local -a steps_short=()
@@ -199,7 +203,7 @@ __bal_quiet_dirty_line() {
     fields+=("Steps: ${(j:; :)steps_short}")
   fi
   if (( prev > 0 )); then
-    fields+=("Prev clean $prev")
+    fields+=("Prev clean 1:$prev")
   fi
   __bal_join_fields "${fields[@]}"
 }
@@ -316,23 +320,48 @@ __bal_main() {
     __bal_usage >&2
     return 2
   fi
-  for n in "${args[@]}"; do
-    if [[ ! "$n" == <-> ]] || (( n <= 0 )); then
-      echo "N=$n  ->  invalid (must be a positive integer)" >&2
+  for target in "${args[@]}"; do
+    if [[ "$target" == <-> ]]; then
+      echo "$target → invalid (use 1:$target format)" >&2
+      had_error=2
+      continue
+    fi
+    if [[ "$target" != <->:<-> ]]; then
+      echo "$target → invalid (expected 1:n format)" >&2
       had_error=2
       continue
     fi
 
+    local inputs=${target%%:*}
+    local outputs=${target##*:}
+    if (( inputs <= 0 || outputs <= 0 )); then
+      echo "$target → invalid (values must be positive integers)" >&2
+      had_error=2
+      continue
+    fi
+    if (( inputs != 1 )); then
+      echo "$target → work in progress (multi-input balancing/compression not yet available)" >&2
+      had_error=2
+      continue
+    fi
+    if (( outputs <= 1 )); then
+      echo "$target → work in progress (multi-input balancing/compression not yet available)" >&2
+      had_error=2
+      continue
+    fi
+
+    local n=$outputs
+    local label="1:$n"
     local a=0 b=0 r=0; read a b r <<< "$(__bal_exponents23 "$n")"
     if (( r == 1 )); then
       local p_clean=$(__bal_prev_clean "$n")
       if (( quiet )); then
-        __bal_quiet_clean_line "$n" "$b" "$a" "$p_clean"
+        __bal_quiet_clean_line "$inputs" "$n" "$b" "$a" "$p_clean"
       else
-        printf "N=%s | CLEAN → build 1→%s (no loopback)\n" "$n" "$n"
+        printf "%s | LOAD BALANCER | CLEAN → build 1→%s (no loopback)\n" "$label" "$n"
         __bal_recipe_lines "$b" "$a"
         if (( p_clean > 0 && p_clean < n )); then
-          echo "Prev clean: $p_clean"
+          echo "Prev clean: 1:$p_clean"
         fi
       fi
       continue
@@ -344,14 +373,14 @@ __bal_main() {
     local p=$(__bal_prev_clean "$n")
 
     if (( quiet )); then
-      __bal_quiet_dirty_line "$n" "$r" "$m" "$k" "$bm" "$am" "$p"
+      __bal_quiet_dirty_line "$inputs" "$n" "$r" "$m" "$k" "$bm" "$am" "$p"
     else
-      echo "N=$n | NOT clean (leftover $r)"
+      echo "$label | LOAD BALANCER | NOT clean (leftover $r)"
       printf "Next clean size: %s → build 1→%s\n" "$m" "$m"
       printf "Loop back: %d outputs (merge them, feed back to input)\n" "$k"
       __bal_recipe_lines "$bm" "$am"
       if (( p > 0 )); then
-        echo "Prev clean: $p"
+        echo "Prev clean: 1:$p"
       fi
     fi
   done
