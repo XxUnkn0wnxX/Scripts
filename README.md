@@ -26,6 +26,9 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 - `mkv_utils.zsh`  
   Companion script for power users: enumerates MKV tracks, applies codec-to-extension overrides, extracts streams, and leverages Python helpers for tricky cases.
 
+- `satisfactory_balancer.zsh`  
+  Zsh CLI that designs 1→n Satisfactory load balancers. For each requested output count it detects whether the target is “clean” (only 2×/3× splits), finds the next clean size when needed, reports the loop-back outputs, and prints the exact recipe (`1→3` and `1→2` layers plus a step-by-step instruction). Quiet mode (`-q`) delivers the same info in one pipe-delimited line—handy for quick copying.
+
 ### Audio Helpers (`Audio/`)
 
 - `strip_audio_tags.zsh`  
