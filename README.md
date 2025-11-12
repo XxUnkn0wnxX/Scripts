@@ -27,7 +27,10 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
   Companion script for power users: enumerates MKV tracks, applies codec-to-extension overrides, extracts streams, and leverages Python helpers for tricky cases.
 
 - `satisfactory_balancer.zsh`  
-  Zsh CLI that designs 1→n Satisfactory load balancers. For each requested output count it detects whether the target is “clean” (only 2×/3× splits), finds the next clean size when needed, reports the loop-back outputs, and prints the exact recipe (`1→3` and `1→2` layers plus a step-by-step instruction). Quiet mode (`-q`) delivers the same info in one pipe-delimited line—handy for quick copying.
+  Zsh CLI planner for 1→n Satisfactory load balancers.
+  - Detects “clean” counts (`2^a·3^b`) and rounds non-clean requests up to the next clean size, reporting loop-back outputs.
+  - Searches all 1→2 / 1→3 layer permutations to pick the layout that uses the fewest splitters; the verbose output lists each layer on its own line (`place 4 splitters to create 12 outputs`) and finishes with a branch-sequence summary.
+  - Quiet mode (`-q`) mirrors the chosen layer order in a compact pipe-delimited line for quick copying/notes.
 
 ### Audio Helpers (`Audio/`)
 
