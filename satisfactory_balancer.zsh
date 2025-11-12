@@ -36,22 +36,145 @@ __bal_join_fields() {
   printf "%s\n" "${(j: | :)fields}"
 }
 
-__bal_quiet_recipe_fragment() {
-  local count3=$1 count2=$2
-  local parts=()
-  (( count3 > 0 )) && parts+=("${count3}×(1→3)")
-  (( count2 > 0 )) && parts+=("${count2}×(1→2)")
-  if (( ${#parts[@]} == 0 )); then
-    echo "Recipe none"
-  else
-    echo "Recipe ${(j:, :)parts}"
+typeset -g __bal_plan_best_cost
+typeset -g __bal_plan_best_seq
+
+__bal_plan_dfs() {
+  local seq=$1
+  local rem2=$2
+  local rem3=$3
+  local branches=$4
+  local cost=$5
+
+  if (( rem2 == 0 && rem3 == 0 )); then
+    if (( __bal_plan_best_cost < 0 || cost < __bal_plan_best_cost )); then
+      __bal_plan_best_cost=$cost
+      __bal_plan_best_seq=$seq
+    fi
+    return
   fi
+
+  if (( rem2 > 0 )); then
+    local next=$(( branches * 2 ))
+    local new_seq=$seq
+    [[ -n "$new_seq" ]] && new_seq+=" "
+    new_seq+="2"
+    __bal_plan_dfs "$new_seq" $(( rem2 - 1 )) "$rem3" "$next" $(( cost + branches ))
+  fi
+
+  if (( rem3 > 0 )); then
+    local next=$(( branches * 3 ))
+    local new_seq=$seq
+    [[ -n "$new_seq" ]] && new_seq+=" "
+    new_seq+="3"
+    __bal_plan_dfs "$new_seq" "$rem2" $(( rem3 - 1 )) "$next" $(( cost + branches ))
+  fi
+}
+
+__bal_best_sequence() {
+  local count3=$1 count2=$2
+  __bal_plan_best_cost=-1
+  __bal_plan_best_seq=""
+  __bal_plan_dfs "" "$count2" "$count3" 1 0
+}
+
+__bal_build_steps() {
+  local count3=$1 count2=$2
+  local branches=1 layer=1
+  local -a lines=()
+
+  # Find minimal-splitter ordering of 1→2 and 1→3 layers
+  __bal_best_sequence "$count3" "$count2"
+
+  local factor splitters word next verbose short
+  for factor in ${=__bal_plan_best_seq}; do
+    splitters=$branches
+    word="splitter"
+    (( splitters != 1 )) && word+="s"
+    next=$(( branches * factor ))
+    if (( factor == 3 )); then
+      verbose="Layer ${layer} – place ${splitters} ${word} to create ${next} branches (${splitters}× 1→3)"
+      short="Layer ${layer} place ${splitters}×1→3"
+    else
+      verbose="Layer ${layer} – place ${splitters} ${word} to double ${branches} → ${next} (${splitters}× 1→2)"
+      short="Layer ${layer} place ${splitters}×1→2"
+    fi
+    lines+=("${verbose}"$'\t'"${short}"$'\t'"${splitters}"$'\t'"${factor}")
+    branches=$next
+    (( layer++ ))
+  done
+
+  printf '%s\n' "${lines[@]}"
+}
+
+__bal_recipe_summary() {
+  local count3=$1 count2=$2
+  __bal_best_sequence "$count3" "$count2"
+  local seq=${__bal_plan_best_seq}
+  if [[ -z "$seq" ]]; then
+    echo "Recipe: no splitter layers"
+    return
+  fi
+
+  local -a tokens=(${=seq})
+  local desc="Recipe: Layers → "
+  local factor first=1 branches=1
+  for factor in "${tokens[@]}"; do
+    if (( first )); then
+      first=0
+    else
+      desc+=", "
+    fi
+    desc+="${branches}×1→${factor}"
+    branches=$(( branches * factor ))
+  done
+
+  # Expand concise cases
+  if (( ${#tokens[@]} == 1 )); then
+    if [[ ${tokens[1]} == 2 ]]; then
+      desc="Recipe: 1 layer of 1→2 splitters"
+    else
+      desc="Recipe: 1 layer of 1→3 splitters"
+    fi
+  elif (( ${#tokens[@]} > 1 )); then
+    # Check if all factors identical
+    local all_same=1
+    for factor in "${tokens[@]:1}"; do
+      if [[ $factor != ${tokens[1]} ]]; then
+        all_same=0
+        break
+      fi
+    done
+    if (( all_same )); then
+      local layers=${#tokens[@]}
+      local word="layers"
+      (( layers == 1 )) && word="layer"
+      if (( tokens[1] == 2 )); then
+        desc="Recipe: ${layers} ${word} of 1→2 splitters"
+      else
+        desc="Recipe: ${layers} ${word} of 1→3 splitters"
+      fi
+    fi
+  fi
+
+  echo "${desc}"
 }
 
 __bal_quiet_clean_line() {
   local n=$1 count3=$2 count2=$3 prev=$4
-  local recipe=$(__bal_quiet_recipe_fragment "$count3" "$count2")
+  local recipe=$(__bal_recipe_summary "$count3" "$count2")
   local fields=("N=$n" "CLEAN" "build 1→$n (no loopback)" "$recipe")
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  if [[ -n "$step_lines" ]]; then
+    local -a steps_short=()
+    local line short
+    for line in ${(f)step_lines}; do
+      short=${line#*$'\t'}
+      short=${short%%$'\t'*}
+      steps_short+=("$short")
+    done
+    fields+=("Steps: ${(j:; :)steps_short}")
+  fi
   if (( prev > 0 && prev < n )); then
     fields+=("Prev clean $prev")
   fi
@@ -62,8 +185,19 @@ __bal_quiet_dirty_line() {
   local n=$1 leftover=$2 next=$3 loopback=$4 count3=$5 count2=$6 prev=$7
   local loop_text="loop back $loopback outputs"
   (( loopback == 1 )) && loop_text="loop back 1 output"
-  local recipe=$(__bal_quiet_recipe_fragment "$count3" "$count2")
+  local recipe=$(__bal_recipe_summary "$count3" "$count2")
   local fields=("N=$n" "NOT clean" "build 1→$next" "$loop_text" "$recipe")
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  if [[ -n "$step_lines" ]]; then
+    local -a steps_short=()
+    local line short
+    for line in ${(f)step_lines}; do
+      short=${line#*$'\t'}
+      short=${short%%$'\t'*}
+      steps_short+=("$short")
+    done
+    fields+=("Steps: ${(j:; :)steps_short}")
+  fi
   if (( prev > 0 )); then
     fields+=("Prev clean $prev")
   fi
@@ -72,24 +206,37 @@ __bal_quiet_dirty_line() {
 
 __bal_recipe_lines() {
   local count3=$1 count2=$2
-  echo "Recipe: x${count3} of 1→3 splitters, x${count2} of 1→2 splitters (order doesn’t matter)"
-  local steps=()
-  if (( count3 > 0 )); then
-    local word3="times"
-    (( count3 == 1 )) && word3="time"
-    steps+=("split by 3, ${count3} ${word3}")
-  fi
-  if (( count2 > 0 )); then
-    local word2="times"
-    (( count2 == 1 )) && word2="time"
-    steps+=("split each branch by 2, ${count2} ${word2}")
-  fi
-  if (( ${#steps[@]} == 0 )); then
+  local summary=$(__bal_recipe_summary "$count3" "$count2")
+  echo "${summary}."
+
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  if [[ -z "$step_lines" ]]; then
     echo "  Do: no splitter layers required."
-  elif (( ${#steps[@]} == 1 )); then
-    echo "  Do: ${steps[1]}."
   else
-    echo "  Do: ${steps[1]}; then ${steps[2]}."
+    local -a total_counts=()
+    local -a factors=()
+    local line verbose remainder count factor
+    echo "  Do:"
+    for line in ${(f)step_lines}; do
+      verbose=${line%%$'\t'*}
+      echo "    ${verbose}"
+      remainder=${line#*$'\t'}
+      remainder=${remainder#*$'\t'}
+      count=${remainder%%$'\t'*}
+      remainder=${remainder#*$'\t'}
+      factor=$remainder
+      total_counts+=("$count")
+      factors+=("$factor")
+    done
+    if (( ${#total_counts[@]} > 0 )); then
+      local sum_expr="${(j: + :)total_counts}"
+      local total_splitters=0
+      local factor_expr="${(j:×:)factors}"
+      for count in "${total_counts[@]}"; do
+        (( total_splitters += count ))
+      done
+      echo "  Note: This follows the ${factor_expr} branch sequence without skipping outputs, so you place ${sum_expr} = ${total_splitters} splitters."
+    fi
   fi
 }
 
