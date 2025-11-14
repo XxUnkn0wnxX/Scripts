@@ -437,7 +437,7 @@ __bc_priority_lines() {
     done
   else
     echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
-    printf "    O2–O%d – each output receives overflow from the previous output so they fill strictly in order.\n" "$outputs"
+    printf "    O2–%d – each output receives overflow from the previous output so they fill strictly in order.\n" "$outputs"
   fi
 }
 
