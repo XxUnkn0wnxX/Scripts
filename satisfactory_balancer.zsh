@@ -712,7 +712,14 @@ __bal_handle_balancer_ratio() {
   local split_count3=$split_b
   local split_count2=$split_a
 
-  local merge_plan=$(__bc_plan_merge_layers "$inputs" 1)
+  local active_per_input=$(( split_clean - split_loop ))
+  local active_total=$(( inputs * active_per_input ))
+  if (( active_total % outputs != 0 )); then
+    echo "belt-balancer: lane mismatch for $descriptor" >&2
+    return 1
+  fi
+  local lanes_per_output=$(( active_total / outputs ))
+  local merge_plan=$(__bc_plan_merge_layers "$lanes_per_output" 1)
 
   if (( quiet )); then
     local -a fields=("$descriptor" "BELT-BALANCER" "$headline")
@@ -796,13 +803,15 @@ __bal_handle_compressor_ratio() {
   recipe_line+=" (order doesn’t matter)"
 
   if (( quiet )); then
+    local -a fields
     if (( outputs == 1 )); then
-      local -a fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "Note: Only one output, so all capacity lives on O1.")
-      __bal_join_fields "${fields[@]}"
-      return 0
+      fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "Note: Only one output, so all capacity lives on O1.")
+    else
+      local note="Note: Priority ${priority_seq}. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
+      local summary="Merge recipe: ${recipe_line}"
+      local steps=$(__bc_steps_short "$layers_str")
+      fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "$summary" "Priority: ${priority_seq}" "Merge steps: $steps" "$note")
     fi
-    local note="Note: Priority ${priority_seq}. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
-    local -a fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "Priority: ${priority_seq}" "$note")
     __bal_join_fields "${fields[@]}"
     return 0
   fi
