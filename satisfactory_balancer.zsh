@@ -45,6 +45,10 @@ __bal_exponents23() {
 
 typeset -g __bal_plan_best_cost
 typeset -g __bal_plan_best_seq
+typeset -gA __bc_plan_cache
+typeset -gA __bc_plan_cost_cache
+typeset -g __bc_plan_result
+typeset -g __bc_plan_result_cost
 
 __bal_plan_dfs() {
   local seq=$1
@@ -295,14 +299,9 @@ __bal_recipe_lines() {
   fi
 }
 
-__bal_stage_steps_short() {
-  local mode=$1 count3=$2 count2=$3
-  local step_lines
-  if [[ $mode == "merge" ]]; then
-    step_lines=$(__bal_merge_build_steps "$count3" "$count2")
-  else
-    step_lines=$(__bal_build_steps "$count3" "$count2")
-  fi
+__bal_split_steps_short() {
+  local count3=$1 count2=$2
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
   if [[ -z "$step_lines" ]]; then
     echo ""
     return
@@ -317,20 +316,13 @@ __bal_stage_steps_short() {
   echo "${(j:; :)steps_short}"
 }
 
-__bal_stage_lines_and_note() {
-  local mode=$1 count3=$2 count2=$3
-  local builder="__bal_build_steps"
-  local noun="splitter" noun_plural="splitters"
-  if [[ $mode == "merge" ]]; then
-    builder="__bal_merge_build_steps"
-    noun="merger"
-    noun_plural="mergers"
-  fi
-  local step_lines=$($builder "$count3" "$count2")
+__bal_split_lines_and_note() {
+  local count3=$1 count2=$2
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
   local lines_text=""
   local note=""
   if [[ -z "$step_lines" ]]; then
-    lines_text="no ${mode} layers required."
+    lines_text="no split layers required."
   else
     local -a total_counts=()
     local -a factors=()
@@ -357,8 +349,8 @@ __bal_stage_lines_and_note() {
       for c in "${total_counts[@]}"; do
         (( total_nodes += c ))
       done
-      local noun_phrase=$noun_plural
-      (( total_nodes == 1 )) && noun_phrase=$noun
+      local noun_phrase="splitters"
+      (( total_nodes == 1 )) && noun_phrase="splitter"
       note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} ${sum_expr} = ${total_nodes}"
     fi
   fi
@@ -433,7 +425,7 @@ __bc_priority_lines() {
       if (( i == 1 )); then
         echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
       else
-        echo "    O${i} – receive overflow from O$(( i - 1 )) so it only fills after O$(( i - 1 )) is saturated."
+        printf "    O%d – receive overflow from O%d so it only fills after O%d is saturated.\n" "$i" "$(( i - 1 ))" "$(( i - 1 ))"
       fi
       (( i++ ))
     done
@@ -443,31 +435,72 @@ __bc_priority_lines() {
   fi
 }
 
-__bc_plan_merge_layers() {
-  local lanes=$1 outputs=$2
-  local -a layers=()
-  while (( lanes > outputs )); do
-    local diff=$(( lanes - outputs ))
-    local max3=$(( lanes / 3 ))
-    local use3=0
-    if (( max3 > 0 && diff >= 2 )); then
-      use3=$(( diff / 2 ))
-      (( use3 == 0 )) && use3=1
-      (( use3 > max3 )) && use3=$max3
-    fi
-    if (( use3 > 0 )); then
-      layers+=("${use3}:3")
-      lanes=$(( lanes - use3 * 2 ))
-      continue
-    fi
-    local max2=$(( lanes / 2 ))
-    local need2=$diff
-    if (( need2 > max2 )); then need2=$max2; fi
-    (( need2 == 0 )) && need2=1
-    layers+=("${need2}:2")
-    lanes=$(( lanes - need2 ))
+__bc_plan_layers_dfs() {
+  local lanes=$1 target=$2 key="${lanes}:${target}"
+  if [[ -n ${__bc_plan_cache[$key]+x} ]]; then
+    __bc_plan_result=${__bc_plan_cache[$key]}
+    __bc_plan_result_cost=${__bc_plan_cost_cache[$key]}
+    return 0
+  fi
+  if (( lanes == target )); then
+    __bc_plan_result=""
+    __bc_plan_result_cost=0
+    __bc_plan_cache[$key]=""
+    __bc_plan_cost_cache[$key]=0
+    return 0
+  fi
+  if (( lanes < target )); then
+    __bc_plan_result=""
+    __bc_plan_result_cost=-1
+    return 1
+  fi
+
+  local best_plan=""
+  local best_cost=-1
+  local arity reduces max_count count new_lanes plan_entry plan_text
+  for arity in 3 2; do
+    reduces=$(( arity - 1 ))
+    max_count=$(( lanes / arity ))
+    for (( count=1; count<=max_count; count++ )); do
+      new_lanes=$(( lanes - count * reduces ))
+      if (( new_lanes < target )); then
+        break
+      fi
+      __bc_plan_layers_dfs "$new_lanes" "$target"
+      local sub_cost=$__bc_plan_result_cost
+      if (( sub_cost < 0 )); then
+        continue
+      fi
+      local cost=$(( count + sub_cost ))
+      plan_entry="${count}:${arity}"
+      if [[ -n "$__bc_plan_result" ]]; then
+        plan_text="${plan_entry}"$'\n'"${__bc_plan_result}"
+      else
+        plan_text="${plan_entry}"
+      fi
+      if (( best_cost < 0 || cost < best_cost )); then
+        best_cost=$cost
+        best_plan="$plan_text"
+      fi
+    done
   done
-  printf '%s\n' "${layers[@]}"
+
+  if (( best_cost < 0 )); then
+    __bc_plan_result=""
+    __bc_plan_result_cost=-1
+    return 1
+  fi
+
+  __bc_plan_cache[$key]=$best_plan
+  __bc_plan_cost_cache[$key]=$best_cost
+  __bc_plan_result="$best_plan"
+  __bc_plan_result_cost=$best_cost
+}
+
+__bc_plan_merge_layers() {
+  local lanes=$1 target=$2
+  __bc_plan_layers_dfs "$lanes" "$target"
+  echo "$__bc_plan_result"
 }
 
 __bc_layers_summary() {
@@ -497,23 +530,81 @@ __bc_layers_summary() {
   echo "$summary"
 }
 
-__bc_do_lines() {
+__bb_merge_counts_summary() {
   local layers_str=$1
   local -a parts=("${(@f)layers_str}")
-  local idx=1 entry count arity word
+  local total3=0 total2=0 entry count arity
+  for entry in "${parts[@]}"; do
+    count=${entry%%:*}
+    arity=${entry##*:}
+    if (( arity == 3 )); then
+      (( total3 += count ))
+    else
+      (( total2 += count ))
+    fi
+  done
+  printf "x%d of 3→1 mergers, x%d of 2→1 mergers (order doesn’t matter)" "$total3" "$total2"
+}
+
+__bc_do_lines() {
+  local layers_str=$1 indent=${2:-"    "}
+  local -a parts=("${(@f)layers_str}")
+  local idx=1 entry count arity word total_in
+  if (( ${#parts[@]} == 0 )); then
+    printf "%sno merger layers required.\n" "$indent"
+    return
+  fi
   for entry in "${parts[@]}"; do
     count=${entry%%:*}
     arity=${entry##*:}
     (( count == 0 )) && continue
     word="merger"
     (( count != 1 )) && word+="s"
-    printf "    Layer %d – place %d %s to combine %d lanes into %d belt" "$idx" "$count" "$word" "$arity" 1
+    total_in=$(( count * arity ))
+    printf "%sLayer %d – place %d %s to combine %d lanes into %d belt" "$indent" "$idx" "$count" "$word" "$total_in" "$count"
     printf " (%d× %d→1)\n" "$count" "$arity"
     (( idx++ ))
   done
-  if (( idx == 1 )); then
-    echo "    no merger layers required."
+}
+
+__bc_steps_short() {
+  local layers_str=$1
+  local -a parts=("${(@f)layers_str}")
+  if (( ${#parts[@]} == 0 )); then
+    echo "no merger layers"
+    return
   fi
+  local idx=1 entry count arity
+  local -a lines=()
+  for entry in "${parts[@]}"; do
+    count=${entry%%:*}
+    arity=${entry##*:}
+    lines+=("Layer ${idx} place ${count}×${arity}→1")
+    (( idx++ ))
+  done
+  echo "${(j:; :)lines}"
+}
+
+__bc_note_from_plan() {
+  local layers_str=$1 label=$2
+  local -a parts=("${(@f)layers_str}")
+  if (( ${#parts[@]} == 0 )); then
+    echo ""
+    return
+  fi
+  local -a factors=()
+  local -a counts=()
+  local total=0 entry count arity
+  for entry in "${parts[@]}"; do
+    count=${entry%%:*}
+    arity=${entry##*:}
+    factors+=("$arity")
+    counts+=("$count")
+    (( total += count ))
+  done
+  local branch_expr="${(j:×:)factors}"
+  local sum_expr="${(j: + :)counts}"
+  printf "%s – Layer order %s (branch sequence) → total mergers %s = %d" "$label" "$branch_expr" "$sum_expr" "$total"
 }
 
 __bal_detect_mode() {
@@ -612,7 +703,6 @@ __bal_handle_balancer_ratio() {
   local descriptor="${inputs}:${outputs}"
   local headline="evenly mix ${inputs} inputs across ${outputs} outputs"
   local split_target=$outputs
-  local merge_target=$inputs
 
   local split_clean=$(__bal_next_clean "$split_target")
   local split_loop=$(( split_clean - split_target ))
@@ -621,12 +711,7 @@ __bal_handle_balancer_ratio() {
   local split_count3=$split_b
   local split_count2=$split_a
 
-  local merge_clean=$(__bal_next_clean "$merge_target")
-  local merge_pad=$(( merge_clean - merge_target ))
-  local merge_a merge_b merge_r
-  read merge_a merge_b merge_r <<< "$(__bal_exponents23 "$merge_clean")"
-  local merge_count3=$merge_b
-  local merge_count2=$merge_a
+  local merge_plan=$(__bc_plan_merge_layers "$inputs" 1)
 
   if (( quiet )); then
     local -a fields=("$descriptor" "BELT-BALANCER" "$headline")
@@ -635,20 +720,15 @@ __bal_handle_balancer_ratio() {
       (( split_loop == 1 )) && loop_label="output"
       fields+=("Split loop back: ${split_loop} ${loop_label} per input")
     fi
-    if (( merge_pad > 0 )); then
-      local pad_label="dummy lanes"
-      (( merge_pad == 1 )) && pad_label="dummy lane"
-      fields+=("Merge pad: ${merge_pad} ${pad_label} per output")
-    fi
     local split_summary=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
     fields+=("$split_summary")
-    local split_steps=$(__bal_stage_steps_short "split" "$split_count3" "$split_count2")
+    local split_steps=$(__bal_split_steps_short "$split_count3" "$split_count2")
     if [[ -n "$split_steps" ]]; then
       fields+=("Split steps: $split_steps")
     fi
-    local merge_summary=$(__bal_recipe_summary "$merge_count3" "$merge_count2" "Merge recipe" "merge")
-    fields+=("$merge_summary")
-    local merge_steps=$(__bal_stage_steps_short "merge" "$merge_count3" "$merge_count2")
+    local merge_summary=$(__bb_merge_counts_summary "$merge_plan")
+    fields+=("Merge recipe: $merge_summary")
+    local merge_steps=$(__bc_steps_short "$merge_plan")
     if [[ -n "$merge_steps" ]]; then
       fields+=("Merge steps: $merge_steps")
     fi
@@ -658,64 +738,40 @@ __bal_handle_balancer_ratio() {
 
   printf "%s | BELT-BALANCER | %s\n" "$descriptor" "$headline"
   local split_summary_full=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
-  local merge_summary_full=$(__bal_recipe_summary "$merge_count3" "$merge_count2" "Merge recipe" "merge")
   local split_summary=${split_summary_full#Split recipe: }
-  local merge_summary=${merge_summary_full#Merge recipe: }
+  local merge_summary=$(__bb_merge_counts_summary "$merge_plan")
   printf "Split & Merge recipe: %s | %s.\n" "$split_summary" "$merge_summary"
 
   local sep=$'\x1F'
-  local split_blob=$(__bal_stage_lines_and_note "split" "$split_count3" "$split_count2")
+  local split_blob=$(__bal_split_lines_and_note "$split_count3" "$split_count2")
   local split_text=${split_blob%$sep*}
   local split_note_raw=${split_blob##*$sep}
-  local merge_blob=$(__bal_stage_lines_and_note "merge" "$merge_count3" "$merge_count2")
-  local merge_text=${merge_blob%$sep*}
-  local merge_note_raw=${merge_blob##*$sep}
 
-  local -a split_lines merge_lines
-  if [[ -n "$split_text" ]]; then
-    split_lines=("${(@f)split_text}")
-  else
-    split_lines=()
-  fi
-  if [[ -n "$merge_text" ]]; then
-    merge_lines=("${(@f)merge_text}")
-  else
-    merge_lines=()
-  fi
-
-  echo "  Split & Merge (per input):"
-  local line
-  if (( ${#split_lines[@]} == 0 )); then
+  echo "  Split (per input):"
+  if [[ -z "$split_text" ]]; then
     printf "    no split layers required.\n"
   else
-    for line in "${split_lines[@]}"; do
+    local line
+    for line in ${(f)split_text}; do
       printf "    %s\n" "$line"
     done
   fi
 
-  echo "  Split & Merge (per output):"
-  if (( ${#merge_lines[@]} == 0 )); then
-    printf "    no merge layers required.\n"
-  else
-    for line in "${merge_lines[@]}"; do
-      printf "    %s\n" "$line"
-    done
-  fi
+  echo "  Merge (per output):"
+  __bc_do_lines "$merge_plan"
 
-  local split_note="" merge_note=""
-  if [[ -n "$split_note_raw" && ( ${#split_lines[@]} == 0 || "$split_lines[1]" != "no split layers required." ) ]]; then
+  local split_note=""
+  if [[ -n "$split_note_raw" && "$split_text" != "no split layers required." ]]; then
     split_note="per input – ${split_note_raw}"
   fi
-  if [[ -n "$merge_note_raw" && ( ${#merge_lines[@]} == 0 || "$merge_lines[1]" != "no merge layers required." ) ]]; then
-    merge_note="per output – ${merge_note_raw}"
-  fi
+  local merge_note_raw=$(__bc_note_from_plan "$merge_plan" "per output")
   local combined_note=""
   if [[ -n "$split_note" ]]; then
     combined_note="$split_note"
   fi
-  if [[ -n "$merge_note" ]]; then
+  if [[ -n "$merge_note_raw" ]]; then
     [[ -n "$combined_note" ]] && combined_note+=" | "
-    combined_note+="$merge_note"
+    combined_note+="$merge_note_raw"
   fi
   if [[ -n "$combined_note" ]]; then
     printf "  Note: %s.\n" "$combined_note"
@@ -725,11 +781,6 @@ __bal_handle_balancer_ratio() {
     local loop_word="outputs"
     (( split_loop == 1 )) && loop_word="output"
     printf "Split loop back: %d %s per input\n" "$split_loop" "$loop_word"
-  fi
-  if (( merge_pad > 0 )); then
-    local pad_word="dummy lanes"
-    (( merge_pad == 1 )) && pad_word="dummy lane"
-    printf "Merge pad: %d %s per output\n" "$merge_pad" "$pad_word"
   fi
   return 0
 }
