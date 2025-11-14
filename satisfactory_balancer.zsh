@@ -404,23 +404,18 @@ __bal_lcm() {
 
 __bal_priority_chain() {
   local outputs=$1
-  if (( outputs <= 6 )); then
-    local -a labels=()
-    local i=1
-    while (( i <= outputs )); do
-      labels+=("O${i}")
-      (( i++ ))
-    done
-    echo "${(j:→:)labels}"
-  else
-    local -a labels=()
-    local i=1
-    while (( i <= outputs )); do
-      labels+=("O${i}")
-      (( i++ ))
-    done
-    echo "${(j:→:)labels}"
-  fi
+  local -a labels=()
+  local i=1 label
+  while (( i <= outputs )); do
+    if (( i < 10 )); then
+      label="O${i}"
+    else
+      label="${i}"
+    fi
+    labels+=("$label")
+    (( i++ ))
+  done
+  echo "${(j:→:)labels}"
 }
 
 __bc_priority_lines() {
