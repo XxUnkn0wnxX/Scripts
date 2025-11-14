@@ -1,8 +1,8 @@
 #!/usr/bin/env zsh
 # Satisfactory load-balancer helper — pure CLI (zsh)
 # Modes:
-#   LOAD BALANCER → 1 input spread across n outputs (1→n)
-#   BALANCER      → n inputs evenly mixed across m outputs (n>1, m≥n)
+#   LOAD-BALANCER → 1 input spread across n outputs (1→n)
+#   BELT-BALANCER → n inputs evenly mixed across m outputs (n>1, m≥n)
 #   COMPRESSOR    → n inputs compressed into m outputs with pack-first priority (n>1, m<n)
 
 __bal_usage() {
@@ -16,7 +16,7 @@ Options:
   -h, --help     Show this help and exit.
 
 Notes:
-  • Normal ratios automatically detect LOAD BALANCER, BALANCER, or COMPRESSOR mode.
+  • Normal ratios automatically detect LOAD-BALANCER, BELT-BALANCER, or COMPRESSOR mode.
   • Nico mode processes complex 1→N ratios inspired by NicoBuilds' Reddit guide.
   • Inputs and outputs must be positive integers; use explicit 1:n instead of bare n.
 USAGE
@@ -205,7 +205,7 @@ __bal_recipe_summary() {
 __bal_quiet_clean_line() {
   local inputs=$1 outputs=$2 count3=$3 count2=$4 prev=$5
   local recipe=$(__bal_recipe_summary "$count3" "$count2")
-  local fields=("${inputs}:${outputs}" "LOAD BALANCER" "CLEAN → build 1→$outputs (no loopback)" "$recipe")
+  local fields=("${inputs}:${outputs}" "LOAD-BALANCER" "CLEAN → build 1→$outputs (no loopback)" "$recipe")
   local step_lines=$(__bal_build_steps "$count3" "$count2")
   if [[ -n "$step_lines" ]]; then
     local -a steps_short=()
@@ -229,7 +229,7 @@ __bal_quiet_dirty_line() {
   local loop_text="loop back $loopback outputs"
   (( loopback == 1 )) && loop_text="loop back 1 output"
   local recipe=$(__bal_recipe_summary "$count3" "$count2")
-  local fields=("$descriptor" "LOAD BALANCER" "NOT clean (leftover $leftover)" "build 1→$next" "$loop_text" "$recipe")
+  local fields=("$descriptor" "LOAD-BALANCER" "NOT clean (leftover $leftover)" "build 1→$next" "$loop_text" "$recipe")
   local step_lines=$(__bal_build_steps "$count3" "$count2")
   if [[ -n "$step_lines" ]]; then
     local -a steps_short=()
@@ -318,9 +318,7 @@ __bal_stage_steps_short() {
 }
 
 __bal_stage_lines_and_note() {
-  local mode=$1 count3=$2 count2=$3 lines_var=$4 note_var=$5
-  eval "$lines_var=()"
-  eval "$note_var="
+  local mode=$1 count3=$2 count2=$3
   local builder="__bal_build_steps"
   local noun="splitter" noun_plural="splitters"
   if [[ $mode == "merge" ]]; then
@@ -329,41 +327,42 @@ __bal_stage_lines_and_note() {
     noun_plural="mergers"
   fi
   local step_lines=$($builder "$count3" "$count2")
+  local lines_text=""
+  local note=""
   if [[ -z "$step_lines" ]]; then
-    local no_line="no ${mode} layers required."
-    eval "$lines_var=( ${(q)no_line} )"
-    return
-  fi
-  local -a lines=()
-  local -a total_counts=()
-  local -a factors=()
-  local line remainder count factor verbose
-  for line in ${(f)step_lines}; do
-    verbose=${line%%$'\t'*}
-    lines+=("$verbose")
-    remainder=${line#*$'\t'}
-    remainder=${remainder#*$'\t'}
-    count=${remainder%%$'\t'*}
-    remainder=${remainder#*$'\t'}
-    factor=$remainder
-    total_counts+=("$count")
-    factors+=("$factor")
-  done
-  local qlines=("${(@q)lines[@]}")
-  eval "$lines_var=( ${qlines[*]} )"
-  if (( ${#total_counts[@]} > 0 )); then
-    local sum_expr="${(j: + :)total_counts}"
-    local factor_expr="${(j:×:)factors}"
-    local total_nodes=0
-    local c
-    for c in "${total_counts[@]}"; do
-      (( total_nodes += c ))
+    lines_text="no ${mode} layers required."
+  else
+    local -a total_counts=()
+    local -a factors=()
+    local line remainder count factor verbose
+    for line in ${(f)step_lines}; do
+      verbose=${line%%$'\t'*}
+      if [[ -n "$lines_text" ]]; then
+        lines_text+=$'\n'
+      fi
+      lines_text+="$verbose"
+      remainder=${line#*$'\t'}
+      remainder=${remainder#*$'\t'}
+      count=${remainder%%$'\t'*}
+      remainder=${remainder#*$'\t'}
+      factor=$remainder
+      total_counts+=("$count")
+      factors+=("$factor")
     done
-    local noun_phrase=$noun_plural
-    (( total_nodes == 1 )) && noun_phrase=$noun
-    local note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} ${sum_expr} = ${total_nodes}"
-    eval "$note_var=${(q)note}"
+    if (( ${#total_counts[@]} > 0 )); then
+      local sum_expr="${(j: + :)total_counts}"
+      local factor_expr="${(j:×:)factors}"
+      local total_nodes=0
+      local c
+      for c in "${total_counts[@]}"; do
+        (( total_nodes += c ))
+      done
+      local noun_phrase=$noun_plural
+      (( total_nodes == 1 )) && noun_phrase=$noun
+      note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} ${sum_expr} = ${total_nodes}"
+    fi
   fi
+  printf '%s\x1F%s\n' "$lines_text" "$note"
 }
 
 
@@ -411,6 +410,21 @@ __bal_lcm() {
   echo $(( a / gcd * b ))
 }
 
+__bal_priority_chain() {
+  local outputs=$1
+  if (( outputs <= 6 )); then
+    local -a labels=()
+    local i=1
+    while (( i <= outputs )); do
+      labels+=("O${i}")
+      (( i++ ))
+    done
+    echo "${(j:→:)labels}"
+  else
+    echo "O1→O2→...→O${outputs}"
+  fi
+}
+
 __bal_detect_mode() {
   local inputs=$1 outputs=$2
   if (( inputs == 1 )); then
@@ -438,7 +452,7 @@ __bal_handle_trivial_load() {
     __bal_quiet_clean_line "$inputs" "$outputs" 0 0 0
     return 0
   fi
-  printf "%s | LOAD BALANCER | %s\n" "$descriptor" "$headline"
+  printf "%s | LOAD-BALANCER | %s\n" "$descriptor" "$headline"
   __bal_recipe_lines 0 0
   return 0
 }
@@ -452,7 +466,7 @@ __bal_handle_load_clean() {
     __bal_quiet_clean_line "$inputs" "$outputs" "$count3" "$count2" "$prev"
     return 0
   fi
-  printf "%s | LOAD BALANCER | %s\n" "$descriptor" "$headline"
+  printf "%s | LOAD-BALANCER | %s\n" "$descriptor" "$headline"
   __bal_recipe_lines "$count3" "$count2"
   if (( prev > 0 && prev < outputs )); then
     printf "Prev clean: 1:%d\n" "$prev"
@@ -463,7 +477,7 @@ __bal_handle_load_clean() {
 __bal_handle_load_dirty() {
   local inputs=$1 outputs=$2 quiet=$3 leftover=$4 count2_clean=$5 count3_clean=$6
   local descriptor="${inputs}:${outputs}"
-  local mode="LOAD BALANCER"
+  local mode="LOAD-BALANCER"
   local headline="NOT clean (leftover ${leftover})"
   local next_clean=$(__bal_next_clean "$outputs")
   local loopback=$(( next_clean - outputs ))
@@ -506,9 +520,8 @@ __bal_handle_balancer_ratio() {
   local inputs=$1 outputs=$2 quiet=$3
   local descriptor="${inputs}:${outputs}"
   local headline="evenly mix ${inputs} inputs across ${outputs} outputs"
-  local lcm=$(__bal_lcm "$inputs" "$outputs")
-  local split_target=$(( lcm / inputs ))
-  local merge_target=$(( lcm / outputs ))
+  local split_target=$outputs
+  local merge_target=$inputs
 
   local split_clean=$(__bal_next_clean "$split_target")
   local split_loop=$(( split_clean - split_target ))
@@ -525,7 +538,7 @@ __bal_handle_balancer_ratio() {
   local merge_count2=$merge_a
 
   if (( quiet )); then
-    local -a fields=("$descriptor" "BALANCER" "$headline")
+    local -a fields=("$descriptor" "BELT-BALANCER" "$headline")
     if (( split_loop > 0 )); then
       local loop_label="outputs"
       (( split_loop == 1 )) && loop_label="output"
@@ -552,7 +565,7 @@ __bal_handle_balancer_ratio() {
     return 0
   fi
 
-  printf "%s | BALANCER | %s\n" "$descriptor" "$headline"
+  printf "%s | BELT-BALANCER | %s\n" "$descriptor" "$headline"
   local split_summary_full=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
   local merge_summary_full=$(__bal_recipe_summary "$merge_count3" "$merge_count2" "Merge recipe" "merge")
   local split_summary=${split_summary_full#Split recipe: }
@@ -560,27 +573,56 @@ __bal_handle_balancer_ratio() {
   printf "Split & Merge recipe: %s | %s.\n" "$split_summary" "$merge_summary"
 
   local sep=$'\x1F'
+  local split_blob=$(__bal_stage_lines_and_note "split" "$split_count3" "$split_count2")
+  local split_text=${split_blob%$sep*}
+  local split_note_raw=${split_blob##*$sep}
+  local merge_blob=$(__bal_stage_lines_and_note "merge" "$merge_count3" "$merge_count2")
+  local merge_text=${merge_blob%$sep*}
+  local merge_note_raw=${merge_blob##*$sep}
+
   local -a split_lines merge_lines
-  local split_note="" merge_note=""
-  __bal_stage_lines_and_note "split" "$split_count3" "$split_count2" split_lines split_note
-  __bal_stage_lines_and_note "merge" "$merge_count3" "$merge_count2" merge_lines merge_note
+  if [[ -n "$split_text" ]]; then
+    split_lines=("${(@f)split_text}")
+  else
+    split_lines=()
+  fi
+  if [[ -n "$merge_text" ]]; then
+    merge_lines=("${(@f)merge_text}")
+  else
+    merge_lines=()
+  fi
 
   echo "  Split & Merge (per input):"
   local line
-  for line in "${split_lines[@]}"; do
-    [[ -z "$line" ]] && continue
-    printf "    %s\n" "$line"
-  done
-  for line in "${merge_lines[@]}"; do
-    [[ -z "$line" ]] && continue
-    printf "    %s\n" "$line"
-  done
+  if (( ${#split_lines[@]} == 0 )); then
+    printf "    no split layers required.\n"
+  else
+    for line in "${split_lines[@]}"; do
+      printf "    %s\n" "$line"
+    done
+  fi
 
+  echo "  Split & Merge (per output):"
+  if (( ${#merge_lines[@]} == 0 )); then
+    printf "    no merge layers required.\n"
+  else
+    for line in "${merge_lines[@]}"; do
+      printf "    %s\n" "$line"
+    done
+  fi
+
+  local split_note="" merge_note=""
+  if [[ -n "$split_note_raw" && ( ${#split_lines[@]} == 0 || "$split_lines[1]" != "no split layers required." ) ]]; then
+    split_note="per input – ${split_note_raw}"
+  fi
+  if [[ -n "$merge_note_raw" && ( ${#merge_lines[@]} == 0 || "$merge_lines[1]" != "no merge layers required." ) ]]; then
+    merge_note="per output – ${merge_note_raw}"
+  fi
   local combined_note=""
-  if [[ -n "$split_note" && "$split_lines[1]" != "no split layers required." ]]; then
+  if [[ -n "$split_note" ]]; then
     combined_note="$split_note"
   fi
-  if [[ -n "$merge_note" && "$merge_lines[1]" != "no merge layers required." ]]; then
+  if [[ -n "$merge_note" ]]; then
     [[ -n "$combined_note" ]] && combined_note+=" | "
     combined_note+="$merge_note"
   fi
@@ -605,27 +647,33 @@ __bal_handle_compressor_ratio() {
   local inputs=$1 outputs=$2 quiet=$3
   local descriptor="${inputs}:${outputs}"
   local headline="compress ${inputs} into ${outputs} (pack-first)"
-  local -a priority=()
-  local idx=1
-  while (( idx <= outputs )); do
-    priority+=("O${idx}")
-    (( idx++ ))
-  done
-  local priority_seq="${(j:→:)priority}"
-  local recipe_line="Recipe: use 3→1 and 2→1 mergers in short priority stacks (order doesn’t matter)"
-  local do_line="  Do: build a left→right chain so ${priority_seq} receives overflow in that order."
-  local overflow_line="  Tip: keep mergers compact so O1 fills first before passing extra to the next output."
+  local priority_seq=$(__bal_priority_chain "$outputs")
+  local recipe_line="Merge recipe: use 3→1 and 2→1 mergers in short priority stacks (order doesn’t matter)"
 
   if (( quiet )); then
-    local -a fields=("$descriptor" "COMPRESSOR" "$headline" "Priority: ${priority_seq}" "$recipe_line" "Guide: build a priority chain so overflow cascades ${priority_seq}.")
+    local guide="Guide: build a priority chain so overflow cascades ${priority_seq}."
+    local -a fields=("$descriptor" "COMPRESSOR" "$headline" "Priority: ${priority_seq}" "$recipe_line" "$guide")
     __bal_join_fields "${fields[@]}"
     return 0
   fi
 
   printf "%s | COMPRESSOR | %s\n" "$descriptor" "$headline"
   echo "$recipe_line"
-  echo "$do_line"
-  echo "$overflow_line"
+  if (( outputs == 1 )); then
+    echo "  Merge (single output O1):"
+    printf "    Do: merge all %d input belts down into one belt so O1 receives the full flow.\n" "$inputs"
+    echo "Note: Only one output, so all capacity lives on O1."
+    return 0
+  fi
+
+  echo "  Merge (per output):"
+  printf "    O1: build a compact merger stack so all %d inputs converge on O1 first.\n" "$inputs"
+  if (( outputs == 2 )); then
+    echo "    O2: capture overflow from O1 with another short merger stack so it fills after O1."
+  else
+    printf "    O2...O%d: daisy-chain overflow from the previous output so each fills only after the earlier ones are saturated.\n" "$outputs"
+  fi
+  echo "Note: Priority ${priority_seq}. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
   return 0
 }
 
