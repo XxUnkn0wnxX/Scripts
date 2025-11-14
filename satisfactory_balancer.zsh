@@ -11,7 +11,6 @@ Usage: satisfactory_balancer.zsh [options] n:m [n:m ...]
   Helper for Satisfactory splitter/merger layouts that mimic the official Balancer wiki.
 
 Options:
-  -q, --quiet    Compact single-line output (same prefix/headline as normal mode).
   -n, --nico     Enable Nico ratio mode for complex 1→N splits (1:A:B[:C...]).
   -h, --help     Show this help and exit.
 
@@ -200,51 +199,6 @@ __bal_recipe_summary() {
   fi
 
   echo "${desc}"
-}
-
-__bal_quiet_clean_line() {
-  local inputs=$1 outputs=$2 count3=$3 count2=$4 prev=$5
-  local recipe=$(__bal_recipe_summary "$count3" "$count2")
-  local fields=("${inputs}:${outputs}" "LOAD-BALANCER" "CLEAN → build 1→$outputs (no loopback)" "$recipe")
-  local step_lines=$(__bal_build_steps "$count3" "$count2")
-  if [[ -n "$step_lines" ]]; then
-    local -a steps_short=()
-    local line short
-    for line in ${(f)step_lines}; do
-      short=${line#*$'\t'}
-      short=${short%%$'\t'*}
-      steps_short+=("$short")
-    done
-    fields+=("Steps: ${(j:; :)steps_short}")
-  fi
-  if (( prev > 0 && prev < outputs )); then
-    fields+=("Prev clean 1:$prev")
-  fi
-  __bal_join_fields "${fields[@]}"
-}
-
-__bal_quiet_dirty_line() {
-  local inputs=$1 outputs=$2 leftover=$3 next=$4 loopback=$5 count3=$6 count2=$7 prev=$8
-  local descriptor="${inputs}:${outputs}"
-  local loop_text="loop back $loopback outputs"
-  (( loopback == 1 )) && loop_text="loop back 1 output"
-  local recipe=$(__bal_recipe_summary "$count3" "$count2")
-  local fields=("$descriptor" "LOAD-BALANCER" "NOT clean (leftover $leftover)" "build 1→$next" "$loop_text" "$recipe")
-  local step_lines=$(__bal_build_steps "$count3" "$count2")
-  if [[ -n "$step_lines" ]]; then
-    local -a steps_short=()
-    local line short
-    for line in ${(f)step_lines}; do
-      short=${line#*$'\t'}
-      short=${short%%$'\t'*}
-      steps_short+=("$short")
-    done
-    fields+=("Steps: ${(j:; :)steps_short}")
-  fi
-  if (( prev > 0 )); then
-    fields+=("Prev clean 1:$prev")
-  fi
-  __bal_join_fields "${fields[@]}"
 }
 
 __bal_recipe_lines() {
@@ -679,27 +633,19 @@ __bal_detect_mode() {
 }
 
 __bal_handle_trivial_load() {
-  local inputs=$1 outputs=$2 quiet=$3
+  local inputs=$1 outputs=$2
   local descriptor="${inputs}:${outputs}"
   local headline="CLEAN → build 1→${outputs} (no loopback)"
-  if (( quiet )); then
-    __bal_quiet_clean_line "$inputs" "$outputs" 0 0 0
-    return 0
-  fi
   printf "%s | LOAD-BALANCER | %s\n" "$descriptor" "$headline"
   __bal_recipe_lines 0 0 "Recipe" "Split (single input)"
   return 0
 }
 
 __bal_handle_load_clean() {
-  local inputs=$1 outputs=$2 quiet=$3 count2=$4 count3=$5
+  local inputs=$1 outputs=$2 count2=$3 count3=$4
   local descriptor="${inputs}:${outputs}"
   local headline="CLEAN → build 1→${outputs} (no loopback)"
   local prev=$(__bal_prev_clean "$outputs")
-  if (( quiet )); then
-    __bal_quiet_clean_line "$inputs" "$outputs" "$count3" "$count2" "$prev"
-    return 0
-  fi
   printf "%s | LOAD-BALANCER | %s\n" "$descriptor" "$headline"
   __bal_recipe_lines "$count3" "$count2" "Recipe" "Split (single input)"
   if (( prev > 0 && prev < outputs )); then
@@ -709,7 +655,7 @@ __bal_handle_load_clean() {
 }
 
 __bal_handle_load_dirty() {
-  local inputs=$1 outputs=$2 quiet=$3 leftover=$4 count2_clean=$5 count3_clean=$6
+  local inputs=$1 outputs=$2 leftover=$3 count2_clean=$4 count3_clean=$5
   local descriptor="${inputs}:${outputs}"
   local mode="LOAD-BALANCER"
   local headline="NOT clean (leftover ${leftover})"
@@ -718,10 +664,6 @@ __bal_handle_load_dirty() {
   local prev=$(__bal_prev_clean "$outputs")
   local loop_word="outputs"
   (( loopback == 1 )) && loop_word="output"
-  if (( quiet )); then
-    __bal_quiet_dirty_line "$inputs" "$outputs" "$leftover" "$next_clean" "$loopback" "$count3_clean" "$count2_clean" "$prev"
-    return 0
-  fi
   printf "%s | %s | %s\n" "$descriptor" "$mode" "$headline"
   printf "Next clean size: %d → build 1→%d\n" "$next_clean" "$next_clean"
   __bal_recipe_lines "$count3_clean" "$count2_clean" "Recipe" "Split (single input)"
@@ -733,25 +675,25 @@ __bal_handle_load_dirty() {
 }
 
 __bal_handle_load_ratio() {
-  local inputs=$1 outputs=$2 quiet=$3
+  local inputs=$1 outputs=$2
   if (( outputs == 1 )); then
-    __bal_handle_trivial_load "$inputs" "$outputs" "$quiet"
+    __bal_handle_trivial_load "$inputs" "$outputs"
     return $?
   fi
   local a=0 b=0 r=0
   read a b r <<< "$(__bal_exponents23 "$outputs")"
   if (( r == 1 )); then
-    __bal_handle_load_clean "$inputs" "$outputs" "$quiet" "$a" "$b"
+    __bal_handle_load_clean "$inputs" "$outputs" "$a" "$b"
   else
     local am=0 bm=0 rr=0
     local next_clean=$(__bal_next_clean "$outputs")
     read am bm rr <<< "$(__bal_exponents23 "$next_clean")"
-    __bal_handle_load_dirty "$inputs" "$outputs" "$quiet" "$r" "$am" "$bm"
+    __bal_handle_load_dirty "$inputs" "$outputs" "$r" "$am" "$bm"
   fi
 }
 
 __bal_handle_balancer_ratio() {
-  local inputs=$1 outputs=$2 quiet=$3
+  local inputs=$1 outputs=$2
   local descriptor="${inputs}:${outputs}"
   local headline="evenly mix ${inputs} inputs across ${outputs} outputs"
   local split_target=$outputs
@@ -778,34 +720,6 @@ __bal_handle_balancer_ratio() {
   local merge_count3=$merge_b
   __bal_best_sequence "$merge_count3" "$merge_count2"
   local merge_seq=$__bal_plan_best_seq
-
-  if (( quiet )); then
-    local -a fields=("$descriptor" "BELT-BALANCER" "$headline")
-    if (( split_loop > 0 )); then
-      local loop_label="outputs"
-      (( split_loop == 1 )) && loop_label="output"
-      fields+=("Split loop back: ${split_loop} ${loop_label} per input")
-    fi
-    local split_summary=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
-    fields+=("$split_summary")
-    local split_steps=$(__bal_split_steps_short "$split_count3" "$split_count2")
-    if [[ -n "$split_steps" ]]; then
-      fields+=("Split steps: $split_steps")
-    fi
-    local merge_summary=$(__bal_recipe_summary "$merge_count3" "$merge_count2" "Merge recipe" "merge")
-    fields+=("$merge_summary")
-    local merge_steps=$(__bal_merge_steps_short "$merge_seq")
-    if [[ -n "$merge_steps" ]]; then
-      fields+=("Merge steps: $merge_steps")
-    fi
-    if (( merge_pad > 0 )); then
-      local pad_word="dummy lanes"
-      (( merge_pad == 1 )) && pad_word="dummy lane"
-      fields+=("Merge pad: ${merge_pad} ${pad_word} per output")
-    fi
-    __bal_join_fields "${fields[@]}"
-    return 0
-  fi
 
   printf "%s | BELT-BALANCER | %s\n" "$descriptor" "$headline"
   local split_summary_full=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
@@ -871,7 +785,7 @@ __bal_handle_balancer_ratio() {
 }
 
 __bal_handle_compressor_ratio() {
-  local inputs=$1 outputs=$2 quiet=$3
+  local inputs=$1 outputs=$2
   local descriptor="${inputs}:${outputs}"
   local headline="compress ${inputs} into ${outputs} (pack-first)"
   local priority_seq=$(__bal_priority_chain "$outputs")
@@ -880,28 +794,6 @@ __bal_handle_compressor_ratio() {
   local recipe_line=$(__bc_layers_summary "$layers_str")
   recipe_line+=" (order doesn’t matter)"
   local lane_note=$(__bc_lane_budget_summary "$budgets_str")
-
-  if (( quiet )); then
-    local -a fields
-    if (( outputs == 1 )); then
-      local note="Note: Only one output, so all capacity lives on O1."
-      if [[ -n "$lane_note" ]]; then
-        note+=" ${lane_note}."
-      fi
-      fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "$note")
-    else
-      local note="Note: Priority ${priority_seq}."
-      if [[ -n "$lane_note" ]]; then
-        note+=" ${lane_note}."
-      fi
-      note+=" Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
-      local summary="Merge recipe: ${recipe_line}"
-      local steps=$(__bc_steps_short "$layers_str")
-      fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "$summary" "Priority: ${priority_seq}" "Merge steps: $steps" "$note")
-    fi
-    __bal_join_fields "${fields[@]}"
-    return 0
-  fi
 
   printf "%s | BELT-COMPRESSOR | %s\n" "$descriptor" "$headline"
   printf "Merge recipe: %s\n" "$recipe_line"
@@ -928,7 +820,7 @@ __bal_handle_compressor_ratio() {
 }
 
 __bal_process_ratio() {
-  local token=$1 quiet=$2
+  local token=$1
   local -a parts=("${(@s/:/)token}")
   if (( ${#parts[@]} != 2 )); then
     echo "invalid ratio: ${token}" >&2
@@ -947,13 +839,13 @@ __bal_process_ratio() {
   fi
   case "$mode" in
     load)
-      __bal_handle_load_ratio "$inputs" "$outputs" "$quiet"
+      __bal_handle_load_ratio "$inputs" "$outputs"
       ;;
     balancer)
-      __bal_handle_balancer_ratio "$inputs" "$outputs" "$quiet"
+      __bal_handle_balancer_ratio "$inputs" "$outputs"
       ;;
     compressor)
-      __bal_handle_compressor_ratio "$inputs" "$outputs" "$quiet"
+      __bal_handle_compressor_ratio "$inputs" "$outputs"
       ;;
   esac
 }
@@ -964,7 +856,7 @@ __bal_process_nico_mode() {
 }
 
 __bal_main() {
-  local quiet=0 nico=0
+  local nico=0
   local -a args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -975,10 +867,6 @@ __bal_main() {
           shift
         done
         break
-        ;;
-      -q|--quiet)
-        quiet=1
-        shift
         ;;
       -n|--nico)
         nico=1
@@ -1006,13 +894,13 @@ __bal_main() {
   fi
 
   if (( nico )); then
-    __bal_process_nico_mode "$quiet" "${args[@]}"
+    __bal_process_nico_mode "${args[@]}"
     return $?
   fi
 
   local had_error=0 target rc
   for target in "${args[@]}"; do
-    __bal_process_ratio "$target" "$quiet"
+    __bal_process_ratio "$target"
     rc=$?
     if (( rc != 0 )); then
       if (( had_error == 0 || rc > had_error )); then

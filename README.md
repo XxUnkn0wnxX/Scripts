@@ -32,7 +32,6 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
   - Other balancing/compression modes (e.g., `1:1`, `2:1`, `2:2`) are work in progress and will be enabled later.
   - Detects “clean” counts (`2^a·3^b`) and rounds non-clean requests up to the next clean size, reporting loop-back outputs.
   - Searches all 1→2 / 1→3 layer permutations to pick the layout that uses the fewest splitters; the verbose output lists each layer on its own line (`place 4 splitters to create 12 outputs`) and finishes with a branch-sequence summary.
-  - Quiet mode (`-q`) mirrors the chosen layer order in a compact pipe-delimited line for quick copying/notes.
 
 ### Audio Helpers (`Audio/`)
 
