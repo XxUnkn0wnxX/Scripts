@@ -113,17 +113,55 @@ __bal_build_steps() {
   printf '%s\n' "${lines[@]}"
 }
 
-__bal_recipe_summary() {
+__bal_merge_build_steps() {
   local count3=$1 count2=$2
   __bal_best_sequence "$count3" "$count2"
   local seq=${__bal_plan_best_seq}
   if [[ -z "$seq" ]]; then
-    echo "Recipe: no splitter layers"
+    return
+  fi
+
+  local -a factors=(${=seq})
+  local total=1 factor
+  for factor in "${factors[@]}"; do
+    total=$(( total * factor ))
+  done
+
+  local lines=()
+  local layer=1 lanes=$total nodes word next verbose short
+  for factor in "${factors[@]}"; do
+    nodes=$(( lanes / factor ))
+    word="merger"
+    (( nodes != 1 )) && word+="s"
+    verbose="Layer ${layer} – place ${nodes} ${word} to combine ${factor} lanes into 1 (${nodes}× ${factor}→1)"
+    short="Layer ${layer} place ${nodes}×${factor}→1"
+    lines+=("${verbose}"$'\t'"${short}"$'\t'"${nodes}"$'\t'"${factor}")
+    lanes=$nodes
+    (( layer++ ))
+  done
+
+  printf '%s\n' "${lines[@]}"
+}
+
+__bal_recipe_summary() {
+  local count3=$1 count2=$2 label=${3:-"Recipe"} mode=${4:-"split"}
+  if [[ $mode == "merge" ]]; then
+    if (( count3 == 0 && count2 == 0 )); then
+      echo "${label}: no merger layers"
+      return
+    fi
+    printf "%s: x%d of 3→1 mergers, x%d of 2→1 mergers (order doesn’t matter)" "$label" "$count3" "$count2"
+    return
+  fi
+  __bal_best_sequence "$count3" "$count2"
+  local seq=${__bal_plan_best_seq}
+  if [[ -z "$seq" ]]; then
+    echo "${label}: no splitter layers"
     return
   fi
 
   local -a tokens=(${=seq})
-  local desc="Recipe: Layers → "
+  local desc="${label}: Layers → "
   local factor first=1 branches=1
   for factor in "${tokens[@]}"; do
     if (( first )); then
@@ -137,9 +175,9 @@ __bal_recipe_summary() {
 
   if (( ${#tokens[@]} == 1 )); then
     if [[ ${tokens[1]} == 2 ]]; then
-      desc="Recipe: 1 layer of 1→2 splitters"
+      desc="${label}: 1 layer of 1→2 splitters"
     else
-      desc="Recipe: 1 layer of 1→3 splitters"
+      desc="${label}: 1 layer of 1→3 splitters"
     fi
   elif (( ${#tokens[@]} > 1 )); then
     local all_same=1
@@ -154,9 +192,9 @@ __bal_recipe_summary() {
       local word="layers"
       (( layers == 1 )) && word="layer"
       if (( tokens[1] == 2 )); then
-        desc="Recipe: ${layers} ${word} of 1→2 splitters"
+        desc="${label}: ${layers} ${word} of 1→2 splitters"
       else
-        desc="Recipe: ${layers} ${word} of 1→3 splitters"
+        desc="${label}: ${layers} ${word} of 1→3 splitters"
       fi
     fi
   fi
@@ -210,18 +248,23 @@ __bal_quiet_dirty_line() {
 }
 
 __bal_recipe_lines() {
-  local count3=$1 count2=$2
-  local summary=$(__bal_recipe_summary "$count3" "$count2")
+  local count3=$1 count2=$2 label=${3:-"Recipe"} subject=${4:-"Do"} mode=${5:-"split"}
+  local summary=$(__bal_recipe_summary "$count3" "$count2" "$label" "$mode")
   echo "${summary}."
 
-  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  local step_lines
+  if [[ $mode == "merge" ]]; then
+    step_lines=$(__bal_merge_build_steps "$count3" "$count2")
+  else
+    step_lines=$(__bal_build_steps "$count3" "$count2")
+  fi
   if [[ -z "$step_lines" ]]; then
-    echo "  Do: no splitter layers required."
+    echo "  ${subject}: no ${mode} layers required."
   else
     local -a total_counts=()
     local -a factors=()
     local line verbose remainder count factor
-    echo "  Do:"
+    echo "  ${subject}:"
     for line in ${(f)step_lines}; do
       verbose=${line%%$'\t'*}
       echo "    ${verbose}"
@@ -235,14 +278,43 @@ __bal_recipe_lines() {
     done
     if (( ${#total_counts[@]} > 0 )); then
       local sum_expr="${(j: + :)total_counts}"
-      local total_splitters=0
+      local total_nodes=0
       local factor_expr="${(j:×:)factors}"
       for count in "${total_counts[@]}"; do
-        (( total_splitters += count ))
+        (( total_nodes += count ))
       done
-      echo "  Note: Layer order ${factor_expr} (branch sequence) → total splitters ${sum_expr} = ${total_splitters}."
+      local noun="splitter"
+      local plural="splitters"
+      if [[ $mode == "merge" ]]; then
+        noun="merger"
+        plural="mergers"
+      fi
+      (( total_nodes == 1 )) && plural="$noun"
+      echo "  Note: Layer order ${factor_expr} (branch sequence) → total ${plural} ${sum_expr} = ${total_nodes}."
     fi
   fi
+}
+
+__bal_stage_steps_short() {
+  local mode=$1 count3=$2 count2=$3
+  local step_lines
+  if [[ $mode == "merge" ]]; then
+    step_lines=$(__bal_merge_build_steps "$count3" "$count2")
+  else
+    step_lines=$(__bal_build_steps "$count3" "$count2")
+  fi
+  if [[ -z "$step_lines" ]]; then
+    echo ""
+    return
+  fi
+  local -a steps_short=()
+  local line short
+  for line in ${(f)step_lines}; do
+    short=${line#*$'\t'}
+    short=${short%%$'\t'*}
+    steps_short+=("$short")
+  done
+  echo "${(j:; :)steps_short}"
 }
 
 
@@ -272,6 +344,22 @@ __bal_prev_clean() {
     (( pow3 *= 3 ))
   done
   echo $best
+}
+
+__bal_gcd() {
+  local a=$1 b=$2 tmp
+  while (( b != 0 )); do
+    tmp=$(( a % b ))
+    a=$b
+    b=$tmp
+  done
+  echo $(( a < 0 ? -a : a ))
+}
+
+__bal_lcm() {
+  local a=$1 b=$2
+  local gcd=$(__bal_gcd "$a" "$b")
+  echo $(( a / gcd * b ))
 }
 
 __bal_detect_mode() {
@@ -366,15 +454,97 @@ __bal_handle_load_ratio() {
 }
 
 __bal_handle_balancer_ratio() {
-  local inputs=$1 outputs=$2
-  echo "${inputs}:${outputs} → BALANCER mode not implemented yet" >&2
-  return 2
+  local inputs=$1 outputs=$2 quiet=$3
+  local descriptor="${inputs}:${outputs}"
+  local headline="evenly mix ${inputs} inputs across ${outputs} outputs"
+  local lcm=$(__bal_lcm "$inputs" "$outputs")
+  local split_target=$(( lcm / inputs ))
+  local merge_target=$(( lcm / outputs ))
+
+  local split_clean=$(__bal_next_clean "$split_target")
+  local split_loop=$(( split_clean - split_target ))
+  local split_a split_b split_r
+  read split_a split_b split_r <<< "$(__bal_exponents23 "$split_clean")"
+  local split_count3=$split_b
+  local split_count2=$split_a
+
+  local merge_clean=$(__bal_next_clean "$merge_target")
+  local merge_pad=$(( merge_clean - merge_target ))
+  local merge_a merge_b merge_r
+  read merge_a merge_b merge_r <<< "$(__bal_exponents23 "$merge_clean")"
+  local merge_count3=$merge_b
+  local merge_count2=$merge_a
+
+  if (( quiet )); then
+    local -a fields=("$descriptor" "BALANCER" "$headline")
+    if (( split_loop > 0 )); then
+      local loop_label="outputs"
+      (( split_loop == 1 )) && loop_label="output"
+      fields+=("Split loop back: ${split_loop} ${loop_label} per input")
+    fi
+    if (( merge_pad > 0 )); then
+      local pad_label="dummy lanes"
+      (( merge_pad == 1 )) && pad_label="dummy lane"
+      fields+=("Merge pad: ${merge_pad} ${pad_label} per output")
+    fi
+    local split_summary=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
+    fields+=("$split_summary")
+    local split_steps=$(__bal_stage_steps_short "split" "$split_count3" "$split_count2")
+    if [[ -n "$split_steps" ]]; then
+      fields+=("Split steps: $split_steps")
+    fi
+    local merge_summary=$(__bal_recipe_summary "$merge_count3" "$merge_count2" "Merge recipe" "merge")
+    fields+=("$merge_summary")
+    local merge_steps=$(__bal_stage_steps_short "merge" "$merge_count3" "$merge_count2")
+    if [[ -n "$merge_steps" ]]; then
+      fields+=("Merge steps: $merge_steps")
+    fi
+    __bal_join_fields "${fields[@]}"
+    return 0
+  fi
+
+  printf "%s | BALANCER | %s\n" "$descriptor" "$headline"
+  __bal_recipe_lines "$split_count3" "$split_count2" "Split recipe" "Split (per input)" "split"
+  if (( split_loop > 0 )); then
+    local loop_word="outputs"
+    (( split_loop == 1 )) && loop_word="output"
+    printf "Split loop back: %d %s per input\n" "$split_loop" "$loop_word"
+  fi
+  if (( merge_pad > 0 )); then
+    local pad_word="dummy lanes"
+    (( merge_pad == 1 )) && pad_word="dummy lane"
+    printf "Merge pad: %d %s per output\n" "$merge_pad" "$pad_word"
+  fi
+  __bal_recipe_lines "$merge_count3" "$merge_count2" "Merge recipe" "Merge (per output)" "merge"
+  return 0
 }
 
 __bal_handle_compressor_ratio() {
-  local inputs=$1 outputs=$2
-  echo "${inputs}:${outputs} → COMPRESSOR mode not implemented yet" >&2
-  return 2
+  local inputs=$1 outputs=$2 quiet=$3
+  local descriptor="${inputs}:${outputs}"
+  local headline="compress ${inputs} into ${outputs} (pack-first)"
+  local -a priority=()
+  local idx=1
+  while (( idx <= outputs )); do
+    priority+=("O${idx}")
+    (( idx++ ))
+  done
+  local priority_seq="${(j:→:)priority}"
+  local recipe_line="Recipe: use 3→1 and 2→1 mergers in short priority stacks (order doesn’t matter)"
+  local do_line="  Do: build a left→right chain so ${priority_seq} receives overflow in that order."
+  local overflow_line="  Tip: keep mergers compact so O1 fills first before passing extra to the next output."
+
+  if (( quiet )); then
+    local -a fields=("$descriptor" "COMPRESSOR" "$headline" "Priority: ${priority_seq}" "$recipe_line" "Guide: build a priority chain so overflow cascades ${priority_seq}.")
+    __bal_join_fields "${fields[@]}"
+    return 0
+  fi
+
+  printf "%s | COMPRESSOR | %s\n" "$descriptor" "$headline"
+  echo "$recipe_line"
+  echo "$do_line"
+  echo "$overflow_line"
+  return 0
 }
 
 __bal_process_ratio() {
@@ -400,10 +570,10 @@ __bal_process_ratio() {
       __bal_handle_load_ratio "$inputs" "$outputs" "$quiet"
       ;;
     balancer)
-      __bal_handle_balancer_ratio "$inputs" "$outputs"
+      __bal_handle_balancer_ratio "$inputs" "$outputs" "$quiet"
       ;;
     compressor)
-      __bal_handle_compressor_ratio "$inputs" "$outputs"
+      __bal_handle_compressor_ratio "$inputs" "$outputs" "$quiet"
       ;;
   esac
 }
