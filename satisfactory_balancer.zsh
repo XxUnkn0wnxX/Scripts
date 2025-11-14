@@ -85,64 +85,166 @@ __bal_best_sequence() {
   __bal_plan_dfs "" "$count2" "$count3" 1 0
 }
 
-__bal_total_splitters() {
+__bal_build_steps() {
+  local count3=$1 count2=$2
+  local branches=1 layer=1
+  local -a lines=()
+
+  __bal_best_sequence "$count3" "$count2"
+
+  local factor splitters word next verbose short
+  for factor in ${=__bal_plan_best_seq}; do
+    splitters=$branches
+    word="splitter"
+    (( splitters != 1 )) && word+="s"
+    next=$(( branches * factor ))
+    if (( factor == 3 )); then
+      verbose="Layer ${layer} – place ${splitters} ${word} to create ${next} outputs (${splitters}× 1→3)"
+      short="Layer ${layer} place ${splitters}×1→3"
+    else
+      verbose="Layer ${layer} – place ${splitters} ${word} to create ${next} outputs (${splitters}× 1→2)"
+      short="Layer ${layer} place ${splitters}×1→2"
+    fi
+    lines+=("${verbose}"$'\t'"${short}"$'\t'"${splitters}"$'\t'"${factor}")
+    branches=$next
+    (( layer++ ))
+  done
+
+  printf '%s\n' "${lines[@]}"
+}
+
+__bal_recipe_summary() {
   local count3=$1 count2=$2
   __bal_best_sequence "$count3" "$count2"
   local seq=${__bal_plan_best_seq}
-  local branches=1 total=0 factor
-  for factor in ${=seq}; do
-    total=$(( total + branches ))
+  if [[ -z "$seq" ]]; then
+    echo "Recipe: no splitter layers"
+    return
+  fi
+
+  local -a tokens=(${=seq})
+  local desc="Recipe: Layers → "
+  local factor first=1 branches=1
+  for factor in "${tokens[@]}"; do
+    if (( first )); then
+      first=0
+    else
+      desc+=", "
+    fi
+    desc+="${branches}×1→${factor}"
     branches=$(( branches * factor ))
   done
-  echo $total
+
+  if (( ${#tokens[@]} == 1 )); then
+    if [[ ${tokens[1]} == 2 ]]; then
+      desc="Recipe: 1 layer of 1→2 splitters"
+    else
+      desc="Recipe: 1 layer of 1→3 splitters"
+    fi
+  elif (( ${#tokens[@]} > 1 )); then
+    local all_same=1
+    for factor in "${tokens[@]:1}"; do
+      if [[ $factor != ${tokens[1]} ]]; then
+        all_same=0
+        break
+      fi
+    done
+    if (( all_same )); then
+      local layers=${#tokens[@]}
+      local word="layers"
+      (( layers == 1 )) && word="layer"
+      if (( tokens[1] == 2 )); then
+        desc="Recipe: ${layers} ${word} of 1→2 splitters"
+      else
+        desc="Recipe: ${layers} ${word} of 1→3 splitters"
+      fi
+    fi
+  fi
+
+  echo "${desc}"
 }
 
-__bal_pluralize() {
-  local count=$1 singular=$2 plural=$3
-  [[ -z "$plural" ]] && plural="${singular}s"
-  if (( count == 1 )); then
-    echo "$singular"
-  else
-    echo "$plural"
+__bal_quiet_clean_line() {
+  local inputs=$1 outputs=$2 count3=$3 count2=$4 prev=$5
+  local recipe=$(__bal_recipe_summary "$count3" "$count2")
+  local fields=("${inputs}:${outputs}" "LOAD BALANCER" "CLEAN → build 1→$outputs (no loopback)" "$recipe")
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  if [[ -n "$step_lines" ]]; then
+    local -a steps_short=()
+    local line short
+    for line in ${(f)step_lines}; do
+      short=${line#*$'\t'}
+      short=${short%%$'\t'*}
+      steps_short+=("$short")
+    done
+    fields+=("Steps: ${(j:; :)steps_short}")
   fi
+  if (( prev > 0 && prev < outputs )); then
+    fields+=("Prev clean 1:$prev")
+  fi
+  __bal_join_fields "${fields[@]}"
 }
 
-__bal_recipe_block() {
-  local count3=$1 count2=$2 total=$3
-  [[ -z "$total" ]] && total=$(__bal_total_splitters "$count3" "$count2")
-  if (( count3 == 0 && count2 == 0 )); then
-    echo "Recipe: no splitters required."
-    echo "  Do: feed the input directly to the output."
-    local word=$(__bal_pluralize "$total" "splitter" "splitters")
-    printf "Components: %d %s\n" "$total" "$word"
-    return
+__bal_quiet_dirty_line() {
+  local inputs=$1 outputs=$2 leftover=$3 next=$4 loopback=$5 count3=$6 count2=$7 prev=$8
+  local descriptor="${inputs}:${outputs}"
+  local loop_text="loop back $loopback outputs"
+  (( loopback == 1 )) && loop_text="loop back 1 output"
+  local recipe=$(__bal_recipe_summary "$count3" "$count2")
+  local fields=("$descriptor" "LOAD BALANCER" "NOT clean (leftover $leftover)" "build 1→$next" "$loop_text" "$recipe")
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  if [[ -n "$step_lines" ]]; then
+    local -a steps_short=()
+    local line short
+    for line in ${(f)step_lines}; do
+      short=${line#*$'\t'}
+      short=${short%%$'\t'*}
+      steps_short+=("$short")
+    done
+    fields+=("Steps: ${(j:; :)steps_short}")
   fi
-  printf "Recipe: x%d of 1→3 splitters, x%d of 1→2 splitters (order doesn’t matter)\n" "$count3" "$count2"
-  if (( count3 > 0 && count2 > 0 )); then
-    printf "  Do: split by 3, %d time(s); then split each branch by 2, %d time(s).\n" "$count3" "$count2"
-  elif (( count3 > 0 )); then
-    printf "  Do: split by 3, %d time(s).\n" "$count3"
-  elif (( count2 > 0 )); then
-    printf "  Do: split each branch by 2, %d time(s).\n" "$count2"
+  if (( prev > 0 )); then
+    fields+=("Prev clean 1:$prev")
   fi
-  local word=$(__bal_pluralize "$total" "splitter" "splitters")
-  printf "Components: %d %s\n" "$total" "$word"
+  __bal_join_fields "${fields[@]}"
 }
 
-__bal_recipe_quiet_field() {
+__bal_recipe_lines() {
   local count3=$1 count2=$2
-  if (( count3 == 0 && count2 == 0 )); then
-    echo "Recipe: no splitters required"
-    return
+  local summary=$(__bal_recipe_summary "$count3" "$count2")
+  echo "${summary}."
+
+  local step_lines=$(__bal_build_steps "$count3" "$count2")
+  if [[ -z "$step_lines" ]]; then
+    echo "  Do: no splitter layers required."
+  else
+    local -a total_counts=()
+    local -a factors=()
+    local line verbose remainder count factor
+    echo "  Do:"
+    for line in ${(f)step_lines}; do
+      verbose=${line%%$'\t'*}
+      echo "    ${verbose}"
+      remainder=${line#*$'\t'}
+      remainder=${remainder#*$'\t'}
+      count=${remainder%%$'\t'*}
+      remainder=${remainder#*$'\t'}
+      factor=$remainder
+      total_counts+=("$count")
+      factors+=("$factor")
+    done
+    if (( ${#total_counts[@]} > 0 )); then
+      local sum_expr="${(j: + :)total_counts}"
+      local total_splitters=0
+      local factor_expr="${(j:×:)factors}"
+      for count in "${total_counts[@]}"; do
+        (( total_splitters += count ))
+      done
+      echo "  Note: Layer order ${factor_expr} (branch sequence) → total splitters ${sum_expr} = ${total_splitters}."
+    fi
   fi
-  echo "Recipe: x${count3} of 1→3 splitters, x${count2} of 1→2 splitters (order doesn’t matter)"
 }
 
-__bal_components_field() {
-  local total=$1
-  local word=$(__bal_pluralize "$total" "splitter" "splitters")
-  echo "Components: ${total} ${word}"
-}
 
 # Smallest clean m = 2^A * 3^B such that m >= n
 __bal_next_clean() {
@@ -195,24 +297,13 @@ __bal_handle_trivial_load() {
   local inputs=$1 outputs=$2 quiet=$3
   local descriptor="${inputs}:${outputs}"
   local headline="CLEAN → build 1→${outputs} (no loopback)"
-  local fields=("$descriptor" "LOAD BALANCER" "$headline")
-  local recipe_field=$(__bal_recipe_quiet_field 0 0)
-  local components_field=$(__bal_components_field 0)
   if (( quiet )); then
-    fields+=("$recipe_field" "$components_field")
-    __bal_join_fields "${fields[@]}"
+    __bal_quiet_clean_line "$inputs" "$outputs" 0 0 0
     return 0
   fi
   printf "%s | LOAD BALANCER | %s\n" "$descriptor" "$headline"
-  __bal_recipe_block 0 0 0
+  __bal_recipe_lines 0 0
   return 0
-}
-
-__bal_print_previous_clean() {
-  local prev=$1
-  if (( prev > 0 )); then
-    printf "Previous clean size: 1:%d\n" "$prev"
-  fi
 }
 
 __bal_handle_load_clean() {
@@ -220,21 +311,15 @@ __bal_handle_load_clean() {
   local descriptor="${inputs}:${outputs}"
   local headline="CLEAN → build 1→${outputs} (no loopback)"
   local prev=$(__bal_prev_clean "$outputs")
-  local total=$(__bal_total_splitters "$count3" "$count2")
   if (( quiet )); then
-    local -a fields=("$descriptor" "LOAD BALANCER" "$headline")
-    if (( prev > 0 && prev < outputs )); then
-      fields+=("Previous clean: 1:${prev}")
-    fi
-    fields+=("$(__bal_recipe_quiet_field "$count3" "$count2")" "$(__bal_components_field "$total")")
-    __bal_join_fields "${fields[@]}"
+    __bal_quiet_clean_line "$inputs" "$outputs" "$count3" "$count2" "$prev"
     return 0
   fi
   printf "%s | LOAD BALANCER | %s\n" "$descriptor" "$headline"
+  __bal_recipe_lines "$count3" "$count2"
   if (( prev > 0 && prev < outputs )); then
-    printf "Previous clean size: 1:%d\n" "$prev"
+    printf "Prev clean: 1:%d\n" "$prev"
   fi
-  __bal_recipe_block "$count3" "$count2" "$total"
   return 0
 }
 
@@ -246,24 +331,18 @@ __bal_handle_load_dirty() {
   local next_clean=$(__bal_next_clean "$outputs")
   local loopback=$(( next_clean - outputs ))
   local prev=$(__bal_prev_clean "$outputs")
-  local total=$(__bal_total_splitters "$count3_clean" "$count2_clean")
   local loop_word="outputs"
   (( loopback == 1 )) && loop_word="output"
   if (( quiet )); then
-    local -a fields=("$descriptor" "$mode" "$headline" "Next clean: 1:${next_clean}" "Loop back: ${loopback}")
-    if (( prev > 0 )); then
-      fields+=("Previous clean: 1:${prev}")
-    fi
-    fields+=("$(__bal_recipe_quiet_field "$count3_clean" "$count2_clean")" "$(__bal_components_field "$total")")
-    __bal_join_fields "${fields[@]}"
+    __bal_quiet_dirty_line "$inputs" "$outputs" "$leftover" "$next_clean" "$loopback" "$count3_clean" "$count2_clean" "$prev"
     return 0
   fi
   printf "%s | %s | %s\n" "$descriptor" "$mode" "$headline"
-  printf "Next clean size: 1:%d → build 1→%d\n" "$next_clean" "$next_clean"
-  printf "Loop back: %d %s (merge and feed back to input)\n" "$loopback" "$loop_word"
-  __bal_recipe_block "$count3_clean" "$count2_clean" "$total"
+  printf "Next clean size: %d → build 1→%d\n" "$next_clean" "$next_clean"
+  printf "Loop back: %d %s (merge them, feed back to input)\n" "$loopback" "$loop_word"
+  __bal_recipe_lines "$count3_clean" "$count2_clean"
   if (( prev > 0 )); then
-    printf "Previous clean size: 1:%d\n" "$prev"
+    printf "Prev clean: 1:%d\n" "$prev"
   fi
   return 0
 }
