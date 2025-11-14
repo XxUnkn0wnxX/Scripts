@@ -11,12 +11,17 @@ Usage: satisfactory_balancer.zsh [options] n:m [n:m ...]
   Helper for Satisfactory splitter/merger layouts that mimic the official Balancer wiki.
 
 Options:
-  -n, --nico     Enable Nico ratio mode for complex 1→N splits (1:A:B[:C...]).
   -h, --help     Show this help and exit.
+
+Examples:
+  satisfactory_balancer.zsh 1:48      # LOAD-BALANCER (1 input → 48 outputs)
+  satisfactory_balancer.zsh 4:7       # BELT-BALANCER (4 inputs → 7 outputs)
+  satisfactory_balancer.zsh 5:2       # BELT-COMPRESSOR (5 inputs → 2 outputs)
+  satisfactory_balancer.zsh 1:44:8    # Complex 1→N ratio (Nico-style, WIP)
 
 Notes:
   • Normal ratios automatically detect LOAD-BALANCER, BELT-BALANCER, or BELT-COMPRESSOR mode.
-  • Nico mode processes complex 1→N ratios inspired by NicoBuilds' Reddit guide.
+  • Complex 1→N ratios (like 1:44:8) use NicoBuilds-inspired math (implementation in progress).
   • Inputs and outputs must be positive integers; use explicit 1:n instead of bare n.
 USAGE
 }
@@ -856,7 +861,6 @@ __bal_process_nico_mode() {
 }
 
 __bal_main() {
-  local nico=0
   local -a args=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -867,10 +871,6 @@ __bal_main() {
           shift
         done
         break
-        ;;
-      -n|--nico)
-        nico=1
-        shift
         ;;
       -h|--help)
         __bal_usage
@@ -891,11 +891,6 @@ __bal_main() {
   if (( ${#args[@]} == 0 )); then
     __bal_usage >&2
     return 2
-  fi
-
-  if (( nico )); then
-    __bal_process_nico_mode "${args[@]}"
-    return $?
   fi
 
   local had_error=0 target rc
