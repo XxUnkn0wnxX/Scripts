@@ -317,6 +317,55 @@ __bal_stage_steps_short() {
   echo "${(j:; :)steps_short}"
 }
 
+__bal_stage_lines_and_note() {
+  local mode=$1 count3=$2 count2=$3 lines_var=$4 note_var=$5
+  eval "$lines_var=()"
+  eval "$note_var="
+  local builder="__bal_build_steps"
+  local noun="splitter" noun_plural="splitters"
+  if [[ $mode == "merge" ]]; then
+    builder="__bal_merge_build_steps"
+    noun="merger"
+    noun_plural="mergers"
+  fi
+  local step_lines=$($builder "$count3" "$count2")
+  if [[ -z "$step_lines" ]]; then
+    local no_line="no ${mode} layers required."
+    eval "$lines_var=( ${(q)no_line} )"
+    return
+  fi
+  local -a lines=()
+  local -a total_counts=()
+  local -a factors=()
+  local line remainder count factor verbose
+  for line in ${(f)step_lines}; do
+    verbose=${line%%$'\t'*}
+    lines+=("$verbose")
+    remainder=${line#*$'\t'}
+    remainder=${remainder#*$'\t'}
+    count=${remainder%%$'\t'*}
+    remainder=${remainder#*$'\t'}
+    factor=$remainder
+    total_counts+=("$count")
+    factors+=("$factor")
+  done
+  local qlines=("${(@q)lines[@]}")
+  eval "$lines_var=( ${qlines[*]} )"
+  if (( ${#total_counts[@]} > 0 )); then
+    local sum_expr="${(j: + :)total_counts}"
+    local factor_expr="${(j:×:)factors}"
+    local total_nodes=0
+    local c
+    for c in "${total_counts[@]}"; do
+      (( total_nodes += c ))
+    done
+    local noun_phrase=$noun_plural
+    (( total_nodes == 1 )) && noun_phrase=$noun
+    local note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} ${sum_expr} = ${total_nodes}"
+    eval "$note_var=${(q)note}"
+  fi
+}
+
 
 # Smallest clean m = 2^A * 3^B such that m >= n
 __bal_next_clean() {
@@ -504,7 +553,41 @@ __bal_handle_balancer_ratio() {
   fi
 
   printf "%s | BALANCER | %s\n" "$descriptor" "$headline"
-  __bal_recipe_lines "$split_count3" "$split_count2" "Split recipe" "Split (per input)" "split"
+  local split_summary_full=$(__bal_recipe_summary "$split_count3" "$split_count2" "Split recipe" "split")
+  local merge_summary_full=$(__bal_recipe_summary "$merge_count3" "$merge_count2" "Merge recipe" "merge")
+  local split_summary=${split_summary_full#Split recipe: }
+  local merge_summary=${merge_summary_full#Merge recipe: }
+  printf "Split & Merge recipe: %s | %s.\n" "$split_summary" "$merge_summary"
+
+  local sep=$'\x1F'
+  local -a split_lines merge_lines
+  local split_note="" merge_note=""
+  __bal_stage_lines_and_note "split" "$split_count3" "$split_count2" split_lines split_note
+  __bal_stage_lines_and_note "merge" "$merge_count3" "$merge_count2" merge_lines merge_note
+
+  echo "  Split & Merge (per input):"
+  local line
+  for line in "${split_lines[@]}"; do
+    [[ -z "$line" ]] && continue
+    printf "    %s\n" "$line"
+  done
+  for line in "${merge_lines[@]}"; do
+    [[ -z "$line" ]] && continue
+    printf "    %s\n" "$line"
+  done
+
+  local combined_note=""
+  if [[ -n "$split_note" && "$split_lines[1]" != "no split layers required." ]]; then
+    combined_note="$split_note"
+  fi
+  if [[ -n "$merge_note" && "$merge_lines[1]" != "no merge layers required." ]]; then
+    [[ -n "$combined_note" ]] && combined_note+=" | "
+    combined_note+="$merge_note"
+  fi
+  if [[ -n "$combined_note" ]]; then
+    printf "  Note: %s.\n" "$combined_note"
+  fi
+
   if (( split_loop > 0 )); then
     local loop_word="outputs"
     (( split_loop == 1 )) && loop_word="output"
@@ -515,7 +598,6 @@ __bal_handle_balancer_ratio() {
     (( merge_pad == 1 )) && pad_word="dummy lane"
     printf "Merge pad: %d %s per output\n" "$merge_pad" "$pad_word"
   fi
-  __bal_recipe_lines "$merge_count3" "$merge_count2" "Merge recipe" "Merge (per output)" "merge"
   return 0
 }
 
