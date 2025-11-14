@@ -118,7 +118,13 @@ __bal_recipe_block() {
     return
   fi
   printf "Recipe: x%d of 1→3 splitters, x%d of 1→2 splitters (order doesn’t matter)\n" "$count3" "$count2"
-  printf "  Do: split by 3 %d time(s); then split each branch by 2 %d time(s).\n" "$count3" "$count2"
+  if (( count3 > 0 && count2 > 0 )); then
+    printf "  Do: split by 3, %d time(s); then split each branch by 2, %d time(s).\n" "$count3" "$count2"
+  elif (( count3 > 0 )); then
+    printf "  Do: split by 3, %d time(s).\n" "$count3"
+  elif (( count2 > 0 )); then
+    printf "  Do: split each branch by 2, %d time(s).\n" "$count2"
+  fi
   local word=$(__bal_pluralize "$total" "splitter" "splitters")
   printf "Components: %d %s\n" "$total" "$word"
 }
