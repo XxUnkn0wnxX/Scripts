@@ -413,7 +413,13 @@ __bal_priority_chain() {
     done
     echo "${(j:→:)labels}"
   else
-    echo "O1→O2→...→O${outputs}"
+    local -a labels=()
+    local i=1
+    while (( i <= outputs )); do
+      labels+=("O${i}")
+      (( i++ ))
+    done
+    echo "${(j:→:)labels}"
   fi
 }
 
@@ -431,7 +437,7 @@ __bc_priority_lines() {
     done
   else
     echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
-    printf "    O2…O%d – daisy-chain overflow so each output only fills after the previous ones.\n" "$outputs"
+    printf "    O2–O%d – each output receives overflow from the previous output so they fill strictly in order.\n" "$outputs"
   fi
 }
 
