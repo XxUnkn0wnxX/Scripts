@@ -687,7 +687,7 @@ __bal_handle_trivial_load() {
     return 0
   fi
   printf "%s | LOAD-BALANCER | %s\n" "$descriptor" "$headline"
-  __bal_recipe_lines 0 0
+  __bal_recipe_lines 0 0 "Recipe" "Split (single input)"
   return 0
 }
 
@@ -701,7 +701,7 @@ __bal_handle_load_clean() {
     return 0
   fi
   printf "%s | LOAD-BALANCER | %s\n" "$descriptor" "$headline"
-  __bal_recipe_lines "$count3" "$count2"
+  __bal_recipe_lines "$count3" "$count2" "Recipe" "Split (single input)"
   if (( prev > 0 && prev < outputs )); then
     printf "Prev clean: 1:%d\n" "$prev"
   fi
@@ -724,11 +724,11 @@ __bal_handle_load_dirty() {
   fi
   printf "%s | %s | %s\n" "$descriptor" "$mode" "$headline"
   printf "Next clean size: %d → build 1→%d\n" "$next_clean" "$next_clean"
-  printf "Loop back: %d %s (merge them, feed back to input)\n" "$loopback" "$loop_word"
-  __bal_recipe_lines "$count3_clean" "$count2_clean"
+  __bal_recipe_lines "$count3_clean" "$count2_clean" "Recipe" "Split (single input)"
   if (( prev > 0 )); then
     printf "Prev clean: 1:%d\n" "$prev"
   fi
+  printf "Split loop back: %d %s (merge them, feed back to input)\n" "$loopback" "$loop_word"
   return 0
 }
 
