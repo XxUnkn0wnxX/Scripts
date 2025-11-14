@@ -45,10 +45,6 @@ __bal_exponents23() {
 
 typeset -g __bal_plan_best_cost
 typeset -g __bal_plan_best_seq
-typeset -gA __bc_plan_cache
-typeset -gA __bc_plan_cost_cache
-typeset -g __bc_plan_result
-typeset -g __bc_plan_result_cost
 
 __bal_plan_dfs() {
   local seq=$1
@@ -432,106 +428,131 @@ __bal_lcm() {
   echo $(( a / gcd * b ))
 }
 
+__bal_priority_label() {
+  local idx=$1
+  if (( idx < 10 )); then
+    printf "O%d" "$idx"
+  else
+    printf "%d" "$idx"
+  fi
+}
+
 __bal_priority_chain() {
   local outputs=$1
   local -a labels=()
-  local i=1 label
+  local i=1
   while (( i <= outputs )); do
-    if (( i < 10 )); then
-      label="O${i}"
-    else
-      label="${i}"
-    fi
-    labels+=("$label")
+    labels+=("$(__bal_priority_label "$i")")
     (( i++ ))
   done
   echo "${(j:→:)labels}"
 }
 
 __bc_priority_lines() {
-  local outputs=$1
-  if (( outputs <= 6 )); then
-    local i=1
-    while (( i <= outputs )); do
-      if (( i == 1 )); then
-        echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
-      else
-        printf "    O%d – receive overflow from O%d so it only fills after O%d is saturated.\n" "$i" "$(( i - 1 ))" "$(( i - 1 ))"
-      fi
-      (( i++ ))
-    done
-  else
-    echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
-    printf "    O2–%d – each output receives overflow from the previous output so they fill strictly in order.\n" "$outputs"
-  fi
+  local outputs=$1 budgets_str=$2
+  local -a budgets=(${=budgets_str})
+  local i=1 lanes label prev label_next lane_word
+  while (( i <= outputs )); do
+    lanes=${budgets[i]:-0}
+    (( lanes < 0 )) && lanes=0
+    label=$(__bal_priority_label "$i")
+    if (( lanes == 1 )); then
+      lane_word="lane"
+    else
+      lane_word="lanes"
+    fi
+    if (( outputs == 1 )); then
+      printf "    %s – consumes %d %s; no overflow because this is the final output.\n" "$label" "$lanes" "$lane_word"
+    elif (( i == 1 )); then
+      label_next=$(__bal_priority_label "$(( i + 1 ))")
+      printf "    %s – consumes the first %d %s from all inputs before overflowing to %s.\n" "$label" "$lanes" "$lane_word" "$label_next"
+    elif (( i == outputs )); then
+      printf "    %s – receives overflow from %s and absorbs the final %d %s.\n" "$label" "$(__bal_priority_label "$(( i - 1 ))")" "$lanes" "$lane_word"
+    else
+      prev=$(__bal_priority_label "$(( i - 1 ))")
+      label_next=$(__bal_priority_label "$(( i + 1 ))")
+      printf "    %s – consumes %d %s after %s, then overflows to %s once saturated.\n" "$label" "$lanes" "$lane_word" "$prev" "$label_next"
+    fi
+    (( i++ ))
+  done
 }
 
-__bc_plan_layers_dfs() {
-  local lanes=$1 target=$2 key="${lanes}:${target}"
-  if [[ -n ${__bc_plan_cache[$key]+x} ]]; then
-    __bc_plan_result=${__bc_plan_cache[$key]}
-    __bc_plan_result_cost=${__bc_plan_cost_cache[$key]}
-    return 0
-  fi
-  if (( lanes == target )); then
-    __bc_plan_result=""
-    __bc_plan_result_cost=0
-    __bc_plan_cache[$key]=""
-    __bc_plan_cost_cache[$key]=0
-    return 0
-  fi
-  if (( lanes < target )); then
-    __bc_plan_result=""
-    __bc_plan_result_cost=-1
-    return 1
-  fi
-
-  local best_plan=""
-  local best_cost=-1
-  local arity reduces max_count count new_lanes plan_entry plan_text
-  for arity in 3 2; do
-    reduces=$(( arity - 1 ))
-    max_count=$(( lanes / arity ))
-    for (( count=1; count<=max_count; count++ )); do
-      new_lanes=$(( lanes - count * reduces ))
-      if (( new_lanes < target )); then
-        break
-      fi
-      __bc_plan_layers_dfs "$new_lanes" "$target"
-      local sub_cost=$__bc_plan_result_cost
-      if (( sub_cost < 0 )); then
-        continue
-      fi
-      local cost=$(( count + sub_cost ))
-      plan_entry="${count}:${arity}"
-      if [[ -n "$__bc_plan_result" ]]; then
-        plan_text="${plan_entry}"$'\n'"${__bc_plan_result}"
-      else
-        plan_text="${plan_entry}"
-      fi
-      if (( best_cost < 0 || cost < best_cost )); then
-        best_cost=$cost
-        best_plan="$plan_text"
-      fi
-    done
+__bc_lane_budgets() {
+  local lanes=$1 outputs=$2
+  local remaining=$lanes remaining_outputs=$outputs
+  local -a budgets=()
+  local share
+  while (( remaining_outputs > 0 )); do
+    if (( remaining <= 0 )); then
+      share=0
+    else
+      share=$(( (remaining + remaining_outputs - 1) / remaining_outputs ))
+    fi
+    budgets+=("$share")
+    (( remaining -= share ))
+    (( remaining_outputs-- ))
   done
+  echo "${budgets[*]}"
+}
 
-  if (( best_cost < 0 )); then
-    __bc_plan_result=""
-    __bc_plan_result_cost=-1
-    return 1
+__bc_plan_single_stack() {
+  local lanes=$1
+  local remaining=$lanes
+  local -a entries=()
+  while (( remaining > 1 )); do
+    if (( remaining % 3 == 0 || remaining > 4 )); then
+      entries+=("1:3")
+      (( remaining -= 2 ))
+    else
+      entries+=("1:2")
+      (( remaining -= 1 ))
+    fi
+  done
+  printf "%s\n" "${entries[@]}"
+}
+
+__bc_plan_layers_for_budgets() {
+  local budgets_str=$1
+  local -a budgets=(${=budgets_str})
+  local -a lines=()
+  local plan budget
+  for budget in "${budgets[@]}"; do
+    if (( budget <= 1 )); then
+      continue
+    fi
+    plan=$(__bc_plan_single_stack "$budget")
+    if [[ -n "$plan" ]]; then
+      lines+=("${(@f)plan}")
+    fi
+  done
+  printf "%s\n" "${lines[@]}"
+}
+
+__bc_lane_budget_summary() {
+  local budgets_str=$1
+  local -a budgets=(${=budgets_str})
+  if (( ${#budgets[@]} == 0 )); then
+    echo ""
+    return
   fi
-
-  __bc_plan_cache[$key]=$best_plan
-  __bc_plan_cost_cache[$key]=$best_cost
-  __bc_plan_result="$best_plan"
-  __bc_plan_result_cost=$best_cost
+  local -a parts=()
+  local idx=1 total=0 lanes label
+  for lanes in "${budgets[@]}"; do
+    label=$(__bal_priority_label "$idx")
+    parts+=("${label}=${lanes}")
+    (( total += lanes ))
+    (( idx++ ))
+  done
+  printf "Lane budget %s (total %d lanes)" "${(j:, :)parts}" "$total"
 }
 
 __bc_plan_merge_layers() {
-  local lanes=$1 target=$2
-  __bc_plan_layers_dfs "$lanes" "$target"
-  echo "$__bc_plan_result"
+  local inputs=$1 outputs=$2 budgets_str=$3
+  local budgets="$budgets_str"
+  if [[ -z "$budgets" ]]; then
+    budgets=$(__bc_lane_budgets "$inputs" "$outputs")
+  fi
+  __bc_plan_layers_for_budgets "$budgets"
 }
 
 __bc_layers_summary() {
@@ -854,16 +875,26 @@ __bal_handle_compressor_ratio() {
   local descriptor="${inputs}:${outputs}"
   local headline="compress ${inputs} into ${outputs} (pack-first)"
   local priority_seq=$(__bal_priority_chain "$outputs")
-  local layers_str=$(__bc_plan_merge_layers "$inputs" "$outputs")
+  local budgets_str=$(__bc_lane_budgets "$inputs" "$outputs")
+  local layers_str=$(__bc_plan_merge_layers "$inputs" "$outputs" "$budgets_str")
   local recipe_line=$(__bc_layers_summary "$layers_str")
   recipe_line+=" (order doesn’t matter)"
+  local lane_note=$(__bc_lane_budget_summary "$budgets_str")
 
   if (( quiet )); then
     local -a fields
     if (( outputs == 1 )); then
-      fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "Note: Only one output, so all capacity lives on O1.")
+      local note="Note: Only one output, so all capacity lives on O1."
+      if [[ -n "$lane_note" ]]; then
+        note+=" ${lane_note}."
+      fi
+      fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "$note")
     else
-      local note="Note: Priority ${priority_seq}. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
+      local note="Note: Priority ${priority_seq}."
+      if [[ -n "$lane_note" ]]; then
+        note+=" ${lane_note}."
+      fi
+      note+=" Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
       local summary="Merge recipe: ${recipe_line}"
       local steps=$(__bc_steps_short "$layers_str")
       fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "$summary" "Priority: ${priority_seq}" "Merge steps: $steps" "$note")
@@ -877,14 +908,22 @@ __bal_handle_compressor_ratio() {
   if (( outputs == 1 )); then
     echo "  Merge (single output O1):"
     printf "    Do: merge all %d input belts down into one belt so O1 receives the full flow.\n" "$inputs"
-    echo "Note: Only one output, so all capacity lives on O1."
+    if [[ -n "$lane_note" ]]; then
+      printf "Note: Only one output, so all capacity lives on O1. %s.\n" "$lane_note"
+    else
+      echo "Note: Only one output, so all capacity lives on O1."
+    fi
     return 0
   fi
   echo "  Do:"
   __bc_do_lines "$layers_str"
   echo "  Priority:"
-  __bc_priority_lines "$outputs"
-  printf "Note: Priority %s. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward.\n" "$priority_seq"
+  __bc_priority_lines "$outputs" "$budgets_str"
+  if [[ -n "$lane_note" ]]; then
+    printf "Note: Priority %s. %s. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward.\n" "$priority_seq" "$lane_note"
+  else
+    printf "Note: Priority %s. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward.\n" "$priority_seq"
+  fi
   return 0
 }
 
