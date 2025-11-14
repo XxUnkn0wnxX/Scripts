@@ -3,7 +3,7 @@
 # Modes:
 #   LOAD-BALANCER → 1 input spread across n outputs (1→n)
 #   BELT-BALANCER → n inputs evenly mixed across m outputs (n>1, m≥n)
-#   COMPRESSOR    → n inputs compressed into m outputs with pack-first priority (n>1, m<n)
+#   BELT-COMPRESSOR → n inputs compressed into m outputs with pack-first priority (n>1, m<n)
 
 __bal_usage() {
   cat <<'USAGE'
@@ -16,7 +16,7 @@ Options:
   -h, --help     Show this help and exit.
 
 Notes:
-  • Normal ratios automatically detect LOAD-BALANCER, BELT-BALANCER, or COMPRESSOR mode.
+  • Normal ratios automatically detect LOAD-BALANCER, BELT-BALANCER, or BELT-COMPRESSOR mode.
   • Nico mode processes complex 1→N ratios inspired by NicoBuilds' Reddit guide.
   • Inputs and outputs must be positive integers; use explicit 1:n instead of bare n.
 USAGE
@@ -425,6 +425,97 @@ __bal_priority_chain() {
   fi
 }
 
+__bc_priority_lines() {
+  local outputs=$1
+  if (( outputs <= 6 )); then
+    local i=1
+    while (( i <= outputs )); do
+      if (( i == 1 )); then
+        echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
+      else
+        echo "    O${i} – receive overflow from O$(( i - 1 )) so it only fills after O$(( i - 1 )) is saturated."
+      fi
+      (( i++ ))
+    done
+  else
+    echo "    O1 – feed O1 directly from the merger tree so it fills first from all inputs."
+    printf "    O2…O%d – daisy-chain overflow so each output only fills after the previous ones.\n" "$outputs"
+  fi
+}
+
+__bc_plan_merge_layers() {
+  local lanes=$1 outputs=$2
+  local -a layers=()
+  while (( lanes > outputs )); do
+    local diff=$(( lanes - outputs ))
+    local max3=$(( lanes / 3 ))
+    local use3=0
+    if (( max3 > 0 && diff >= 2 )); then
+      use3=$(( diff / 2 ))
+      (( use3 == 0 )) && use3=1
+      (( use3 > max3 )) && use3=$max3
+    fi
+    if (( use3 > 0 )); then
+      layers+=("${use3}:3")
+      lanes=$(( lanes - use3 * 2 ))
+      continue
+    fi
+    local max2=$(( lanes / 2 ))
+    local need2=$diff
+    if (( need2 > max2 )); then need2=$max2; fi
+    (( need2 == 0 )) && need2=1
+    layers+=("${need2}:2")
+    lanes=$(( lanes - need2 ))
+  done
+  printf '%s\n' "${layers[@]}"
+}
+
+__bc_layers_summary() {
+  local layers_str=$1
+  local -a parts=("${(@f)layers_str}")
+  if (( ${#parts[@]} == 0 )); then
+    echo "Layers → (no mergers required)"
+    return
+  fi
+  local summary="Layers → "
+  local first=1
+  local entry count arity
+  for entry in "${parts[@]}"; do
+    count=${entry%%:*}
+    arity=${entry##*:}
+    (( count == 0 )) && continue
+    if (( ! first )); then
+      summary+=", "
+    else
+      first=0
+    fi
+    summary+="${count}×${arity}→1"
+  done
+  if (( first )); then
+    summary+="(no mergers required)"
+  fi
+  echo "$summary"
+}
+
+__bc_do_lines() {
+  local layers_str=$1
+  local -a parts=("${(@f)layers_str}")
+  local idx=1 entry count arity word
+  for entry in "${parts[@]}"; do
+    count=${entry%%:*}
+    arity=${entry##*:}
+    (( count == 0 )) && continue
+    word="merger"
+    (( count != 1 )) && word+="s"
+    printf "    Layer %d – place %d %s to combine %d lanes into %d belt" "$idx" "$count" "$word" "$arity" 1
+    printf " (%d× %d→1)\n" "$count" "$arity"
+    (( idx++ ))
+  done
+  if (( idx == 1 )); then
+    echo "    no merger layers required."
+  fi
+}
+
 __bal_detect_mode() {
   local inputs=$1 outputs=$2
   if (( inputs == 1 )); then
@@ -648,32 +739,35 @@ __bal_handle_compressor_ratio() {
   local descriptor="${inputs}:${outputs}"
   local headline="compress ${inputs} into ${outputs} (pack-first)"
   local priority_seq=$(__bal_priority_chain "$outputs")
-  local recipe_line="Merge recipe: use 3→1 and 2→1 mergers in short priority stacks (order doesn’t matter)"
+  local layers_str=$(__bc_plan_merge_layers "$inputs" "$outputs")
+  local recipe_line=$(__bc_layers_summary "$layers_str")
+  recipe_line+=" (order doesn’t matter)"
 
   if (( quiet )); then
-    local guide="Guide: build a priority chain so overflow cascades ${priority_seq}."
-    local -a fields=("$descriptor" "COMPRESSOR" "$headline" "Priority: ${priority_seq}" "$recipe_line" "$guide")
+    if (( outputs == 1 )); then
+      local -a fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "Note: Only one output, so all capacity lives on O1.")
+      __bal_join_fields "${fields[@]}"
+      return 0
+    fi
+    local note="Note: Priority ${priority_seq}. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
+    local -a fields=("$descriptor" "BELT-COMPRESSOR" "$headline" "Merge recipe: ${recipe_line}" "Priority: ${priority_seq}" "$note")
     __bal_join_fields "${fields[@]}"
     return 0
   fi
 
-  printf "%s | COMPRESSOR | %s\n" "$descriptor" "$headline"
-  echo "$recipe_line"
+  printf "%s | BELT-COMPRESSOR | %s\n" "$descriptor" "$headline"
+  printf "Merge recipe: %s\n" "$recipe_line"
   if (( outputs == 1 )); then
     echo "  Merge (single output O1):"
     printf "    Do: merge all %d input belts down into one belt so O1 receives the full flow.\n" "$inputs"
     echo "Note: Only one output, so all capacity lives on O1."
     return 0
   fi
-
-  echo "  Merge (per output):"
-  printf "    O1: build a compact merger stack so all %d inputs converge on O1 first.\n" "$inputs"
-  if (( outputs == 2 )); then
-    echo "    O2: capture overflow from O1 with another short merger stack so it fills after O1."
-  else
-    printf "    O2...O%d: daisy-chain overflow from the previous output so each fills only after the earlier ones are saturated.\n" "$outputs"
-  fi
-  echo "Note: Priority ${priority_seq}. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward."
+  echo "  Do:"
+  __bc_do_lines "$layers_str"
+  echo "  Priority:"
+  __bc_priority_lines "$outputs"
+  printf "Note: Priority %s. Keep mergers compact so higher-priority outputs fill completely before passing overflow onward.\n" "$priority_seq"
   return 0
 }
 
