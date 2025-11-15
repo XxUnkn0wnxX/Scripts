@@ -730,9 +730,9 @@ __bal_handle_nico_ratio() {
       positions_label="position"
     fi
     if (( start == end )); then
-      range_text="${positions_label} ${start}"
+      range_text="lane ${start}"
     else
-      range_text="positions ${start}-${end}"
+      range_text="lanes ${start}-${end}"
     fi
     printf "    Group %d takes %d %s (%s)\n" "$idx" "$weight" "$lane_word" "$range_text"
     (( idx++ ))
@@ -747,9 +747,9 @@ __bal_handle_nico_ratio() {
     local loop_end=$clean
     local loop_range
     if (( loop_start == loop_end )); then
-      loop_range="position ${loop_start}"
+      loop_range="lane ${loop_start}"
     else
-      loop_range="positions ${loop_start}-${loop_end}"
+      loop_range="lanes ${loop_start}-${loop_end}"
     fi
 
     local attr_idx=1 attr_weight=${weights[1]}
@@ -767,13 +767,13 @@ __bal_handle_nico_ratio() {
     local attr_end=${range_ends[$attr_idx]}
     local attr_range
     if (( attr_start == attr_end )); then
-      attr_range="position ${attr_start}"
+      attr_range="lane ${attr_start}"
     else
-      attr_range="positions ${attr_start}-${attr_end}"
+      attr_range="lanes ${attr_start}-${attr_end}"
     fi
 
-    printf "Split loop back: %d %s (route overflow via Group %d, %s; unused %s feed back to input)\n" \
-      "$loopback" "$loop_word" "$attr_idx" "$attr_range" "$loop_range"
+    printf "Split loop back: %d %s (route overflow via Group %d’s lane stack; unused %s feed back to input)\n" \
+      "$loopback" "$loop_word" "$attr_idx" "$loop_range"
   fi
 }
 
