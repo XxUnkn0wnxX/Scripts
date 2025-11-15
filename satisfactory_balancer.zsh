@@ -718,16 +718,23 @@ __bal_handle_nico_ratio() {
 
   echo "  Allocation (ratio ${ratio_text}):"
   local idx=1 start=1 end lane_word range_text
+  local -a range_starts=() range_ends=()
   for weight in "${weights[@]}"; do
     end=$(( start + weight - 1 ))
+    range_starts+=($start)
+    range_ends+=($end)
     lane_word="lanes"
-    (( weight == 1 )) && lane_word="lane"
+    local positions_label="positions"
     if (( weight == 1 )); then
-      range_text="${start}"
-    else
-      range_text="${start}-${end}"
+      lane_word="lane"
+      positions_label="position"
     fi
-    printf "    Output %d – take %d %s (positions %s)\n" "$idx" "$weight" "$lane_word" "$range_text"
+    if (( start == end )); then
+      range_text="${positions_label} ${start}"
+    else
+      range_text="positions ${start}-${end}"
+    fi
+    printf "    Group %d takes %d %s (%s)\n" "$idx" "$weight" "$lane_word" "$range_text"
     (( idx++ ))
     start=$(( end + 1 ))
   done
@@ -736,7 +743,37 @@ __bal_handle_nico_ratio() {
   if (( loopback > 0 )); then
     local loop_word="lanes"
     (( loopback == 1 )) && loop_word="lane"
-    printf "Split loop back: %d %s (merge them, feed back to input)\n" "$loopback" "$loop_word"
+    local loop_start=$(( denom + 1 ))
+    local loop_end=$clean
+    local loop_range
+    if (( loop_start == loop_end )); then
+      loop_range="position ${loop_start}"
+    else
+      loop_range="positions ${loop_start}-${loop_end}"
+    fi
+
+    local attr_idx=1 attr_weight=${weights[1]}
+    local i=1
+    while (( i <= count )); do
+      local current_weight=${weights[$i]}
+      if (( current_weight < attr_weight )); then
+        attr_weight=$current_weight
+        attr_idx=$i
+      fi
+      (( i++ ))
+    done
+
+    local attr_start=${range_starts[$attr_idx]}
+    local attr_end=${range_ends[$attr_idx]}
+    local attr_range
+    if (( attr_start == attr_end )); then
+      attr_range="position ${attr_start}"
+    else
+      attr_range="positions ${attr_start}-${attr_end}"
+    fi
+
+    printf "Split loop back: %d %s (route overflow via Group %d, %s; unused %s feed back to input)\n" \
+      "$loopback" "$loop_word" "$attr_idx" "$attr_range" "$loop_range"
   fi
 }
 
