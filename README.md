@@ -27,11 +27,25 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
   Companion script for power users: enumerates MKV tracks, applies codec-to-extension overrides, extracts streams, and leverages Python helpers for tricky cases.
 
 - `satisfactory_balancer.zsh`  
-  Zsh CLI planner for 1→n Satisfactory load balancers.
-  - Invoke with `1:<targets>` (for example `zsh satisfactory_balancer.zsh 1:72`); the helper only accepts 1→n requests now.
-  - Other balancing/compression modes (e.g., `1:1`, `2:1`, `2:2`) are work in progress and will be enabled later.
-  - Detects “clean” counts (`2^a·3^b`) and rounds non-clean requests up to the next clean size, reporting loop-back outputs.
-  - Searches all 1→2 / 1→3 layer permutations to pick the layout that uses the fewest splitters; the verbose output lists each layer on its own line (`place 4 splitters to create 12 outputs`) and finishes with a branch-sequence summary.
+  CLI helper that mirrors the official [Satisfactory Balancer wiki](https://satisfactory.wiki.gg/wiki/Balancer) layouts (load balancer, belt balancer, belt compressor) plus NicoBuilds’ complex ratio math.
+  - **Usage:** `zsh satisfactory_balancer.zsh [options] n:m [n:m ...]` (ratios must be positive integers; bare `44` is invalid).
+  
+  - **Flags:** only `-h/--help` for usage info.
+  
+  - **Auto-detected modes:**
+    - `LOAD-BALANCER` (`1:n`) – classic splitter trees; non-clean sizes are rounded up and loop-back lanes are reported.
+    - `BELT-BALANCER` (`n>1`, `m≥n`) – describes split stages per input and merge stages per output, including loop-back/padding info.
+    - `BELT-COMPRESSOR` (`n>1`, `m<n`) – pack-first merger stacks with explicit lane budgets and priority chains.
+    - `NICO` complex ratios (`1:A:B[:C...]`) – automatically detected; the script reuses the clean 1→N planner, then prints a lane allocation table just like [NicoBuilds’ guide](https://www.reddit.com/r/SatisfactoryGame/comments/1mitmza/guide_how_to_load_balance_weird_ratios_without/).
+    
+  - **Examples:**
+    
+    - `zsh satisfactory_balancer.zsh 1:48` → LOAD-BALANCER blueprint for a clean 1→48 split.
+    - `zsh satisfactory_balancer.zsh 4:7` → BELT-BALANCER showing split layers, merge layers, lane budgets, and loop-back counts.
+    - `zsh satisfactory_balancer.zsh 5:2` → BELT-COMPRESSOR with pack-first priority notes (`O1→O2`).
+    - `zsh satisfactory_balancer.zsh 1:44:8` → Nico-style split that divides 54 clean lanes into `44:8` plus loop-back.
+    
+    > Recipes and layer steps always enumerate the exact number of splitters/mergers per layer (`place 6 splitters to create 18 outputs`), followed by a branch-sequence summary so you can double-check the math in game.
 
 ### Audio Helpers (`Audio/`)
 
