@@ -17,11 +17,11 @@ Examples:
   satisfactory_balancer.zsh 1:48      # LOAD-BALANCER (1 input → 48 outputs)
   satisfactory_balancer.zsh 4:7       # BELT-BALANCER (4 inputs → 7 outputs)
   satisfactory_balancer.zsh 5:2       # BELT-COMPRESSOR (5 inputs → 2 outputs)
-  satisfactory_balancer.zsh 1:44:8    # Complex 1→N ratio (Nico-style, WIP)
+  satisfactory_balancer.zsh 1:44:8    # Complex 1→N ratio (auto-detected Nico math)
 
 Notes:
   • Normal ratios automatically detect LOAD-BALANCER, BELT-BALANCER, or BELT-COMPRESSOR mode.
-  • Complex 1→N ratios (like 1:44:8) use NicoBuilds-inspired math (implementation in progress).
+  • Complex 1→N ratios (like 1:44:8) are auto-detected using NicoBuilds-inspired math.
   • Inputs and outputs must be positive integers; use explicit 1:n instead of bare n.
 USAGE
 }
@@ -679,6 +679,67 @@ __bal_handle_load_dirty() {
   return 0
 }
 
+__bal_handle_nico_ratio() {
+  local descriptor=$1
+  shift
+  local -a weights=("$@")
+  local count=${#weights[@]}
+  if (( count < 2 )); then
+    echo "invalid Nico ratio: ${descriptor}" >&2
+    return 2
+  fi
+  local weight
+  for weight in "${weights[@]}"; do
+    if ! __bal_is_positive_int "$weight"; then
+      echo "invalid Nico ratio: ${descriptor}" >&2
+      return 2
+    fi
+  done
+
+  local denom=0
+  for weight in "${weights[@]}"; do
+    (( denom += weight ))
+  done
+  if (( denom == 0 )); then
+    echo "invalid Nico ratio: ${descriptor}" >&2
+    return 2
+  fi
+
+  local clean=$(__bal_next_clean "$denom")
+  local loopback=$(( clean - denom ))
+  local exp2 exp3 rem
+  read exp2 exp3 rem <<< "$(__bal_exponents23 "$clean")"
+  local count2=$exp2
+  local count3=$exp3
+
+  local ratio_text="${(j/:/)weights}"
+  printf "%s | NICO | split 1 input into outputs with ratio %s (clean 1→%d)\n" "$descriptor" "$ratio_text" "$clean"
+  __bal_recipe_lines "$count3" "$count2" "Recipe" "Split (single input)"
+
+  echo "  Allocation (ratio ${ratio_text}):"
+  local idx=1 start=1 end lane_word range_text
+  for weight in "${weights[@]}"; do
+    end=$(( start + weight - 1 ))
+    lane_word="lanes"
+    (( weight == 1 )) && lane_word="lane"
+    if (( weight == 1 )); then
+      range_text="${start}"
+    else
+      range_text="${start}-${end}"
+    fi
+    printf "    Output %d – take %d %s (positions %s)\n" "$idx" "$weight" "$lane_word" "$range_text"
+    (( idx++ ))
+    start=$(( end + 1 ))
+  done
+
+  printf "Ratio denominator: %d lanes; clean size: %d.\n" "$denom" "$clean"
+  if (( loopback > 0 )); then
+    local loop_word="lanes"
+    (( loopback == 1 )) && loop_word="lane"
+    printf "Split loop back: %d %s (merge them, feed back to input)\n" "$loopback" "$loop_word"
+  fi
+}
+
 __bal_handle_load_ratio() {
   local inputs=$1 outputs=$2
   if (( outputs == 1 )); then
@@ -827,6 +888,14 @@ __bal_handle_compressor_ratio() {
 __bal_process_ratio() {
   local token=$1
   local -a parts=("${(@s/:/)token}")
+  if (( ${#parts[@]} >= 3 )); then
+    local first=${parts[1]}
+    if __bal_is_positive_int "$first" && (( first == 1 )); then
+      local -a weights=("${parts[@]:1}")
+      __bal_handle_nico_ratio "$token" "${weights[@]}"
+      return $?
+    fi
+  fi
   if (( ${#parts[@]} != 2 )); then
     echo "invalid ratio: ${token}" >&2
     return 2
@@ -853,11 +922,6 @@ __bal_process_ratio() {
       __bal_handle_compressor_ratio "$inputs" "$outputs"
       ;;
   esac
-}
-
-__bal_process_nico_mode() {
-  echo "satisfactory_balancer: --nico mode is not implemented yet" >&2
-  return 2
 }
 
 __bal_main() {
