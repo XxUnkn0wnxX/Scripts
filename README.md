@@ -47,6 +47,10 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
     
     > Recipes and layer steps always enumerate the exact number of splitters/mergers per layer (`place 6 splitters to create 18 outputs`), followed by a branch-sequence summary so you can double-check the math in game.
 
+- `brew-custom-compare.zsh`  
+  Scans a tap’s formulas, fetches their stable versions via `brew info --json=v2`, and compares them with the official Homebrew JSON API so you can see which of your patched formulae are ahead, behind, or missing upstream equivalents. Supports limiting the check to specific formula names, or `--all-taps` to iterate every tapped repo (excluding `homebrew/core`).
+  > *Hard-coded to `custom/versions` by default; edit the `DEFAULT_CUSTOM_TAP` variable near the top of the script if your overrides live elsewhere.*
+
 ### Audio Helpers (`Audio/`)
 
 - `strip_audio_tags.zsh`  
