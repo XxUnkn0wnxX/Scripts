@@ -4,10 +4,12 @@
 # Override these via environment variables if needed before running the script.
 DEFAULT_CUSTOM_TAP=${DEFAULT_CUSTOM_TAP:-"custom/versions"}
 HOMEBREW_API_FORMULA_BASE=${HOMEBREW_API_FORMULA_BASE:-"https://formulae.brew.sh/api/formula"}
+typeset -gA __brew_last_custom_versions=()
+typeset -ga __brew_last_formulas=()
+typeset -g __brew_last_tap=""
 
 # --- Helpers for comparing custom tap vs upstream core using Homebrew's API ---
 
-# Fetch stable versions for a list of specs (e.g., custom/versions/node) in batches.
 brew_collect_versions() {
   local -a specs=("$@")
   local -a chunk=()
@@ -119,6 +121,8 @@ brew_compare_custom_vs_core_api() {
   local name spec custom_ver cmp official_ver api_status cmp_status
   typeset -A custom_versions
 
+  setopt local_options null_glob
+
   input_formulas=("$@")
 
   tap_dir=$(brew --repository "$tap") || {
@@ -160,9 +164,16 @@ brew_compare_custom_vs_core_api() {
     fi
     while IFS=$'\t' read -r full_name version; do
       [[ -z "$full_name" ]] && continue
-      custom_versions["$full_name"]="$version"
+      custom_versions[$full_name]=$version
     done <<<"$collect_output"
   fi
+
+  __brew_last_custom_versions=()
+  for name in ${(k)custom_versions}; do
+    __brew_last_custom_versions[$name]=${custom_versions[$name]}
+  done
+  __brew_last_formulas=("${formulas[@]}")
+  __brew_last_tap="$tap"
 
   echo "Comparing $tap (local) vs Homebrew API (upstream):"
   echo
@@ -171,7 +182,7 @@ brew_compare_custom_vs_core_api() {
     [[ -n "$name" ]] || continue
 
     spec="$tap/$name"
-    custom_ver=${custom_versions["$spec"]}
+    custom_ver=${custom_versions[$spec]}
     if [[ -z "$custom_ver" ]]; then
       printf '%-25s %s\n' "$name" "ERROR     (failed to get custom version)"
       continue
@@ -215,6 +226,95 @@ brew_compare_custom_vs_core_api() {
         ;;
     esac
   done
+}
+
+brew_compare_custom_vs_other_tap() {
+  local base_tap="$1"
+  local other_tap="$2"
+  shift 2
+  local -a base_formulas=("$@")
+  local tap_dir
+  local -a matched_specs matched_formulas
+  local formula formula_path
+  local -A other_versions=()
+
+  tap_dir=$(brew --repository "$other_tap") || return 0
+
+  setopt local_options null_glob
+
+  for formula in "${base_formulas[@]}"; do
+    [[ -n "$formula" ]] || continue
+    formula_path="$tap_dir/Formula/$formula.rb"
+    [[ -f "$formula_path" ]] || continue
+    matched_formulas+=("$formula")
+    matched_specs+=("$other_tap/$formula")
+  done
+
+  (( ${#matched_specs[@]} )) || return 0
+
+  local collect_output
+  if ! collect_output=$(brew_collect_versions "${matched_specs[@]}"); then
+    echo "Skipping $other_tap (failed to collect versions)." >&2
+    return 0
+  fi
+
+  while IFS=$'\t' read -r full_name version; do
+    [[ -z "$full_name" ]] && continue
+    local short_name=${full_name##*/}
+    other_versions["$short_name"]="$version"
+  done <<<"$collect_output"
+
+  (( ${#other_versions[@]} )) || return 0
+
+  echo
+  echo "Comparing $base_tap (local) vs $other_tap (tap overlap):"
+  echo
+
+  local cmp cmp_status custom_key custom_ver other_ver
+  local sorted_list
+  sorted_list=$(printf '%s\n' "${matched_formulas[@]}" | LC_ALL=C sort -V)
+
+  while IFS= read -r formula; do
+    [[ -n "$formula" ]] || continue
+    custom_key="$base_tap/$formula"
+    custom_ver=${__brew_last_custom_versions[$custom_key]}
+    if [[ -z "$custom_ver" ]]; then
+      printf '%-25s %s\n' "$formula" "ERROR     (no cached custom version for $formula)"
+      continue
+    fi
+    other_ver=${other_versions["$formula"]}
+    if [[ -z "$other_ver" ]]; then
+      printf '%-25s %s\n' "$formula" "SKIP      ($other_tap copy missing)"
+      continue
+    fi
+
+    cmp=$(brew_compare_versions "$custom_ver" "$other_ver")
+    cmp_status=$?
+    if (( cmp_status != 0 )); then
+      if (( cmp_status == 2 )); then
+        printf '%-25s %s\n' "$formula" "SKIP      (custom $custom_ver, unable to compare against $other_tap $other_ver)"
+        continue
+      else
+        printf '%-25s %s\n' "$formula" "ERROR     (comparison failed for $custom_ver vs $other_tap $other_ver)"
+        continue
+      fi
+    fi
+
+    case "$cmp" in
+      -1)
+        printf '%-25s %s\n' "$formula" "OUTDATED  (custom $custom_ver < $other_tap $other_ver)"
+        ;;
+      0)
+        printf '%-25s %s\n' "$formula" "OK        ($custom_ver matches $other_tap)"
+        ;;
+      1)
+        printf '%-25s %s\n' "$formula" "AHEAD     (custom $custom_ver > $other_tap $other_ver)"
+        ;;
+      *)
+        printf '%-25s %s\n' "$formula" "ERROR     (compare failed: $custom_ver vs $other_tap $other_ver)"
+        ;;
+    esac
+  done <<<"$sorted_list"
 }
 
 usage() {
@@ -284,16 +384,19 @@ main() {
       taps_to_scan+=("$tap_name")
     done < <(brew tap 2>/dev/null)
 
+    if ! brew_compare_custom_vs_core_api "$tap" "${formulas[@]}"; then
+      return 1
+    fi
+
+    local -a base_formulas=("${__brew_last_formulas[@]}")
+    local base_tap="$__brew_last_tap"
+
     if (( ${#taps_to_scan[@]} == 0 )); then
-      echo "No additional taps found to scan." >&2
       return 0
     fi
 
     for tap_name in "${taps_to_scan[@]}"; do
-      if ! brew_compare_custom_vs_core_api "$tap_name" "${formulas[@]}"; then
-        echo "Skipping tap $tap_name due to errors." >&2
-      fi
-      echo
+      brew_compare_custom_vs_other_tap "$base_tap" "$tap_name" "${base_formulas[@]}"
     done
     return 0
   fi
