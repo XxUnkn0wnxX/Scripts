@@ -4,9 +4,6 @@
 # Override these via environment variables if needed before running the script.
 DEFAULT_CUSTOM_TAP=${DEFAULT_CUSTOM_TAP:-"custom/versions"}
 HOMEBREW_API_FORMULA_BASE=${HOMEBREW_API_FORMULA_BASE:-"https://formulae.brew.sh/api/formula"}
-typeset -gA __brew_last_custom_versions=()
-typeset -ga __brew_last_formulas=()
-typeset -g __brew_last_tap=""
 
 # --- Helpers for comparing custom tap vs upstream core using Homebrew's API ---
 
@@ -236,13 +233,6 @@ brew_compare_custom_vs_core_api() {
       custom_versions[$full_name]=$version
     done <<<"$collect_output"
   fi
-
-  __brew_last_custom_versions=()
-  for name in ${(k)custom_versions}; do
-    __brew_last_custom_versions[$name]=${custom_versions[$name]}
-  done
-  __brew_last_formulas=("${formulas[@]}")
-  __brew_last_tap="$tap"
 
   echo "Comparing $tap (local) vs Homebrew API (upstream):"
   echo
