@@ -4,6 +4,7 @@
 # Override these via environment variables if needed before running the script.
 DEFAULT_CUSTOM_TAP=${DEFAULT_CUSTOM_TAP:-"custom/versions"}
 HOMEBREW_API_FORMULA_BASE=${HOMEBREW_API_FORMULA_BASE:-"https://formulae.brew.sh/api/formula"}
+typeset -gA __brew_pinned=()
 
 # --- Helpers for comparing custom tap vs upstream core using Homebrew's API ---
 
@@ -133,6 +134,35 @@ brew_list_tap_formulas() {
   printf '%s\n' "${sorted[@]}"
 }
 
+brew_cache_pinned() {
+  local pinned_output
+  __brew_pinned=()
+
+  if ! pinned_output=$(brew list --pinned 2>/dev/null); then
+    return 1
+  fi
+
+  while IFS= read -r name; do
+    [[ -z "$name" ]] && continue
+    __brew_pinned[$name]=1
+  done <<<"$pinned_output"
+
+  return 0
+}
+
+brew_print_status() {
+  local formula="$1"
+  local label="$2"
+  local detail="$3"
+  local final_label="$label"
+
+  if [[ -n ${__brew_pinned[$formula]} ]]; then
+    final_label="PINNED"
+  fi
+
+  printf '%-25s %-9s %s\n' "$formula" "$final_label" "$detail"
+}
+
 brew_tap_has_formula() {
   local tap_dir="$1"
   local formula="$2"
@@ -174,7 +204,7 @@ brew_compare_against_other_tap() {
   local overlap_info overlap_tap overlap_ver cmp cmp_status
 
   if ! overlap_info=$(brew_find_overlap_version "$base_tap" "$formula"); then
-    printf '%-25s %s\n' "$formula" "SKIP      (custom $custom_ver, not found in Homebrew API or other installed taps)"
+    brew_print_status "$formula" "SKIP" "(custom $custom_ver, not found in Homebrew API or other installed taps)"
     return 0
   fi
 
@@ -185,25 +215,25 @@ brew_compare_against_other_tap() {
   cmp_status=$?
   if (( cmp_status != 0 )); then
     if (( cmp_status == 2 )); then
-      printf '%-25s %s\n' "$formula" "SKIP      (custom $custom_ver, unable to compare against $overlap_tap $overlap_ver)"
+      brew_print_status "$formula" "SKIP" "(custom $custom_ver, unable to compare against $overlap_tap $overlap_ver)"
     else
-      printf '%-25s %s\n' "$formula" "ERROR     (comparison failed for $custom_ver vs $overlap_tap $overlap_ver)"
+      brew_print_status "$formula" "ERROR" "(comparison failed for $custom_ver vs $overlap_tap $overlap_ver)"
     fi
     return 0
   fi
 
   case "$cmp" in
     -1)
-      printf '%-25s %s\n' "$formula" "OUTDATED  (custom $custom_ver < $overlap_tap $overlap_ver)"
+      brew_print_status "$formula" "OUTDATED" "(custom $custom_ver < $overlap_tap $overlap_ver)"
       ;;
     0)
-      printf '%-25s %s\n' "$formula" "OK        ($custom_ver matches $overlap_tap)"
+      brew_print_status "$formula" "OK" "($custom_ver matches $overlap_tap)"
       ;;
     1)
-      printf '%-25s %s\n' "$formula" "AHEAD     (custom $custom_ver > $overlap_tap $overlap_ver)"
+      brew_print_status "$formula" "AHEAD" "(custom $custom_ver > $overlap_tap $overlap_ver)"
       ;;
     *)
-      printf '%-25s %s\n' "$formula" "ERROR     (compare failed: $custom_ver vs $overlap_tap $overlap_ver)"
+      brew_print_status "$formula" "ERROR" "(compare failed: $custom_ver vs $overlap_tap $overlap_ver)"
       ;;
   esac
 
@@ -282,7 +312,7 @@ brew_compare_custom_vs_core_api() {
     spec="$tap/$name"
     custom_ver=${custom_versions[$spec]}
     if [[ -z "$custom_ver" ]]; then
-      printf '%-25s %s\n' "$name" "ERROR     (failed to get custom version)"
+      brew_print_status "$name" "ERROR" "(failed to get custom version)"
       continue
     fi
 
@@ -297,7 +327,7 @@ brew_compare_custom_vs_core_api() {
       brew_compare_against_other_tap "$tap" "$name" "$custom_ver"
       continue
     else
-      printf '%-25s %s\n' "$name" "ERROR     (custom $custom_ver, failed to query the Homebrew API)"
+      brew_print_status "$name" "ERROR" "(custom $custom_ver, failed to query the Homebrew API)"
       continue
     fi
 
@@ -305,26 +335,26 @@ brew_compare_custom_vs_core_api() {
     cmp_status=$?
     if (( cmp_status != 0 )); then
       if (( cmp_status == 2 )); then
-        printf '%-25s %s\n' "$name" "SKIP      (custom $custom_ver, unable to compare against $official_ver)"
+        brew_print_status "$name" "SKIP" "(custom $custom_ver, unable to compare against $official_ver)"
         continue
       else
-        printf '%-25s %s\n' "$name" "ERROR     (comparison failed for $custom_ver vs $official_ver)"
+        brew_print_status "$name" "ERROR" "(comparison failed for $custom_ver vs $official_ver)"
         continue
       fi
     fi
 
     case "$cmp" in
       -1)
-        printf '%-25s %s\n' "$name" "OUTDATED  (custom $custom_ver < core $official_ver)"
+        brew_print_status "$name" "OUTDATED" "(custom $custom_ver < core $official_ver)"
         ;;
       0)
-        printf '%-25s %s\n' "$name" "OK        ($custom_ver)"
+        brew_print_status "$name" "OK" "($custom_ver)"
         ;;
       1)
-        printf '%-25s %s\n' "$name" "AHEAD     (custom $custom_ver > core $official_ver)"
+        brew_print_status "$name" "AHEAD" "(custom $custom_ver > core $official_ver)"
         ;;
       *)
-        printf '%-25s %s\n' "$name" "ERROR     (compare failed: $custom_ver vs $official_ver)"
+        brew_print_status "$name" "ERROR" "(compare failed: $custom_ver vs $official_ver)"
         ;;
     esac
   done
@@ -374,6 +404,10 @@ main() {
         ;;
     esac
   done
+
+  if ! brew_cache_pinned; then
+    echo "Warning: failed to list pinned formulae; continuing without PINNED labels." >&2
+  fi
 
   if ! brew_compare_custom_vs_core_api "$tap" "${formulas[@]}"; then
     return 1
