@@ -103,6 +103,44 @@ brew_compare_versions() {
   ' "$1" "$2"
 }
 
+brew_list_tap_formulas() {
+  local tap_dir="$1"
+  local -a files sorted
+  typeset -A seen=()
+  local file base
+
+  [[ -d "$tap_dir" ]] || return 1
+
+  if command -v rg >/dev/null 2>&1; then
+    files=(${(@f)$(rg --files -g '*.rb' "$tap_dir" 2>/dev/null)})
+  else
+    files=(${(@f)$(find "$tap_dir" -type f -name '*.rb' 2>/dev/null)})
+  fi
+
+  (( ${#files[@]} )) || return 0
+
+  for file in "${files[@]}"; do
+    [[ -f "$file" ]] || continue
+    base=${file:t}
+    base=${base%.rb}
+    [[ -z "$base" ]] && continue
+    seen[$base]=1
+  done
+
+  (( ${#seen[@]} )) || return 0
+
+  sorted=(${(@ko)seen})
+  printf '%s\n' "${sorted[@]}"
+}
+
+brew_tap_has_formula() {
+  local tap_dir="$1"
+  local formula="$2"
+  setopt local_options null_glob extended_glob
+  local matches=("${tap_dir}"/**/"${formula}".rb(N-.))
+  (( ${#matches[@]} ))
+}
+
 brew_find_overlap_version() {
   local base_tap="$1"
   local formula="$2"
@@ -115,7 +153,7 @@ brew_find_overlap_version() {
     [[ "$tap_name" == "$base_tap" ]] && continue
     [[ "$tap_name" == "homebrew/core" ]] && continue
     tap_dir=$(brew --repository "$tap_name" 2>/dev/null) || continue
-    [[ -f "$tap_dir/Formula/$formula.rb" ]] || continue
+    brew_tap_has_formula "$tap_dir" "$formula" || continue
 
     spec="$tap_name/$formula"
     if output=$(brew_collect_versions "$spec" 2>/dev/null); then
@@ -199,12 +237,13 @@ brew_compare_custom_vs_core_api() {
   if (( ${#input_formulas[@]} )); then
     formulas=("${input_formulas[@]}")
   else
-    for rb in "$tap_dir"/Formula/*.rb; do
-      [[ -e "$rb" ]] || continue
-      name=${rb:t}
-      name=${name%.rb}
+    local discovered
+    discovered=$(brew_list_tap_formulas "$tap_dir")
+    formulas=()
+    while IFS= read -r name; do
+      [[ -z "$name" ]] && continue
       formulas+=("$name")
-    done
+    done <<<"$discovered"
   fi
 
   if (( ${#formulas[@]} )); then
