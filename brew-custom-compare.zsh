@@ -323,7 +323,6 @@ Usage: brew-custom-compare.zsh [options] [formula ...]
 
 Options:
   -t, --tap <tap>        Custom tap to inspect (default: $DEFAULT_CUSTOM_TAP)
-  -a, --all-taps         Compare every tapped repository (excluding $DEFAULT_CUSTOM_TAP and homebrew/core)
   -h, --help             Show this help message
 
 With no formula arguments, every Ruby formula file in the tap is compared.
@@ -333,7 +332,6 @@ EOF
 
 main() {
   local tap="$DEFAULT_CUSTOM_TAP"
-  local scan_all_taps=0
   local -a formulas
 
   while [[ $# -gt 0 ]]; do
@@ -342,10 +340,6 @@ main() {
         [[ -n "$2" ]] || { echo "Missing tap after $1" >&2; return 1; }
         tap="$2"
         shift 2
-        ;;
-      -a|--all-taps)
-        scan_all_taps=1
-        shift
         ;;
       -h|--help)
         usage
@@ -368,40 +362,39 @@ main() {
     esac
   done
 
-  if (( scan_all_taps )) && [[ "$tap" != "$DEFAULT_CUSTOM_TAP" ]]; then
-    echo "--all-taps cannot be combined with --tap" >&2
+  if ! brew_compare_custom_vs_core_api "$tap" "${formulas[@]}"; then
     return 1
   fi
 
-  if (( scan_all_taps )); then
-    local -a taps_to_scan=()
-    local tap_name
+  local -a base_formulas=("${__brew_last_formulas[@]}")
+  local base_tap="$__brew_last_tap"
 
-    while IFS= read -r tap_name; do
-      [[ -z "$tap_name" ]] && continue
-      [[ "$tap_name" == "$DEFAULT_CUSTOM_TAP" ]] && continue
-      [[ "$tap_name" == "homebrew/core" ]] && continue
-      taps_to_scan+=("$tap_name")
-    done < <(brew tap 2>/dev/null)
+  (( ${#base_formulas[@]} )) || return 0
 
-    if ! brew_compare_custom_vs_core_api "$tap" "${formulas[@]}"; then
-      return 1
-    fi
+  local -a candidate_taps=()
+  local tap_name tap_dir formula match_found
 
-    local -a base_formulas=("${__brew_last_formulas[@]}")
-    local base_tap="$__brew_last_tap"
+  while IFS= read -r tap_name; do
+    [[ -z "$tap_name" ]] && continue
+    [[ "$tap_name" == "$base_tap" ]] && continue
+    [[ "$tap_name" == "homebrew/core" ]] && continue
+    tap_dir=$(brew --repository "$tap_name" 2>/dev/null) || continue
 
-    if (( ${#taps_to_scan[@]} == 0 )); then
-      return 0
-    fi
-
-    for tap_name in "${taps_to_scan[@]}"; do
-      brew_compare_custom_vs_other_tap "$base_tap" "$tap_name" "${base_formulas[@]}"
+    match_found=0
+    for formula in "${base_formulas[@]}"; do
+      [[ -f "$tap_dir/Formula/$formula.rb" ]] || continue
+      match_found=1
+      break
     done
-    return 0
-  fi
 
-  brew_compare_custom_vs_core_api "$tap" "${formulas[@]}"
+    (( match_found )) && candidate_taps+=("$tap_name")
+  done < <(brew tap 2>/dev/null)
+
+  (( ${#candidate_taps[@]} )) || return 0
+
+  for tap_name in "${candidate_taps[@]}"; do
+    brew_compare_custom_vs_other_tap "$base_tap" "$tap_name" "${base_formulas[@]}"
+  done
 }
 
 if [[ "${(%):-%N}" == "$0" ]]; then
