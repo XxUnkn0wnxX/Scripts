@@ -9,7 +9,7 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 - `yt-transcribe.py`  
   CLI tool that pulls YouTube captions (manual or auto-generated), cleans them, and exports either plain text or DOCX. Supports language preferences, caption translation, sanitized filenames, and time-based cutoffs.
 
-- `convert.py`  
+- `pyconvert.py`  
   Hex/float conversion helper that reads binary values, enforces bounds, and prints them in multiple numeric formats. Useful when inspecting save files or binary blobs.
 
 - `MediaFire.py`  
