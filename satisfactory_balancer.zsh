@@ -246,7 +246,11 @@ __bal_recipe_lines() {
       if [[ $mode == "merge" ]]; then
         plural="mergers"
       fi
-      echo "  Note: Layer order ${factor_expr} (branch sequence) → total ${plural} per belt ${sum_expr} = ${total_nodes}."
+      if (( ${#total_counts[@]} == 1 )); then
+        echo "  Note: Layer order ${factor_expr} (branch sequence) → total ${plural} per belt ${total_nodes}."
+      else
+        echo "  Note: Layer order ${factor_expr} (branch sequence) → total ${plural} per belt ${sum_expr} = ${total_nodes}."
+      fi
     fi
   fi
 }
@@ -302,7 +306,11 @@ __bal_split_lines_and_note() {
         (( total_nodes += c ))
       done
       local noun_phrase="splitters"
-      note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} per belt ${sum_expr} = ${total_nodes}"
+      if (( ${#total_counts[@]} == 1 )); then
+        note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} per belt ${total_nodes}"
+      else
+        note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} per belt ${sum_expr} = ${total_nodes}"
+      fi
     fi
   fi
   printf '%s\x1F%s\n' "$lines_text" "$note"
