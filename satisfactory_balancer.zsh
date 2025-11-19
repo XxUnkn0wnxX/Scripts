@@ -242,14 +242,11 @@ __bal_recipe_lines() {
       for count in "${total_counts[@]}"; do
         (( total_nodes += count ))
       done
-      local noun="splitter"
       local plural="splitters"
       if [[ $mode == "merge" ]]; then
-        noun="merger"
         plural="mergers"
       fi
-      (( total_nodes == 1 )) && plural="$noun"
-      echo "  Note: Layer order ${factor_expr} (branch sequence) → total ${plural} ${sum_expr} = ${total_nodes}."
+      echo "  Note: Layer order ${factor_expr} (branch sequence) → total ${plural} per belt ${sum_expr} = ${total_nodes}."
     fi
   fi
 }
@@ -305,8 +302,7 @@ __bal_split_lines_and_note() {
         (( total_nodes += c ))
       done
       local noun_phrase="splitters"
-      (( total_nodes == 1 )) && noun_phrase="splitter"
-      note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} ${sum_expr} = ${total_nodes}"
+      note="Layer order ${factor_expr} (branch sequence) → total ${noun_phrase} per belt ${sum_expr} = ${total_nodes}"
     fi
   fi
   printf '%s\x1F%s\n' "$lines_text" "$note"
@@ -615,7 +611,7 @@ __bc_note_from_plan() {
   done
   local branch_expr="${(j:×:)factors}"
   local sum_expr="${(j: + :)counts}"
-  printf "%s – Layer order %s (branch sequence) → total mergers %s = %d" "$label" "$branch_expr" "$sum_expr" "$total"
+  printf "%s – Layer order %s (branch sequence) → total mergers per belt %s = %d" "$label" "$branch_expr" "$sum_expr" "$total"
 }
 
 __bal_detect_mode() {
@@ -860,7 +856,7 @@ __bal_handle_balancer_ratio() {
   if (( ${#merge_factors[@]} > 0 )); then
     local branch_expr="${(j:×:)merge_factors}"
     local merges_total=${#merge_factors[@]}
-    merge_note_raw="per output – Layer order ${branch_expr} (branch sequence) → total mergers ${merges_total}"
+    merge_note_raw="per output – Layer order ${branch_expr} (branch sequence) → total mergers per belt ${merges_total}"
   fi
   local combined_note=""
   if [[ -n "$split_note" ]]; then
