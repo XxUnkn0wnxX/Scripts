@@ -16,37 +16,16 @@
 SCRIPT_ROOT=${0:A:h}
 VENV_PATH="$SCRIPT_ROOT/.venv"
 PYTHON_BIN=""
-typeset -gi _VENV_READY=0
+typeset -gi _PY_READY=0
 
-ensure_venv_python() {
-  if [[ $_VENV_READY -eq 1 ]]; then
-    return 0
-  fi
-
-  if [[ ! -f "$VENV_PATH/bin/activate" ]]; then
-    echo "Virtualenv not found at $VENV_PATH. Run /usr/local/bin/python3 -m venv .venv && pip install -r requirements.txt." >&2
-    exit 1
-  fi
-
-  if [[ "$VIRTUAL_ENV" != "$VENV_PATH" ]]; then
-    if ! source "$VENV_PATH/bin/activate"; then
-      echo "Failed to activate virtualenv at $VENV_PATH." >&2
-      exit 1
-    fi
-  fi
-
-  PYTHON_BIN="$VENV_PATH/bin/python3"
-  if [[ ! -x "$PYTHON_BIN" ]]; then
-    echo "Virtualenv python missing at $PYTHON_BIN." >&2
-    exit 1
-  fi
-
-  if ! "$PYTHON_BIN" - <<'PYCODE'
+_verify_python_runtime() {
+  local py_bin="$1"
+  "$py_bin" - <<'PYCODE'
 import sys
 import importlib
 
 try:
-    import pymkv  # main module used by the script
+    import pymkv  # primary module used by the script
 except ModuleNotFoundError as exc:
     sys.exit(f"pymkv unavailable: {exc}")
 
@@ -57,16 +36,59 @@ except ImportError:  # pragma: no cover
 
 try:
     metadata.version("pymkv2")
-except metadata.PackageNotFoundError:
-    sys.exit("pymkv2 distribution is not installed in this virtualenv.")
+except metadata.PackageNotFoundError as exc:
+    sys.exit("pymkv2 distribution is not installed in this environment.")
 PYCODE
-  then
-    echo "Required Python packages (pymkv, pymkv2) are not installed in the virtualenv." >&2
-    echo "Activate the venv and run: pip install -r requirements.txt" >&2
+}
+
+ensure_venv_python() {
+  if [[ $_PY_READY -eq 1 ]]; then
+    return 0
+  fi
+
+  if [[ -d "$VENV_PATH" ]]; then
+    local activate_file="$VENV_PATH/bin/activate"
+    if [[ ! -f "$activate_file" ]]; then
+      echo "Virtualenv detected at $VENV_PATH but activate script missing. Recreate the venv." >&2
+      exit 1
+    fi
+
+    if [[ "$VIRTUAL_ENV" != "$VENV_PATH" ]]; then
+      if ! source "$activate_file"; then
+        echo "Failed to activate virtualenv at $VENV_PATH." >&2
+        exit 1
+      fi
+    fi
+
+    PYTHON_BIN="$VENV_PATH/bin/python3"
+    if [[ ! -x "$PYTHON_BIN" ]]; then
+      echo "Virtualenv python missing at $PYTHON_BIN." >&2
+      exit 1
+    fi
+
+    if ! _verify_python_runtime "$PYTHON_BIN"; then
+      echo "Required Python packages (pymkv, pymkv2) are not installed in the virtualenv." >&2
+      echo "Activate the venv and run: pip install -r requirements.txt" >&2
+      exit 1
+    fi
+
+    _PY_READY=1
+    return 0
+  fi
+
+  local global_python
+  if ! global_python=$(command -v python3 2>/dev/null); then
+    echo "python3 is not available and no .venv exists. Create .venv (python3 -m venv .venv) and install requirements." >&2
     exit 1
   fi
 
-  _VENV_READY=1
+  if ! _verify_python_runtime "$global_python"; then
+    echo "Global python at $global_python lacks pymkv/pymkv2. Create .venv and run pip install -r requirements.txt." >&2
+    exit 1
+  fi
+
+  PYTHON_BIN="$global_python"
+  _PY_READY=1
 }
 
 # Extension overrides for Plex / VLC compatibility
