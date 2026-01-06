@@ -110,7 +110,7 @@ typeset -A ext_override=(
   ["S_HDMV/PGS"]="pgs"           # PGS subtitles → .pgs
 )
 
-# Multi-file target selection mode for choice 8 (Y/N)
+# Multi-file target selection mode for menu choices (Y/N)
 MULTI_FILE_SELECTION=""
 
 function count_attachments() {
@@ -166,6 +166,18 @@ rename_tracks() {
       for file in "${targets[@]}"; do
         (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((id+1)) --set name="$name" < /dev/null)
       done
+    fi
+  done
+}
+
+set_mkv_title() {
+  local title="$1"
+
+  for file in "${targets[@]}"; do
+    if [[ -z "$title" ]]; then
+      mkvpropedit "$file" --delete title < /dev/null
+    else
+      mkvpropedit "$file" --set title="$title" < /dev/null
     fi
   done
 }
@@ -341,10 +353,11 @@ print -n "Select an option:
 2) Set flag-default for tracks
 3) Set language for tracks
 4) Set name for tracks
-5) Extract all attachments from MK files
-6) Mass Remove tracks for multi-MK files
-7) Mass Re-order tracks for multi-MK files
-8) Extract Tracks for multi-MK files
+5) Set title for MK file
+6) Extract all attachments from MK files
+7) Mass Remove tracks for multi-MK files
+8) Mass Re-order tracks for multi-MK files
+9) Extract Tracks for multi-MK files
 Enter choice: "
 read choice
 
@@ -537,15 +550,52 @@ elif [ "$choice" = "4" ]; then
     read track_ids
   done
 
-  # Perform renaming on selected files
-  rename_tracks "$track_ids"
+	# Perform renaming on selected files
+	rename_tracks "$track_ids"
 
-elif [ "$choice" = "5" ]; then
-  echo "Select Matroska file(s) to extract attachments:"
-  typeset -a targets
-  targets=()
-  while IFS= read -r file; do
-    targets+=( "$file" )
+	elif [ "$choice" = "5" ]; then
+	  # Prompt for multi-file or single-file selection
+	  print -n "Enable multi-file target selection? (Y/N) [N]: "
+	  read MULTI_FILE_SELECTION
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+
+	  # Determine target files
+	  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
+	    echo "Select Matroska file(s) to apply title edits:"
+	    typeset -a targets
+	    targets=()
+	    while IFS= read -r file; do
+	      targets+=("$file")
+	    done < <(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+	      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
+	    if [ ${#targets[@]} -eq 0 ]; then
+	      echo "No target files selected. Exiting."
+	      exit 1
+	    fi
+	  else
+	    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
+	    source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
+	      | fzf --height 40% --reverse --border)
+	    if [ -z "$source_file" ]; then
+	      echo "No file selected. Exiting."
+	      exit 1
+	    fi
+	    typeset -a targets
+	    targets=("$source_file")
+	  fi
+
+	  printf "Title (empty to unset): "
+	  read title
+
+	  set_mkv_title "$title"
+
+	elif [ "$choice" = "6" ]; then
+	  echo "Select Matroska file(s) to extract attachments:"
+	  typeset -a targets
+	  targets=()
+	  while IFS= read -r file; do
+	    targets+=( "$file" )
   done < <(find . -maxdepth 1 -type f \
       \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
       | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
@@ -571,15 +621,15 @@ elif [ "$choice" = "5" ]; then
       # Extract into Attachments directory
       (cd "Attachments" && mkvextract attachments "$filepath" "${attachment_ids[@]}")
     fi
-  done
-  echo "Attachments extraction completed."
+	  done
+	  echo "Attachments extraction completed."
 
-elif [ "$choice" = "6" ]; then
-  # --- Choice 6: Mass Remove tracks ---
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+	elif [ "$choice" = "7" ]; then
+	  # --- Choice 7: Mass Remove tracks ---
+	  print -n "Enable multi-file target selection? (Y/N) [N]: "
+	  read MULTI_FILE_SELECTION
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
   # Build fzf args
   fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
@@ -672,15 +722,15 @@ elif [ "$choice" = "6" ]; then
     else
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
-    fi
-  done
+	    fi
+	  done
 
-elif [ "$choice" = "7" ]; then
-  # --- Choice 7: Mass Re-order tracks ---
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+	elif [ "$choice" = "8" ]; then
+	  # --- Choice 8: Mass Re-order tracks ---
+	  print -n "Enable multi-file target selection? (Y/N) [N]: "
+	  read MULTI_FILE_SELECTION
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
   fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
   [[ $MULTI_FILE_SELECTION == "Y" ]] && fzf_args+=(--multi)
@@ -719,14 +769,14 @@ elif [ "$choice" = "7" ]; then
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
     fi
-  done
-  
-# --- Choice 8: Extract Tracks ---
-elif [ "$choice" = "8" ]; then
-  # Prompt for multi-file or single-file selection
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
+	  done
+	  
+	# --- Choice 9: Extract Tracks ---
+	elif [ "$choice" = "9" ]; then
+	  # Prompt for multi-file or single-file selection
+	  print -n "Enable multi-file target selection? (Y/N) [N]: "
+	  read MULTI_FILE_SELECTION
+	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
   MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
 
   # Determine target files
