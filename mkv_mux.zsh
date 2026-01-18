@@ -113,7 +113,7 @@ trap 'handle_ctrl_c' INT
 # Global variable for safe mode
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
 thread_count=8  # Hard-coded to use 8 threads
-max_concurrent_jobs=3  # Hard-coded max concurrent ffmpeg jobs for volume boost
+max_concurrent_jobs=4  # Hard-coded max concurrent ffmpeg jobs for volume boost
 # ——————————————————————————————
 # Extension overrides for Plex/VLC (audio only)
 typeset -A ext_override=(
