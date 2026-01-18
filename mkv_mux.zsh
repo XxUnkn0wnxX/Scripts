@@ -253,8 +253,8 @@ remux_to_mkv_ffmpeg() {
       -map "0:a?" \
       -map "0:s?" \
       -map "0:t?" \
-      -map "0:d?" \
       -c copy \
+      -dn \
       -disposition:v:0 default \
       -map_metadata 0 \
       -map_chapters 0 \
@@ -304,11 +304,11 @@ remux_to_mkv_ffmpeg() {
       -map "0:v:0" \
       -map "0:t?" \
       -map "0:s?" \
-      -map "0:d?" \
       "${ffmpeg_maps[@]}" \
       -c:v copy \
       -c:a copy \
       -c:s copy \
+      -dn \
       -disposition:v:0 default \
       -map_metadata 0 \
       -map_chapters 0 \
