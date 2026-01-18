@@ -28,9 +28,12 @@ handle_ctrl_c() {
   echo
   case "$CHOICE" in
     1)
-      # Cancel FFmpeg remux: kill ffmpeg and clean up WORK_DIR
+      # Cancel FFmpeg remux: kill ffmpeg, remove temp file, and clean up WORK_DIR
       if [ -n "$FFMPEG_PID" ]; then
         kill -9 $FFMPEG_PID 2>/dev/null
+      fi
+      if [ -n "$TEMP_FILE" ] && [ -f "$TEMP_FILE" ]; then
+        rm -f "$TEMP_FILE"
       fi
       if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
         echo "Removing temporary directory: $WORK_DIR"
@@ -110,6 +113,7 @@ trap 'handle_ctrl_c' INT
 # Global variable for safe mode
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
 thread_count=8  # Hard-coded to use 8 threads
+max_concurrent_jobs=3  # Hard-coded max concurrent ffmpeg jobs for volume boost
 # ——————————————————————————————
 # Extension overrides for Plex/VLC (audio only)
 typeset -A ext_override=(
@@ -132,16 +136,6 @@ flush_input() {
   while read -u 3 -t 0 -k 1 _c; do :; done
 }
 
-# Function to print the help message
-print_help() {
-  echo "Usage: [options] <file>"
-  echo ""
-  echo "Options:"
-  echo "  -h, --help               Display this help message."
-  echo "  -y <file>                Remux to MKV, overwriting the existing file if it exists."
-}
-
-
 # Function to remove the temporary directory
 remove_temp_dir() {
   local temp_dir="$1"
@@ -151,15 +145,10 @@ remove_temp_dir() {
 # Function to remux a video file to MKV, replacing the original file
 remux_to_mkv() {
   local source_file="$1"
-  local overwrite_flag="$2"
   local temp_file="${source_file%.*}_temp.mkv"
   local output_file
 
   if [ "$safe_mode_write" = true ]; then
-    if [ "$overwrite_flag" = "-y" ]; then
-      echo "Error: safe mode enabled. Remuxing and overwriting are not allowed."
-      exit 1
-    fi
     # In safe mode, generate a new output file name to avoid overwriting
     local base_name="${source_file%.*}_remuxed"
     local i=1
@@ -173,30 +162,23 @@ remux_to_mkv() {
   fi
 
   if [ -f "$output_file" ] && [ "$safe_mode_write" != true ]; then
-    if [ "$overwrite_flag" = "-y" ]; then
-      echo "Overwriting existing file: $output_file"
-    elif [ -z "$overwrite_flag" ]; then
-      echo "Error: File $output_file already exists. Use -y option to overwrite."
-      exit 1
-    else
-      echo "Warning: File $output_file already exists. Do you wish to replace it? (Y/N): "
-      flush_input
-      read overwrite_choice
+    echo "Warning: File $output_file already exists. Overwrite? (Y/N): "
+    flush_input
+    read overwrite_choice
 
-      case "$overwrite_choice" in
-        Y|y)
-          echo "Overwriting existing file: $output_file"
-          ;;
-        N|n)
-          echo "Operation aborted. File not overwritten."
-          exit 1
-          ;;
-        *)
-          echo "Invalid choice. Operation aborted."
-          exit 1
-          ;;
-      esac
-    fi
+    case "$overwrite_choice" in
+      Y|y)
+        echo "Overwriting existing file: $output_file"
+        ;;
+      N|n)
+        echo "Skipped; $output_file unchanged."
+        return 1
+        ;;
+      *)
+        echo "Invalid choice. Skipping file."
+        return 1
+        ;;
+    esac
   fi
 
   echo "Remuxing $source_file to $temp_file..."
@@ -205,13 +187,18 @@ remux_to_mkv() {
   MKVMERGE_RUNNING=true
   if [ "$safe_mode_write" != true ]; then
     stty intr ''
-    mkvmerge -o "$temp_file" "$source_file" < /dev/null
+    mkvmerge -o "$temp_file" "$source_file" < /dev/null &
+    MKVMERGE_PID=$!
+    wait $MKVMERGE_PID
     ret=$?
     stty intr ^C
   else
-    mkvmerge -o "$temp_file" "$source_file" < /dev/null
+    mkvmerge -o "$temp_file" "$source_file" < /dev/null &
+    MKVMERGE_PID=$!
+    wait $MKVMERGE_PID
     ret=$?
   fi
+  MKVMERGE_PID=""
   MKVMERGE_RUNNING=false
   if [ $ret -ne 0 ]; then
     [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
@@ -221,24 +208,20 @@ remux_to_mkv() {
 
   # Replace the original file with the remuxed file
   mv "$temp_file" "$output_file"
+  TEMP_FILE=""
   echo "Replaced the original file with the remuxed file: $output_file"
 }
 
-# New version of remux_to_mkv_ffmpeg to remux with ffprobe-based stream detection and mapping
+# Remux via ffmpeg with ffprobe-based stream detection and mapping
 remux_to_mkv_ffmpeg() {
   local source_file="$1"
-  local overwrite_flag="${2:-}"
-  local replace_audio_tracks="${3:-N}"
+  local replace_audio_tracks="${2:-N}"
   local base="${source_file%.*}"
   local temp_file="${base}_temp.mkv"
   local output_file
 
   # ——————————————————————— output filename logic ———————————————————————
   if [[ "$safe_mode_write" == "true" ]]; then
-    if [[ "$overwrite_flag" == "-y" ]]; then
-      echo "Error: safe mode enabled. Remuxing and overwriting are not allowed."
-      return 1
-    fi
     local i=1
     output_file="${base}_remuxed (${i}).mkv"
     while [[ -f "$output_file" ]]; do
@@ -250,17 +233,20 @@ remux_to_mkv_ffmpeg() {
   fi
 
   # ——————— prompt to overwrite if not safe-mode ———————
-  if [[ "$safe_mode_write" != "true" && -f "$output_file" && "$overwrite_flag" != "-y" ]]; then
+  if [[ "$safe_mode_write" != "true" && -f "$output_file" ]]; then
     printf "Warning: File %s already exists. Overwrite? (Y/N) [N]: " "$output_file"
     read resp
     resp=${resp:-N}
     case "$resp" in
       [Yy]*) echo "Overwriting $output_file...";;
-      *) echo "Aborted; $output_file not changed."; return 1;;
+      *) echo "Skipped; $output_file unchanged."; return 1;;
     esac
   fi
 
-  # ——————— copy-only if user said no ———————
+  TEMP_FILE="$temp_file"
+  WORK_DIR=""
+
+  # ——————— copy-only if user chose not to re-encode audio ———————
   if [[ ! "$replace_audio_tracks" =~ ^[Yy]$ ]]; then
     ffmpeg -nostdin -y -i "$source_file" \
       -map "0:v:0" \
@@ -272,13 +258,16 @@ remux_to_mkv_ffmpeg() {
       -disposition:v:0 default \
       -map_metadata 0 \
       -map_chapters 0 \
-      "$temp_file"
+      "$temp_file" &
+    FFMPEG_PID=$!
+    wait $FFMPEG_PID
     ret=$?
-    [[ $ret -ne 0 ]] && { rm -f "$temp_file"; return $ret; }
+    FFMPEG_PID=""
+    [[ $ret -ne 0 ]] && { rm -f "$temp_file"; TEMP_FILE=""; WORK_DIR=""; return $ret; }
   else
     # ——————— re-encode all audio → AAC (.m4a) ———————
     echo "Re-encoding all audio to AAC & muxing → $output_file"
-    local WORK_DIR="${base}_temp"
+    WORK_DIR="${base}_temp"
     rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
     local -a ffmpeg_inputs=() ffmpeg_maps=()
     local ai=0
@@ -291,8 +280,12 @@ remux_to_mkv_ffmpeg() {
         -map 0:a:${ai} \
         -c:a aac -q:a 0 \
         -threads "$thread_count" \
-        "$out_audio"
-      [[ $? -ne 0 ]] && { rm -rf "$WORK_DIR"; return 1; }
+        "$out_audio" &
+      FFMPEG_PID=$!
+      wait $FFMPEG_PID
+      ret=$?
+      FFMPEG_PID=""
+      [[ $ret -ne 0 ]] && { rm -rf "$WORK_DIR"; TEMP_FILE=""; WORK_DIR=""; return 1; }
       ffmpeg_inputs+=("-i" "$out_audio")
       ffmpeg_maps+=("-map" "$((ai+1)):a:0")
       ((ai++))
@@ -319,15 +312,20 @@ remux_to_mkv_ffmpeg() {
       -disposition:v:0 default \
       -map_metadata 0 \
       -map_chapters 0 \
-      "$temp_file"
+      "$temp_file" &
+    FFMPEG_PID=$!
+    wait $FFMPEG_PID
     ret=$?
+    FFMPEG_PID=""
     rm -rf "$WORK_DIR"
-    [[ $ret -ne 0 ]] && { rm -f "$temp_file"; return $ret; }
+    [[ $ret -ne 0 ]] && { rm -f "$temp_file"; TEMP_FILE=""; WORK_DIR=""; return $ret; }
   fi
 
   # Move temp to final output
   mv "$temp_file" "$output_file"
   echo "Created file: $output_file"
+  TEMP_FILE=""
+  WORK_DIR=""
   return 0
 }
 
@@ -362,71 +360,127 @@ boost_audio_volume() {
   mkvextract tracks "$source_file" "${track_id}:${extracted_file}" < /dev/null
   echo "Extracted audio track to $extracted_file"
 
-  # Loop over each volume change, create a boosted audio file, and remux it
+  # Prepare arrays for async encode and ordered mux
+  local -a boosted_files track_names ffmpeg_pids
+  # Ensure Ctrl+C kills all async ffmpeg processes before cleanup
+  trap 'for pid in "${ffmpeg_pids[@]}"; do kill -9 "$pid" 2>/dev/null; done; handle_ctrl_c' INT
+  local max_jobs="${max_concurrent_jobs:-1}"
+  if [ "$max_jobs" -lt 1 ]; then
+    max_jobs=1
+  fi
   for volume_change in "${volume_change_array[@]}"; do
+    while true; do
+      local running_jobs=0
+      for pid in "${ffmpeg_pids[@]}"; do
+        if kill -0 "$pid" 2>/dev/null; then
+          running_jobs=$((running_jobs + 1))
+        fi
+      done
+      if [ "$running_jobs" -lt "$max_jobs" ]; then
+        break
+      fi
+      sleep 0.2
+    done
+
     # Ensure the volume_change doesn't already include "dB"
     local clean_volume_change="${volume_change//dB/}"
     # Name boosted audio files based on source filename and dB change
     local boosted_file="${work_dir}/${base_name}_${clean_volume_change}dB.aac"
     local track_name="${clean_volume_change}dB"
+    boosted_files+=("$boosted_file")
+    track_names+=("$track_name")
 
     echo "Boosting volume by ${clean_volume_change}dB..."
-    # Prepare to catch Ctrl+C and kill ffmpeg immediately
-    FFMPEG_PID=""
-    trap 'kill -9 $FFMPEG_PID 2>/dev/null; handle_ctrl_c' INT
-    # Run ffmpeg in background so it won’t be in the foreground process group
     ffmpeg -nostdin -y -i "$extracted_file" -filter:a "volume=${clean_volume_change}dB" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file" &
-    FFMPEG_PID=$!
-    wait $FFMPEG_PID
-    ret=$?
-    # Restore the global Ctrl+C handler
-    trap 'handle_ctrl_c' INT
-    if [ $ret -ne 0 ]; then
-      echo "Error: Boosting volume failed for ${clean_volume_change}dB."
-      boost_success=false
-      continue
-    fi
-    echo "Boosted audio saved to $boosted_file"
-
-    # Remux the boosted audio back into the original file
-    # Temporary MKV/MKA file with boosted audio in the working directory
-    local temp_file="${work_dir}/${base_name}_${clean_volume_change}dB_temp.${ext}"
-    echo "Remuxing the boosted audio back to $temp_file..."
-    TEMP_FILE="$temp_file"
-    MKVMERGE_RUNNING=true
-    if [ "$safe_mode_write" != true ]; then
-      # Non-safe: disable Ctrl+C so mkvmerge runs uninterrupted, then restore
-      stty intr ''
-      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file" < /dev/null
-      ret=$?
-      stty intr ^C
-    else
-      # Safe mode: allow immediate interrupt
-      mkvmerge -o "$temp_file" --track-name "0:$track_name" "$boosted_file" "$source_file" < /dev/null
-      ret=$?
-    fi
-    MKVMERGE_RUNNING=false
-    if [ $ret -ne 0 ]; then
-      # Cleanup partial file and abort
-      [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
-      exit 0
-    fi
-
-    if [ -f "$temp_file" ]; then
-      mv "$temp_file" "$output_file"
-      echo "New file with boosted audio: $output_file"
-    else
-      echo "Error: Remuxing failed, temporary file not found."
-      boost_success=false
-      rm "$boosted_file"
-      continue
-    fi
-
-    # Clean up
-    rm "$boosted_file"
+    ffmpeg_pids+=($!)
   done
 
-  rm "$extracted_file"
+  # Wait for all encodes to finish (preserve input order for success list)
+  local -a successful_files successful_track_names
+  local idx=1
+  for pid in "${ffmpeg_pids[@]}"; do
+    wait "$pid"
+    ret=$?
+    local track_label="${track_names[$idx]}"
+    local boosted_file="${boosted_files[$idx]}"
+    if [ $ret -ne 0 ]; then
+      echo "Error: Boosting volume failed for ${track_label}."
+      boost_success=false
+    else
+      echo "Boosted audio saved to $boosted_file"
+      successful_files+=("$boosted_file")
+      successful_track_names+=("$track_label")
+    fi
+    idx=$((idx + 1))
+  done
+
+  # Restore the global Ctrl+C handler
+  trap 'handle_ctrl_c' INT
+
+  if [ "$boost_success" != true ]; then
+    echo "Error: One or more volume boosts failed. Aborting."
+    for boosted_file in "${boosted_files[@]}"; do
+      rm -f "$boosted_file"
+    done
+    rm -f "$extracted_file"
+    remove_temp_dir "$work_dir"
+    if [ "$safe_mode_write" = true ] && [ -n "$BACKUP_FILE" ] && [ -f "$BACKUP_FILE" ]; then
+      echo "Restoring backup: $BACKUP_FILE -> $source_file"
+      mv "$BACKUP_FILE" "$source_file"
+    fi
+    return 1
+  fi
+
+  # Remux all boosted audio tracks into the container in one go (preserving order)
+  local temp_file="${work_dir}/${base_name}_boosted_temp.${ext}"
+  echo "Remuxing the boosted audio back to $temp_file..."
+  TEMP_FILE="$temp_file"
+  MKVMERGE_RUNNING=true
+  local -a mkvmerge_cmd
+  mkvmerge_cmd=(mkvmerge -o "$temp_file")
+  idx=1
+  for boosted_file in "${successful_files[@]}"; do
+    mkvmerge_cmd+=(--track-name "0:${successful_track_names[$idx]}" "$boosted_file")
+    idx=$((idx + 1))
+  done
+  mkvmerge_cmd+=("$source_file")
+
+  if [ "$safe_mode_write" != true ]; then
+    # Non-safe: disable Ctrl+C so mkvmerge runs uninterrupted, then restore
+    stty intr ''
+    "${mkvmerge_cmd[@]}" < /dev/null &
+    MKVMERGE_PID=$!
+    wait $MKVMERGE_PID
+    ret=$?
+    stty intr ^C
+  else
+    # Safe mode: allow immediate interrupt
+    "${mkvmerge_cmd[@]}" < /dev/null &
+    MKVMERGE_PID=$!
+    wait $MKVMERGE_PID
+    ret=$?
+  fi
+  MKVMERGE_PID=""
+  MKVMERGE_RUNNING=false
+  if [ $ret -ne 0 ]; then
+    # Cleanup partial file and abort
+    [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
+    exit 0
+  fi
+
+  if [ -f "$temp_file" ]; then
+    mv "$temp_file" "$output_file"
+    echo "New file with boosted audio: $output_file"
+  else
+    echo "Error: Remuxing failed, temporary file not found."
+    boost_success=false
+  fi
+
+  # Clean up
+  for boosted_file in "${boosted_files[@]}"; do
+    rm -f "$boosted_file"
+  done
+  rm -f "$extracted_file"
   echo "Temporary files removed."
 
   # Clean up temporary working directory
@@ -502,8 +556,12 @@ create_backup() {
   # Create the backup using rsync, showing progress
   echo "Creating a backup of the original file as $backup_file"
   echo "Rsync Copy"
-  rsync -ah --info=progress2 "$source_file" "$backup_file" < /dev/null
-  if [ $? -eq 0 ]; then
+  rsync -ah --info=progress2 "$source_file" "$backup_file" < /dev/null &
+  RSYNC_PID=$!
+  wait $RSYNC_PID
+  ret=$?
+  RSYNC_PID=""
+  if [ $ret -eq 0 ]; then
     echo "\nBackup created successfully."
     BACKUP_FILE="$backup_file"
   else
@@ -608,42 +666,25 @@ current_dir="$(pwd)"
 echo "Current Work Dir: $current_dir"
 cd "$current_dir" || exit 1
 
-# Command-line arguments handling
+# Interactive mode only (no command-line arguments)
 if [ $# -gt 0 ]; then
-  if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-    print_help
-    exit 0
-  fi
+  echo "Error: Command-line mode is disabled. Please use the interactive menu."
+  exit 1
+fi
 
-  if [ "$safe_mode_write" = true ]; then
-    echo "Error: safe mode enabled, please use the menu instead."
-    exit 1
-  fi
+# No arguments provided, ask for input via the menu
+echo "Select an option:"
+echo "1) Remux to MKV (ffmpeg)"
+echo "2) Remux to MKV (mkvmerge)"
+echo "3) Volume Boost"
+echo "4) Remove Tracks"
+echo "5) Edit Track Names"
+printf "Enter choice: "
+flush_input
+read choice
+CHOICE="$choice"
 
-  # If not in safe mode, continue with command-line argument processing
-  if [ "$1" = "-y" ]; then
-    if [ $# -lt 2 ]; then
-      echo "Error: No input file provided after -y option."
-      exit 1
-    fi
-    remux_to_mkv "$2" "-y"
-  else
-    remux_to_mkv "$1"
-  fi
-else
-  # No arguments provided, ask for input via the menu
-  echo "Select an option:"
-  echo "1) Remux to MKV (ffmpeg)"
-  echo "2) Remux to MKV (mkvmerge)"
-  echo "3) Volume Boost"
-  echo "4) Remove Tracks"
-  echo "5) Edit Track Names"
-  printf "Enter choice: "
-  flush_input
-  read choice
-  CHOICE="$choice"
-
-  if [ "$choice" -eq 1 ]; then
+if [ "$choice" -eq 1 ]; then
     echo "Select the source video files (use Tab or Shift+Tab to select multiple):"
     # Use fzf to select one or multiple files
     IFS=$'\n' video_files=($(find . -maxdepth 1 -type f | fzf --height 40% --reverse --border --multi))
@@ -663,7 +704,7 @@ else
     # Now process each file, passing the answer as $3 to our remux function
     for source_file in "${video_files[@]}"; do
       source_file="${source_file#./}"   # strip leading ./
-      if ! remux_to_mkv_ffmpeg "$source_file" "" "$replace_audio_tracks"; then
+      if ! remux_to_mkv_ffmpeg "$source_file" "$replace_audio_tracks"; then
         echo "Error processing \"$source_file\". Skipping."
       fi
     done
@@ -688,7 +729,7 @@ else
       
       # Verify the file is a video file using ffprobe
       if ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$source_file" < /dev/null 2>/dev/null | grep -q '^video'; then
-        if ! remux_to_mkv "$source_file" "prompt"; then
+        if ! remux_to_mkv "$source_file"; then
           echo "Error processing \"$source_file\". Skipping."
         fi
       else
@@ -939,14 +980,19 @@ else
     if [ "$safe_mode_write" != true ]; then
       # Non-safe: disable Ctrl+C so mkvmerge finishes uninterrupted
       stty intr ''
-      "${cmd[@]}"
+      "${cmd[@]}" &
+      MKVMERGE_PID=$!
+      wait $MKVMERGE_PID
       ret=$?
       stty intr ^C
     else
       # Safe mode: allow immediate interrupt
-      "${cmd[@]}"
+      "${cmd[@]}" &
+      MKVMERGE_PID=$!
+      wait $MKVMERGE_PID
       ret=$?
     fi
+    MKVMERGE_PID=""
     MKVMERGE_RUNNING=false
     if [ $ret -ne 0 ]; then
       # Cleanup temp file if interrupted or failed
@@ -1013,4 +1059,3 @@ else
     echo "Invalid choice."
     exit 1
   fi
-fi
