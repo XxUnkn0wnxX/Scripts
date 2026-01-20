@@ -200,9 +200,12 @@ remux_to_mkv() {
   fi
   MKVMERGE_PID=""
   MKVMERGE_RUNNING=false
-  if [ $ret -ne 0 ]; then
+  if [ $ret -gt 1 ]; then
     [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
     return 1
+  fi
+  if [ $ret -eq 1 ]; then
+    echo "Warning: mkvmerge completed with warnings."
   fi
   echo "Remuxing completed: $temp_file"
 
@@ -462,10 +465,13 @@ boost_audio_volume() {
   fi
   MKVMERGE_PID=""
   MKVMERGE_RUNNING=false
-  if [ $ret -ne 0 ]; then
+  if [ $ret -gt 1 ]; then
     # Cleanup partial file and abort
     [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
     exit 0
+  fi
+  if [ $ret -eq 1 ]; then
+    echo "Warning: mkvmerge completed with warnings."
   fi
 
   if [ -f "$temp_file" ]; then
@@ -994,11 +1000,14 @@ if [ "$choice" -eq 1 ]; then
     fi
     MKVMERGE_PID=""
     MKVMERGE_RUNNING=false
-    if [ $ret -ne 0 ]; then
+    if [ $ret -gt 1 ]; then
       # Cleanup temp file if interrupted or failed
       [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
       echo "Error: mkvmerge failed to remove tracks."
       exit 1
+    fi
+    if [ $ret -eq 1 ]; then
+      echo "Warning: mkvmerge completed with warnings."
     fi
 
     # Finalize output: safe mode vs overwrite
