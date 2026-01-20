@@ -434,17 +434,15 @@ boost_audio_volume() {
     return 1
   fi
 
-  # Remux all boosted audio tracks into the container in one go (preserving order)
+  # Remux all boosted audio tracks into the container in one go (reverse order)
   local temp_file="${work_dir}/${base_name}_boosted_temp.${ext}"
   echo "Remuxing the boosted audio back to $temp_file..."
   TEMP_FILE="$temp_file"
   MKVMERGE_RUNNING=true
   local -a mkvmerge_cmd
   mkvmerge_cmd=(mkvmerge -o "$temp_file")
-  idx=1
-  for boosted_file in "${successful_files[@]}"; do
-    mkvmerge_cmd+=(--track-name "0:${successful_track_names[$idx]}" "$boosted_file")
-    idx=$((idx + 1))
+  for ((idx=${#successful_files[@]}; idx>=1; idx--)); do
+    mkvmerge_cmd+=(--track-name "0:${successful_track_names[$idx]}" "${successful_files[$idx]}")
   done
   mkvmerge_cmd+=("$source_file")
 
