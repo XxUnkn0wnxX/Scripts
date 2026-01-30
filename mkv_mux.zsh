@@ -666,15 +666,19 @@ rename_tracks() {
 
 # Main script
 # Use the directory from which the script was invoked as the working directory
-current_dir="$(pwd)"
-echo "Current Work Dir: $current_dir"
-cd "$current_dir" || exit 1
-
-# Interactive mode only (no command-line arguments)
-if [ $# -gt 0 ]; then
-  echo "Error: Command-line mode is disabled. Please use the interactive menu."
+if [ $# -gt 1 ]; then
+  echo "Usage: ${0:t} [working_directory]" >&2
   exit 1
 fi
+
+current_dir="${1:-$(pwd)}"
+if [ ! -d "$current_dir" ]; then
+  echo "Error: Working directory not found: $current_dir" >&2
+  exit 1
+fi
+
+echo "Current Work Dir: $current_dir"
+cd "$current_dir" || exit 1
 
 # No arguments provided, ask for input via the menu
 echo "Select an option:"
