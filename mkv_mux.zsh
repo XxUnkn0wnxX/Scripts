@@ -671,14 +671,16 @@ if [ $# -gt 1 ]; then
   exit 1
 fi
 
-current_dir="${1:-$(pwd)}"
+display_dir="${1:-$(pwd)}"
+current_dir="$display_dir"
 if [ ! -d "$current_dir" ]; then
   echo "Error: Working directory not found: $current_dir" >&2
   exit 1
 fi
 
-echo "Current Work Dir: $current_dir"
 cd "$current_dir" || exit 1
+current_dir="$(pwd)"
+echo "Current Work Dir: $display_dir"
 
 # No arguments provided, ask for input via the menu
 echo "Select an option:"
