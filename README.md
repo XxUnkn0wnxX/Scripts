@@ -6,27 +6,27 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 
 ## Python Utilities
 
-- `yt-transcribe.py`  
+- [`yt-transcribe.py`](yt-transcribe.py)  
   CLI tool that pulls YouTube captions (manual or auto-generated), cleans them, and exports either plain text or DOCX. Supports language preferences, caption translation, sanitized filenames, and time-based cutoffs.
 
-- `pyconvert.py`  
+- [`pyconvert.py`](pyconvert.py)  
   Hex/float conversion helper that reads binary values, enforces bounds, and prints them in multiple numeric formats. Useful when inspecting save files or binary blobs.
 
-- `MediaFire.py`  
+- [`MediaFire.py`](MediaFire.py)  
   Automates MediaFire quickkey pairing. Supply a blocked file link while you’re logged in, and it builds a shareable URL by combining that ID with one from a folder you control. Includes Ctrl+C handling so you can abort cleanly.
 
 ## Shell Utilities
 
-- `mkv_extract_tracks.sh`  
+- [`mkv_extract_tracks.sh`](mkv_extract_tracks.sh)  
   Batch-extracts every attachment from each MKV in the current directory using `mkvextract`. Handy for grabbing embedded fonts or images.
 
-- `mkv_mux.zsh`  
+- [`mkv_mux.zsh`](mkv_mux.zsh)  
   Interactive Matroska toolbox that wraps `mkvmerge`, `ffmpeg`, `fzf`, and `jq` to remux sources, back up originals, boost audio, and inspect tracks with a guided menu.
 
-- `mkv_utils.zsh`  
+- [`mkv_utils.zsh`](mkv_utils.zsh)  
   Companion script for power users: enumerates MKV tracks, applies codec-to-extension overrides, extracts streams, and leverages Python helpers for tricky cases.
 
-- `satisfactory_balancer.zsh`  
+- [`satisfactory_balancer.zsh`](satisfactory_balancer.zsh)  
   CLI helper that mirrors the official [Satisfactory Balancer wiki](https://satisfactory.wiki.gg/wiki/Balancer) layouts (load balancer, belt balancer, belt compressor) plus NicoBuilds’ complex ratio math.
   - **Usage:** `zsh satisfactory_balancer.zsh [options] n:m [n:m ...]` (ratios must be positive integers; bare `44` is invalid).
   
@@ -47,23 +47,28 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
     
     > Recipes and layer steps always enumerate the exact number of splitters/mergers per layer (`place 6 splitters to create 18 outputs`), followed by a branch-sequence summary so you can double-check the math in game.
 
-- `brew-custom-compare.zsh`  
+- [`brew-custom-compare.zsh`](brew-custom-compare.zsh)  
   Recursively scans every `*.rb` in a tap (root, `Formula/`, `Casks/`, etc.), fetches their stable versions via `brew info --json=v2`, and compares them with the official Homebrew JSON API so you can see which of your patched formulae are ahead, behind, or missing upstream equivalents. When the API lacks an entry or version, the script immediately checks all other tapped repos (excluding `homebrew/core`) and reports the first match inline—handy when your custom formula or cask mirrors one in another tap. Anything listed by `brew list --pinned` is labelled `PINNED` so you can tell at a glance which outdated builds you’ve intentionally frozen.
   > *Hard-coded to `custom/versions` by default; edit the `DEFAULT_CUSTOM_TAP` variable near the top of the script if your overrides live elsewhere.*
 
-### Audio Helpers (`Audio/`)
+## [Zen Scripts](Zen%20Scripts/)
 
-- `strip_audio_tags.zsh`  
+- [`BO3 AO-Mod (Version 2.4a) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4a%29%20%5BZEN%5D.gpc)  
+  Cronus Zen GPC script for Black Ops 3 (Zombies/MP) with lightbar/rumble feedback and in-game toggles for features like Rapid Fire, Anti-Recoil, Drop Shot, Burst Fire, ZAim, Auto Sprint, and more. See [`BO3 AO-Mod (Version 2.4a) [ZEN].md`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4a%29%20%5BZEN%5D.md) for full button mappings, modifier rules, and toggle combos.
+
+### [Audio Helpers](Audio/)
+
+- [`strip_audio_tags.zsh`](Audio/strip_audio_tags.zsh)  
   Removes all metadata tags from `.m4a` files in the current directory using `ffmpeg`, overwriting each file in place.
 
-- `fix_tags.zsh`  
+- [`fix_tags.zsh`](Audio/fix_tags.zsh)  
   Extracts `.m4a` metadata to a sidecar file, strips the tags, then re-applies the clean metadata—useful when tags get corrupted but you want to keep the originals.
 
-## Userscripts (Tampermonkey)
+## [Userscripts (Tampermonkey)](userscripts/)
 
-- [Reveal Steam Spoilers](https://github.com/XxUnkn0wnxX/Scripts/raw/refs/heads/main/userscripts/Steam-Reveal-Spoilers.user.js)
-- [Reveal StackExchange Spoilers](https://github.com/XxUnkn0wnxX/Scripts/raw/refs/heads/main/userscripts/StackExchange-Reveal-Spoilers.user.js)
-- [Youtube Shorts Switcher](https://github.com/XxUnkn0wnxX/Scripts/raw/refs/heads/main/userscripts/Youtube-shorts-switcher.user.js)
+- [Reveal Steam Spoilers](userscripts/Steam-Reveal-Spoilers.user.js?raw=1)
+- [Reveal StackExchange Spoilers](userscripts/StackExchange-Reveal-Spoilers.user.js?raw=1)
+- [Youtube Shorts Switcher](userscripts/Youtube-shorts-switcher.user.js?raw=1)
 
 ---
 
