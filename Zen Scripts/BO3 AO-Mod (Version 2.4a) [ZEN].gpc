@@ -1,0 +1,1349 @@
+/*
+COD Black Ops 3(BO3) Script
+=============================================================================
+Device:        Cronus ZEN
+Author:        Terry (aka UK_Wildcats_Fans) | Zen port: XxUnkn0wnxX
+Game:          Call of Duty Black Ops 3 (BO3)
+System:        PlayStation 4 (PS4) 
+Controller:    DualShock 4 (DS4) 
+
+Game Settings: Default With Default Button Layout
+
+NOTE:   This script should work with other button layouts with changes described further below
+
+Device:        Cronus ZEN
+=============================================================================               
+CHANGELOG: 
+Version 1.0: Initial script from my COD AW v2.5 script used as basis.  Took out items that would not be applicable (i.e. double jump, auto dash, etc.)
+Version 1.1: Updated based upon testing during BO3 beta
+Version 1.2: Tweaked rapid fire settings
+Version 1.3: Added rumble notifier and light bar color changes when activating certain mods
+Version 1.4: Clean up and simplify the script. 
+Version 1.5: Took out section for stopping sprint reload since you can reload while sprinting in BO3
+Version 1.6: Added ADS Fire.  If you press the fire button it automatically makes it ADS (aim down sights). LookInversionON is set to FALSE by default
+Version 1.7: Added auto hold breath for the snipers out there
+Version 1.8: Added Jitter and modified drop shot combo timing
+Version 1.9: Added extra toggle for rapid fire to make it much easier and quicker for me.  Updated Jitter combo.  Fixed errors in left anti-recoil.  Added manual authenicate option.
+Version 2.0: Added multiple rumble notifier for rapid fire to indicate the preset number.  Added long jump while holding JUMP button.
+Version 2.1: Added color function to reduce code size.  Updated Jitter Combo.  Added Pump Jitter (i.e. Argus & KRM). Changed "EXO" to "TACTICAL"
+Version 2.1a:  Fixed issue with Jitter
+Version 2.2: Zen port + preset split (ADS/L1), new rumble/LED indicators, cleanup
+Version 2.3: INF grenades toggle + EQUIPMENT tap, LEFT bind, documentation updates
+Version 2.4a: ZMode toggle + INFNade master toggle, updated docs/notes
+=============================================================================
+TOGGLES: (You MUST press the listed modifier button first before)
+Press ADS (aim down sights) (L2) in addition with any of the below:
+- ADS + LEFT  = Rapid Fire ON/OFF (fires while SHOOT is held).
+- ADS + RIGHT = Rapid Fire preset cycle (1-7).
+- ADS + UP    = Jitter mode cycle (0=off, 1=normal).
+- ADS + DOWN  = Drop Shot ON/OFF.
+- ADS + double-tap TOUCHPAD then hold 800ms = Akimbo ON/OFF (adds ADS while shooting).
+
+Press TACTICAL (L1) in addition with any of the below:
+- TACTICAL + RIGHT = Rapid Fire slow preset cycle (Preset Slow 1-7).
+
+Press CROUCH (CIRCLE) in addition with any of the below:
+- CROUCH + UP    = Quick Scope ON/OFF.
+- CROUCH + DOWN  = Anti-Recoil ON/OFF (only while firing; optional ADS-only via ONLY_WITH_SCOPE).
+- CROUCH + RIGHT = ADS Fire ON/OFF (forces ADS while shooting).
+- CROUCH + LEFT  = Hold Breath ON/OFF.
+
+Press GRENADE (R1) in addition with any of the below:
+- GRENADE + DOWN  = Side Shot ON/OFF (strafe while ADS; hip fire requires SHOOT held).
+- GRENADE + LEFT  = Burst Fire ON/OFF (4-shot burst).
+- GRENADE + RIGHT = Drop Shot ADS mode toggle (Mode 1 blocks ADS, Mode 2 allows ADS).
+- GRENADE + hold JUMP 500ms = Long Jump ON/OFF.
+- GRENADE + double-tap L3 then hold 500ms = Auto Sprint ON/OFF.
+
+Press D-PAD DOWN in addition with any of the below:
+- D-PAD DOWN + RELOAD = HLX Recharge Bypass ON/OFF.
+- D-PAD DOWN + MELEE  = Turbo Melee ON/OFF (single-tap).
+- D-PAD DOWN + double-tap MELEE then hold 500ms = ZAim ON/OFF (ADS auto-tap).
+
+Optional:
+- LEFT (no modifiers) hold 500ms = INF grenades ON/OFF if INFNade = TRUE.
+- LEFT (no modifiers) tap = run EQUIPMENT once (only when INF loop is OFF).
+- TOUCHPAD hold 6000ms = INFNade master ON/OFF (double rumble; blocked when ZMode is TRUE).
+
+Notes:
+- ADS/CROUCH/GRENADE/TACTICAL/D-PAD DOWN must be held at least MODIFIER_TIMER (250ms) to count as modifiers.
+- ADS/CROUCH/GRENADE modifiers are exclusive (only one active at a time).
+- L3 + R3 hold 6000ms = ZMode ON/OFF (double rumble for both).
+- ZMode: TRUE disables INFNade, Long Jump, Quick Scope, Drop Shot, Side Shot, HLX Bypass, Jitter. FALSE disables ZAim.
+=============================================================================
+GAMEPLAY COMMENTS (CURRENT)
+
+For full details, read the companion doc: BO3 AO-Mod (Version 2.4a) [ZEN].md
+
+Rapid Fire:
+Two cycles exist when Rapid Fire is ON: ADS + RIGHT (Presets 1-7) and L1 + RIGHT (Preset Slow 1-7).
+Hold/Rest times are direct values (ms) set by the presets and can be edited.
+
+Drop Shot:
+Runs once per SHOOT press and depends on Drop Shot mode (GRENADE + RIGHT).
+Mode 1 blocks ADS; Mode 2 allows ADS. Releasing SHOOT resets the combo.
+
+Side Shot:
+While ON, it strafes when ADS is held, or while SHOOT is held when hip firing.
+
+Auto Sprint:
+Auto Sprint ON/OFF uses a modifier hold (see TOGGLES). Reload timing can vary by weapon.
+
+Anti-Recoil:
+Adjust ANTI_RECOIL values to taste. If using look inversion, set InversionON = TRUE.
+
+Quick Scope:
+Quick Scope uses QUICK_SCOPE_WAIT and runs a timed ADS->shoot sequence.
+
+Jitter:
+Normal jitter only (pump jitter is disabled). It is exclusive with Rapid Fire/Burst/HLX.
+Normal jitter works for most guns, including shotguns.
+Jitter requires a lethal grenade equipped (e.g., Semtex) in the grenade slot.
+============================================================================= 
+
+USING THIS SCRIPT ON ZEN: This script is intended for use on Cronus ZEN. 
+Controller constants are defined for PS4 (DualShock 4) and are expected by this script.
+If you use a different layout, adjust the define section above accordingly.
+
+Option 1: You play in the normal flipped button layout.  Make these changes to the define section per the below
+define ADS                       = PS4_L1;          // L1 can be changed to L2 for non flipped
+define TACTICAL                  = PS4_L2;          // L2 can be changed to L1 for non flipped
+define SHOOT                     = PS4_R1;          // R1 can be changed to R2 for non flipped 
+define GRENADE                   = PS4_R2;          // R2 can be changed to R1 for non flipped
+
+Option 2: You play in the normal DEFAULT button layout.  Make these changes to the define section per the below
+define ADS                       = PS4_L2;          // L1 can be changed to L2 for non flipped
+define TACTICAL                  = PS4_L1;          // L2 can be changed to L1 for non flipped
+define SHOOT                     = PS4_R2;          // R1 can be changed to R2 for non flipped 
+define GRENADE                   = PS4_R1;          // R2 can be changed to R1 for non flipped
+define CROUCH                    = PS4_CIRCLE;      // "Default" button layout is PS4_CIRCLE. "Tactical" button layout is PS4_R3
+define MELEE                     = PS4_R3;          // "Default" button layout is PS4_R3. "Tactical button layout is PS4_CIRCLE
+
+=============================================================================
+
+PS4 LIGHT BAR (set_ps4_lbar - BRG order on Zen)
+Note: set_ps4_lbar uses BRG (Blue, Red, Green). Values below are BRG.
+Off:           (0,   0,   0)
+Blue (default):(255, 0,   0)
+Red:           (0,   255, 0)
+Green:         (0,   0,   255)
+Pink/Magenta:  (255, 255, 0)
+Cyan:          (255, 0,   255)
+Amber/Yellow:  (0,   255, 255)
+White:         (255, 255, 255)
+Orange:        (0,   255, 165)
+Dim Green:     (0,   0,   128)
+Dim Red:       (0,   128, 0)
+Purple:        (255, 128, 0)
+Cherry Red:    (0,   160, 0)
+
+=============================================================================
+
+DEFINES & INTS
+*/
+// Changes are needed for these for the non flipped button layout
+define ADS                       = PS4_L2;          // L1 can be changed to L2 for non flipped
+define TACTICAL                  = PS4_L1;          // L2 can be changed to L1 for non flipped
+define SHOOT                     = PS4_R2;          // R1 can be changed to R2 for non flipped 
+define GRENADE                   = PS4_R1;          // R2 can be changed to R1 for non flipped
+// These are needed for default button layout (non tactical)
+define CROUCH                    = PS4_CIRCLE;      // "Default" button layout is PS4_CIRCLE. "Tactical" button layout is PS4_R3.
+define MELEE                     = PS4_R3;          // "Default" button layout is PS4_R3. "Tactical" button layout is PS4_CIRCLE.
+
+define SPRINT_EXO                = PS4_L3;
+define LX                        = PS4_LX;
+define LY                        = PS4_LY;
+define RX                        = PS4_RX;
+define RY                        = PS4_RY;
+define JUMP                      = PS4_CROSS;
+define RELOAD                    = PS4_SQUARE;
+define SWAP_WEAPONS              = PS4_TRIANGLE;
+define UP                        = PS4_UP;
+define DOWN                      = PS4_DOWN;
+define LEFT                      = PS4_LEFT;
+define RIGHT                     = PS4_RIGHT;
+
+// ---------------------------
+// Core timing / sensitivity (shared)
+// ---------------------------
+define INSTA_FIRE                = 95;   // The % at which it boosts the SHOOT button when pressed - i.e. 95% means when pressed 5%
+define INSTA_AIM                 = 95;   // The % at which it boosts the ADS button when pressed - i.e. 95% means when pressed 5%
+define INSTA_OTHER               = 95;   // The % at which it boosts the other button when pressed - i.e. 95% means when pressed 5%
+define DT_WINDOW                 = 400;  // Double-tap detection window (ms)
+define MODIFIER_TIMER            = 250;  // Modifier must be held for at least this time (ms)
+
+// ---------------------------
+// ZMode
+// ---------------------------
+define ZMODE_HOLD_MS             = 6000; // Hold L3 + R3 to toggle ZMode
+int ZMode                        = FALSE; // TRUE disables: INFNade, Long Jump, Quick Scope, Drop Shot, Side Shot, HLX Bypass, Jitter. FALSE disables ZAim.
+int ZModeHoldLatch               = 0;     // prevents repeat toggle while holding L3+R3
+
+// ---------------------------
+// Rapid Fire
+// ---------------------------
+int RapidFireON                  = FALSE; // rapid fire toggle
+int HoldTime                     = 10;    // defined in mSeconds for regular Rapid Fire
+int RestTime                     = 10;    // defined in mSeconds for regular Rapid Fire
+int RapidFireCounter             = 1;     // rapid fire preset selector
+int RapidFireCounterSlow         = 1;     // rapid fire preset selector (L1 + RIGHT)
+int LastPresetSet                = 0;     // 0=none, 1=ADS+RIGHT, 2=L1+RIGHT
+int Counter;                               // helper counter
+
+// ---------------------------
+// Akimbo
+// ---------------------------
+define AKIMBO_HOLD_MS            = 800; // Hold ADS + double-tap TouchPad to toggle Akimbo
+int AkimboON                     = FALSE; // akimbo toggle
+int AkimboTapPending             = 0;     // pending second tap for ADS + TouchPad
+int AkimboHoldArmed              = 0;     // armed after double-tap; wait for hold
+int AkimboHoldLatch              = 0;     // prevents repeat toggle while holding TouchPad
+
+// ---------------------------
+// Burst Fire
+// ---------------------------
+int BurstFire                    = FALSE; // burst fire toggle
+
+// ---------------------------
+// Jitter
+// ---------------------------
+int JitterMode                   = 0;     // 0 = disabled, 1 = normal jitter (pump jitter disabled)
+
+// ---------------------------
+// HLX Recharge Bypass
+// ---------------------------
+int HLXBypass                    = FALSE; // HLX recharge bypass toggle
+
+// ---------------------------
+// Turbo Melee
+// ---------------------------
+int TurboMelee                   = FALSE; // turbo melee toggle
+
+// ---------------------------
+// ZAim
+// ---------------------------
+define ZAIM_HOLD_MS              = 500;  // Hold D-PAD DOWN + R3 after double-tap to toggle ZAim
+int ZAim                         = FALSE; // ZAim toggle
+int AimSpeed                     = 85;    // ZAim ADS hold time (ms)
+int ZAimDelay                    = 14;    // ZAim delay between presses (ms)
+int ZAimTapPending               = 0;     // pending second tap for D-PAD DOWN + R3
+int ZAimHoldArmed                = 0;     // armed after double-tap; wait for hold
+int ZAimHoldLatch                = 0;     // prevents repeat toggle while holding R3
+
+// ---------------------------
+// Drop Shot / ADS Fire / Side Shot
+// ---------------------------
+define DROPSHOT_QUICKNESS        = 95;   // The % at which it boosts the CROUCH button when pressed - i.e. 95% means when pressed 5%
+define DROP_SHOT_WAIT            = 1000; // Wait time for drop shot combo (changed from 1200 to 1000)
+int DropShotON                   = FALSE; // Turned on by default but can be turned off with the Toggles.  Change to FALSE if you want it off by default
+int DropScopeMode                = 1;     // 1=DropShot blocked by ADS, 2=DropShot allowed with ADS
+int ADS_Fire_On                  = FALSE; // ADS fire toggle
+int SideShotON                   = FALSE; // side shot toggle
+int SideShotWait                 = 400;   // Side Shot strafe wait (ms)
+
+// ---------------------------
+// Anti-Recoil
+// ---------------------------
+define ANTI_RECOIL               = 14;   // Change this value to compensate to the vertical recoil
+define ANTI_RECOIL_LEFT          = 5;    // Change this value to compensate to the left
+define ANTI_RECOIL_RIGHT         = 5;    // Change this value to compensate to the right
+define ONLY_WITH_SCOPE           = TRUE; // Anti-recoil will only be applied with ADS (manual only)
+int AntiRecoilON                 = FALSE; // anti-recoil toggle
+int InversionON                  = FALSE; // Set this to TRUE if you are using look inversion enabled in the game setting (manual only)
+int anti_recoil;                           // working value
+int anti_recoil_left;                      // working value
+int anti_recoil_right;                     // working value
+
+// ---------------------------
+// Quick Scope
+// ---------------------------
+define QUICK_SCOPE_WAIT          = 415;  // Increase this time for a longer ADS time.  Decrease this time for a shorter ADS time
+int QuickScopeON                 = FALSE; // quick scope toggle
+
+// ---------------------------
+// Hold Breath
+// ---------------------------
+int HoldBreathON                 = TRUE;  // hold breath toggle
+
+// ---------------------------
+// Auto Sprint
+// ---------------------------
+define RELOAD_WAIT               = 2000; // Wait time after stopping auto sprint to allow reloading.  Adjust as necessary
+define SHOOT_WAIT                = 300;  // Wait time after stopping auto sprint to allow shooting
+define AUTOSPRINT_HOLD_MS        = 500;  // Hold GRENADE + L3 to toggle Auto Sprint
+int AutoSprintON                 = TRUE;  // auto sprint toggle
+int AutoSprintLYThreshold        = -90;   // auto sprint LY threshold
+int AutoSprintHoldLatch          = 0;     // prevents repeat toggle while holding GRENADE+L3
+int AutoSprintTapPending         = 0;     // pending second tap for GRENADE + L3
+int AutoSprintHoldArmed          = 0;     // armed after double-tap; wait for hold
+
+// ---------------------------
+// Long Jump
+// ---------------------------
+define LONGJUMP_HOLD_MS          = 500;  // Hold GRENADE + JUMP to toggle Long Jump
+int LongJumpON                   = FALSE; // long jump toggle
+int LongJumpHoldLatch            = 0;     // prevents repeat toggle while holding GRENADE+JUMP
+
+// ---------------------------
+// INF Grenades
+// Note: Not compatible with Fast Hands perk.
+// ---------------------------
+define INFNADE_TOGGLE_HOLD_MS   = 6000; // Hold TOUCHPAD to toggle INFNade master enable
+define INF_NADE_HOLD_MS          = 500;  // Hold LEFT (no modifiers) to toggle INF grenades
+int INFNade                      = FALSE; // master enable for LEFT-hold toggle
+int INFNadeActive                = FALSE; // runtime toggle for INF grenades
+int INFNadeHoldLatch             = 0;     // prevents repeat toggles while holding LEFT
+int INFNadeToggleLatch           = 0;     // prevents repeat toggle while holding TOUCHPAD
+
+// ---------------------------
+// LED / modifier indicator
+// ---------------------------
+int ADSModReady                  = 0;     // modifier active blink latch (ADS)
+int CrouchModReady               = 0;
+int GrenadeModReady              = 0;
+int TacticalModReady             = 0;
+int DpadDownModReady             = 0;     // modifier active blink latch (D-PAD DOWN)
+int CurrentLEDColor = 0;                   // last LED color set (0 = none)
+
+// Legacy/unused flags (left here for reference)
+// int ExtraRapid                   = FALSE; // legacy: ADS + SPRINT Rapid Fire toggle
+// int AutoDashON                   = FALSE;
+// int QuickReloadON                = FALSE;
+// int ManualAuthenticate           = FALSE; // Titan One legacy code
+// define MULTIPLE_NOTIFIER         = TRUE;  // legacy/unused
+// define ADS_SPEED                 = 20;   // legacy/unused (ADS speed block is commented out)
+
+// MAIN SCRIPT =============================================================================
+
+main {   
+
+    vm_tctrl(-5);  // sets main loop to 5mS vs the default 10mS
+
+    // Makes the button 100% pressed even if barely pressed - aka more sensitive and quicker reaction 
+    if(get_val(CROUCH)){sensitivity(CROUCH, NOT_USE, 100 + DROPSHOT_QUICKNESS);}    
+    if(get_val(ADS)){sensitivity(ADS, 10, 100 + INSTA_AIM);}      
+    if(get_val(SHOOT)){sensitivity(SHOOT, 10, 100 + INSTA_FIRE);} 
+    if(get_val(SPRINT_EXO)){sensitivity(SPRINT_EXO, 10, 100 + INSTA_OTHER);} 
+    if(get_val(GRENADE)){sensitivity(GRENADE, 10, 100 + INSTA_OTHER);} 
+
+    // ZMode toggle (hold L3 + R3 for ZMODE_HOLD_MS)
+    if(get_val(SPRINT_EXO) && get_val(MELEE)) {
+        if(get_ptime(SPRINT_EXO) >= ZMODE_HOLD_MS && get_ptime(MELEE) >= ZMODE_HOLD_MS && !ZModeHoldLatch) {
+            ZModeHoldLatch = 1;
+            ZMode = !ZMode;
+            if(ZMode) {
+                combo_run(RumbleNotifier); // double rumble on
+                combo_run(ZModeOnBlink);
+            } else {
+                combo_run(RumbleNotifier); // double rumble off
+                combo_run(ZModeOffBlink);
+            }
+        }
+    } else {
+        ZModeHoldLatch = 0;
+    }
+
+    // ZMode guards
+    if(ZMode) {
+        if(JitterMode != 0) {JitterMode = 0;}
+        if(DropShotON) {DropShotON = FALSE;}
+        if(SideShotON) {SideShotON = FALSE;}
+        if(QuickScopeON) {QuickScopeON = FALSE;}
+        if(HLXBypass) {HLXBypass = FALSE;}
+        if(LongJumpON) {LongJumpON = FALSE;}
+        if(INFNadeActive) {INFNadeActive = FALSE;}
+        if(combo_running(Jitter)) {combo_stop(Jitter);}
+        if(combo_running(DropShot)) {combo_stop(DropShot);}
+        if(combo_running(SideShot)) {combo_stop(SideShot);}
+        if(combo_running(QuickScope)) {combo_stop(QuickScope);}
+        if(combo_running(HLXBypass)) {combo_stop(HLXBypass);}
+        if(combo_running(LongJump)) {combo_stop(LongJump);}
+        if(combo_running(Unlimited_Grenades)) {combo_stop(Unlimited_Grenades);}
+    } else {
+        if(ZAim) {ZAim = FALSE;}
+        if(combo_running(ZAim)) {combo_stop(ZAim);}
+    }
+
+    // INFNade master toggle (hold TOUCHPAD for INFNADE_TOGGLE_HOLD_MS)
+    if(!ZMode && get_val(PS4_TOUCH) && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(DOWN) && !get_val(TACTICAL)) {
+        if(get_ptime(PS4_TOUCH) >= INFNADE_TOGGLE_HOLD_MS && !INFNadeToggleLatch) {
+            INFNadeToggleLatch = 1;
+            INFNade = !INFNade;
+            if(INFNade) {
+                combo_run(RumbleNotifier);
+                combo_run(INFNadeToggleOnBlink);
+            } else {
+                combo_run(RumbleNotifier);
+                combo_run(INFNadeToggleOffBlink);
+            }
+        }
+    } else {
+        INFNadeToggleLatch = 0;
+    }
+
+    // MODIFIER READY INDICATOR (blink cyan/amber when modifier becomes active)
+    if(get_val(ADS) && get_ptime(ADS) >= MODIFIER_TIMER && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(TACTICAL)) {
+        if(!ADSModReady) {
+            ADSModReady = 1;
+            combo_run(ModifierReadyBlink);
+        }
+    } else {
+        ADSModReady = 0;
+    }
+
+    if(get_val(CROUCH) && get_ptime(CROUCH) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(GRENADE) && !get_val(TACTICAL)) {
+        if(!CrouchModReady) {
+            CrouchModReady = 1;
+            combo_run(ModifierReadyBlink);
+        }
+    } else {
+        CrouchModReady = 0;
+    }
+
+    if(get_val(GRENADE) && get_ptime(GRENADE) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(TACTICAL)) {
+        if(!GrenadeModReady) {
+            GrenadeModReady = 1;
+            combo_run(ModifierReadyBlink);
+        }
+    } else {
+        GrenadeModReady = 0;
+    }
+
+    if(get_val(TACTICAL) && get_ptime(TACTICAL) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE)) {
+        if(!TacticalModReady) {
+            TacticalModReady = 1;
+            combo_run(ModifierReadyBlink);
+        }
+    } else {
+        TacticalModReady = 0;
+    }
+
+    if(get_val(DOWN) && get_ptime(DOWN) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(TACTICAL)) {
+        if(!DpadDownModReady) {
+            DpadDownModReady = 1;
+            combo_run(ModifierReadyBlink);
+        }
+    } else {
+        DpadDownModReady = 0;
+    }
+
+// TOGGLES =============================================================================
+
+    if(event_press(LEFT) && get_val(ADS) && get_ptime(ADS) >= MODIFIER_TIMER && !get_val(CROUCH) && !get_val(GRENADE)) {  // Turn ON and OFF Rapid Fire
+        RapidFireON = !RapidFireON;
+        if(RapidFireON) {
+             BurstFire = FALSE;
+             JitterMode = 0;
+             HLXBypass = FALSE;
+             ColorLED(3); // green
+             combo_run(SingleNotifier);
+             // AkimboSingleON = FALSE;  // Turn OFF Akimbo modes (legacy/unused)
+             // AkimboRapidON = FALSE;   // Turn OFF Akimbo modes (legacy/unused)
+             QuickScopeON = FALSE;    // Turn OFF QuickScope
+        }
+        if(!RapidFireON) {ColorLED(1); combo_run(RumbleNotifier);}
+    }
+
+    // Legacy: ADS + SPRINT Rapid Fire toggle (disabled)
+    // if(event_press(SPRINT_EXO) && get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && ExtraRapid) {  // Turn ON and OFF Rapid Fire
+    //     RapidFireON = !RapidFireON;
+    //     if(RapidFireON) {
+    //          JitterMode = 0;
+    //          ColorLED(3); // green
+    //          combo_run(SingleNotifier);
+    //          // AkimboSingleON = FALSE;  // Turn OFF Akimbo modes (legacy/unused)
+    //          // AkimboRapidON = FALSE;   // Turn OFF Akimbo modes (legacy/unused)
+    //          QuickScopeON = FALSE;    // Turn OFF QuickScope
+    //     }
+    //     if(!RapidFireON) {ColorLED(1); combo_run(RumbleNotifier);}
+    // }
+   
+    // Using this to cycle through rapid fire settings for testing.  It can be used for having multiple rapid fire settings
+    // You can set these values to whatever you want and adjust how many different values that you want.
+    if(event_press(RIGHT) && get_val(ADS) && get_ptime(ADS) >= MODIFIER_TIMER && !get_val(CROUCH) && !get_val(GRENADE) && RapidFireON) {
+       Counter = 1;
+       if(LastPresetSet != 1) {
+            LastPresetSet = 1;
+            RapidFireCounter = 1;
+            combo_run(RapidFirePresetReset);
+            combo_run(RumbleNotifier);
+       } else {
+            RapidFireCounter = RapidFireCounter + 1;
+            if(RapidFireCounter > 7) {
+                RapidFireCounter = 1;
+                combo_run(RapidFirePresetReset);
+                combo_run(RumbleNotifier);
+            } else {
+                if(Counter <= RapidFireCounter) {
+                    combo_run(SingleNotifier);
+                    combo_run(RapidFireWrapBlink);
+                    Counter = Counter + 1;
+                }
+            }
+       }
+       if(RapidFireCounter == 1){HoldTime = 10; RestTime = 10;} // Preset #1
+       if(RapidFireCounter == 2){HoldTime = 15; RestTime = 15;} // Preset #2
+       if(RapidFireCounter == 3){HoldTime = 20; RestTime = 20;} // Preset #3
+       if(RapidFireCounter == 4){HoldTime = 25; RestTime = 25;} // Preset #4
+       if(RapidFireCounter == 5){HoldTime = 30; RestTime = 30;} // Preset #5
+       if(RapidFireCounter == 6){HoldTime = 40; RestTime = 40;} // Preset #6
+       if(RapidFireCounter == 7){HoldTime = 50; RestTime = 50;} // Preset #7
+    }
+
+    if(event_press(RIGHT) && get_val(TACTICAL) && get_ptime(TACTICAL) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && RapidFireON) {
+       Counter = 1;
+       if(LastPresetSet != 2) {
+            LastPresetSet = 2;
+            RapidFireCounterSlow = 1;
+            combo_run(RapidFirePresetResetHigh);
+            combo_run(RumbleNotifier);
+       } else {
+            RapidFireCounterSlow = RapidFireCounterSlow + 1;
+            if(RapidFireCounterSlow > 7) {
+                RapidFireCounterSlow = 1;
+                combo_run(RapidFirePresetResetHigh);
+                combo_run(RumbleNotifier);
+            } else {
+                if(Counter <= RapidFireCounterSlow) {
+                    combo_run(SingleNotifier);
+                    combo_run(RapidFireHighBlink);
+                    Counter = Counter + 1;
+                }
+            }
+       }
+       if(RapidFireCounterSlow == 1){HoldTime = 40; RestTime = 80;} // Preset Slow 1
+       if(RapidFireCounterSlow == 2){HoldTime = 40; RestTime = 90;} // Preset Slow 2
+       if(RapidFireCounterSlow == 3){HoldTime = 40; RestTime = 100;} // Preset Slow 3
+       if(RapidFireCounterSlow == 4){HoldTime = 40; RestTime = 200;} // Preset Slow 4
+       if(RapidFireCounterSlow == 5){HoldTime = 40; RestTime = 300;} // Preset Slow 5
+       if(RapidFireCounterSlow == 6){HoldTime = 40; RestTime = 400;} // Preset Slow 6
+       if(RapidFireCounterSlow == 7){HoldTime = 40; RestTime = 500;} // Preset Slow 7
+    }
+   
+    if(!ZMode && event_press(DOWN) && get_val(ADS) && get_ptime(ADS) >= MODIFIER_TIMER && !get_val(CROUCH) && !get_val(GRENADE)) {  // Turns ON and OFF Drop Shot
+        DropShotON = !DropShotON;
+        if(DropShotON) {
+            ADS_Fire_On = FALSE;
+            SideShotON = FALSE;
+            ColorLED(6); // amber/yellow
+            combo_run(SingleNotifier);
+        }
+        if(!DropShotON) {ColorLED(1); combo_run(RumbleNotifier);}   
+      }
+
+
+    if(!ZMode && event_press(UP) && get_val(ADS) && get_ptime(ADS) >= MODIFIER_TIMER && !get_val(CROUCH) && !get_val(GRENADE)) {  // Toggle between jitters 0=disabled, 1=normal jitter (pump jitter disabled)
+        JitterMode = JitterMode + 1;
+        if(JitterMode > 1){JitterMode = 0;}
+        if(JitterMode==0) {ColorLED(1); combo_run(RumbleNotifier);}   
+        if(JitterMode == 1) {
+            RapidFireON = FALSE;
+            BurstFire = FALSE;
+            HLXBypass = FALSE;
+            AkimboON = FALSE;
+            ColorLED(3); // green
+            combo_run(SingleNotifier);
+        }
+        // if(JitterMode == 2) {
+        //     RapidFireON = FALSE;
+        //     ColorLED(6); // amber/yellow
+        //     combo_run(SingleNotifier);
+        // }
+
+      }
+
+
+    if(!ZMode && event_press(UP) && get_val(CROUCH) && get_ptime(CROUCH) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(GRENADE)) {  // Turns ON and OFF Quick Scope 
+        QuickScopeON = !QuickScopeON;
+        if(QuickScopeON) {
+           // AkimboSingleON = FALSE;            // Turn OFF Akimbo modes (legacy/unused)
+           // AkimboRapidON = FALSE;             // Turn OFF Akimbo modes (legacy/unused)
+           RapidFireON = FALSE;               // Turn OFF Rapid Fire
+           AntiRecoilON = FALSE;              // Turn OFF Anti Recoil
+           AkimboON = FALSE;
+           ColorLED(5); // cyan
+           combo_run(SingleNotifier);
+        }
+        if(!QuickScopeON) {ColorLED(1); combo_run(RumbleNotifier);}
+    }
+
+    if(event_press(DOWN) && get_val(CROUCH) && get_ptime(CROUCH) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(GRENADE)) { // Turns ON and OFF Anti-Recoil
+        AntiRecoilON = !AntiRecoilON;
+        if(AntiRecoilON) {
+            ColorLED(4); // pink
+            combo_run(SingleNotifier);
+        }
+        if(!AntiRecoilON) {ColorLED(1); combo_run(RumbleNotifier);}    
+    }
+
+    if(event_press(RIGHT) && get_val(CROUCH) && get_ptime(CROUCH) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(GRENADE)) { // Turns ON and OFF ADS Fire
+        ADS_Fire_On = !ADS_Fire_On;
+        if(ADS_Fire_On) {
+            AkimboON = FALSE;
+            DropShotON = FALSE;
+            ColorLED(7); // white
+            combo_run(SingleNotifier);
+        }
+        if(!ADS_Fire_On) {ColorLED(1); combo_run(RumbleNotifier);}    
+    }
+    if(event_press(LEFT) && get_val(CROUCH) && get_ptime(CROUCH) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(GRENADE)) { // Turns ON and OFF auto hold breath
+        HoldBreathON = !HoldBreathON;
+        if(HoldBreathON) {
+            ColorLED(2); // red 
+//            combo_run(WhiteLED);
+            combo_run(SingleNotifier);
+        }
+        if(!HoldBreathON) {ColorLED(1); combo_run(RumbleNotifier);}    
+    }
+
+    if(!ZMode && event_press(DOWN) && get_val(GRENADE) && get_ptime(GRENADE) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH)) { // Turns ON and OFF Side Shot
+        SideShotON = !SideShotON;
+        if(SideShotON) {
+            DropShotON = FALSE;
+            ColorLED(8); // orange
+            combo_run(SingleNotifier);
+        }
+        if(!SideShotON) {ColorLED(1); combo_run(RumbleNotifier);}
+    }
+
+    if(event_press(LEFT) && get_val(GRENADE) && get_ptime(GRENADE) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH)) { // Turns ON and OFF Burst Fire
+        BurstFire = !BurstFire;
+        if(BurstFire) {
+            RapidFireON = FALSE;
+            JitterMode = 0;
+            HLXBypass = FALSE;
+            combo_run(SingleNotifier);
+            combo_run(BurstFireOnBlink);
+        }
+        if(!BurstFire) {ColorLED(1); combo_run(RumbleNotifier);}
+    }
+
+    if(!ZMode && event_press(RIGHT) && get_val(GRENADE) && get_ptime(GRENADE) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && DropShotON) { // Toggle Drop Shot ADS scope mode
+        DropScopeMode = DropScopeMode + 1;
+        if(DropScopeMode > 2) {DropScopeMode = 1;}
+        if(DropScopeMode == 1) {combo_run(RumbleNotifier);} else {combo_run(SingleNotifier);}
+        combo_run(DropScopeModeBlink);
+    }
+
+    if(!ZMode && get_val(DOWN) && get_ptime(DOWN) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(TACTICAL)) { // D-PAD DOWN + RELOAD
+        if(event_press(RELOAD)) {
+            HLXBypass = !HLXBypass;
+            if(HLXBypass) {
+                RapidFireON = FALSE;
+                BurstFire = FALSE;
+                JitterMode = 0;
+                AkimboON = FALSE;
+                ColorLED(4); // magenta
+                combo_run(SingleNotifier);
+            } else {
+                ColorLED(1);
+                combo_run(RumbleNotifier);
+            }
+        }
+    }
+
+    if(get_val(DOWN) && get_ptime(DOWN) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(TACTICAL)) { // D-PAD DOWN + MELEE (single = Turbo, double + hold = ZAim)
+        if(event_press(MELEE)) {
+            if(!ZAimTapPending) {
+                ZAimTapPending = 1;
+                combo_run(ZAimTapWindow);
+            } else {
+                ZAimTapPending = 0;
+                combo_stop(ZAimTapWindow);
+                if(ZMode) {ZAimHoldArmed = 1;}
+            }
+        }
+        if(ZMode && ZAimHoldArmed && !ZAimHoldLatch) {
+            if(get_val(MELEE) && get_ptime(MELEE) >= ZAIM_HOLD_MS) {
+                ZAimHoldLatch = 1;
+                ZAimHoldArmed = 0;
+                ZAim = !ZAim;
+                if(ZAim) {
+                    AkimboON = FALSE;
+                    ColorLED(12); // cherry red
+                    combo_run(SingleNotifier);
+                } else {
+                    ColorLED(1);
+                    combo_run(RumbleNotifier);
+                }
+            }
+        }
+        if(!get_val(MELEE)) {
+            ZAimHoldLatch = 0;
+        }
+    } else {
+        ZAimHoldLatch = 0;
+        ZAimHoldArmed = 0;
+        ZAimTapPending = 0;
+        combo_stop(ZAimTapWindow);
+    }
+
+    if(!ZMode && get_val(GRENADE) && get_val(JUMP) && !get_val(ADS) && !get_val(CROUCH)) { // Hold GRENADE + JUMP to toggle Long Jump
+        if(get_ptime(JUMP) >= LONGJUMP_HOLD_MS && !LongJumpHoldLatch) {
+            LongJumpHoldLatch = 1;
+            LongJumpON = !LongJumpON;
+            if(LongJumpON) {ColorLED(9); combo_run(SingleNotifier);}
+            else {ColorLED(1); combo_run(RumbleNotifier);}
+        }
+    } else {
+        LongJumpHoldLatch = 0;
+    }
+
+    if(get_val(GRENADE) && !get_val(ADS) && !get_val(CROUCH)) { // GRENADE + double-tap L3, hold 500ms
+        if(event_press(SPRINT_EXO)) {
+            if(!AutoSprintTapPending) {
+                AutoSprintTapPending = 1;
+                combo_run(AutoSprintTapWindow);
+            } else {
+                AutoSprintTapPending = 0;
+                combo_stop(AutoSprintTapWindow);
+                AutoSprintHoldArmed = 1;
+            }
+        }
+        if(AutoSprintHoldArmed && !AutoSprintHoldLatch) {
+            if(get_val(SPRINT_EXO) && get_ptime(SPRINT_EXO) >= AUTOSPRINT_HOLD_MS) {
+                AutoSprintHoldLatch = 1;
+                AutoSprintHoldArmed = 0;
+                AutoSprintON = !AutoSprintON;
+                if(AutoSprintON) {ColorLED(10); combo_run(SingleNotifier);}
+                else {ColorLED(1); combo_run(RumbleNotifier);}
+            }
+        }
+        if(!get_val(SPRINT_EXO)) {
+            AutoSprintHoldLatch = 0;
+        }
+    } else {
+        AutoSprintHoldLatch = 0;
+        AutoSprintHoldArmed = 0;
+        AutoSprintTapPending = 0;
+        combo_stop(AutoSprintTapWindow);
+    }
+
+    if(get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(DOWN)) { // ADS + double-tap TouchPad, hold 2000ms
+        if(event_press(PS4_TOUCH)) {
+            if(!AkimboTapPending) {
+                AkimboTapPending = 1;
+                combo_run(AkimboTapWindow);
+            } else {
+                AkimboTapPending = 0;
+                combo_stop(AkimboTapWindow);
+                AkimboHoldArmed = 1;
+            }
+        }
+        if(AkimboHoldArmed && !AkimboHoldLatch) {
+            if(get_val(PS4_TOUCH) && get_ptime(PS4_TOUCH) >= AKIMBO_HOLD_MS) {
+                AkimboHoldLatch = 1;
+                AkimboHoldArmed = 0;
+                AkimboON = !AkimboON;
+                if(AkimboON) {
+                    JitterMode = 0;
+                    HLXBypass = FALSE;
+                    ZAim = FALSE;
+                    ADS_Fire_On = FALSE;
+                    QuickScopeON = FALSE;
+                    DropScopeMode = 2;
+                    ColorLED(7); // white
+                    combo_run(SingleNotifier);
+                } else {
+                    DropScopeMode = 1;
+                    ColorLED(1);
+                    combo_run(RumbleNotifier);
+                }
+            }
+        }
+        if(!get_val(PS4_TOUCH)) {
+            AkimboHoldLatch = 0;
+        }
+    } else {
+        AkimboHoldLatch = 0;
+        AkimboHoldArmed = 0;
+        AkimboTapPending = 0;
+        combo_stop(AkimboTapWindow);
+    }
+
+// END TOGGLES =============================================================================
+
+  // ManualAuthenticate disabled (Titan One legacy code)
+  // if(get_val(UP) && get_val(JUMP) && ManualAuthenticate) {output_reconnection();}
+
+  // ---------------------------
+  // INF GRENADES
+  // ---------------------------
+  if(INFNade && !ZMode) {
+      if(get_val(LEFT) && !get_val(ADS) && !get_val(CROUCH) && !get_val(TACTICAL) && !get_val(GRENADE)) {
+          if(get_ptime(LEFT) >= INF_NADE_HOLD_MS && !INFNadeHoldLatch) {
+              INFNadeHoldLatch = 1;
+              INFNadeActive = !INFNadeActive;
+              if(INFNadeActive) {
+                  combo_run(SingleNotifier);
+                  combo_run(INFNadeOnBlink);
+              } else {
+                  combo_run(RumbleNotifier);
+                  ColorLED(1);
+              }
+          }
+      } else {
+          INFNadeHoldLatch = 0;
+      }
+
+      if(!INFNadeActive && !combo_running(Unlimited_Grenades) &&
+         event_release(LEFT) && get_ptime(LEFT) < INF_NADE_HOLD_MS &&
+         !get_val(ADS) && !get_val(CROUCH) && !get_val(TACTICAL) && !get_val(GRENADE)) {
+          combo_run(EQUIPMENT);
+          combo_run(INFNadeEquipBlink);
+      }
+
+      if(INFNadeActive) {ColorLED(2); combo_run(Unlimited_Grenades);}
+      else if(combo_running(Unlimited_Grenades)) {combo_stop(Unlimited_Grenades);}
+  } else {
+      INFNadeHoldLatch = 0;
+      if(combo_running(Unlimited_Grenades)) {combo_stop(Unlimited_Grenades);}
+  }
+
+  // Auto ADS
+  if(get_val(SHOOT) && ADS_Fire_On && !DropShotON) {set_val(ADS,100);}
+
+  // Akimbo adds ADS when firing
+  if(AkimboON && get_val(SHOOT)) {set_val(ADS, 100);}
+
+  // Drop Shot
+  if(!ZMode && DropShotON && event_press(SHOOT)) {
+        combo_stop(AutoSprint);
+        combo_run(DropShot);
+  }
+  if(!ZMode && DropScopeMode == 1 && get_val(ADS)) {combo_stop(DropShot);}
+
+  // Normal Jitter
+  if(!ZMode && get_val(SHOOT) && JitterMode==1) {combo_run(Jitter);}
+//    else if (combo_running(Jitter)) {combo_stop(Jitter);}
+
+  // Pump Jitter (disabled)
+  // if(get_val(SHOOT) && JitterMode==2) {combo_run(PumpJitter);}
+  // else if (combo_running(PumpJitter)) {combo_stop(PumpJitter);}
+
+  // Rapid Fire without ADS Fire
+  if(get_val(SHOOT) && RapidFireON && !ADS_Fire_On) {combo_run(RapidFire);}
+    else if(combo_running(RapidFire)) {combo_stop(RapidFire);}
+
+  // Rapid Fire with ADS Fire
+  if(get_val(SHOOT) && RapidFireON && ADS_Fire_On) {combo_run(ADSRapidFire);}
+    else if(combo_running(ADSRapidFire)) {combo_stop(ADSRapidFire);}
+
+  // Burst Fire
+  if(get_val(SHOOT) && BurstFire) {combo_run(BurstFire);}
+    else if(combo_running(BurstFire)) {combo_stop(BurstFire);}
+
+  // HLX Recharge Bypass
+  if(!ZMode && HLXBypass) {
+      if(event_release(SHOOT)) {combo_run(HLXBypass);}
+      if(event_press(RELOAD)) {combo_stop(HLXBypass);}
+  }
+
+  // Turbo Melee
+  if(TurboMelee) {
+      if(get_val(MELEE)) {combo_run(TurboMelee);}
+      else if(combo_running(TurboMelee)) {combo_stop(TurboMelee);}
+  }
+
+/* Personal Comment:  I found that I have better game performance without using this.  You can adjust your sensitivity for this.
+  // Faster movement while aiming with ADS
+  if(get_val(ADS)){
+     // sensitivity(RX, NOT_USE, 100 + ADS_SPEED); 
+     // sensitivity(RY, NOT_USE, 100 + ADS_SPEED); 
+  }                                                        
+*/
+
+  // Anti-recoil 
+  if(!ONLY_WITH_SCOPE || get_val(ADS)) {combo_run(AntiRecoil);}
+
+  // Quick Scope -- CANNOT ADS (aka regular scope) while using Quick Scope -- for regular ADS you must toggle off QuickScopeON  -- see "Toggles" section at the top of this script
+  if(!ZMode && QuickScopeON && event_press(ADS) ) {combo_run(QuickScope);}
+
+  // ZAim
+  if(ZMode && ZAim && get_val(ADS)) {combo_run(ZAim);}
+
+  // Hold Breath
+  if(HoldBreathON && get_val(ADS)) {combo_run(HoldBreath);}
+
+  // Side Shot
+  if(!ZMode && SideShotON) {
+      if(get_val(ADS)) {combo_run(SideShot);}
+      else if(get_val(SHOOT)) {combo_run(SideShot);}
+      else if(combo_running(SideShot)) {combo_stop(SideShot);}
+  } else if(combo_running(SideShot)) {combo_stop(SideShot);}
+
+  // AutoSprint -- Try different values (i.e. -90, -95); toggle ON/OFF
+  if(get_val(LY) < AutoSprintLYThreshold && AutoSprintON && !combo_running(AllowReloading)) { combo_run(AutoSprint); }
+  else if((get_val(LY) > AutoSprintLYThreshold && AutoSprintON)) {combo_stop(AutoSprint); } // Reload will also stop
+//  if(event_press(RELOAD)) {combo_stop(AutoSprint); combo_run(AllowReloading);}  // Stop auto sprint to allow reloading (not needed Anymore)
+  if(get_val(SHOOT)) {combo_stop(AutoSprint); combo_run(AllowShooting);}    // Stop auto sprint to allow shooting
+  
+  // Long Jump
+  if(!ZMode && get_val(JUMP) && LongJumpON) {combo_run(LongJump);}
+    else if(combo_running(LongJump)) {combo_stop(LongJump);}
+  
+  
+} // End of MAIN
+
+// COMBOS =============================================================================
+
+combo AllowShooting {
+    set_val(SPRINT_EXO, 0);
+    wait(SHOOT_WAIT); // can adjust to ensure enough time for shooting
+}
+
+combo AllowReloading {
+    set_val(SPRINT_EXO, 0);
+    wait(RELOAD_WAIT); // can adjust to ensure enough time to reload
+}
+
+// ---------------------------
+// INF GRENADES
+// ---------------------------
+combo Unlimited_Grenades {
+    set_val(TACTICAL,100);
+    wait(40);
+    wait(540);
+    wait(30); // adjustable if grenade not being thrown fast enough or too slow
+    set_val(GRENADE,100);
+    wait(20);
+    wait(700);
+}
+
+combo EQUIPMENT {
+    set_val(TACTICAL, 100);
+    wait(120);
+    set_val(TACTICAL, 0);
+    wait(490);
+    set_val(GRENADE, 100);
+    wait(250);
+    set_val(GRENADE, 0);
+    wait(250);
+}
+
+
+// ---------------------------
+// Core Cheats
+// ---------------------------
+combo RapidFire {
+    set_val(SHOOT, 100);
+    if(AkimboON) {set_val(ADS, 100);}
+    wait(HoldTime);
+    set_val(SHOOT, 0);
+    if(AkimboON) {set_val(ADS, 0);}
+    wait(RestTime);
+    set_val(SHOOT, 0);
+} 
+
+combo BurstFire {
+    set_val(SHOOT, 100);
+    if(AkimboON) {set_val(ADS, 100);}
+    wait(60);
+    set_val(SHOOT, 0);
+    if(AkimboON) {set_val(ADS, 0);}
+    wait(60);
+    set_val(SHOOT, 100);
+    if(AkimboON) {set_val(ADS, 100);}
+    wait(60);
+    set_val(SHOOT, 0);
+    if(AkimboON) {set_val(ADS, 0);}
+    wait(60);
+    set_val(SHOOT, 100);
+    if(AkimboON) {set_val(ADS, 100);}
+    wait(60);
+    set_val(SHOOT, 0);
+    if(AkimboON) {set_val(ADS, 0);}
+    wait(60);
+    set_val(SHOOT, 100);
+    if(AkimboON) {set_val(ADS, 100);}
+    wait(60);
+    set_val(SHOOT, 0);
+    if(AkimboON) {set_val(ADS, 0);}
+    wait(60);
+}
+
+combo HLXBypass {
+    set_val(RELOAD, 100);
+    wait(10);
+    set_val(RELOAD, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(RELOAD, 100);
+    wait(10);
+    set_val(RELOAD, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+    set_val(SWAP_WEAPONS, 100);
+    wait(20);
+}
+
+combo TurboMelee {
+    set_val(MELEE, 100);
+    wait(40);
+    set_val(MELEE, 0);
+    wait(40);
+    set_val(MELEE, 0);
+}
+
+combo ZAim {
+    set_val(ADS,100);
+    wait(AimSpeed);
+    set_val(ADS,0);
+    wait(ZAimDelay);
+}
+
+// normal jitter for burst and semi-automatics
+combo Jitter {
+    set_val(RELOAD, 100);
+    wait(100);
+    set_val(SHOOT, 0);
+    set_val(RELOAD, 0);
+    wait(15);
+    set_val(SHOOT, 0);
+    set_val(GRENADE, 100);
+    wait(100);
+    set_val(SHOOT, 0);
+    set_val(GRENADE, 100);
+    set_val(SWAP_WEAPONS, 100);
+    wait(70);
+    set_val(SHOOT, 0);
+    set_val(GRENADE, 0);
+    set_val(SWAP_WEAPONS, 100);
+    wait(100);
+    set_val(SHOOT, 0);
+    set_val(SWAP_WEAPONS, 0);
+    wait(17);
+    set_val(SHOOT, 0);
+    set_val(SWAP_WEAPONS, 100);
+    wait(17);
+    set_val(SHOOT, 0);
+    set_val(SWAP_WEAPONS, 0);
+    wait(17);
+    set_val(SHOOT, 0);
+    set_val(SWAP_WEAPONS, 100);
+    wait(17);
+    set_val(SHOOT, 100);
+    wait(10);
+}
+
+// Pump Jitter for Argus & KRM (disabled)
+combo PumpJitter {
+    set_val(SHOOT, 100);
+    wait(100);
+    set_val(SHOOT, 100);
+    set_val(TACTICAL, 100);
+    wait(82);
+    set_val(SHOOT, 100);
+    set_val(GRENADE, 100);
+    set_val(TACTICAL, 100);
+    wait(40);
+    set_val(SHOOT, 100);
+    set_val(TACTICAL, 0);
+    set_val(GRENADE, 0);
+    set_val(RELOAD, 100);
+    wait(20);
+    set_val(SHOOT, 100);
+    set_val(RELOAD, 0);
+}
+
+combo ADSRapidFire {
+    set_val(SHOOT, 100);
+    set_val(ADS, 100);
+    wait(HoldTime);
+    set_val(SHOOT, 0);
+    wait(RestTime);
+    set_val(SHOOT, 0);
+    set_val(ADS, 0); 
+} 
+
+combo DropShot {
+   set_val(SPRINT_EXO,0);
+   wait(15);
+   set_val(CROUCH, 100);
+   wait(50);              // 15 is no slide in public but slide in private.  50 is slide in public but no slide in private
+   set_val(CROUCH, 100);
+   wait(DROP_SHOT_WAIT);  
+}
+
+
+combo LongJump {     
+   set_val(JUMP,100);//1  
+   wait(100);                 
+   set_val(JUMP,  0);     
+   wait(80);                  
+   set_val(JUMP,100);//2  
+   wait(100);                 
+   set_val(JUMP,  0);     
+   wait(80);                  
+   set_val(JUMP,100);//3  
+   wait(100);                 
+   set_val(JUMP,  0);     
+   wait(100);                 
+   set_val(JUMP,100);//4  
+   wait(50);                  
+   set_val(JUMP,  0);     
+   wait(80);                  
+   set_val(JUMP,100);//5  
+   wait(100);                 
+   set_val(JUMP,  0);     
+   wait( 80);                 
+}   
+
+combo SideShot {
+   set_val(LX, 100);
+   wait(SideShotWait);
+   set_val(LX,-100);
+   wait(SideShotWait);
+}
+
+combo QuickScope {
+    set_val(ADS, 100);
+    wait(QUICK_SCOPE_WAIT);  //Increase this time for a longer ADS time.  Decrease this time for a shorter ADS time.
+    set_val(ADS, 0);
+    wait(10);
+    set_val(SHOOT, 100);
+    wait(20);
+    set_val(SHOOT, 0);
+    wait(60);
+    set_val(SHOOT, 0);
+}
+
+combo HoldBreath {
+    set_val(SPRINT_EXO, 100);
+    wait(10);
+    set_val(SPRINT_EXO, 100);
+}
+
+combo AutoSprint {
+    set_val(SPRINT_EXO, 100);
+    wait(10);
+    set_val(SPRINT_EXO, 100);
+}
+
+combo AntiRecoil {                                            
+// Look Inversion Enabled
+    if(get_val(SHOOT) && AntiRecoilON && InversionON) { // Using AntiRecoilON toggle for testing and when using multiple weapons
+      anti_recoil = get_val(RY) - ANTI_RECOIL;            // SUBTRACT anti_recoil when LOOK INVERSION is ENABLED
+      if(anti_recoil > 100) anti_recoil = 100;
+      set_val(RY, anti_recoil);
+      anti_recoil_left = get_val(RX) - ANTI_RECOIL_LEFT;
+      if(anti_recoil_left < -100) anti_recoil_left = -100;
+      set_val(RX, anti_recoil_left);
+      anti_recoil_right = get_val(RX) + ANTI_RECOIL_RIGHT;
+      if(anti_recoil_right > 100) anti_recoil_right = 100;
+      set_val(RX, anti_recoil_right);
+    }
+// Normal Look Inversion - look inversion disabled
+    if(get_val(SHOOT) && AntiRecoilON && !InversionON) { // Using AntiRecoilON toggle for testing and when using multiple weapons
+      anti_recoil = get_val(RY) + ANTI_RECOIL;             // ADD anti_recoil for normal
+      if(anti_recoil > 100) anti_recoil = 100;
+      set_val(RY, anti_recoil);
+      anti_recoil_left = get_val(RX) - ANTI_RECOIL_LEFT;
+      if(anti_recoil_left < -100) anti_recoil_left = -100;
+      set_val(RX, anti_recoil_left);
+      anti_recoil_right = get_val(RX) + ANTI_RECOIL_RIGHT;
+      if(anti_recoil_right > 100) anti_recoil_right = 100;
+      set_val(RX, anti_recoil_right);
+    }
+}
+
+combo RumbleNotifier {
+    // double pulse on A + B (from Mash BTN NotifyBoth)
+    // first pulse
+    set_rumble(RUMBLE_A, 100);
+    set_rumble(RUMBLE_B, 100);
+    wait(200);
+
+    // gap
+    set_rumble(RUMBLE_A, 0);
+    set_rumble(RUMBLE_B, 0);
+    wait(300);
+
+    // second pulse
+    set_rumble(RUMBLE_A, 100);
+    set_rumble(RUMBLE_B, 100);
+    wait(200);
+
+    // off
+    set_rumble(RUMBLE_A, 0);
+    set_rumble(RUMBLE_B, 0);
+}
+
+combo SingleNotifier {
+    // one strong short buzz on A + B (from Mash BTN Notify)
+    set_rumble(RUMBLE_A, 100);
+    set_rumble(RUMBLE_B, 100);
+    wait(200);
+
+    // off
+    set_rumble(RUMBLE_A, 0);
+    set_rumble(RUMBLE_B, 0);
+}
+
+combo RapidFirePresetReset {
+    // blink blue/green when reaching the last preset
+    ColorLED(1); wait(250);
+    ColorLED(3); wait(250);
+    ColorLED(1); wait(250);
+    ColorLED(3);
+}
+
+combo RapidFirePresetResetHigh {
+    // blink blue/amber when wrapping high presets back to start
+    ColorLED(1); wait(250);
+    ColorLED(6); wait(250);
+    ColorLED(1); wait(250);
+    ColorLED(6);
+}
+
+combo RapidFireWrapBlink {
+    // blink off/green on each preset cycle
+    LEDOff();   wait(120);
+    ColorLED(3); wait(120);
+    LEDOff();   wait(120);
+    ColorLED(3);
+}
+
+combo RapidFireHighBlink {
+    // blink amber/off on slow presets
+    ColorLED(6); wait(120);
+    LEDOff();    wait(120);
+    ColorLED(6); wait(120);
+    LEDOff();    wait(120);
+    ColorLED(6);
+}
+
+combo INFNadeOnBlink {
+    // blink red on enable, then stay red
+    ColorLED(2); wait(150);
+    LEDOff();    wait(150);
+    ColorLED(2); wait(150);
+    ColorLED(2);
+}
+
+combo INFNadeEquipBlink {
+    // quick red blink for equipment tap (no rumble)
+    ColorLED(2); wait(150);
+    ColorLED(1); wait(150);
+}
+
+combo DropScopeModeBlink {
+    // blink amber/blue then return to amber
+    ColorLED(6); wait(150);
+    ColorLED(1); wait(150);
+    ColorLED(6);
+}
+
+combo BurstFireOnBlink {
+    // blink amber, then green, then blue
+    ColorLED(6); wait(120);
+    ColorLED(3); wait(120);
+    ColorLED(1); wait(120);
+}
+
+combo ModifierReadyBlink {
+    // blink cyan/amber, then stay amber
+    ColorLED(5); wait(120);
+    ColorLED(6); wait(120);
+    ColorLED(5); wait(120);
+    ColorLED(6); wait(120);
+    ColorLED(6);
+}
+
+combo ZModeOnBlink {
+    // blink red 4x, then stay red
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2);
+}
+
+combo ZModeOffBlink {
+    // blink blue 4x, then stay blue
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1);
+}
+
+combo INFNadeToggleOnBlink {
+    // blink red 4x, then stay red
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2); wait(120); LEDOff(); wait(120);
+    ColorLED(2);
+}
+
+combo INFNadeToggleOffBlink {
+    // blink blue 4x, then stay blue
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1); wait(120); LEDOff(); wait(120);
+    ColorLED(1);
+}
+
+combo ZAimTapWindow {
+    wait(DT_WINDOW);
+    if(ZAimTapPending) {
+        ZAimTapPending = 0;
+        TurboMelee = !TurboMelee;
+        if(TurboMelee) {
+            ColorLED(11); // purple
+            combo_run(SingleNotifier);
+        } else {
+            ColorLED(1);
+            combo_run(RumbleNotifier);
+        }
+    }
+}
+
+combo AutoSprintTapWindow { wait(DT_WINDOW); AutoSprintTapPending = 0; }
+
+combo AkimboTapWindow {
+    wait(DT_WINDOW);
+    if(AkimboTapPending) {
+        AkimboTapPending = 0;
+    }
+}
+
+// COLOR LED LIGHTBAR FOR PS4
+//--------------------------------------------------------------
+function ColorLED(Color) {
+if(Color == CurrentLEDColor) return;
+CurrentLEDColor = Color;
+// DS4 lightbar colors (RGB 0-255)
+if(Color == 1) { set_ps4_lbar(255, 0,   0);   } // Blue
+if(Color == 2) { set_ps4_lbar(0,   255, 0);   } // Red
+if(Color == 3) { set_ps4_lbar(0,   0,   255); } // Green
+if(Color == 4) { set_ps4_lbar(255, 255, 0);   } // Pink
+if(Color == 5) { set_ps4_lbar(255, 0,   255); } // Cyan
+if(Color == 6) { set_ps4_lbar(0,   255, 255); } // Amber/Yellow
+if(Color == 7) { set_ps4_lbar(255, 255, 255); } // White
+if(Color == 8) { set_ps4_lbar(0,   255, 165); } // Orange
+if(Color == 9) { set_ps4_lbar(0,   0,   128); } // Dim Green
+if(Color == 10){ set_ps4_lbar(0,   128, 0);   } // Dim Red
+if(Color == 11){ set_ps4_lbar(255, 128, 0);   } // Purple
+if(Color == 12){ set_ps4_lbar(0,   160, 0);   } // Cherry Red
+}
+
+function LEDOff() {
+// use near-off to avoid console overriding to default blue
+set_ps4_lbar(0, 0, 1);
+CurrentLEDColor = 0;
+}
