@@ -234,8 +234,6 @@ These exist in the script but are optional toggles.
 ### INF Grenades config (manual set only)
 - INF_NADE_HOLD_MS = hold time for LEFT (no modifiers) before toggling.
 
-## Legacy/unused
-
 ## Internal variables (auto-managed; do not edit)
 These exist in the script but are runtime state/flags, not user-facing settings.
 - ADSModReady, CrouchModReady, GrenadeModReady, TacticalModReady, DpadDownModReady
