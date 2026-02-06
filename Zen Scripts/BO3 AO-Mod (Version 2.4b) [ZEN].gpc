@@ -29,7 +29,7 @@ Version 2.1: Added color function to reduce code size.  Updated Jitter Combo.  A
 Version 2.1a:  Fixed issue with Jitter
 Version 2.2: Zen port + preset split (ADS/L1), new rumble/LED indicators, cleanup
 Version 2.3: INF grenades toggle + EQUIPMENT tap, LEFT bind, documentation updates
-Version 2.4a: ZMode toggle + INFNade master toggle, updated docs/notes
+Version 2.4b: Cleanup legacy placeholders, ZMode/INFNade toggles, defaults updated
 =============================================================================
 TOGGLES: (You MUST press the listed modifier button first before)
 Press ADS (aim down sights) (L2) in addition with any of the below:
@@ -73,7 +73,7 @@ Notes:
 =============================================================================
 GAMEPLAY COMMENTS (CURRENT)
 
-For full details, read the companion doc: BO3 AO-Mod (Version 2.4a) [ZEN].md
+For full details, read the companion doc: BO3 AO-Mod (Version 2.4b) [ZEN].md
 
 Rapid Fire:
 Two cycles exist when Rapid Fire is ON: ADS + RIGHT (Presets 1-7) and L1 + RIGHT (Preset Slow 1-7).
@@ -305,14 +305,6 @@ int TacticalModReady             = 0;
 int DpadDownModReady             = 0;     // modifier active blink latch (D-PAD DOWN)
 int CurrentLEDColor = 0;                   // last LED color set (0 = none)
 
-// Legacy/unused flags (left here for reference)
-// int ExtraRapid                   = FALSE; // legacy: ADS + SPRINT Rapid Fire toggle
-// int AutoDashON                   = FALSE;
-// int QuickReloadON                = FALSE;
-// int ManualAuthenticate           = FALSE; // Titan One legacy code
-// define MULTIPLE_NOTIFIER         = TRUE;  // legacy/unused
-// define ADS_SPEED                 = 20;   // legacy/unused (ADS speed block is commented out)
-
 // MAIN SCRIPT =============================================================================
 
 main {   
@@ -437,26 +429,11 @@ main {
              HLXBypass = FALSE;
              ColorLED(3); // green
              combo_run(SingleNotifier);
-             // AkimboSingleON = FALSE;  // Turn OFF Akimbo modes (legacy/unused)
-             // AkimboRapidON = FALSE;   // Turn OFF Akimbo modes (legacy/unused)
              QuickScopeON = FALSE;    // Turn OFF QuickScope
         }
         if(!RapidFireON) {ColorLED(1); combo_run(RumbleNotifier);}
     }
 
-    // Legacy: ADS + SPRINT Rapid Fire toggle (disabled)
-    // if(event_press(SPRINT_EXO) && get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && ExtraRapid) {  // Turn ON and OFF Rapid Fire
-    //     RapidFireON = !RapidFireON;
-    //     if(RapidFireON) {
-    //          JitterMode = 0;
-    //          ColorLED(3); // green
-    //          combo_run(SingleNotifier);
-    //          // AkimboSingleON = FALSE;  // Turn OFF Akimbo modes (legacy/unused)
-    //          // AkimboRapidON = FALSE;   // Turn OFF Akimbo modes (legacy/unused)
-    //          QuickScopeON = FALSE;    // Turn OFF QuickScope
-    //     }
-    //     if(!RapidFireON) {ColorLED(1); combo_run(RumbleNotifier);}
-    // }
    
     // Using this to cycle through rapid fire settings for testing.  It can be used for having multiple rapid fire settings
     // You can set these values to whatever you want and adjust how many different values that you want.
@@ -556,8 +533,6 @@ main {
     if(!ZMode && event_press(UP) && get_val(CROUCH) && get_ptime(CROUCH) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(GRENADE)) {  // Turns ON and OFF Quick Scope 
         QuickScopeON = !QuickScopeON;
         if(QuickScopeON) {
-           // AkimboSingleON = FALSE;            // Turn OFF Akimbo modes (legacy/unused)
-           // AkimboRapidON = FALSE;             // Turn OFF Akimbo modes (legacy/unused)
            RapidFireON = FALSE;               // Turn OFF Rapid Fire
            AntiRecoilON = FALSE;              // Turn OFF Anti Recoil
            AkimboON = FALSE;
@@ -763,8 +738,6 @@ main {
 
 // END TOGGLES =============================================================================
 
-  // ManualAuthenticate disabled (Titan One legacy code)
-  // if(get_val(UP) && get_val(JUMP) && ManualAuthenticate) {output_reconnection();}
 
   // ---------------------------
   // INF GRENADES
@@ -845,13 +818,6 @@ main {
       else if(combo_running(TurboMelee)) {combo_stop(TurboMelee);}
   }
 
-/* Personal Comment:  I found that I have better game performance without using this.  You can adjust your sensitivity for this.
-  // Faster movement while aiming with ADS
-  if(get_val(ADS)){
-     // sensitivity(RX, NOT_USE, 100 + ADS_SPEED); 
-     // sensitivity(RY, NOT_USE, 100 + ADS_SPEED); 
-  }                                                        
-*/
 
   // Anti-recoil 
   if(!ONLY_WITH_SCOPE || get_val(ADS)) {combo_run(AntiRecoil);}
@@ -1145,7 +1111,7 @@ combo AntiRecoil {
       if(anti_recoil_right > 100) anti_recoil_right = 100;
       set_val(RX, anti_recoil_right);
     }
-// Normal Look Inversion - look inversion disabled
+// Normal Look Inversion (InversionON = FALSE)
     if(get_val(SHOOT) && AntiRecoilON && !InversionON) { // Using AntiRecoilON toggle for testing and when using multiple weapons
       anti_recoil = get_val(RY) + ANTI_RECOIL;             // ADD anti_recoil for normal
       if(anti_recoil > 100) anti_recoil = 100;

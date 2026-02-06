@@ -53,8 +53,8 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 
 ## [Zen Scripts](Zen%20Scripts/)
 
-- [`BO3 AO-Mod (Version 2.4a) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4a%29%20%5BZEN%5D.gpc)  
-  Cronus Zen GPC script for Black Ops 3 (Zombies/MP) with lightbar/rumble feedback and in-game toggles for features like Rapid Fire, Anti-Recoil, Drop Shot, Burst Fire, ZAim, Auto Sprint, and more. See [`BO3 AO-Mod (Version 2.4a) [ZEN].md`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4a%29%20%5BZEN%5D.md) for full button mappings, modifier rules, and toggle combos.
+- [`BO3 AO-Mod (Version 2.4b) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.gpc)  
+  Cronus Zen GPC script for Black Ops 3 (Zombies/MP) with lightbar/rumble feedback and in-game toggles for features like Rapid Fire, Anti-Recoil, Drop Shot, Burst Fire, ZAim, Auto Sprint, and more. See [`BO3 AO-Mod (Version 2.4b) [ZEN].md`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.md) for full button mappings, modifier rules, and toggle combos.
 
 ### [Audio Helpers](Audio/)
 
