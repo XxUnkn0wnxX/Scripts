@@ -1,4 +1,4 @@
-# BO3 AO-Mod (Version 2.4a) [ZEN].gpc
+# BO3 AO-Mod (Version 2.4b) [ZEN].gpc
 
 This doc describes how the mods work and how to use them based on the current Zen-ported script logic.
 
@@ -199,6 +199,8 @@ These values are not toggleable in-game; change them in the script if needed.
   - Crouch hold time in Drop Shot.
 - LONGJUMP_HOLD_MS:
   - Hold time for GRENADE + JUMP Long Jump toggle (ms).
+- ZMODE_HOLD_MS:
+  - Hold time for L3 + R3 ZMode toggle (ms).
 - MODIFIER_TIMER:
   - Hold time required before ADS/CROUCH/GRENADE/TACTICAL/D-PAD DOWN count as active modifiers (ms).
 - AUTOSPRINT_HOLD_MS:
@@ -233,12 +235,18 @@ These exist in the script but are optional toggles.
 - INF_NADE_HOLD_MS = hold time for LEFT (no modifiers) before toggling.
 
 ## Legacy/unused
-- AkimboSingleON and AkimboRapidON are legacy placeholders and not referenced.
-- ExtraRapid is legacy (ADS + SPRINT Rapid Fire toggle is disabled).
-- ManualAuthenticate is disabled and kept in the legacy block (Titan One only).
-- ThrustJumpON, AutoDashON, QuickMelee_ON, QuickReloadON are legacy placeholders and not referenced.
-- MULTIPLE_NOTIFIER is legacy/unused.
-- ADS_SPEED is legacy/unused (ADS speed block is commented out).
+
+## Internal variables (auto-managed; do not edit)
+These exist in the script but are runtime state/flags, not user-facing settings.
+- ADSModReady, CrouchModReady, GrenadeModReady, TacticalModReady, DpadDownModReady
+- AkimboON, AkimboTapPending, AkimboHoldArmed, AkimboHoldLatch
+- ADS_Fire_On, AntiRecoilON, BurstFire, DropShotON, DropScopeMode, HoldBreathON, JitterMode, QuickScopeON, SideShotON, TurboMelee, LongJumpON, LongJumpHoldLatch
+- AutoSprintLYThreshold, AutoSprintTapPending, AutoSprintHoldArmed, AutoSprintHoldLatch
+- INFNadeActive, INFNadeHoldLatch, INFNadeToggleLatch
+- ZAimTapPending, ZAimHoldArmed, ZAimHoldLatch
+- ZModeHoldLatch, CurrentLEDColor, Counter, LastPresetSet
+- anti_recoil, anti_recoil_left, anti_recoil_right
+- SPRINT_EXO, LX, LY
 
 ## Lightbar color map used by this script
 - Blue (1): default/off
