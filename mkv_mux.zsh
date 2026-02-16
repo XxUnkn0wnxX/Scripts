@@ -1,8 +1,7 @@
 #!/usr/local/bin/zsh
 
  # Required third-party tools:
- # - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting,
- #   and editing tracks and metadata in Matroska files
+ # - mkvmerge, mkvextract: for remuxing and extracting tracks in Matroska files
  # - ffmpeg (and ffprobe): for multimedia processing, such as boosting audio volume and verifying video streams
  # - fzf: for interactive file selection via fuzzy finding
  # - jq: for processing JSON output (mkvmerge -J)
@@ -41,8 +40,8 @@ handle_ctrl_c() {
       fi
       exit 0
       ;;
-    2|5)
-      # Cancel remux or edit operations: kill any mkvmerge, remove temp file, and cleanup backup
+    2)
+      # Cancel mkvmerge remux operations: kill mkvmerge, remove temp file, and cleanup backup
       if [ -n "$MKVMERGE_PID" ]; then
         kill -9 $MKVMERGE_PID 2>/dev/null
       fi
@@ -79,27 +78,6 @@ handle_ctrl_c() {
       if [ -n "$WORK_DIR" ] && [ -d "$WORK_DIR" ]; then
         echo "Removing temporary directory: $WORK_DIR"
         rm -rf "$WORK_DIR"
-      fi
-      exit 0
-      ;;
-    4)
-      # If a mkvmerge removal is in progress (non-safe mode), wait till it finishes
-      if [ "$safe_mode_write" != true ] && [ "$MKVMERGE_RUNNING" = true ]; then
-        echo "Ctrl+C detected: waiting for mkvmerge to finish..."
-        return
-      fi
-      # Kill any ongoing mkvmerge to prevent sanitize warnings
-      if [ -n "$MKVMERGE_PID" ]; then
-        kill -9 $MKVMERGE_PID 2>/dev/null
-      fi
-      # Kill any ongoing rsync
-      if [ -n "$RSYNC_PID" ]; then
-        kill -9 $RSYNC_PID 2>/dev/null
-      fi
-      # Remove temporary file created by mkvmerge
-      if [ -n "$TEMP_FILE" ] && [ -f "$TEMP_FILE" ]; then
-        echo "Removing temporary file: $TEMP_FILE"
-        rm -f "$TEMP_FILE"
       fi
       exit 0
       ;;
@@ -583,27 +561,6 @@ validate_mkv_extension() {
     *) return 1 ;;
   esac
 }
-# Function to display track information safely, projecting only needed fields
-display_track_info() {
-  local source_file="$1"
-
-  echo "-----------------------  mkvmerge JSON track listing -----------------------"
-  mkvmerge -J "$source_file" < /dev/null \
-    | jq -r '
-        .tracks[]
-        | {
-            id:    .id,
-            type:  .type,
-            codec: .properties.codec_id,
-            name:  (.properties.track_name // ""),
-            lang:  (.properties.language      // .properties.language_ietf // "")
-          }
-        | "Track ID \(.id): \(.type) (\(.codec))" +
-          (if .name != "" then " [\(.name)]" else "" end) +
-          (if .lang != "" then " [\(.lang)]" else "" end)
-      '
-}
-
 # Function to collect audio tracks into $audio_tracks_arr safely
 collect_audio_tracks() {
   local source_file="$1"
@@ -631,39 +588,6 @@ collect_audio_tracks() {
       done
 }
 
-#Function to rename tracks using mkvpropedit
-rename_tracks() {
-  local source_file="$1"
-  local track_ids="$2"
-
-  # Split track_ids by comma and space
-  IFS=', ' read -rA ids <<< "$track_ids"
-  
-  # Loop over each track ID
-  for id in "${ids[@]}"; do
-    # Check if it's a range (e.g., 1-3)
-    if [[ $id == *-* ]]; then
-      local start=$(echo $id | cut -d '-' -f 1)
-      local end=$(echo $id | cut -d '-' -f 2)
-      for ((i=start; i<=end; i++)); do
-        echo "--------------------  Track ID $i Name ---------------------"
-        printf "Name: "
-        flush_input
-        read name
-        # Run mkvpropedit uninterruptibly
-        (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((i+1)) --set name="$name" < /dev/null)
-      done
-    else
-      echo "--------------------  Track ID $id Name ---------------------"
-      printf "Name: "
-      flush_input
-      read name
-      # Run mkvpropedit uninterruptibly
-      (trap '' SIGINT; exec mkvpropedit "$source_file" --edit track:$((id+1)) --set name="$name" < /dev/null)
-    fi
-  done
-}
-
 # Main script
 # Use the directory from which the script was invoked as the working directory
 if [ $# -gt 1 ]; then
@@ -687,8 +611,6 @@ echo "Select an option:"
 echo "1) Remux to MKV (ffmpeg)"
 echo "2) Remux to MKV (mkvmerge)"
 echo "3) Volume Boost"
-echo "4) Remove Tracks"
-echo "5) Edit Track Names"
 printf "Enter choice: "
 flush_input
 read choice
@@ -868,205 +790,6 @@ if [ "$choice" -eq 1 ]; then
       fi
     done
 
-
-  elif [ "$choice" -eq 4 ]; then
-    local source_file=""
-    while true; do
-      printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-      source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
-      if [ -z "$source_file" ]; then
-        echo "No file selected. Exiting."
-        exit 1
-      fi
-      validate_mkv_extension "$source_file"
-      if [ $? -eq 0 ]; then
-        break
-      else
-        echo "Invalid input. Please select a valid .mkv file."
-      fi
-    done
-
-    # Set context for signal handler
-    SOURCE_FILE="$source_file"
-
-    # Show all tracks via the unified helper (projects only the fields we need)
-    display_track_info "$source_file"
-
-    printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
-    flush_input
-    read track_ids
-    while [[ -z "$track_ids" ]]; do
-      echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-      printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
-      flush_input
-      read track_ids
-    done
-
-    # Convert track_ids to an array (handling ranges)
-    exclude_ids=()
-    IFS=',' read -r raw_ids_str <<< "$track_ids"
-    raw_ids=(${(s:,:)raw_ids_str})
-    for id in "${raw_ids[@]}"; do
-      if [[ $id == *-* ]]; then
-        range_start=${id%-*}; range_end=${id#*-}
-        for ((i=range_start; i<=range_end; i++)); do
-          exclude_ids+=($i)
-        done
-      else
-        exclude_ids+=($id)
-      fi
-    done
-    # Remove duplicates and sort
-    exclude_ids=($(printf "%s\n" "${exclude_ids[@]}" | sort -n | uniq))
-
-    # Read track info JSON and group IDs by type, streaming directly into jq
-    local -a video_ids audio_ids subtitle_ids
-    video_ids=($(mkvmerge -J "$source_file" < /dev/null \
-                   | jq -r '.tracks[] | select(.type=="video")      | .id'))
-    audio_ids=($(mkvmerge -J "$source_file" < /dev/null \
-                   | jq -r '.tracks[] | select(.type=="audio")      | .id'))
-    subtitle_ids=($(mkvmerge -J "$source_file" < /dev/null \
-                   | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
-
-    # Build lists of tracks to keep
-    video_keep=()
-    for id in "${video_ids[@]}"; do
-      if [[ ! " ${exclude_ids[@]} " =~ " $id " ]]; then video_keep+=($id); fi
-    done
-    audio_keep=()
-    for id in "${audio_ids[@]}"; do
-      if [[ ! " ${exclude_ids[@]} " =~ " $id " ]]; then audio_keep+=($id); fi
-    done
-    subtitle_keep=()
-    for id in "${subtitle_ids[@]}"; do
-      if [[ ! " ${exclude_ids[@]} " =~ " $id " ]]; then subtitle_keep+=($id); fi
-    done
-
-    # Prepare temporary output filename using correct extension
-    src_basename=${source_file##*/}
-    base_name=${src_basename%.*}
-    # Determine output extension: if no video tracks, use .mka, else keep original
-    input_ext="${source_file##*.}"
-    if [ ${#video_keep[@]} -eq 0 ]; then
-      out_ext="mka"
-    else
-      out_ext="$input_ext"
-    fi
-    temp_file="${base_name}_temp.${out_ext}"
-    # Record temp file for cleanup on interrupt
-    TEMP_FILE="$temp_file"
-
-    # Assemble mkvmerge command to preserve metadata and track order
-    echo "Removing tracks: $track_ids"
-    cmd=(mkvmerge -o "$temp_file")
-    # Video tracks: keep listed or exclude all
-    if [ ${#video_keep[@]} -gt 0 ]; then
-      vl=$(IFS=,; echo "${video_keep[*]}")
-      cmd+=(--video-tracks "$vl")
-    else
-      cmd+=(--no-video)
-    fi
-    # Audio tracks: keep listed or exclude all
-    if [ ${#audio_keep[@]} -gt 0 ]; then
-      al=$(IFS=,; echo "${audio_keep[*]}")
-      cmd+=(--audio-tracks "$al")
-    else
-      cmd+=(--no-audio)
-    fi
-    # Subtitle tracks: keep listed or exclude all
-    if [ ${#subtitle_keep[@]} -gt 0 ]; then
-      sl=$(IFS=,; echo "${subtitle_keep[*]}")
-      cmd+=(--subtitle-tracks "$sl")
-    else
-      cmd+=(--no-subtitles)
-    fi
-    # Input file
-    cmd+=("$source_file")
-
-    # Run mkvmerge to remove tracks
-    TEMP_FILE="$temp_file"
-    MKVMERGE_RUNNING=true
-    echo "Executing: ${cmd[*]}"
-    if [ "$safe_mode_write" != true ]; then
-      # Non-safe: disable Ctrl+C so mkvmerge finishes uninterrupted
-      stty intr ''
-      "${cmd[@]}" &
-      MKVMERGE_PID=$!
-      wait $MKVMERGE_PID
-      ret=$?
-      stty intr ^C
-    else
-      # Safe mode: allow immediate interrupt
-      "${cmd[@]}" &
-      MKVMERGE_PID=$!
-      wait $MKVMERGE_PID
-      ret=$?
-    fi
-    MKVMERGE_PID=""
-    MKVMERGE_RUNNING=false
-    if [ $ret -gt 1 ]; then
-      # Cleanup temp file if interrupted or failed
-      [ -f "$TEMP_FILE" ] && rm -f "$TEMP_FILE"
-      echo "Error: mkvmerge failed to remove tracks."
-      exit 1
-    fi
-    if [ $ret -eq 1 ]; then
-      echo "Warning: mkvmerge completed with warnings."
-    fi
-
-    # Finalize output: safe mode vs overwrite
-    if [ "$safe_mode_write" = true ]; then
-      count=1
-      output_file="${base_name}_removed (${count}).${out_ext}"
-      while [ -f "$output_file" ]; do
-        ((count++))
-        output_file="${base_name}_removed (${count}).${out_ext}"
-      done
-      mv "$temp_file" "$output_file"
-      echo "Created removed-version: $output_file"
-    else
-      # Overwrite original: remove it then rename temp to original base_name.ext
-      # Disable Ctrl+C during cleanup
-      trap '' INT
-      rm -f "$source_file"
-      mv "$temp_file" "${base_name}.${out_ext}"
-      echo "Replaced original file: ${base_name}.${out_ext}"
-      # Restore Ctrl+C handler
-      trap 'handle_ctrl_c' INT
-    fi
-    
-  elif [ "$choice" -eq 5 ]; then
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) | fzf --height 40% --reverse --border)
-    if [ -z "$source_file" ]; then
-      echo "No file selected. Exiting."
-      exit 1
-    fi
-
-    # Check for safe_mode_write and create backup if true
-    if [ "$safe_mode_write" = true ]; then
-      echo "Safe mode is enabled. Creating a backup..."
-      create_backup "$source_file"
-      if [ $? -ne 0 ]; then
-        echo "Error: Failed to create backup. Exiting."
-        exit 1
-      fi
-    fi
-
-    display_track_info "$source_file"
-
-    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-    flush_input
-    read track_ids
-    while [[ -z "$track_ids" ]]; do
-      echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-      printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-      flush_input
-      read track_ids
-    done
-
-    # Edit track names (SIGINT enabled during prompts, disabled during mkvpropedit)
-    rename_tracks "$source_file" "$track_ids"
 
   else
     echo "Invalid choice."
