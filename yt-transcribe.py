@@ -32,9 +32,10 @@ STAGE_DIRECTIONS = (
     "silence",
     "inaudible",
     "singing",
+    "music and singing",
 )
 STAGE_DIRECTION_PATTERN = re.compile(
-    r"\[(?:music|applause|laughter|silence|inaudible|singing)\]",
+    r"\[(?:music|applause|laughter|silence|inaudible|singing|music and singing)\]",
     re.IGNORECASE,
 )
 
