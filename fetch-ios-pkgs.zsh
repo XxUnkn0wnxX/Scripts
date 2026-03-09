@@ -3,7 +3,7 @@
 set -euo pipefail
 
 # Foundation of this script came from a MacRumors post by bogdanw:
-# https://forums.macrumors.com/threads/itunes-software-updates.2416893/page-3?post=33894235
+# https://forums.macrumors.com/threads/itunes-software-updates.2416893/page-3?post=33894235#post-33894235
 
 # Download destination.
 TARGET_DIR="$HOME/Downloads"
