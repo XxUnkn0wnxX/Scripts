@@ -1,4 +1,4 @@
-#!/usr/local/bin/zsh
+#!/usr/bin/env zsh
 
  # Required third-party tools:
  # - mkvmerge, mkvextract: for remuxing and extracting tracks in Matroska files

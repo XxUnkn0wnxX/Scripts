@@ -1,4 +1,4 @@
-#!/usr/local/bin/zsh
+#!/usr/bin/env zsh
 
 set -euo pipefail
 
@@ -31,6 +31,12 @@ cleanup() {
 }
 
 trap cleanup EXIT
+
+if (( EUID == 0 )); then
+  INSTALLER_CMD=(/usr/sbin/installer)
+else
+  INSTALLER_CMD=(sudo /usr/sbin/installer)
+fi
 
 echo "Fetching catalog..."
 curl -fsSL "$CATALOG_URL" -o "$CATALOG_FILE"
@@ -96,6 +102,28 @@ while IFS= read -r pkg_url; do
   curl -fL --progress-bar -o "$TARGET_DIR/$(basename "$pkg_url")" "$pkg_url"
   echo
 done < "$URLS_FILE"
+
+install_pkg() {
+  local pkg_path="$1"
+
+  if [[ ! -f "$pkg_path" ]]; then
+    echo "Missing package: $pkg_path"
+    exit 1
+  fi
+
+  echo "Installing package:"
+  echo "$pkg_path"
+  "${INSTALLER_CMD[@]}" -verboseR -pkg "$pkg_path" -target /
+  echo
+}
+
+CORETYPES_PATH="$TARGET_DIR/$(basename "${LATEST_URL/MobileDeviceOnDemand.pkg/CoreTypes.pkg}")"
+MOBILEDEVICE_PATH="$TARGET_DIR/$(basename "$LATEST_URL")"
+
+echo "Installing downloaded packages..."
+echo
+install_pkg "$CORETYPES_PATH"
+install_pkg "$MOBILEDEVICE_PATH"
 
 echo "Done."
 echo "Files saved in: $TARGET_DIR"
