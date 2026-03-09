@@ -51,6 +51,9 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
   Recursively scans every `*.rb` in a tap (root, `Formula/`, `Casks/`, etc.), fetches their stable versions via `brew info --json=v2`, and compares them with the official Homebrew JSON API so you can see which of your patched formulae are ahead, behind, or missing upstream equivalents. When the API lacks an entry or version, the script immediately checks all other tapped repos (excluding `homebrew/core`) and reports the first match inline—handy when your custom formula or cask mirrors one in another tap. Anything listed by `brew list --pinned` is labelled `PINNED` so you can tell at a glance which outdated builds you’ve intentionally frozen.
   > *Hard-coded to `custom/versions` by default; edit the `DEFAULT_CUSTOM_TAP` variable near the top of the script if your overrides live elsewhere.*
 
+- [`fetch-ios-pkgs.zsh`](fetch-ios-pkgs.zsh)  
+  Fetches the newest Apple `MobileDeviceOnDemand.pkg` entry from the current `DeveloperSeed` software catalog, downloads its matching `CoreTypes.pkg`, installs both with Homebrew-style `installer -verboseR` output, and then attempts a cross-version-safe `usbmuxd` restart with PID checks so iPhone/iPad support comes back online without a reboot.
+
 ## [Zen Scripts](Zen%20Scripts/)
 
 - [`BO3 AO-Mod (Version 2.4b) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.gpc)  
