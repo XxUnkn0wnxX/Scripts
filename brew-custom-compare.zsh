@@ -1,4 +1,4 @@
-#!/usr/local/bin/zsh
+#!/usr/bin/env zsh
 
 # --- Configuration -----------------------------------------------------------
 # Override these via environment variables if needed before running the script.
