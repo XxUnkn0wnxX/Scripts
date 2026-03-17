@@ -56,6 +56,14 @@ class TranscriptSelection:
     entries: List[dict]
 
 
+@dataclass(frozen=True)
+class TimeSelection:
+    """User-selected transcript window."""
+
+    start_seconds: Optional[float]
+    end_seconds: float
+
+
 def configure_logging(verbose: bool) -> None:
     """Configure the root logger once."""
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO, format="%(message)s")
@@ -420,13 +428,109 @@ def parse_timecode(value: str) -> float:
     return hours * 3600 + minutes * 60 + seconds
 
 
-def apply_time_cutoff(transcript: TranscriptSelection, cutoff_seconds: float) -> TranscriptSelection:
-    """Return a copy of the transcript containing entries up to the cutoff (inclusive)."""
-    filtered_entries = [entry for entry in transcript.entries if entry.get("start", 0.0) <= cutoff_seconds]
-    if not filtered_entries:
-        logging.warning("No transcript entries fall within the specified cutoff at %s seconds.", cutoff_seconds)
+def parse_time_selection(values: str | Sequence[str]) -> TimeSelection:
+    """Parse --time as either a single cutoff or a start-end range."""
+    if isinstance(values, str):
+        parts = [values.strip()]
     else:
-        logging.info("Transcript truncated at %s seconds (%s entries retained).", cutoff_seconds, len(filtered_entries))
+        parts = [(value or "").strip() for value in values]
+
+    combined = " ".join(part for part in parts if part).strip()
+    if not combined:
+        raise CliError("The --time option requires a timecode or start-end range.")
+
+    range_match = re.fullmatch(
+        r"(?P<start>\d{1,2}:\d{2}(?::\d{2})?)\s*-\s*(?P<end>\d{1,2}:\d{2}(?::\d{2})?)",
+        combined,
+    )
+    if range_match:
+        start_seconds = parse_timecode(range_match.group("start"))
+        end_seconds = parse_timecode(range_match.group("end"))
+        if start_seconds > end_seconds:
+            raise CliError("Invalid --time range: start time must be earlier than or equal to end time.")
+        return TimeSelection(start_seconds=start_seconds, end_seconds=end_seconds)
+
+    if len(parts) > 1:
+        raise CliError(
+            "Invalid --time value. Use a single timecode like MM:SS or a range like MM:SS - HH:MM:SS."
+        )
+
+    return TimeSelection(start_seconds=None, end_seconds=parse_timecode(combined))
+
+
+def looks_like_timecode(value: str) -> bool:
+    """Return True when the token resembles MM:SS or HH:MM:SS."""
+    return bool(re.fullmatch(r"\d{1,2}:\d{2}(?::\d{2})?", (value or "").strip()))
+
+
+def normalize_time_argv(argv: Optional[Sequence[str]] = None) -> List[str]:
+    """Normalize --time tokens so argparse does not consume a trailing URL/video ID."""
+    source = list(sys.argv[1:] if argv is None else argv)
+    normalized: List[str] = []
+    index = 0
+
+    while index < len(source):
+        token = source[index]
+
+        if token != "--time":
+            normalized.append(token)
+            index += 1
+            continue
+
+        normalized.append(token)
+        if index + 1 >= len(source):
+            raise CliError("The --time option requires a timecode or start-end range.")
+
+        first_value = source[index + 1]
+        if (
+            index + 3 < len(source)
+            and looks_like_timecode(first_value)
+            and source[index + 2] == "-"
+            and looks_like_timecode(source[index + 3])
+        ):
+            normalized.append(f"{first_value} - {source[index + 3]}")
+            index += 4
+            continue
+
+        normalized.append(first_value)
+        index += 2
+
+    return normalized
+
+
+def apply_time_selection(transcript: TranscriptSelection, selection: TimeSelection) -> TranscriptSelection:
+    """Return a copy of the transcript filtered to the requested time span."""
+    start_seconds = selection.start_seconds
+    end_seconds = selection.end_seconds
+
+    if start_seconds is None:
+        filtered_entries = [entry for entry in transcript.entries if entry.get("start", 0.0) <= end_seconds]
+    else:
+        filtered_entries = [
+            entry
+            for entry in transcript.entries
+            if start_seconds <= entry.get("start", 0.0) <= end_seconds
+        ]
+
+    if not filtered_entries:
+        if start_seconds is None:
+            logging.warning("No transcript entries fall within the specified cutoff at %s seconds.", end_seconds)
+        else:
+            logging.warning(
+                "No transcript entries fall within the specified range %s to %s seconds.",
+                start_seconds,
+                end_seconds,
+            )
+    else:
+        if start_seconds is None:
+            logging.info("Transcript truncated at %s seconds (%s entries retained).", end_seconds, len(filtered_entries))
+        else:
+            logging.info(
+                "Transcript limited to %s-%s seconds (%s entries retained).",
+                start_seconds,
+                end_seconds,
+                len(filtered_entries),
+            )
     return replace(transcript, entries=filtered_entries)
 
 
@@ -598,6 +702,7 @@ def write_docx(
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     """Set up the CLI parser and return parsed arguments."""
+    normalized_argv = normalize_time_argv(argv)
     parser = argparse.ArgumentParser(
         prog="yt-transcribe.py",
         description="Download YouTube captions (manual or auto) and export to text or DOCX.",
@@ -624,9 +729,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging.")
     parser.add_argument(
         "--time",
-        help="Cut off the transcript at the given time (HH:MM:SS or MM:SS). Entries after this point are omitted.",
+        help=(
+            "Cut off the transcript at a single time (HH:MM:SS or MM:SS), or limit it to a range such as "
+            "'00:04:03 - 00:08:50'."
+        ),
     )
-    return parser.parse_args(argv)
+    return parser.parse_args(normalized_argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -670,8 +778,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         include_timestamps = not args.nostamp
 
         if args.time:
-            cutoff_seconds = parse_timecode(args.time)
-            transcript = apply_time_cutoff(transcript, cutoff_seconds)
+            time_selection = parse_time_selection(args.time)
+            transcript = apply_time_selection(transcript, time_selection)
 
         sanitized_base = sanitize_filename(title)
         if not sanitized_base:
