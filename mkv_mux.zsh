@@ -150,7 +150,7 @@ remux_to_mkv() {
         ;;
       N|n)
         echo "Skipped; $output_file unchanged."
-        return 1
+        return 2
         ;;
       *)
         echo "Invalid choice. Skipping file."
@@ -220,7 +220,7 @@ remux_to_mkv_ffmpeg() {
     resp=${resp:-N}
     case "$resp" in
       [Yy]*) echo "Overwriting $output_file...";;
-      *) echo "Skipped; $output_file unchanged."; return 1;;
+      *) echo "Skipped; $output_file unchanged."; return 2;;
     esac
   fi
 
@@ -504,7 +504,7 @@ boost_audio_volume_safe_sorting() {
     fi
 
     # Restore the backup as the original source file
-    local backup_file="${source_file%.*}_original.mkv"
+    local backup_file="${source_file%.*}_original.${ext}"
     if [ -f "$backup_file" ]; then
       echo "Restoring backup file $backup_file to $source_file"
       mv "$backup_file" "$source_file"
@@ -588,6 +588,47 @@ collect_audio_tracks() {
       done
 }
 
+# Return the matching audio-track descriptor for a Track ID, if present.
+get_audio_track_info_by_id() {
+  local track_id="$1"
+  shift
+
+  local entry=""
+  for entry in "$@"; do
+    if [[ "$entry" == "Track ID $track_id:"* ]]; then
+      print -r -- "$entry"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+# Prompt until the user selects a valid Track ID from the provided list.
+prompt_for_audio_track_info() {
+  local -a available_audio_tracks=("$@")
+  local track_id=""
+  local track_info=""
+
+  while true; do
+    printf "Enter the Track ID to extract: " >&2
+    flush_input
+    read track_id
+    if [[ -z "$track_id" ]]; then
+      echo "Track ID cannot be empty. Please enter a Track ID." >&2
+      continue
+    fi
+
+    track_info=$(get_audio_track_info_by_id "$track_id" "${available_audio_tracks[@]}")
+    if [[ -n "$track_info" ]]; then
+      print -r -- "$track_info"
+      return 0
+    fi
+
+    echo "Invalid Track ID \"$track_id\". Please choose from the list above." >&2
+  done
+}
+
 # Main script
 # Use the directory from which the script was invoked as the working directory
 if [ $# -gt 1 ]; then
@@ -636,7 +677,12 @@ if [ "$choice" -eq 1 ]; then
     # Now process each file, passing the answer as $3 to our remux function
     for source_file in "${video_files[@]}"; do
       source_file="${source_file#./}"   # strip leading ./
-      if ! remux_to_mkv_ffmpeg "$source_file" "$replace_audio_tracks"; then
+      remux_to_mkv_ffmpeg "$source_file" "$replace_audio_tracks"
+      local remux_status=$?
+      if [ $remux_status -eq 2 ]; then
+        continue
+      fi
+      if [ $remux_status -ne 0 ]; then
         echo "Error processing \"$source_file\". Skipping."
       fi
     done
@@ -661,7 +707,12 @@ if [ "$choice" -eq 1 ]; then
       
       # Verify the file is a video file using ffprobe
       if ffprobe -v error -select_streams v:0 -show_entries stream=codec_type -of csv=p=0 "$source_file" < /dev/null 2>/dev/null | grep -q '^video'; then
-        if ! remux_to_mkv "$source_file"; then
+        remux_to_mkv "$source_file"
+        local remux_status=$?
+        if [ $remux_status -eq 2 ]; then
+          continue
+        fi
+        if [ $remux_status -ne 0 ]; then
           echo "Error processing \"$source_file\". Skipping."
         fi
       else
@@ -679,6 +730,15 @@ if [ "$choice" -eq 1 ]; then
 
     local global_volume_changes=""
     local is_first_file=true
+    local batch_has_multiple_files=false
+    local batch_track_prompted=false
+    local batch_apply_track_id=false
+    local batch_track_id=""
+
+    if [ ${#selected_files[@]} -gt 1 ]; then
+      batch_has_multiple_files=true
+    fi
+
     for selected_path in "${selected_files[@]}"; do
       local source_file="${selected_path#./}"
       validate_mkv_extension "$source_file"
@@ -733,25 +793,47 @@ if [ "$choice" -eq 1 ]; then
       if [ "$audio_count" -eq 1 ]; then
         track_info="${audio_tracks_arr[1]}"
       else
-        while true; do
-          printf "Enter the Track ID to extract: "
-          flush_input
-          read track_id
-          if [[ -z "$track_id" ]]; then
-            echo "Track ID cannot be empty. Please enter a Track ID."
-            continue
-          fi
-          for entry in "${audio_tracks_arr[@]}"; do
-            if [[ $entry == "Track ID $track_id:"* ]]; then
-              track_info="$entry"
-              break
-            fi
-          done
+        if [ "$batch_apply_track_id" = true ] && [[ -n "$batch_track_id" ]]; then
+          track_info=$(get_audio_track_info_by_id "$batch_track_id" "${audio_tracks_arr[@]}")
           if [[ -n "$track_info" ]]; then
-            break
+            echo "Using saved batch Track ID $batch_track_id for \"$source_file\"."
+          else
+            echo "Warning: Saved batch Track ID $batch_track_id was not found in \"$source_file\"."
+            echo "Please choose a Track ID for this file."
           fi
-          echo "Invalid Track ID \"$track_id\". Please choose from the list above."
-        done
+        fi
+
+        if [[ -z "$track_info" ]]; then
+          track_info=$(prompt_for_audio_track_info "${audio_tracks_arr[@]}")
+          track_id=$(echo "$track_info" | awk '{print $3}' | tr -d ':')
+
+          if [ "$batch_has_multiple_files" = true ] && [ "$batch_track_prompted" != true ]; then
+            while true; do
+              printf "Apply Track ID %s to the current batch? (Y/N) [N]: " "$track_id"
+              flush_input
+              read apply_track_id_choice
+              apply_track_id_choice=${apply_track_id_choice:-N}
+
+              case "$apply_track_id_choice" in
+                Y|y)
+                  batch_apply_track_id=true
+                  batch_track_id="$track_id"
+                  batch_track_prompted=true
+                  break
+                  ;;
+                N|n)
+                  batch_apply_track_id=false
+                  batch_track_id=""
+                  batch_track_prompted=true
+                  break
+                  ;;
+                *)
+                  echo "Invalid choice. Please enter Y or N."
+                  ;;
+              esac
+            done
+          fi
+        fi
       fi
 
       if [ "$is_first_file" = true ]; then
