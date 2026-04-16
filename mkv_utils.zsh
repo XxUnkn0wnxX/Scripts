@@ -373,7 +373,11 @@ print -n "Select an option:
 Enter choice: "
 read choice
 
-choice=${choice:-1}
+while [[ -z "$choice" || "$choice" != [1-9] ]]; do
+  echo "Invalid choice. Please enter a number from 1 to 9."
+  printf "Enter choice: "
+  read choice
+done
 
 if [ "$choice" = "1" ]; then
   # Prompt for multi-file or single-file selection
