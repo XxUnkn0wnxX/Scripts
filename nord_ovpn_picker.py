@@ -155,6 +155,12 @@ GROUPS: dict[str, GroupSpec] = {
     "dedicated": GroupSpec("dedicated", "Dedicated IP", "legacy_dedicated_ip"),
 }
 
+COUNTRY_SYNONYMS: dict[str, set[str]] = {
+    "unitedstates": {"usa", "america", "unitedstatesofamerica"},
+    "unitedkingdom": {"uk", "britain", "greatbritain"},
+    "unitedarabemirates": {"uae"},
+}
+
 
 def configure_logging(verbose: bool) -> None:
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO, format="%(message)s")
@@ -445,6 +451,7 @@ def matches_country(country: Country, query: str) -> bool:
         aliases.add(normalize_text(country.code))
     compact = re.sub(r"[^a-z0-9]+", "", country.name.casefold())
     aliases.add(compact[:3])
+    aliases.update(COUNTRY_SYNONYMS.get(compact, set()))
     return normalized in aliases
 
 
