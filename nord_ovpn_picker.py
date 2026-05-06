@@ -765,12 +765,27 @@ def score_candidates(
     group_key: str,
     ping_enabled: bool,
     ping_count: int,
+    show_ping_progress: bool = False,
 ) -> list[CandidateScore]:
     candidates: list[CandidateScore] = []
+    ping_total = min(len(servers), DEFAULT_PING_TOP) if ping_enabled else 0
+    if show_ping_progress and ping_total:
+        console.print(f"[yellow]Running ping tests for top {ping_total} candidate(s)...[/yellow]")
+
     for index, server in enumerate(servers):
         avg_ping = None
         if ping_enabled and index < DEFAULT_PING_TOP:
+            if show_ping_progress:
+                console.print(
+                    f"[cyan]Ping {index + 1}/{ping_total}:[/cyan] {server.hostname} "
+                    f"(load {server.load if server.load is not None else '-'})"
+                )
             avg_ping = ping_server(server.hostname, ping_count)
+            if show_ping_progress:
+                if avg_ping is None:
+                    console.print(f"[yellow]  Result:[/yellow] ping failed or no ICMP reply")
+                else:
+                    console.print(f"[green]  Result:[/green] {avg_ping:.1f} ms average")
         score = average_score(server.load, avg_ping)
         candidates.append(
             CandidateScore(
@@ -1226,6 +1241,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         group_key=group_key,
         ping_enabled=ping_enabled,
         ping_count=args.ping_count,
+        show_ping_progress=ping_enabled and sys.stdout.isatty(),
     )
 
     if not candidates:

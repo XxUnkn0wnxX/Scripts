@@ -11,6 +11,7 @@
 - Automatic fallback to Nord's V2 dataset when recommendations are not enough or `--full-data` is used.
 - Optional ping scoring for the top candidates.
 - Rich results table with hostname, location, protocol, group, load, ping, score, station IP, and the recommended marker.
+- Visible per-host ping progress in TTY sessions before the final ranked table.
 - Direct `.ovpn` downloads for the best candidate, the top N, or an interactive selection.
 - Automatic re-exec into the repo-local `.venv` when the script is started from the wrong Python interpreter.
 - Current-working-directory output folder so aliases, symlinks, and absolute-path calls still write where you launched them from.
@@ -52,6 +53,8 @@ score = average_ping_ms + (load * 2)
 
 Lower is better.
 
+That means a slightly higher ping can still win if the load is lower enough. For example, `3.6 ms` with load `11` scores `25.6`, which still beats `3.2 ms` with load `12` scoring `27.2`.
+
 ## Interactive Usage
 
 Run the script with no filter arguments to enter the prompt flow:
@@ -82,6 +85,8 @@ Interactive defaults:
 - Ping test: `yes`
 
 If you leave the final download selection blank, the script only prints the candidate table and exits without downloading anything.
+
+When ping testing is enabled in a terminal, the script shows each ping test as it runs before printing the final ranked table.
 
 Interactive download selection accepts:
 
@@ -216,6 +221,8 @@ If you omit `--protocol`, `--group`, or `--limit` in non-interactive mode, the d
   Enable debug logging for HTTP requests, cache usage, and ping execution.
 
 If you do not pass `--no-ping`, non-interactive mode pings candidates by default.
+
+When ping testing is enabled in a TTY session, the script prints per-host ping progress and the measured average before the candidate table.
 
 ### Listing Commands
 
