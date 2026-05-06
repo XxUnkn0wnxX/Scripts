@@ -5,6 +5,7 @@
 ## Features
 
 - Interactive mode when you run the script with no filter arguments.
+- Type-to-filter autocomplete for country, city, protocol, and group prompts.
 - Non-interactive CLI mode for direct scripted use.
 - Recommendation-first server selection using Nord's recommendation API.
 - Automatic fallback to Nord's V2 dataset when recommendations are not enough or `--full-data` is used.
@@ -69,6 +70,8 @@ The prompts run in this order:
 6. Run ping test
 7. Download selection
 
+The interactive country, city, protocol, and group prompts use live prefix filtering as you type. Instead of printing the full city list first, the menu narrows in place so you can keep typing until the option you want is visible, then press `Tab` or `Enter`.
+
 Interactive defaults:
 
 - Country: required
@@ -88,6 +91,13 @@ Interactive download selection accepts:
 - `all`
 - `none`
 - blank input to skip downloading
+
+Examples of the interactive prefix matching:
+
+- typing `US` narrows the country list to `United States`
+- typing `Ch` then `Chic` narrows United States cities down to `Chicago`
+- typing `T` narrows protocol choices to `TCP`
+- typing `P` narrows the default group list to `P2P`
 
 ## Common Usage
 
