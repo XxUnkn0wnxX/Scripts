@@ -49,6 +49,11 @@ if REPO_VENV_DIR.exists() and REPO_VENV_PYTHON is not None:
         os.environ["NORD_OVPN_PICKER_REEXEC"] = "1"
         os.execv(str(REPO_VENV_PYTHON), [str(REPO_VENV_PYTHON), str(SCRIPT_PATH), *sys.argv[1:]])
 
+from prompt_toolkit.completion import Completer
+from prompt_toolkit.completion import Completion
+from prompt_toolkit.document import Document
+from prompt_toolkit.shortcuts.prompt import CompleteStyle
+
 import questionary
 import requests
 from rich.console import Console
@@ -133,6 +138,13 @@ class CandidateScore:
     average_ping_ms: Optional[float]
     score: Optional[float]
     recommended: bool = False
+
+
+@dataclass(frozen=True)
+class AutocompleteOption:
+    label: str
+    value: str
+    aliases: tuple[str, ...]
 
 
 PROTOCOLS: dict[str, ProtocolSpec] = {
@@ -502,32 +514,135 @@ def resolve_city(query: str, cities: Sequence[City]) -> list[City]:
     return matches
 
 
-def choose_one_interactively(title: str, prompt: str, options: Sequence[str]) -> str:
-    console.print(Panel(title, border_style="cyan"))
-    answer = questionary.select(prompt, choices=list(options)).ask()
+class PrefixAutocompleteCompleter(Completer):
+    def __init__(self, options: Sequence[AutocompleteOption]) -> None:
+        self.options = list(options)
+
+    def get_completions(self, document: Document, complete_event: Any) -> Iterable[Completion]:
+        query = document.text_before_cursor
+        for option in resolve_autocomplete_matches(query, self.options):
+            yield Completion(
+                option.label,
+                start_position=-len(query),
+                display=option.label,
+                display_meta=option.value,
+                style="class:answer",
+                selected_style="class:selected",
+            )
+
+
+def unique_aliases(*values: Optional[str]) -> tuple[str, ...]:
+    seen: dict[str, None] = {}
+    for value in values:
+        if value is None:
+            continue
+        normalized = normalize_text(value)
+        if normalized:
+            seen.setdefault(normalized, None)
+    return tuple(seen.keys())
+
+
+def country_prompt_option(country: Country) -> AutocompleteOption:
+    compact = re.sub(r"[^a-z0-9]+", "", country.name.casefold())
+    return AutocompleteOption(
+        label=country.name,
+        value=country.code or country.name,
+        aliases=unique_aliases(country.name, country.code, compact[:3], *COUNTRY_SYNONYMS.get(compact, set())),
+    )
+
+
+def city_prompt_option(city: City) -> AutocompleteOption:
+    return AutocompleteOption(label=city.name, value=city.name, aliases=unique_aliases(city.name))
+
+
+def protocol_prompt_option(key: str) -> AutocompleteOption:
+    protocol = PROTOCOLS[key]
+    return AutocompleteOption(
+        label=protocol.label,
+        value=key,
+        aliases=unique_aliases(protocol.label, key),
+    )
+
+
+def group_prompt_option(key: str) -> AutocompleteOption:
+    group = GROUPS[key]
+    return AutocompleteOption(
+        label=group.label,
+        value=key,
+        aliases=unique_aliases(group.label, key),
+    )
+
+
+def resolve_autocomplete_matches(query: str, options: Sequence[AutocompleteOption]) -> list[AutocompleteOption]:
+    normalized = normalize_text(query)
+    if not normalized:
+        return list(options)
+
+    exact = [option for option in options if normalized in option.aliases]
+    if exact:
+        return exact
+
+    prefix = [option for option in options if any(alias.startswith(normalized) for alias in option.aliases)]
+    return prefix
+
+
+def resolve_autocomplete_option(
+    query: str,
+    options: Sequence[AutocompleteOption],
+    item_name: str,
+) -> AutocompleteOption:
+    normalized = normalize_text(query)
+    if not normalized:
+        raise CliError(f"{item_name} is required.")
+
+    matches = resolve_autocomplete_matches(query, options)
+    if not matches:
+        raise CliError(f'Could not find a {item_name.casefold()} matching "{query}".')
+    if len(matches) == 1:
+        return matches[0]
+
+    labels = ", ".join(option.label for option in matches[:10])
+    if len(matches) > 10:
+        labels = f"{labels}, ..."
+    raise CliError(f'{item_name} "{query}" is ambiguous: {labels}')
+
+
+def ask_autocomplete(
+    message: str,
+    options: Sequence[AutocompleteOption],
+    resolver: Any,
+    *,
+    default: str = "",
+    allow_blank: bool = False,
+) -> Optional[str]:
+    def validator(value: str) -> Any:
+        stripped = value.strip()
+        if allow_blank and not stripped:
+            return True
+        try:
+            resolver(stripped)
+        except CliError as exc:
+            return str(exc)
+        return True
+
+    answer = questionary.autocomplete(
+        message,
+        choices=[option.label for option in options],
+        completer=PrefixAutocompleteCompleter(options),
+        complete_style=CompleteStyle.COLUMN,
+        match_middle=False,
+        validate=validator,
+        default=default,
+        complete_while_typing=True,
+        validate_while_typing=False,
+        reserve_space_for_menu=min(max(len(options), 4), 10),
+    ).ask()
     if answer is None:
-        raise CliError("Prompt cancelled.")
-    return answer
-
-
-def choose_country_interactively(query: str, matches: Sequence[Country]) -> Country:
-    label_map = {f"{country.name} ({country.code or '??'})": country for country in matches}
-    answer = choose_one_interactively(
-        f'Country "{query}" matched multiple entries.',
-        "Select country",
-        list(label_map.keys()),
-    )
-    return label_map[answer]
-
-
-def choose_city_interactively(query: str, matches: Sequence[City]) -> City:
-    label_map = {city.name: city for city in matches}
-    answer = choose_one_interactively(
-        f'City "{query}" matched multiple entries.',
-        "Select city",
-        list(label_map.keys()),
-    )
-    return label_map[answer]
+        return None
+    stripped = answer.strip()
+    if allow_blank and not stripped:
+        return None
+    return stripped
 
 
 def pick_country(
@@ -541,7 +656,11 @@ def pick_country(
     if len(matches) == 1:
         return matches[0]
     if interactive:
-        return choose_country_interactively(query, matches)
+        options = [country_prompt_option(country) for country in countries]
+        answer = ask_autocomplete("Country", options, lambda text: resolve_autocomplete_option(text, options, "Country"), default=query)
+        if answer is None:
+            raise CliError("Prompt cancelled.")
+        return pick_country(answer, countries, interactive=False)
     names = ", ".join(country.name for country in matches)
     raise CliError(f'Country "{query}" is ambiguous: {names}')
 
@@ -559,7 +678,11 @@ def pick_city(
     if len(matches) == 1:
         return matches[0]
     if interactive:
-        return choose_city_interactively(query, matches)
+        options = [city_prompt_option(city) for city in cities]
+        answer = ask_autocomplete("City", options, lambda text: resolve_autocomplete_option(text, options, "City"), default=query)
+        if answer is None:
+            raise CliError("Prompt cancelled.")
+        return pick_city(answer, cities, interactive=False, country_name=country_name)
     names = ", ".join(city.name for city in matches)
     raise CliError(f'City "{query}" is ambiguous for {country_name}: {names}')
 
@@ -798,42 +921,49 @@ def list_technologies(payload: dict[str, Any]) -> None:
 
 
 def interactive_country_prompt(countries: Sequence[Country]) -> str:
-    example = "Australia, AU, or aus"
-    answer = questionary.text(f"Country ({example})").ask()
-    if answer is None or not answer.strip():
+    options = [country_prompt_option(country) for country in countries]
+    answer = ask_autocomplete("Country", options, lambda text: resolve_autocomplete_option(text, options, "Country"))
+    if answer is None:
         raise CliError("Country is required.")
-    return answer.strip()
+    return answer
 
 
 def interactive_city_prompt(country: Country, cities: Sequence[City]) -> Optional[str]:
     if not cities:
         return None
-    console.print(Panel(f"Available cities for {country.name}: {', '.join(city.name for city in cities)}"))
-    answer = questionary.text(
+    options = [city_prompt_option(city) for city in cities]
+    return ask_autocomplete(
         "City (blank for best country-wide recommendation)",
-        default="",
-    ).ask()
-    if answer is None:
-        return None
-    return answer.strip() or None
+        options,
+        lambda text: resolve_autocomplete_option(text, options, "City"),
+        allow_blank=True,
+    )
 
 
 def interactive_protocol_prompt(protocol_keys: Sequence[str]) -> str:
-    labels = [PROTOCOLS[key].label for key in protocol_keys]
-    answer = choose_one_interactively("Protocol", "Choose protocol", labels)
-    for key in protocol_keys:
-        if PROTOCOLS[key].label == answer:
-            return key
-    raise CliError("Protocol selection failed.")
+    options = [protocol_prompt_option(key) for key in protocol_keys]
+    answer = ask_autocomplete(
+        "Protocol",
+        options,
+        lambda text: resolve_autocomplete_option(text, options, "Protocol"),
+        default=PROTOCOLS["udp"].label,
+    )
+    if answer is None:
+        raise CliError("Protocol selection failed.")
+    return resolve_autocomplete_option(answer, options, "Protocol").value
 
 
 def interactive_group_prompt(group_keys: Sequence[str]) -> str:
-    labels = [GROUPS[key].label for key in group_keys]
-    answer = choose_one_interactively("Server group", "Choose group", labels)
-    for key in group_keys:
-        if GROUPS[key].label == answer:
-            return key
-    raise CliError("Group selection failed.")
+    options = [group_prompt_option(key) for key in group_keys]
+    answer = ask_autocomplete(
+        "Server group",
+        options,
+        lambda text: resolve_autocomplete_option(text, options, "Group"),
+        default=GROUPS["standard"].label,
+    )
+    if answer is None:
+        raise CliError("Group selection failed.")
+    return resolve_autocomplete_option(answer, options, "Group").value
 
 
 def interactive_limit_prompt() -> int:
