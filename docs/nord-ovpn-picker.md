@@ -1,6 +1,6 @@
 # Nord OVPN Picker
 
-[`nord_ovpn_picker.py`](../nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into a `NordOVPNs/` folder in your current working directory.
+[`nord_ovpn_picker.py`](../nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the script directory itself. If you run it from anywhere else, it writes straight into your current working directory.
 
 ## Features
 
@@ -16,7 +16,7 @@
 - Direct `.ovpn` downloads for the best candidate, the top N, or an interactive selection.
 - Optional auth-file patching for downloaded OpenVPN configs.
 - Automatic re-exec into the repo-local `.venv` when the script is started from the wrong Python interpreter.
-- Current-working-directory output folder so aliases, symlinks, and absolute-path calls still write where you launched them from.
+- Caller-aware default output path so aliases, symlinks, and absolute-path calls still write where you launched them from.
 - API response caching under an OS-native cache directory.
 
 ## Setup
@@ -272,7 +272,10 @@ On Windows, use the same script path with the normal Windows launcher:
 py -3 C:\path\to\nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
 ```
 
-Because the default output path is based on your current working directory, these invocations write into `./NordOVPNs` wherever you launched the command from, not beside the script itself.
+Default output behavior depends on where you launch the command:
+
+- If your current working directory is the same directory that contains `nord_ovpn_picker.py`, downloads go into `./NordOVPNs/`.
+- If you launch the script from anywhere else, downloads go directly into your current working directory with no extra `NordOVPNs/` folder.
 
 ## Arguments
 
@@ -326,7 +329,7 @@ Because the default output path is based on your current working directory, thes
       <td><nobr><code>--output-dir &lt;path&gt;</code></nobr></td>
       <td>No</td>
       <td>Yes</td>
-      <td>CLI-only setting. Overrides the default <code>./NordOVPNs</code> output path.</td>
+      <td>CLI-only setting. Overrides the default output path. By default the script uses <code>./NordOVPNs</code> only when launched from its own directory; otherwise it writes directly into the current working directory.</td>
     </tr>
     <tr>
       <td><nobr><code>--download-best</code></nobr></td>
@@ -453,8 +456,9 @@ If you request a key that is not currently supported by Nord's live metadata, th
 
 - Download URLs are built from the selected hostname and protocol.
 - Output filenames include country, country code, city, protocol, group, and the short server label such as `au654`.
-- The default output directory is `./NordOVPNs` relative to your current working directory.
-- The script creates the output directory if it does not exist.
+- The default output directory is `./NordOVPNs` only when your current working directory is the script directory.
+- If you launch the script from any other directory, the default output path is that current working directory itself.
+- The script creates the target output directory when that target path does not already exist.
 - `--dry-run` does not create the output directory or any files.
 - Existing files cause an error in non-interactive mode unless you pass `--force`.
 - In interactive mode, existing files trigger an overwrite prompt.
@@ -506,5 +510,5 @@ The candidate table includes:
 - In non-interactive mode, `--country` is required unless you are using one of the pure listing commands.
 - `--list-cities` requires `--country`.
 - If you run in a non-TTY context without `--download-best` or `--download-top`, the script prints the candidate table and exits without downloading anything.
-- The current default output path is `./NordOVPNs` relative to where you launch the command, not relative to the repo root.
+- The current default output path is caller-aware: `./NordOVPNs` only when you run the script from its own directory, otherwise the current working directory itself.
 - `NordOVPNs/` is git-ignored in this repo.
