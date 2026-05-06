@@ -3,7 +3,20 @@ from pathlib import Path
 
 import pytest
 
-from nord_ovpn_picker import CliError, Country, parse_countries, pick_city, pick_country, recommendation_to_server
+from nord_ovpn_picker import (
+    CliError,
+    City,
+    Country,
+    city_prompt_option,
+    country_prompt_option,
+    group_prompt_option,
+    parse_countries,
+    pick_city,
+    pick_country,
+    protocol_prompt_option,
+    recommendation_to_server,
+    resolve_autocomplete_matches,
+)
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -45,6 +58,29 @@ def test_common_country_synonyms_resolve() -> None:
     assert pick_country("United States of America", countries, interactive=False).name == "United States"
     assert pick_country("UK", countries, interactive=False).name == "United Kingdom"
     assert pick_country("UAE", countries, interactive=False).name == "United Arab Emirates"
+
+
+def test_autocomplete_prefix_filter_keeps_all_country_matches() -> None:
+    options = [
+        country_prompt_option(Country(id=13, name="Australia", code="AU")),
+        country_prompt_option(Country(id=14, name="Austria", code="AT")),
+    ]
+
+    assert [option.label for option in resolve_autocomplete_matches("au", options)] == ["Australia", "Austria"]
+    assert [option.label for option in resolve_autocomplete_matches("aus", options)] == ["Australia", "Austria"]
+
+
+def test_autocomplete_prefix_filter_applies_to_city_protocol_and_group() -> None:
+    city_options = [
+        city_prompt_option(City(id=1, name="Chicago", country_id=225)),
+        city_prompt_option(City(id=2, name="Charlotte", country_id=225)),
+    ]
+    protocol_options = [protocol_prompt_option("udp"), protocol_prompt_option("tcp")]
+    group_options = [group_prompt_option("standard"), group_prompt_option("p2p")]
+
+    assert [option.label for option in resolve_autocomplete_matches("ch", city_options)] == ["Chicago", "Charlotte"]
+    assert [option.label for option in resolve_autocomplete_matches("t", protocol_options)] == ["TCP"]
+    assert [option.label for option in resolve_autocomplete_matches("p", group_options)] == ["P2P"]
 
 
 def test_exact_country_code_wins_over_name_initials() -> None:
