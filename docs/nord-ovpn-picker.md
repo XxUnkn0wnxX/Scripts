@@ -49,7 +49,7 @@ The re-exec path is OS-aware:
 - macOS and Linux use `.venv/bin/python` or `.venv/bin/python3`
 - Windows uses `.venv\Scripts\python.exe`
 
-## OpenVPN Auth File
+## OpenVPN Auth
 
 If you want downloaded `.ovpn` files to be prefilled for OpenVPN username/password auth, create one of these repo-local files yourself:
 
@@ -65,10 +65,14 @@ user: YOUR_NORD_SERVICE_USERNAME
 pass: YOUR_NORD_SERVICE_PASSWORD
 ```
 
-When one of those files exists, the script automatically:
+When one of those files exists, the script automatically patches each downloaded `.ovpn` to embed an inline OpenVPN auth block:
 
-- writes a generated `.auth.txt` file next to each downloaded `.ovpn`
-- patches the downloaded config to use `auth-user-pass <generated-auth-file>`
+```conf
+<auth-user-pass>
+YOUR_NORD_SERVICE_USERNAME
+YOUR_NORD_SERVICE_PASSWORD
+</auth-user-pass>
+```
 
 CLI credentials can override the YAML file:
 
@@ -80,10 +84,10 @@ Notes:
 
 - the YAML auth config is optional
 - the CLI username/password arguments are optional
-- if neither is present, downloads are left unpatched
+- if neither is present, downloads are left unpatched and stay as plain `.ovpn` files
 - if both CLI auth arguments are provided, they override the YAML auth config
 - the repo-local YAML auth config filename is git-ignored in this repo
-- the generated `.auth.txt` files contain plaintext credentials
+- when auth is enabled, the downloaded `.ovpn` file itself contains plaintext credentials
 
 ## Platform Support
 
@@ -462,8 +466,8 @@ If you request a key that is not currently supported by Nord's live metadata, th
 - `--dry-run` does not create the output directory or any files.
 - Existing files cause an error in non-interactive mode unless you pass `--force`.
 - In interactive mode, existing files trigger an overwrite prompt.
-- When auth credentials are detected, the script writes a generated adjacent `.auth.txt` file and patches the `.ovpn` to reference it.
-- The generated auth filename is slugged to avoid spaces in the `auth-user-pass` path.
+- When auth credentials are detected, the script embeds them directly into the downloaded `.ovpn` file as an inline `<auth-user-pass>` block.
+- If no auth file is present and no CLI auth override is provided, downloads are left unpatched.
 - `Ctrl+C` and normal termination signals are handled cleanly and exit with a cancellation status instead of a raw traceback.
 - If you selected multiple downloads and one fails, the script continues the rest and reports a partial-failure summary at the end.
 - Downloaded payloads are validated before being written as `.ovpn` files.
