@@ -656,9 +656,6 @@ def ask_autocomplete(
         reserve_space_for_menu=min(max(len(options), 4), 10),
         style=PROMPT_STYLE,
     )
-    prompt.application.pre_run_callables.append(
-        lambda: prompt.application.current_buffer.start_completion(select_first=False)
-    )
     answer = prompt.ask()
     if answer is None:
         return None
