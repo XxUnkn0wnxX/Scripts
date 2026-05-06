@@ -1,0 +1,19 @@
+[
+  {
+    "id": 13,
+    "name": "Australia",
+    "code": "AU",
+    "cities": [
+      {"id": 1001, "name": "Melbourne"},
+      {"id": 1002, "name": "Sydney"}
+    ]
+  },
+  {
+    "id": 14,
+    "name": "Austria",
+    "code": "AT",
+    "cities": [
+      {"id": 2001, "name": "Vienna"}
+    ]
+  }
+]

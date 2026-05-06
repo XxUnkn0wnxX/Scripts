@@ -1,0 +1,56 @@
+[
+  {
+    "hostname": "au666.nordvpn.com",
+    "name": "Australia #666",
+    "load": 11,
+    "station": "103.137.14.211",
+    "status": "online",
+    "locations": [
+      {
+        "country": {
+          "id": 13,
+          "name": "Australia",
+          "code": "AU",
+          "city": {
+            "id": 1001,
+            "name": "Melbourne"
+          }
+        }
+      }
+    ],
+    "groups": [
+      {"identifier": "legacy_standard"},
+      {"identifier": "legacy_p2p"}
+    ],
+    "technologies": [
+      {"identifier": "openvpn_udp"},
+      {"identifier": "openvpn_tcp"}
+    ]
+  },
+  {
+    "hostname": "au999.nordvpn.com",
+    "name": "Australia #999",
+    "load": 22,
+    "station": "103.137.14.250",
+    "status": "online",
+    "locations": [
+      {
+        "country": {
+          "id": 13,
+          "name": "Australia",
+          "code": "AU",
+          "city": {
+            "id": 1002,
+            "name": "Sydney"
+          }
+        }
+      }
+    ],
+    "groups": [
+      {"identifier": "legacy_standard"}
+    ],
+    "technologies": [
+      {"identifier": "openvpn_udp"}
+    ]
+  }
+]
