@@ -63,7 +63,7 @@ from rich.table import Table
 
 APP_NAME = "nord-ovpn-picker"
 DEFAULT_CACHE_TTL = 6 * 60 * 60
-DEFAULT_LIMIT = 10
+DEFAULT_LIMIT = 5
 DEFAULT_PING_COUNT = 3
 DEFAULT_PING_TOP = 10
 DEFAULT_FETCH_LIMIT = 50
@@ -845,21 +845,25 @@ def print_candidates(candidates: Sequence[CandidateScore]) -> None:
 
 def parse_selection(selection: str, candidate_count: int) -> list[int]:
     normalized = selection.strip().casefold()
-    if normalized in {"", "none"}:
+    if normalized == "":
         return []
     if normalized == "all":
         return list(range(candidate_count))
-    if normalized.startswith("top"):
-        match = re.fullmatch(r"top\s*(\d+)", normalized)
-        if match is None:
-            raise CliError("Selection using 'top' must include a positive number, for example 'top3'.")
-        top_count = parse_positive_int(match.group(1), "Top selection")
-        return list(range(min(top_count, candidate_count)))
 
     chosen: list[int] = []
     for chunk in selection.split(","):
         chunk = chunk.strip()
         if not chunk:
+            continue
+        range_match = re.fullmatch(r"(\d+)\s*-\s*(\d+)", chunk)
+        if range_match:
+            start = int(range_match.group(1))
+            end = int(range_match.group(2))
+            if start > end:
+                raise CliError(f"Selection range must be ascending: {chunk}")
+            if start < 1 or end > candidate_count:
+                raise CliError(f"Selection range out of range: {chunk}")
+            chosen.extend(range(start - 1, end))
             continue
         try:
             index = int(chunk) - 1
@@ -874,7 +878,7 @@ def parse_selection(selection: str, candidate_count: int) -> list[int]:
 def pick_interactive_selection(candidates: Sequence[CandidateScore]) -> list[int]:
     while True:
         answer = questionary.text(
-            "Download which config(s)? Examples: 1, 1,3,5, top5, all, none",
+            "Download which config(s)? Examples: 1, 1-5, 1,3-7,10, all (blank = skip)",
             default="",
             style=PROMPT_STYLE,
         ).ask()

@@ -18,13 +18,13 @@ def test_build_tcp_cdn_url() -> None:
 
 
 def test_parse_selection_variants() -> None:
-    assert parse_selection("none", 5) == []
-    assert parse_selection("top3", 5) == [0, 1, 2]
-    assert parse_selection("top 3", 5) == [0, 1, 2]
+    assert parse_selection("", 5) == []
     assert parse_selection("1,3,5", 5) == [0, 2, 4]
+    assert parse_selection("1-3", 5) == [0, 1, 2]
+    assert parse_selection("1,3-5", 5) == [0, 2, 3, 4]
+    assert parse_selection("1,3-5,5", 5) == [0, 2, 3, 4]
 
-
-@pytest.mark.parametrize("selection", ["top", "foo", "1,a", "0", "9", "top0"])
+@pytest.mark.parametrize("selection", ["top", "top3", "none", "foo", "1,a", "0", "9", "0-2", "5-3", "3-9", "3-7-10"])
 def test_parse_selection_invalid_variants(selection: str) -> None:
     with pytest.raises(CliError):
         parse_selection(selection, 3)
