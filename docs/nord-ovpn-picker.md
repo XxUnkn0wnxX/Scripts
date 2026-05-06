@@ -19,7 +19,7 @@
 
 ## Setup
 
-Run these commands from the `Scripts` repo root:
+Run these commands from the `Scripts` repo root on macOS or Linux:
 
 ```bash
 python3 -m venv .venv
@@ -28,9 +28,37 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+On Windows, create and activate the same repo-local `.venv` with the usual Windows venv path:
+
+```powershell
+py -3 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
 The script expects this repo-local `.venv` to exist. If it does not find one, it stops and tells you to follow these setup steps instead of silently using the wrong Python environment.
 
 If the repo-local `.venv` exists but the script was launched from the wrong Python interpreter, it re-execs itself into that `.venv` automatically. This works whether you run it from the repo root, by absolute path, through an alias, or through a symlink. It does not activate your current shell session globally; it only reruns the script with the correct interpreter.
+
+The re-exec path is OS-aware:
+
+- macOS and Linux use `.venv/bin/python` or `.venv/bin/python3`
+- Windows uses `.venv\Scripts\python.exe`
+
+## Platform Support
+
+Current support status:
+
+- macOS: supported
+- Linux and other Unix-like systems: supported when `python3`, `ping`, and the repo-local `.venv` are available
+- Windows: supported for repo-local venv re-exec and ping handling, but Windows users should run the script with the normal Windows Python launcher such as `py -3` or `python`
+
+Ping handling is OS-aware:
+
+- macOS and Linux use `ping -c <count> -q <host>`
+- Windows uses `ping -n <count> <host>`
+
+If `ping` is unavailable or blocked on the local machine, use `--no-ping`.
 
 ## How It Chooses Servers
 
@@ -194,6 +222,12 @@ python3 /Users/USER/Apps/Scripts/nord_ovpn_picker.py --country Australia --proto
 
 ```bash
 python3 /some/symlink/to/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
+```
+
+On Windows, use the same script path with the normal Windows launcher:
+
+```powershell
+py -3 C:\path\to\nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
 ```
 
 Because the default output path is based on your current working directory, these invocations write into `./NordOVPNs` wherever you launched the command from, not beside the script itself.

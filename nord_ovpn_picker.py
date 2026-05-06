@@ -28,10 +28,29 @@ SCRIPT_DIR = SCRIPT_PATH.parent
 REPO_VENV_DIR = SCRIPT_DIR / ".venv"
 DOCS_PATH = SCRIPT_DIR / "docs" / "nord-ovpn-picker.md"
 
-venv_python_candidates = [
-    REPO_VENV_DIR / "bin" / "python",
-    REPO_VENV_DIR / "bin" / "python3",
-]
+
+def is_windows_platform(platform: Optional[str] = None) -> bool:
+    active_platform = platform or sys.platform
+    return active_platform.startswith("win")
+
+
+def get_repo_venv_python_candidates(venv_dir: Path, platform: Optional[str] = None) -> list[Path]:
+    if is_windows_platform(platform):
+        return [
+            venv_dir / "Scripts" / "python.exe",
+            venv_dir / "Scripts" / "python",
+        ]
+    return [
+        venv_dir / "bin" / "python",
+        venv_dir / "bin" / "python3",
+    ]
+
+
+def normalize_platform_path(path: Path) -> str:
+    return os.path.normcase(str(path.resolve()))
+
+
+venv_python_candidates = get_repo_venv_python_candidates(REPO_VENV_DIR)
 REPO_VENV_PYTHON = next((candidate for candidate in venv_python_candidates if candidate.exists()), None)
 
 if not REPO_VENV_DIR.exists() or REPO_VENV_PYTHON is None:
@@ -43,9 +62,11 @@ if not REPO_VENV_DIR.exists() or REPO_VENV_PYTHON is None:
     )
 
 if REPO_VENV_DIR.exists() and REPO_VENV_PYTHON is not None:
-    current_prefix = Path(sys.prefix).resolve()
-    target_prefix = REPO_VENV_DIR.resolve()
-    if current_prefix != target_prefix and os.environ.get("NORD_OVPN_PICKER_REEXEC") != "1":
+    current_prefix = Path(sys.prefix)
+    target_prefix = REPO_VENV_DIR
+    if normalize_platform_path(current_prefix) != normalize_platform_path(target_prefix) and os.environ.get(
+        "NORD_OVPN_PICKER_REEXEC"
+    ) != "1":
         os.environ["NORD_OVPN_PICKER_REEXEC"] = "1"
         os.execv(str(REPO_VENV_PYTHON), [str(REPO_VENV_PYTHON), str(SCRIPT_PATH), *sys.argv[1:]])
 
@@ -735,8 +756,32 @@ def filter_servers(
     return sorted(filtered, key=lambda item: (item.load is None, item.load if item.load is not None else 9999, item.hostname))
 
 
+def build_ping_command(hostname: str, count: int, platform: Optional[str] = None) -> list[str]:
+    if is_windows_platform(platform):
+        return ["ping", "-n", str(count), hostname]
+    return ["ping", "-c", str(count), "-q", hostname]
+
+
+def parse_ping_average(output: str) -> Optional[float]:
+    summary_patterns = [
+        r"(?:round-trip|rtt)[^=]*=\s*[\d.]+/([\d.]+)/[\d.]+(?:/[\d.]+)?",
+        r"=\s*[\d.]+/([\d.]+)/[\d.]+",
+        r"Average\s*=\s*([\d.]+)\s*ms",
+    ]
+    for pattern in summary_patterns:
+        match = re.search(pattern, output, flags=re.IGNORECASE)
+        if match:
+            return float(match.group(1))
+
+    timings = [float(value) for value in re.findall(r"time[=<]\s*([\d.]+)\s*ms", output, flags=re.IGNORECASE)]
+    if timings:
+        return sum(timings) / len(timings)
+
+    return None
+
+
 def ping_server(hostname: str, count: int) -> Optional[float]:
-    command = ["ping", "-c", str(count), "-q", hostname]
+    command = build_ping_command(hostname, count)
     logger.debug("Running ping: %s", " ".join(command))
     try:
         result = subprocess.run(
@@ -753,10 +798,7 @@ def ping_server(hostname: str, count: int) -> Optional[float]:
     if result.returncode != 0:
         return None
 
-    match = re.search(r"=\s*[\d.]+/([\d.]+)/[\d.]+", result.stdout)
-    if not match:
-        return None
-    return float(match.group(1))
+    return parse_ping_average(result.stdout)
 
 
 def score_candidates(
