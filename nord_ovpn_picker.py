@@ -656,6 +656,15 @@ def ask_autocomplete(
         reserve_space_for_menu=min(max(len(options), 4), 10),
         style=PROMPT_STYLE,
     )
+    buffer = prompt.application.current_buffer
+
+    def refresh_completion(current_buffer: Any) -> None:
+        if current_buffer.text.strip():
+            current_buffer.start_completion(select_first=False)
+        else:
+            current_buffer.cancel_completion()
+
+    buffer.on_text_changed += refresh_completion
     answer = prompt.ask()
     if answer is None:
         return None
