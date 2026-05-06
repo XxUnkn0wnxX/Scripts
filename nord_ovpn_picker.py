@@ -197,6 +197,23 @@ def sanitize_filename(value: str) -> str:
     return text.rstrip(".") or "nordvpn"
 
 
+def parse_positive_int(value: str, field_name: str) -> int:
+    try:
+        number = int(value)
+    except ValueError as exc:
+        raise CliError(f"{field_name} must be a positive integer.") from exc
+    if number <= 0:
+        raise CliError(f"{field_name} must be a positive integer.")
+    return number
+
+
+def argparse_positive_int(value: str) -> int:
+    try:
+        return parse_positive_int(value, "Value")
+    except CliError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def average_score(load: Optional[int], average_ping_ms: Optional[float]) -> Optional[float]:
     if average_ping_ms is None and load is None:
         return None
@@ -628,6 +645,8 @@ def print_candidates(candidates: Sequence[CandidateScore]) -> None:
     table.add_column("Hostname", style="cyan")
     table.add_column("Country")
     table.add_column("City")
+    table.add_column("Protocol")
+    table.add_column("Group")
     table.add_column("Load", justify="right")
     table.add_column("Ping", justify="right")
     table.add_column("Score", justify="right")
@@ -643,6 +662,8 @@ def print_candidates(candidates: Sequence[CandidateScore]) -> None:
             candidate.server.hostname,
             candidate.server.country_name,
             candidate.server.city_name or "Country Wide",
+            PROTOCOLS[candidate.protocol].label,
+            GROUPS[candidate.group].label,
             "-" if candidate.server.load is None else str(candidate.server.load),
             ping_value,
             score_value,
@@ -660,7 +681,10 @@ def parse_selection(selection: str, candidate_count: int) -> list[int]:
     if normalized == "all":
         return list(range(candidate_count))
     if normalized.startswith("top"):
-        top_count = int(normalized[3:])
+        match = re.fullmatch(r"top\s*(\d+)", normalized)
+        if match is None:
+            raise CliError("Selection using 'top' must include a positive number, for example 'top3'.")
+        top_count = parse_positive_int(match.group(1), "Top selection")
         return list(range(min(top_count, candidate_count)))
 
     chosen: list[int] = []
@@ -668,7 +692,10 @@ def parse_selection(selection: str, candidate_count: int) -> list[int]:
         chunk = chunk.strip()
         if not chunk:
             continue
-        index = int(chunk) - 1
+        try:
+            index = int(chunk) - 1
+        except ValueError as exc:
+            raise CliError(f"Invalid selection item: {chunk}") from exc
         if index < 0 or index >= candidate_count:
             raise CliError(f"Selection index out of range: {chunk}")
         chosen.append(index)
@@ -676,13 +703,17 @@ def parse_selection(selection: str, candidate_count: int) -> list[int]:
 
 
 def pick_interactive_selection(candidates: Sequence[CandidateScore]) -> list[int]:
-    answer = questionary.text(
-        "Download which config(s)? Examples: 1, 1,3,5, top5, all, none",
-        default="none",
-    ).ask()
-    if answer is None:
-        return []
-    return parse_selection(answer, len(candidates))
+    while True:
+        answer = questionary.text(
+            "Download which config(s)? Examples: 1, 1,3,5, top5, all, none",
+            default="",
+        ).ask()
+        if answer is None:
+            return []
+        try:
+            return parse_selection(answer, len(candidates))
+        except CliError as exc:
+            console.print(f"[yellow]Invalid download selection:[/yellow] {exc}")
 
 
 def download_candidate(
@@ -799,10 +830,14 @@ def interactive_group_prompt(group_keys: Sequence[str]) -> str:
 
 
 def interactive_limit_prompt() -> int:
-    answer = questionary.text("Result limit", default=str(DEFAULT_LIMIT)).ask()
-    if answer is None or not answer.strip():
-        return DEFAULT_LIMIT
-    return int(answer)
+    while True:
+        answer = questionary.text("Result limit", default=str(DEFAULT_LIMIT)).ask()
+        if answer is None or not answer.strip():
+            return DEFAULT_LIMIT
+        try:
+            return parse_positive_int(answer, "Result limit")
+        except CliError as exc:
+            console.print(f"[yellow]Invalid limit:[/yellow] {exc}")
 
 
 def interactive_ping_prompt() -> bool:
@@ -916,6 +951,35 @@ def fetch_candidates(
     return fallback_servers[:limit]
 
 
+def download_selected_candidates(
+    client: NordApiClient,
+    candidates: Sequence[CandidateScore],
+    selected_indexes: Sequence[int],
+    output_dir: Path,
+    force: bool,
+    dry_run: bool,
+) -> tuple[list[Path], list[str]]:
+    downloaded: list[Path] = []
+    errors: list[str] = []
+
+    for index in selected_indexes:
+        try:
+            downloaded.append(
+                download_candidate(
+                    client=client,
+                    candidate=candidates[index],
+                    output_dir=output_dir,
+                    force=force,
+                    dry_run=dry_run,
+                )
+            )
+        except CliError as exc:
+            errors.append(str(exc))
+            console.print(f"[red]Download error:[/red] {exc}")
+
+    return downloaded, errors
+
+
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Find and download NordVPN OpenVPN configs.",
@@ -925,13 +989,18 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--city", help="City name.")
     parser.add_argument("--protocol", help="Protocol to use.")
     parser.add_argument("--group", help="Server group to use.")
-    parser.add_argument("--limit", type=int, help="Number of results to show.")
+    parser.add_argument("--limit", type=argparse_positive_int, help="Number of results to show.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Download directory.")
     parser.add_argument("--download-best", action="store_true", help="Download the top candidate.")
-    parser.add_argument("--download-top", type=int, help="Download the top N candidates.")
+    parser.add_argument("--download-top", type=argparse_positive_int, help="Download the top N candidates.")
     parser.add_argument("--full-data", action="store_true", help="Force the V2 dataset path.")
     parser.add_argument("--no-ping", action="store_true", help="Skip ping testing.")
-    parser.add_argument("--ping-count", type=int, default=DEFAULT_PING_COUNT, help="Ping attempts per host.")
+    parser.add_argument(
+        "--ping-count",
+        type=argparse_positive_int,
+        default=DEFAULT_PING_COUNT,
+        help="Ping attempts per host.",
+    )
     parser.add_argument("--refresh-cache", action="store_true", help="Refresh cached API payloads.")
     parser.add_argument("--list-countries", action="store_true", help="List available countries.")
     parser.add_argument("--list-cities", action="store_true", help="List available cities for the selected country.")
@@ -1006,22 +1075,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         selected_indexes = [0]
     elif args.download_top:
         selected_indexes = list(range(min(args.download_top, len(candidates))))
+    elif sys.stdin.isatty():
+        selected_indexes = pick_interactive_selection(candidates)
 
     if not selected_indexes:
         return 0
 
     output_dir = args.output_dir.expanduser().resolve()
-    downloaded: list[Path] = []
-    for index in selected_indexes:
-        downloaded.append(
-            download_candidate(
-                client=client,
-                candidate=candidates[index],
-                output_dir=output_dir,
-                force=args.force,
-                dry_run=args.dry_run,
-            )
-        )
+    downloaded, download_errors = download_selected_candidates(
+        client=client,
+        candidates=candidates,
+        selected_indexes=selected_indexes,
+        output_dir=output_dir,
+        force=args.force,
+        dry_run=args.dry_run,
+    )
 
     if downloaded:
         table = Table(title="Downloaded configs")
@@ -1029,6 +1097,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         for path in downloaded:
             table.add_row(str(path))
         console.print(table)
+
+    if download_errors:
+        raise CliError(f"{len(download_errors)} download(s) failed. See errors above.")
 
     return 0
 
