@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from nord_ovpn_picker import build_ping_command, get_repo_venv_python_candidates, parse_ping_average
+from nord_ovpn_picker import build_ping_command, get_cache_dir, get_repo_venv_python_candidates, parse_ping_average
 
 
 def test_get_repo_venv_python_candidates_for_posix() -> None:
@@ -64,3 +64,41 @@ def test_parse_ping_average_from_windows_reply_lines() -> None:
     )
 
     assert parse_ping_average(output) == 22.0
+
+
+def test_get_cache_dir_for_macos() -> None:
+    cache_dir = get_cache_dir(home=Path("/Users/tester"), platform="darwin", environ={})
+
+    assert cache_dir == Path("/Users/tester/Library/Caches/nord-ovpn-picker")
+
+
+def test_get_cache_dir_for_linux_uses_xdg_cache_home() -> None:
+    cache_dir = get_cache_dir(
+        home=Path("/home/tester"),
+        platform="linux",
+        environ={"XDG_CACHE_HOME": "/tmp/xdg-cache"},
+    )
+
+    assert cache_dir == Path("/tmp/xdg-cache/nord-ovpn-picker")
+
+
+def test_get_cache_dir_for_linux_falls_back_to_dot_cache() -> None:
+    cache_dir = get_cache_dir(home=Path("/home/tester"), platform="linux", environ={})
+
+    assert cache_dir == Path("/home/tester/.cache/nord-ovpn-picker")
+
+
+def test_get_cache_dir_for_windows_uses_localappdata() -> None:
+    cache_dir = get_cache_dir(
+        home=Path("C:/Users/tester"),
+        platform="win32",
+        environ={"LOCALAPPDATA": "C:/Users/tester/AppData/Local"},
+    )
+
+    assert cache_dir == Path("C:/Users/tester/AppData/Local/nord-ovpn-picker")
+
+
+def test_get_cache_dir_for_windows_falls_back_to_home_local_appdata_path() -> None:
+    cache_dir = get_cache_dir(home=Path("C:/Users/tester"), platform="win32", environ={})
+
+    assert cache_dir == Path("C:/Users/tester/AppData/Local/nord-ovpn-picker")

@@ -52,6 +52,25 @@ def normalize_platform_path(path: Path) -> str:
     return os.path.normcase(str(path.resolve()))
 
 
+def get_cache_dir(home: Optional[Path] = None, platform: Optional[str] = None, environ: Optional[dict[str, str]] = None) -> Path:
+    active_home = home or Path.home()
+    active_platform = platform or sys.platform
+    active_environ = environ or os.environ
+
+    if active_platform == "darwin":
+        return active_home / "Library" / "Caches" / APP_NAME
+    if active_platform.startswith("win"):
+        local_appdata = active_environ.get("LOCALAPPDATA")
+        if local_appdata:
+            return Path(local_appdata) / APP_NAME
+        return active_home / "AppData" / "Local" / APP_NAME
+
+    xdg_cache_home = active_environ.get("XDG_CACHE_HOME")
+    if xdg_cache_home:
+        return Path(xdg_cache_home) / APP_NAME
+    return active_home / ".cache" / APP_NAME
+
+
 def resolve_repo_venv_python(venv_dir: Path) -> Optional[Path]:
     candidates = get_repo_venv_python_candidates(venv_dir)
     return next((candidate for candidate in candidates if candidate.exists()), None)
@@ -98,7 +117,7 @@ DEFAULT_PING_COUNT = 3
 DEFAULT_PING_TOP = 10
 DEFAULT_FETCH_LIMIT = 50
 DEFAULT_OUTPUT_DIR = Path.cwd().resolve() / "NordOVPNs"
-CACHE_DIR = Path.home() / ".cache" / APP_NAME
+CACHE_DIR = get_cache_dir()
 
 API_V1_RECOMMENDATIONS = "https://api.nordvpn.com/v1/servers/recommendations"
 API_V2_SERVERS = "https://api.nordvpn.com/v2/servers"
