@@ -266,10 +266,6 @@ def normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.casefold())
 
 
-def safe_slug(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "default"
-
-
 def get_default_output_dir(cwd: Optional[Path] = None, script_dir: Optional[Path] = None) -> Path:
     active_cwd = (cwd or Path.cwd()).resolve()
     active_script_dir = (script_dir or SCRIPT_DIR).resolve()
@@ -433,22 +429,22 @@ def format_output_filename(server: NordServer, protocol_key: str, group_key: str
     return sanitize_filename(name)
 
 
-def format_auth_output_filename(config_path: Path) -> str:
-    return f"{safe_slug(config_path.stem)}.auth.txt"
+def build_inline_auth_user_pass_block(credentials: AuthCredentials) -> str:
+    return f"<auth-user-pass>\n{credentials.username}\n{credentials.password}\n</auth-user-pass>"
 
 
-def build_auth_file_contents(credentials: AuthCredentials) -> str:
-    return f"{credentials.username}\n{credentials.password}\n"
+def patch_ovpn_auth_user_pass(text: str, credentials: AuthCredentials) -> str:
+    inline_block = build_inline_auth_user_pass_block(credentials)
+    inline_pattern = re.compile(r"(?ms)^<auth-user-pass>\s*\n.*?\n</auth-user-pass>\s*$")
+    if inline_pattern.search(text):
+        return inline_pattern.sub(inline_block, text, count=1)
 
-
-def patch_ovpn_auth_user_pass(text: str, auth_filename: str) -> str:
-    directive = f"auth-user-pass {auth_filename}"
     pattern = re.compile(r"(?m)^auth-user-pass(?:\s+\S+)?\s*$")
     if pattern.search(text):
-        return pattern.sub(directive, text, count=1)
+        return pattern.sub(inline_block, text, count=1)
 
     suffix = "" if text.endswith("\n") else "\n"
-    return f"{text}{suffix}{directive}\n"
+    return f"{text}{suffix}{inline_block}\n"
 
 
 def atomic_temp_glob(destination_name: str) -> str:
@@ -1167,8 +1163,6 @@ def download_candidate(
     filename = format_output_filename(candidate.server, candidate.protocol, candidate.group)
     destination = output_dir / filename
     cleanup_atomic_temp_files(output_dir, destination.name)
-    auth_destination = output_dir / format_auth_output_filename(destination)
-    cleanup_atomic_temp_files(output_dir, auth_destination.name)
 
     if destination.exists() and not force:
         if sys.stdin.isatty():
@@ -1182,23 +1176,11 @@ def download_candidate(
         else:
             raise CliError(f"{destination} already exists. Use --force to overwrite.")
 
-    if auth_credentials and auth_destination.exists() and not force:
-        if sys.stdin.isatty():
-            overwrite = questionary.confirm(
-                f"{auth_destination.name} already exists. Overwrite?",
-                default=False,
-                style=PROMPT_STYLE,
-            ).ask()
-            if not overwrite:
-                raise CliError(f"Skipped existing file: {auth_destination.name}")
-        else:
-            raise CliError(f"{auth_destination} already exists. Use --force to overwrite.")
-
     if dry_run:
         console.print(f"[yellow]DRY RUN[/yellow] {destination} <- {url}")
         if auth_credentials:
             console.print(
-                f"[yellow]DRY RUN[/yellow] patch auth-user-pass -> {auth_destination.name} "
+                f"[yellow]DRY RUN[/yellow] inline auth-user-pass into {destination.name} "
                 f"(source: {auth_credentials.source})"
             )
         return destination
@@ -1209,17 +1191,8 @@ def download_candidate(
         raise CliError(f"Downloaded config for {candidate.server.hostname} did not validate.")
 
     if auth_credentials:
-        patched_text = patch_ovpn_auth_user_pass(text, auth_destination.name)
-        auth_text = build_auth_file_contents(auth_credentials)
-        try:
-            write_text_atomic(auth_destination, auth_text, encoding="utf-8")
-            write_text_atomic(destination, patched_text, encoding="utf-8")
-        except BaseException:
-            try:
-                auth_destination.unlink()
-            except FileNotFoundError:
-                pass
-            raise
+        patched_text = patch_ovpn_auth_user_pass(text, auth_credentials)
+        write_text_atomic(destination, patched_text, encoding="utf-8")
     else:
         write_text_atomic(destination, text, encoding="utf-8")
     return destination
