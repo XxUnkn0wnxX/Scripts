@@ -70,7 +70,7 @@ The prompts run in this order:
 6. Run ping test
 7. Download selection
 
-The interactive country, city, protocol, and group prompts use live prefix filtering as you type. Instead of printing the full city list first, the menu narrows in place so you can keep typing until the option you want is visible, then press `Tab` or `Enter`.
+The interactive country, city, protocol, and group prompts use live filtering against the visible option names as you type. Instead of printing the full city list first, the menu narrows in place so you can keep typing until the option you want is visible, then press `Tab` or `Enter`.
 
 Interactive defaults:
 
@@ -94,10 +94,12 @@ Interactive download selection accepts:
 
 Examples of the interactive prefix matching:
 
-- typing `US` narrows the country list to `United States`
+- typing `uni` narrows the country list to entries such as `United States` and `United Kingdom`
 - typing `Ch` then `Chic` narrows United States cities down to `Chicago`
 - typing `T` narrows protocol choices to `TCP`
 - typing `P` narrows the default group list to `P2P`
+
+For the interactive prompts, filtering follows the visible labels instead of hidden country-code aliases. Country-code and alias shortcuts such as `USA`, `UK`, `UAE`, or `AU` are still supported on the non-interactive `--country` argument path.
 
 ## Common Usage
 

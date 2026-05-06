@@ -70,6 +70,20 @@ def test_autocomplete_prefix_filter_keeps_all_country_matches() -> None:
     assert [option.label for option in resolve_autocomplete_matches("aus", options)] == ["Australia", "Austria"]
 
 
+def test_interactive_country_filter_uses_visible_names_not_aliases() -> None:
+    options = [
+        country_prompt_option(Country(id=225, name="United States", code="US")),
+        country_prompt_option(Country(id=227, name="United Kingdom", code="GB")),
+    ]
+
+    assert [option.label for option in resolve_autocomplete_matches("uni", options)] == [
+        "United States",
+        "United Kingdom",
+    ]
+    assert resolve_autocomplete_matches("usa", options) == []
+    assert resolve_autocomplete_matches("uk", options) == []
+
+
 def test_autocomplete_prefix_filter_applies_to_city_protocol_and_group() -> None:
     city_options = [
         city_prompt_option(City(id=1, name="Chicago", country_id=225)),
