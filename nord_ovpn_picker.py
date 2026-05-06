@@ -4,7 +4,8 @@ nord_ovpn_picker.py
 
 Interactive NordVPN OpenVPN config picker that prefers the recommendation API
 first, falls back to the V2 dataset when needed, and downloads chosen .ovpn
-files into a local NordOVPNs folder.
+files into the current directory by default, or a local NordOVPNs folder when
+run from the script directory itself.
 """
 
 from __future__ import annotations
@@ -117,7 +118,7 @@ DEFAULT_LIMIT = 5
 DEFAULT_PING_COUNT = 3
 DEFAULT_PING_TOP = 10
 DEFAULT_FETCH_LIMIT = 50
-DEFAULT_OUTPUT_DIR = Path.cwd().resolve() / "NordOVPNs"
+DEFAULT_OUTPUT_SUBDIR = "NordOVPNs"
 CACHE_DIR = get_cache_dir()
 
 API_V1_RECOMMENDATIONS = "https://api.nordvpn.com/v1/servers/recommendations"
@@ -267,6 +268,14 @@ def normalize_text(value: str) -> str:
 
 def safe_slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "default"
+
+
+def get_default_output_dir(cwd: Optional[Path] = None, script_dir: Optional[Path] = None) -> Path:
+    active_cwd = (cwd or Path.cwd()).resolve()
+    active_script_dir = (script_dir or SCRIPT_DIR).resolve()
+    if normalize_platform_path(active_cwd) == normalize_platform_path(active_script_dir):
+        return active_cwd / DEFAULT_OUTPUT_SUBDIR
+    return active_cwd
 
 
 def resolve_default_auth_config_path() -> Optional[Path]:
@@ -1467,7 +1476,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--protocol", help="Protocol to use.")
     parser.add_argument("--group", help="Server group to use.")
     parser.add_argument("--limit", type=argparse_positive_int, help="Number of results to show.")
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Download directory.")
+    parser.add_argument("--output-dir", type=Path, default=get_default_output_dir(), help="Download directory.")
     download_group = parser.add_mutually_exclusive_group()
     download_group.add_argument("--download-best", action="store_true", help="Download the top candidate.")
     download_group.add_argument("--download-top", type=argparse_positive_int, help="Download the top N candidates.")

@@ -1,6 +1,12 @@
 from pathlib import Path
 
-from nord_ovpn_picker import build_ping_command, get_cache_dir, get_repo_venv_python_candidates, parse_ping_average
+from nord_ovpn_picker import (
+    build_ping_command,
+    get_cache_dir,
+    get_default_output_dir,
+    get_repo_venv_python_candidates,
+    parse_ping_average,
+)
 
 
 def test_get_repo_venv_python_candidates_for_posix() -> None:
@@ -102,3 +108,16 @@ def test_get_cache_dir_for_windows_falls_back_to_home_local_appdata_path() -> No
     cache_dir = get_cache_dir(home=Path("C:/Users/tester"), platform="win32", environ={})
 
     assert cache_dir == Path("C:/Users/tester/AppData/Local/nord-ovpn-picker")
+
+
+def test_get_default_output_dir_uses_nordovpns_in_script_dir() -> None:
+    script_dir = Path("/tmp/project")
+
+    assert get_default_output_dir(cwd=script_dir, script_dir=script_dir) == script_dir.resolve() / "NordOVPNs"
+
+
+def test_get_default_output_dir_uses_caller_directory_outside_script_dir() -> None:
+    script_dir = Path("/tmp/project")
+    caller_dir = Path("/tmp/elsewhere")
+
+    assert get_default_output_dir(cwd=caller_dir, script_dir=script_dir) == caller_dir.resolve()
