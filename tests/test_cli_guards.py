@@ -16,6 +16,7 @@ from nord_ovpn_picker import (
     handle_termination_signal,
     install_signal_handlers,
     parse_args,
+    ensure_repo_venv_or_reexec,
     restore_signal_handlers,
     signal_display_name,
     write_text_atomic,
@@ -59,6 +60,11 @@ def make_candidate(hostname: str) -> CandidateScore:
 def test_parse_args_rejects_non_positive_numeric_values(argv: list[str]) -> None:
     with pytest.raises(SystemExit):
         parse_args(argv)
+
+
+def test_parse_args_rejects_conflicting_download_flags() -> None:
+    with pytest.raises(SystemExit):
+        parse_args(["--download-best", "--download-top", "2"])
 
 
 def test_download_selected_candidates_continues_after_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -180,3 +186,33 @@ time.sleep(30)
     assert temp_path.exists()
     assert cleanup_atomic_temp_files(tmp_path, destination.name) == 1
     assert not temp_path.exists()
+
+
+def test_ensure_repo_venv_or_reexec_allows_help_without_repo_venv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(picker, "resolve_repo_venv_python", lambda venv_dir: None)
+    monkeypatch.setattr(picker, "REPO_VENV_DIR", Path("/missing/.venv"))
+
+    ensure_repo_venv_or_reexec(["--help"])
+
+
+def test_ensure_repo_venv_or_reexec_raises_without_repo_venv(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(picker, "resolve_repo_venv_python", lambda venv_dir: None)
+    monkeypatch.setattr(picker, "REPO_VENV_DIR", Path("/missing/.venv"))
+
+    with pytest.raises(SystemExit, match="No local .venv"):
+        ensure_repo_venv_or_reexec([])
+
+
+def test_download_candidate_dry_run_does_not_create_output_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    output_dir = tmp_path / "NordOVPNs"
+
+    destination = picker.download_candidate(
+        client=None,  # type: ignore[arg-type]
+        candidate=make_candidate("au001.nordvpn.com"),
+        output_dir=output_dir,
+        force=False,
+        dry_run=True,
+    )
+
+    assert destination == output_dir / "Australia (AU) - Melbourne [UDP] [Standard] - au001.ovpn"
+    assert not output_dir.exists()

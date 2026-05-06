@@ -1,10 +1,13 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import nord_ovpn_picker as picker
 from nord_ovpn_picker import (
+    Country,
     NordServer,
     filter_servers,
+    gather_filters,
     normalize_v2_servers,
     score_candidates,
     supported_group_keys,
@@ -87,3 +90,57 @@ def test_score_candidates_can_prefer_lower_load_over_slightly_lower_ping(monkeyp
     assert candidates[0].server.hostname == "au-load11.example"
     assert candidates[0].score == 25.6
     assert candidates[1].score == 27.2
+
+
+def test_gather_filters_accepts_case_insensitive_cli_values() -> None:
+    args = SimpleNamespace(
+        country="Australia",
+        city=None,
+        protocol="UDP",
+        group="P2P",
+        limit=5,
+        no_ping=True,
+    )
+    countries = [Country(id=13, name="Australia", code="AU")]
+
+    country, city, protocol_key, group_key, limit, ping_enabled = gather_filters(
+        args,
+        countries,
+        {13: []},
+        prompt_protocol_keys=["udp", "tcp"],
+        prompt_group_keys=["standard", "p2p"],
+        allowed_protocol_keys=["udp", "tcp", "xor_udp"],
+        allowed_group_keys=["standard", "p2p", "obfuscated"],
+    )
+
+    assert country.id == 13
+    assert city is None
+    assert protocol_key == "udp"
+    assert group_key == "p2p"
+    assert limit == 5
+    assert ping_enabled is False
+
+
+def test_gather_filters_accepts_explicit_advanced_cli_values_without_advanced_flag() -> None:
+    args = SimpleNamespace(
+        country="Australia",
+        city=None,
+        protocol="xor_udp",
+        group="Obfuscated",
+        limit=5,
+        no_ping=True,
+    )
+    countries = [Country(id=13, name="Australia", code="AU")]
+
+    _, _, protocol_key, group_key, _, _ = gather_filters(
+        args,
+        countries,
+        {13: []},
+        prompt_protocol_keys=["udp", "tcp"],
+        prompt_group_keys=["standard", "p2p"],
+        allowed_protocol_keys=["udp", "tcp", "xor_udp"],
+        allowed_group_keys=["standard", "p2p", "obfuscated"],
+    )
+
+    assert protocol_key == "xor_udp"
+    assert group_key == "obfuscated"

@@ -7,6 +7,7 @@
 - Interactive mode when you run the script with no filter arguments.
 - Type-to-filter autocomplete for country, city, protocol, and group prompts.
 - Non-interactive CLI mode for direct scripted use.
+- V2-backed metadata for countries, cities, groups, and technologies.
 - Recommendation-first server selection using Nord's recommendation API.
 - Automatic fallback to Nord's V2 dataset when recommendations are not enough or `--full-data` is used.
 - Optional ping scoring for the top candidates.
@@ -36,9 +37,11 @@ py -3 -m venv .venv
 pip install -r requirements.txt
 ```
 
-The script expects this repo-local `.venv` to exist. If it does not find one, it stops and tells you to follow these setup steps instead of silently using the wrong Python environment.
+The script expects this repo-local `.venv` to exist when you actually run the picker. If it does not find one, it stops and tells you to follow these setup steps instead of silently using the wrong Python environment.
 
 If the repo-local `.venv` exists but the script was launched from the wrong Python interpreter, it re-execs itself into that `.venv` automatically. This works whether you run it from the repo root, by absolute path, through an alias, or through a symlink. It does not activate your current shell session globally; it only reruns the script with the correct interpreter.
+
+Plain imports and `--help` can still work without the repo-local `.venv`. Normal picker execution still expects that repo-local environment.
 
 The re-exec path is OS-aware:
 
@@ -64,7 +67,7 @@ If `ping` is unavailable or blocked on the local machine, use `--no-ping`.
 
 The default flow is:
 
-1. Resolve the country from Nord's country list.
+1. Resolve the country from Nord's V2 metadata.
 2. Resolve the city if you supplied one.
 3. Query Nord's recommendation API first for the requested country, group, and OpenVPN technology.
 4. Filter the recommendation results by city if needed.
@@ -156,6 +159,7 @@ Mode notes:
 - The live autocomplete prompt UI exists only in TTY interactive mode.
 - Listing commands such as `--list-countries` and `--list-cities` are CLI-only and do not enter the prompt flow.
 - Flags such as `--advanced`, `--full-data`, `--refresh-cache`, `--force`, `--dry-run`, and `--verbose` are argument-driven switches. They can still affect a TTY run, but they are not separate interactive prompts.
+- `--advanced` controls which optional protocol/group keys appear in interactive prompts. Explicit CLI values are still accepted if Nord's live V2 metadata supports them.
 
 ## Common Usage
 
@@ -332,7 +336,7 @@ Because the default output path is based on your current working directory, thes
       <td><nobr><code>--advanced</code></nobr></td>
       <td>No</td>
       <td>Yes</td>
-      <td>CLI-only switch. When present, advanced live-supported options such as XOR or advanced groups can appear in both CLI validation and TTY prompts.</td>
+      <td>CLI-only switch for prompt visibility. When present, advanced live-supported options such as XOR or advanced groups appear in TTY prompts. Explicit CLI values are still accepted when Nord's live V2 metadata supports them.</td>
     </tr>
     <tr>
       <td><nobr><code>--verbose</code></nobr></td>
@@ -379,17 +383,19 @@ Common protocol keys:
 
 - `udp` = OpenVPN UDP
 - `tcp` = OpenVPN TCP
-- `xor_udp` = OpenVPN XOR UDP when available and `--advanced` is used
-- `xor_tcp` = OpenVPN XOR TCP when available and `--advanced` is used
+- `xor_udp` = OpenVPN XOR UDP when available
+- `xor_tcp` = OpenVPN XOR TCP when available
 
 Common group keys:
 
 - `standard` = Standard
 - `p2p` = P2P
-- `obfuscated` = Obfuscated when available and `--advanced` is used
-- `double` = Double VPN when available and `--advanced` is used
-- `onion` = Onion over VPN when available and `--advanced` is used
-- `dedicated` = Dedicated IP when available and `--advanced` is used
+- `obfuscated` = Obfuscated when available
+- `double` = Double VPN when available
+- `onion` = Onion over VPN when available
+- `dedicated` = Dedicated IP when available
+
+Without `--advanced`, the interactive prompts only show the default common choices. On the CLI, explicit advanced keys are still allowed when Nord's live V2 metadata supports them.
 
 If you request a key that is not currently supported by Nord's live metadata, the script exits with a clear error listing the currently supported values.
 
@@ -399,6 +405,7 @@ If you request a key that is not currently supported by Nord's live metadata, th
 - Output filenames include country, country code, city, protocol, group, and the short server label such as `au654`.
 - The default output directory is `./NordOVPNs` relative to your current working directory.
 - The script creates the output directory if it does not exist.
+- `--dry-run` does not create the output directory or any files.
 - Existing files cause an error in non-interactive mode unless you pass `--force`.
 - In interactive mode, existing files trigger an overwrite prompt.
 - `Ctrl+C` and normal termination signals are handled cleanly and exit with a cancellation status instead of a raw traceback.
@@ -418,7 +425,6 @@ The script caches Nord API responses under:
 
 Current cache behavior:
 
-- Countries are cached.
 - Recommendation queries are cached.
 - The V2 server dataset is cached.
 - Default cache TTL is `6 hours`.
