@@ -25,10 +25,24 @@ from typing import Any, Iterable, Optional, Sequence
 
 SCRIPT_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
-REPO_VENV_PYTHON = SCRIPT_DIR / ".venv" / "bin" / "python"
 REPO_VENV_DIR = SCRIPT_DIR / ".venv"
+DOCS_PATH = SCRIPT_DIR / "docs" / "nord-ovpn-picker.md"
 
-if REPO_VENV_PYTHON.exists() and REPO_VENV_DIR.exists():
+venv_python_candidates = [
+    REPO_VENV_DIR / "bin" / "python",
+    REPO_VENV_DIR / "bin" / "python3",
+]
+REPO_VENV_PYTHON = next((candidate for candidate in venv_python_candidates if candidate.exists()), None)
+
+if not REPO_VENV_DIR.exists() or REPO_VENV_PYTHON is None:
+    docs_hint = DOCS_PATH if DOCS_PATH.exists() else "docs/nord-ovpn-picker.md"
+    raise SystemExit(
+        "No local .venv was found for nord_ovpn_picker.py.\n"
+        f"Create one in {SCRIPT_DIR} and install the repo requirements before running the script.\n"
+        f"See {docs_hint} for setup instructions."
+    )
+
+if REPO_VENV_DIR.exists() and REPO_VENV_PYTHON is not None:
     current_prefix = Path(sys.prefix).resolve()
     target_prefix = REPO_VENV_DIR.resolve()
     if current_prefix != target_prefix and os.environ.get("NORD_OVPN_PICKER_REEXEC") != "1":
@@ -414,7 +428,7 @@ def matches_country(country: Country, query: str) -> bool:
         aliases.add(normalize_text(country.code))
     compact = re.sub(r"[^a-z0-9]+", "", country.name.casefold())
     aliases.add(compact[:3])
-    return normalized in aliases or normalized in normalize_text(country.name)
+    return normalized in aliases
 
 
 def matches_city(city: City, query: str) -> bool:
@@ -429,6 +443,11 @@ def resolve_country(query: str, countries: Sequence[Country]) -> list[Country]:
     direct = [country for country in countries if matches_country(country, query)]
     if direct:
         return direct
+
+    normalized = normalize_text(query)
+    substring = [country for country in countries if normalized and normalized in normalize_text(country.name)]
+    if substring:
+        return substring
 
     names = {country.name: country for country in countries}
     close = difflib.get_close_matches(query.casefold(), [country.name.casefold() for country in countries], n=5, cutoff=0.55)

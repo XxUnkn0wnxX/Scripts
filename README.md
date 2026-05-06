@@ -18,6 +18,7 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 - [`nord_ovpn_picker.py`](nord_ovpn_picker.py)  
   Interactive NordVPN OpenVPN config picker that searches by country, optional city, protocol, and server group, prefers the recommendation API first, optionally ping-ranks candidates, and downloads selected `.ovpn` files into the local `NordOVPNs/` folder.
   - By default it writes to a `NordOVPNs/` folder in your current working directory, so it still behaves predictably when invoked through an alias, an absolute path, or a symlink from somewhere else.
+  - Full usage and setup notes: [`docs/nord-ovpn-picker.md`](docs/nord-ovpn-picker.md)
 
 ## Shell Utilities
 

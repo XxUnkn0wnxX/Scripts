@@ -1,0 +1,88 @@
+{
+  "groups": [
+    {"id": 11, "identifier": "legacy_standard", "title": "Standard VPN servers"},
+    {"id": 15, "identifier": "legacy_p2p", "title": "P2P"}
+  ],
+  "technologies": [
+    {"id": 3, "identifier": "openvpn_udp", "name": "OpenVPN UDP"},
+    {"id": 5, "identifier": "openvpn_tcp", "name": "OpenVPN TCP"}
+  ],
+  "locations": [
+    {
+      "id": 367,
+      "country": {
+        "id": 13,
+        "name": "Australia",
+        "code": "AU",
+        "city": {
+          "id": 1001,
+          "name": "Melbourne"
+        }
+      }
+    },
+    {
+      "id": 368,
+      "country": {
+        "id": 13,
+        "name": "Australia",
+        "code": "AU",
+        "city": {
+          "id": 1002,
+          "name": "Sydney"
+        }
+      }
+    },
+    {
+      "id": 369,
+      "country": {
+        "id": 14,
+        "name": "Austria",
+        "code": "AT",
+        "city": {
+          "id": 2001,
+          "name": "Vienna"
+        }
+      }
+    }
+  ],
+  "servers": [
+    {
+      "hostname": "au666.nordvpn.com",
+      "name": "Australia #666",
+      "load": 11,
+      "station": "103.137.14.211",
+      "status": "online",
+      "group_ids": [11, 15],
+      "location_ids": [367],
+      "technologies": [
+        {"id": 3, "status": "online"},
+        {"id": 5, "status": "online"}
+      ]
+    },
+    {
+      "hostname": "au999.nordvpn.com",
+      "name": "Australia #999",
+      "load": 22,
+      "station": "103.137.14.250",
+      "status": "online",
+      "group_ids": [11],
+      "location_ids": [368],
+      "technologies": [
+        {"id": 3, "status": "online"}
+      ]
+    },
+    {
+      "hostname": "at123.nordvpn.com",
+      "name": "Austria #123",
+      "load": 8,
+      "station": "149.34.244.10",
+      "status": "online",
+      "group_ids": [11],
+      "location_ids": [369],
+      "technologies": [
+        {"id": 3, "status": "online"},
+        {"id": 5, "status": "online"}
+      ]
+    }
+  ]
+}
