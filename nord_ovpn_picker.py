@@ -16,8 +16,10 @@ import json
 import logging
 import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -99,6 +101,12 @@ HTTP_TIMEOUT = 10
 
 console = Console()
 logger = logging.getLogger(APP_NAME)
+
+
+class CancelledError(KeyboardInterrupt):
+    def __init__(self, message: str = "Cancelled.") -> None:
+        super().__init__(message)
+        self.message = message
 
 PROMPT_STYLE = Style(
     [
@@ -280,6 +288,38 @@ def average_score(load: Optional[int], average_ping_ms: Optional[float]) -> Opti
     return ping_component + load_component
 
 
+def signal_display_name(signum: int) -> str:
+    try:
+        return signal.Signals(signum).name
+    except ValueError:
+        return f"signal {signum}"
+
+
+def handle_termination_signal(signum: int, _frame: Any) -> None:
+    raise CancelledError(f"Cancelled by {signal_display_name(signum)}.")
+
+
+def signal_handler_targets() -> list[int]:
+    targets = [signal.SIGINT, signal.SIGTERM]
+    sighup = getattr(signal, "SIGHUP", None)
+    if sighup is not None:
+        targets.append(sighup)
+    return targets
+
+
+def install_signal_handlers() -> dict[int, Any]:
+    previous: dict[int, Any] = {}
+    for signum in signal_handler_targets():
+        previous[signum] = signal.getsignal(signum)
+        signal.signal(signum, handle_termination_signal)
+    return previous
+
+
+def restore_signal_handlers(previous: dict[int, Any]) -> None:
+    for signum, handler in previous.items():
+        signal.signal(signum, handler)
+
+
 def build_cdn_url(hostname: str, protocol_key: str) -> str:
     protocol = PROTOCOLS[protocol_key]
     return (
@@ -302,6 +342,42 @@ def format_output_filename(server: NordServer, protocol_key: str, group_key: str
     hostname_label = format_hostname_label(server.hostname)
     name = f"{country} - {city} [{protocol.label}] [{group.label}] - {hostname_label}.ovpn"
     return sanitize_filename(name)
+
+
+def atomic_temp_glob(destination_name: str) -> str:
+    return f".{destination_name}.*.tmp"
+
+
+def cleanup_atomic_temp_files(output_dir: Path, destination_name: str) -> int:
+    removed = 0
+    for path in output_dir.glob(atomic_temp_glob(destination_name)):
+        try:
+            path.unlink()
+            removed += 1
+        except FileNotFoundError:
+            continue
+    return removed
+
+
+def write_text_atomic(destination: Path, text: str, encoding: str = "utf-8") -> None:
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.",
+        suffix=".tmp",
+        dir=str(destination.parent),
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "w", encoding=encoding) as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, destination)
+    except BaseException:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def validate_ovpn_payload(text: str) -> bool:
@@ -948,6 +1024,7 @@ def download_candidate(
     url = build_cdn_url(candidate.server.hostname, candidate.protocol)
     filename = format_output_filename(candidate.server, candidate.protocol, candidate.group)
     destination = output_dir / filename
+    cleanup_atomic_temp_files(output_dir, destination.name)
 
     if destination.exists() and not force:
         if sys.stdin.isatty():
@@ -968,7 +1045,7 @@ def download_candidate(
     text = client.get_text(url)
     if not validate_ovpn_payload(text):
         raise CliError(f"Downloaded config for {candidate.server.hostname} did not validate.")
-    destination.write_text(text, encoding="utf-8")
+    write_text_atomic(destination, text, encoding="utf-8")
     return destination
 
 
@@ -1335,8 +1412,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    previous_signal_handlers = install_signal_handlers()
     try:
         raise SystemExit(main())
+    except CancelledError as exc:
+        console.print(f"[yellow]{exc.message}[/yellow]")
+        raise SystemExit(130)
+    except KeyboardInterrupt:
+        console.print("[yellow]Cancelled by user.[/yellow]")
+        raise SystemExit(130)
     except CliError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise SystemExit(1)
+    finally:
+        restore_signal_handlers(previous_signal_handlers)

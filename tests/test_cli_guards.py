@@ -1,9 +1,25 @@
+import signal
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 import nord_ovpn_picker as picker
-from nord_ovpn_picker import CandidateScore, CliError, NordServer, download_selected_candidates, parse_args
+from nord_ovpn_picker import (
+    CandidateScore,
+    CancelledError,
+    CliError,
+    NordServer,
+    cleanup_atomic_temp_files,
+    download_selected_candidates,
+    handle_termination_signal,
+    install_signal_handlers,
+    parse_args,
+    restore_signal_handlers,
+    signal_display_name,
+    write_text_atomic,
+)
 
 
 def make_candidate(hostname: str) -> CandidateScore:
@@ -69,3 +85,98 @@ def test_download_selected_candidates_continues_after_error(monkeypatch: pytest.
     assert calls == ["au001.nordvpn.com", "au002.nordvpn.com"]
     assert downloaded == [tmp_path / "au002.nordvpn.com.ovpn"]
     assert errors == ["first failed"]
+
+
+def test_signal_display_name_uses_signal_name() -> None:
+    assert signal_display_name(signal.SIGINT) == "SIGINT"
+
+
+def test_handle_termination_signal_raises_cancelled_error() -> None:
+    with pytest.raises(CancelledError, match="SIGTERM"):
+        handle_termination_signal(signal.SIGTERM, None)
+
+
+def test_install_and_restore_signal_handlers(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_targets = picker.signal_handler_targets
+    monkeypatch.setattr(picker, "signal_handler_targets", lambda: [signal.SIGINT, signal.SIGTERM])
+
+    current_handlers = {signal.SIGINT: "old-int", signal.SIGTERM: "old-term"}
+    installed: list[tuple[int, object]] = []
+
+    def fake_getsignal(signum: int) -> object:
+        return current_handlers[signum]
+
+    def fake_signal(signum: int, handler: object) -> None:
+        installed.append((signum, handler))
+        current_handlers[signum] = handler
+
+    monkeypatch.setattr(signal, "getsignal", fake_getsignal)
+    monkeypatch.setattr(signal, "signal", fake_signal)
+
+    previous = install_signal_handlers()
+
+    assert previous == {signal.SIGINT: "old-int", signal.SIGTERM: "old-term"}
+    assert current_handlers[signal.SIGINT] is handle_termination_signal
+    assert current_handlers[signal.SIGTERM] is handle_termination_signal
+
+    restore_signal_handlers(previous)
+
+    assert current_handlers == {signal.SIGINT: "old-int", signal.SIGTERM: "old-term"}
+    monkeypatch.setattr(picker, "signal_handler_targets", original_targets)
+
+
+def test_write_text_atomic_cleans_temp_file_on_cancel(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    destination = tmp_path / "sample.ovpn"
+
+    def fake_replace(src: Path, dst: Path) -> None:
+        raise CancelledError("Cancelled by SIGINT.")
+
+    monkeypatch.setattr(picker.os, "replace", fake_replace)
+
+    with pytest.raises(CancelledError):
+        write_text_atomic(destination, "client\nremote example 1194\n<ca>\n", encoding="utf-8")
+
+    assert not destination.exists()
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+def test_sigkill_does_not_leave_partial_destination_and_stale_temp_can_be_cleaned(tmp_path: Path) -> None:
+    destination = tmp_path / "sample.ovpn"
+    script = """
+import os
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+output_dir = Path(sys.argv[1])
+destination = output_dir / "sample.ovpn"
+fd, temp_name = tempfile.mkstemp(prefix=f".{destination.name}.", suffix=".tmp", dir=str(output_dir))
+with os.fdopen(fd, "w", encoding="utf-8") as handle:
+    handle.write("partial payload")
+    handle.flush()
+    os.fsync(handle.fileno())
+print(temp_name, flush=True)
+time.sleep(30)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", script, str(tmp_path)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        temp_name = process.stdout.readline().strip()
+        assert temp_name
+        process.kill()
+        process.wait(timeout=5)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+    temp_path = Path(temp_name)
+    assert not destination.exists()
+    assert temp_path.exists()
+    assert cleanup_atomic_temp_files(tmp_path, destination.name) == 1
+    assert not temp_path.exists()
