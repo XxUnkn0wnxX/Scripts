@@ -14,6 +14,7 @@ import difflib
 import hashlib
 import json
 import logging
+import os
 import re
 import subprocess
 import sys
@@ -21,6 +22,18 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
+
+SCRIPT_PATH = Path(__file__).resolve()
+SCRIPT_DIR = SCRIPT_PATH.parent
+REPO_VENV_PYTHON = SCRIPT_DIR / ".venv" / "bin" / "python"
+REPO_VENV_DIR = SCRIPT_DIR / ".venv"
+
+if REPO_VENV_PYTHON.exists() and REPO_VENV_DIR.exists():
+    current_prefix = Path(sys.prefix).resolve()
+    target_prefix = REPO_VENV_DIR.resolve()
+    if current_prefix != target_prefix and os.environ.get("NORD_OVPN_PICKER_REEXEC") != "1":
+        os.environ["NORD_OVPN_PICKER_REEXEC"] = "1"
+        os.execv(str(REPO_VENV_PYTHON), [str(REPO_VENV_PYTHON), str(SCRIPT_PATH), *sys.argv[1:]])
 
 import questionary
 import requests
@@ -34,7 +47,7 @@ DEFAULT_LIMIT = 10
 DEFAULT_PING_COUNT = 3
 DEFAULT_PING_TOP = 10
 DEFAULT_FETCH_LIMIT = 50
-DEFAULT_OUTPUT_DIR = Path.cwd() / "NordOVPNs"
+DEFAULT_OUTPUT_DIR = Path.cwd().resolve() / "NordOVPNs"
 CACHE_DIR = Path.home() / ".cache" / APP_NAME
 
 API_V1_COUNTRIES = "https://api.nordvpn.com/v1/servers/countries"
@@ -978,7 +991,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if not selected_indexes:
         return 0
 
-    output_dir = args.output_dir.expanduser()
+    output_dir = args.output_dir.expanduser().resolve()
     downloaded: list[Path] = []
     for index in selected_indexes:
         downloaded.append(
