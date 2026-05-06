@@ -401,8 +401,11 @@ If you request a key that is not currently supported by Nord's live metadata, th
 - The script creates the output directory if it does not exist.
 - Existing files cause an error in non-interactive mode unless you pass `--force`.
 - In interactive mode, existing files trigger an overwrite prompt.
+- `Ctrl+C` and normal termination signals are handled cleanly and exit with a cancellation status instead of a raw traceback.
 - If you selected multiple downloads and one fails, the script continues the rest and reports a partial-failure summary at the end.
 - Downloaded payloads are validated before being written as `.ovpn` files.
+- Downloads are written through a temp file and atomically renamed into place so an interrupt does not leave a partial final `.ovpn`.
+- A forced `SIGKILL` cannot be trapped by Python, but the script keeps the final destination path safe and cleans any stale temp files on the next run.
 - `--download-best` and `--download-top` skip the interactive download-selection prompt.
 
 ## Caching
