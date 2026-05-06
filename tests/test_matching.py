@@ -11,6 +11,7 @@ from nord_ovpn_picker import (
     country_prompt_option,
     group_prompt_option,
     parse_countries,
+    parse_countries_from_v2,
     pick_city,
     pick_country,
     protocol_prompt_option,
@@ -119,3 +120,10 @@ def test_recommendation_to_server_conversion() -> None:
     assert server.hostname == "au666.nordvpn.com"
     assert server.city_name == "Melbourne"
     assert "legacy_standard" in server.group_identifiers
+
+
+def test_parse_countries_from_v2_fixture() -> None:
+    countries, cities_by_country = parse_countries_from_v2(load_fixture("v2_servers.json"))
+
+    assert pick_country("AU", countries, interactive=False).name == "Australia"
+    assert pick_city("Melb", cities_by_country[13], interactive=False, country_name="Australia").name == "Melbourne"

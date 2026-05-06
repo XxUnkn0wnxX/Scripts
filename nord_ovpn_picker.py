@@ -52,25 +52,32 @@ def normalize_platform_path(path: Path) -> str:
     return os.path.normcase(str(path.resolve()))
 
 
-venv_python_candidates = get_repo_venv_python_candidates(REPO_VENV_DIR)
-REPO_VENV_PYTHON = next((candidate for candidate in venv_python_candidates if candidate.exists()), None)
+def resolve_repo_venv_python(venv_dir: Path) -> Optional[Path]:
+    candidates = get_repo_venv_python_candidates(venv_dir)
+    return next((candidate for candidate in candidates if candidate.exists()), None)
 
-if not REPO_VENV_DIR.exists() or REPO_VENV_PYTHON is None:
-    docs_hint = DOCS_PATH if DOCS_PATH.exists() else "docs/nord-ovpn-picker.md"
-    raise SystemExit(
-        "No local .venv was found for nord_ovpn_picker.py.\n"
-        f"Create one in {SCRIPT_DIR} and install the repo requirements before running the script.\n"
-        f"See {docs_hint} for setup instructions."
-    )
 
-if REPO_VENV_DIR.exists() and REPO_VENV_PYTHON is not None:
+def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:
+    active_argv = list(argv if argv is not None else sys.argv[1:])
+    if any(value in {"-h", "--help"} for value in active_argv):
+        return
+
+    repo_venv_python = resolve_repo_venv_python(REPO_VENV_DIR)
+    if not REPO_VENV_DIR.exists() or repo_venv_python is None:
+        docs_hint = DOCS_PATH if DOCS_PATH.exists() else "docs/nord-ovpn-picker.md"
+        raise SystemExit(
+            "No local .venv was found for nord_ovpn_picker.py.\n"
+            f"Create one in {SCRIPT_DIR} and install the repo requirements before running the script.\n"
+            f"See {docs_hint} for setup instructions."
+        )
+
     current_prefix = Path(sys.prefix)
     target_prefix = REPO_VENV_DIR
     if normalize_platform_path(current_prefix) != normalize_platform_path(target_prefix) and os.environ.get(
         "NORD_OVPN_PICKER_REEXEC"
     ) != "1":
         os.environ["NORD_OVPN_PICKER_REEXEC"] = "1"
-        os.execv(str(REPO_VENV_PYTHON), [str(REPO_VENV_PYTHON), str(SCRIPT_PATH), *sys.argv[1:]])
+        os.execv(str(repo_venv_python), [str(repo_venv_python), str(SCRIPT_PATH), *active_argv])
 
 from prompt_toolkit.completion import Completer
 from prompt_toolkit.completion import Completion
@@ -93,7 +100,6 @@ DEFAULT_FETCH_LIMIT = 50
 DEFAULT_OUTPUT_DIR = Path.cwd().resolve() / "NordOVPNs"
 CACHE_DIR = Path.home() / ".cache" / APP_NAME
 
-API_V1_COUNTRIES = "https://api.nordvpn.com/v1/servers/countries"
 API_V1_RECOMMENDATIONS = "https://api.nordvpn.com/v1/servers/recommendations"
 API_V2_SERVERS = "https://api.nordvpn.com/v2/servers"
 DOWNLOAD_BASE = "https://downloads.nordcdn.com/configs/files"
@@ -431,14 +437,6 @@ class NordApiClient:
             raise CliError(f"Request failed for {url}: {exc}") from exc
         return response.text
 
-    def get_countries(self, refresh: bool = False) -> list[dict[str, Any]]:
-        cached = load_json_cache("countries.json", DEFAULT_CACHE_TTL, refresh)
-        if cached is not None:
-            return cached
-        payload = self.get_json(API_V1_COUNTRIES)
-        save_json_cache("countries.json", payload)
-        return payload
-
     def get_recommendations(
         self,
         country_id: int,
@@ -473,7 +471,10 @@ class NordApiClient:
         return payload
 
 
-def parse_countries(raw_countries: Sequence[dict[str, Any]]) -> tuple[list[Country], dict[int, list[City]]]:
+def parse_countries(raw_countries: Any) -> tuple[list[Country], dict[int, list[City]]]:
+    if isinstance(raw_countries, dict):
+        return parse_countries_from_v2(raw_countries)
+
     countries: list[Country] = []
     city_map: dict[int, list[City]] = {}
     for item in raw_countries:
@@ -484,6 +485,46 @@ def parse_countries(raw_countries: Sequence[dict[str, Any]]) -> tuple[list[Count
             city_entries.append(City(id=int(city["id"]), name=city["name"], country_id=country.id))
         city_map[country.id] = sorted(city_entries, key=lambda entry: entry.name.casefold())
     return sorted(countries, key=lambda entry: entry.name.casefold()), city_map
+
+
+def parse_countries_from_v2(payload: dict[str, Any]) -> tuple[list[Country], dict[int, list[City]]]:
+    countries_by_id: dict[int, Country] = {}
+    city_map: dict[int, dict[int, City]] = {}
+
+    for location in payload.get("locations", []):
+        country_data = location.get("country") or {}
+        country_id = country_data.get("id")
+        country_name = country_data.get("name")
+        if country_id is None or not country_name:
+            continue
+
+        parsed_country_id = int(country_id)
+        countries_by_id[parsed_country_id] = Country(
+            id=parsed_country_id,
+            name=country_name,
+            code=country_data.get("code"),
+        )
+
+        city_data = country_data.get("city") or {}
+        city_id = city_data.get("id")
+        city_name = city_data.get("name")
+        if city_id is None or not city_name:
+            continue
+
+        city_map.setdefault(parsed_country_id, {})[int(city_id)] = City(
+            id=int(city_id),
+            name=city_name,
+            country_id=parsed_country_id,
+        )
+
+    countries = sorted(countries_by_id.values(), key=lambda entry: entry.name.casefold())
+    sorted_city_map = {
+        country_id: sorted(cities.values(), key=lambda entry: entry.name.casefold())
+        for country_id, cities in city_map.items()
+    }
+    for country in countries:
+        sorted_city_map.setdefault(country.id, [])
+    return countries, sorted_city_map
 
 
 def recommendation_to_server(item: dict[str, Any]) -> NordServer:
@@ -1020,7 +1061,6 @@ def download_candidate(
     force: bool,
     dry_run: bool,
 ) -> Path:
-    output_dir.mkdir(parents=True, exist_ok=True)
     url = build_cdn_url(candidate.server.hostname, candidate.protocol)
     filename = format_output_filename(candidate.server, candidate.protocol, candidate.group)
     destination = output_dir / filename
@@ -1042,6 +1082,7 @@ def download_candidate(
         console.print(f"[yellow]DRY RUN[/yellow] {destination} <- {url}")
         return destination
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     text = client.get_text(url)
     if not validate_ovpn_payload(text):
         raise CliError(f"Downloaded config for {candidate.server.hostname} did not validate.")
@@ -1169,8 +1210,10 @@ def gather_filters(
     args: argparse.Namespace,
     countries: Sequence[Country],
     cities_by_country: dict[int, list[City]],
-    protocol_keys: Sequence[str],
-    group_keys: Sequence[str],
+    prompt_protocol_keys: Sequence[str],
+    prompt_group_keys: Sequence[str],
+    allowed_protocol_keys: Sequence[str],
+    allowed_group_keys: Sequence[str],
 ) -> tuple[Country, Optional[City], str, str, int, bool]:
     interactive = sys.stdin.isatty()
 
@@ -1189,18 +1232,18 @@ def gather_filters(
     if city_query:
         city = pick_city(city_query, available_cities, interactive, country.name)
 
-    protocol_key = args.protocol
+    protocol_key = args.protocol.strip().casefold() if args.protocol else None
     if not protocol_key:
-        protocol_key = interactive_protocol_prompt(protocol_keys) if interactive else "udp"
-    if protocol_key not in protocol_keys:
-        supported = ", ".join(protocol_keys)
+        protocol_key = interactive_protocol_prompt(prompt_protocol_keys) if interactive else "udp"
+    if protocol_key not in allowed_protocol_keys:
+        supported = ", ".join(allowed_protocol_keys)
         raise CliError(f"Unsupported protocol '{protocol_key}'. Supported right now: {supported}")
 
-    group_key = args.group
+    group_key = args.group.strip().casefold() if args.group else None
     if not group_key:
-        group_key = interactive_group_prompt(group_keys) if interactive else "standard"
-    if group_key not in group_keys:
-        supported = ", ".join(group_keys)
+        group_key = interactive_group_prompt(prompt_group_keys) if interactive else "standard"
+    if group_key not in allowed_group_keys:
+        supported = ", ".join(allowed_group_keys)
         raise CliError(f"Unsupported group '{group_key}'. Supported right now: {supported}")
 
     limit = args.limit if args.limit is not None else (interactive_limit_prompt() if interactive else DEFAULT_LIMIT)
@@ -1297,8 +1340,9 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--group", help="Server group to use.")
     parser.add_argument("--limit", type=argparse_positive_int, help="Number of results to show.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Download directory.")
-    parser.add_argument("--download-best", action="store_true", help="Download the top candidate.")
-    parser.add_argument("--download-top", type=argparse_positive_int, help="Download the top N candidates.")
+    download_group = parser.add_mutually_exclusive_group()
+    download_group.add_argument("--download-best", action="store_true", help="Download the top candidate.")
+    download_group.add_argument("--download-top", type=argparse_positive_int, help="Download the top N candidates.")
     parser.add_argument("--full-data", action="store_true", help="Force the V2 dataset path.")
     parser.add_argument("--no-ping", action="store_true", help="Skip ping testing.")
     parser.add_argument(
@@ -1324,16 +1368,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     configure_logging(args.verbose)
     client = NordApiClient()
     v2_payload = client.get_v2_dataset(refresh=args.refresh_cache)
-    live_protocol_keys = supported_protocol_keys(v2_payload, args.advanced)
-    live_group_keys = supported_group_keys(v2_payload, args.advanced)
+    prompt_protocol_keys = supported_protocol_keys(v2_payload, args.advanced)
+    prompt_group_keys = supported_group_keys(v2_payload, args.advanced)
+    allowed_protocol_keys = supported_protocol_keys(v2_payload, include_advanced=True)
+    allowed_group_keys = supported_group_keys(v2_payload, include_advanced=True)
 
-    countries, cities_by_country = parse_countries(client.get_countries(refresh=args.refresh_cache))
+    countries, cities_by_country = parse_countries(v2_payload)
 
     if args.list_countries:
         list_countries(countries)
         return 0
     if args.list_groups:
-        list_groups(live_group_keys)
+        list_groups(allowed_group_keys)
         return 0
     if args.list_technologies:
         list_technologies(v2_payload)
@@ -1350,8 +1396,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         args,
         countries,
         cities_by_country,
-        live_protocol_keys,
-        live_group_keys,
+        prompt_protocol_keys,
+        prompt_group_keys,
+        allowed_protocol_keys,
+        allowed_group_keys,
     )
     candidates = score_candidates(
         fetch_candidates(
@@ -1414,6 +1462,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 if __name__ == "__main__":
     previous_signal_handlers = install_signal_handlers()
     try:
+        ensure_repo_venv_or_reexec()
         raise SystemExit(main())
     except CancelledError as exc:
         console.print(f"[yellow]{exc.message}[/yellow]")
