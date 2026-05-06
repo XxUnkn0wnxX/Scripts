@@ -15,6 +15,9 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
 - [`MediaFire.py`](MediaFire.py)  
   Automates MediaFire quickkey pairing. Supply a blocked file link while you’re logged in, and it builds a shareable URL by combining that ID with one from a folder you control. Includes Ctrl+C handling so you can abort cleanly.
 
+- [`nord_ovpn_picker.py`](nord_ovpn_picker.py)  
+  Interactive NordVPN OpenVPN config picker that searches by country, optional city, protocol, and server group, prefers the recommendation API first, optionally ping-ranks candidates, and downloads selected `.ovpn` files into the local `NordOVPNs/` folder.
+
 ## Shell Utilities
 
 - [`mkv_extract_tracks.sh`](mkv_extract_tracks.sh)  

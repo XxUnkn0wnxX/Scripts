@@ -12,5 +12,6 @@
 tmp/
 AGENTS.md
 .venv/
+NordOVPNs/
 __pycache__/
 Backup/
