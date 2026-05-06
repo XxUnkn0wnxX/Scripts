@@ -7,16 +7,21 @@ import pytest
 
 import nord_ovpn_picker as picker
 from nord_ovpn_picker import (
+    AuthCredentials,
     CandidateScore,
     CancelledError,
     CliError,
     NordServer,
+    build_auth_file_contents,
     cleanup_atomic_temp_files,
     download_selected_candidates,
     handle_termination_signal,
     install_signal_handlers,
+    load_auth_config,
+    patch_ovpn_auth_user_pass,
     parse_args,
     ensure_repo_venv_or_reexec,
+    resolve_auth_credentials,
     restore_signal_handlers,
     signal_display_name,
     write_text_atomic,
@@ -86,6 +91,7 @@ def test_download_selected_candidates_continues_after_error(monkeypatch: pytest.
         output_dir=tmp_path,
         force=False,
         dry_run=True,
+        auth_credentials=None,
     )
 
     assert calls == ["au001.nordvpn.com", "au002.nordvpn.com"]
@@ -188,11 +194,12 @@ time.sleep(30)
     assert not temp_path.exists()
 
 
-def test_ensure_repo_venv_or_reexec_allows_help_without_repo_venv(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ensure_repo_venv_or_reexec_raises_for_help_without_repo_venv(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(picker, "resolve_repo_venv_python", lambda venv_dir: None)
     monkeypatch.setattr(picker, "REPO_VENV_DIR", Path("/missing/.venv"))
 
-    ensure_repo_venv_or_reexec(["--help"])
+    with pytest.raises(SystemExit, match="No local .venv"):
+        ensure_repo_venv_or_reexec(["--help"])
 
 
 def test_ensure_repo_venv_or_reexec_raises_without_repo_venv(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,7 +219,137 @@ def test_download_candidate_dry_run_does_not_create_output_dir(monkeypatch: pyte
         output_dir=output_dir,
         force=False,
         dry_run=True,
+        auth_credentials=None,
     )
 
     assert destination == output_dir / "Australia (AU) - Melbourne [UDP] [Standard] - au001.ovpn"
     assert not output_dir.exists()
+
+
+def test_resolve_auth_credentials_requires_both_cli_values() -> None:
+    args = parse_args(["--auth-username", "user"])
+
+    with pytest.raises(CliError, match="provided together"):
+        resolve_auth_credentials(args)
+
+
+def test_load_auth_config_reads_yaml_file(tmp_path: Path) -> None:
+    auth_config = tmp_path / "nord_ovpn_auth.yaml"
+    auth_config.write_text("user: demo-user\npass: demo-pass\n", encoding="utf-8")
+
+    credentials = load_auth_config(auth_config)
+
+    assert credentials == AuthCredentials("demo-user", "demo-pass", str(auth_config))
+
+
+def test_resolve_auth_credentials_prefers_cli_over_auth_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    args = parse_args(["--auth-username", "cli-user", "--auth-password", "cli-pass"])
+    monkeypatch.setattr(picker, "resolve_default_auth_config_path", lambda: Path("/ignored/nord_ovpn_auth.yaml"))
+
+    credentials = resolve_auth_credentials(args)
+
+    assert credentials == AuthCredentials("cli-user", "cli-pass", "cli")
+
+
+def test_resolve_auth_credentials_uses_repo_auth_file_when_present(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    auth_config = tmp_path / "nord_ovpn_auth.yaml"
+    auth_config.write_text("user: file-user\npass: file-pass\n", encoding="utf-8")
+    args = parse_args([])
+    monkeypatch.setattr(picker, "resolve_default_auth_config_path", lambda: auth_config)
+
+    credentials = resolve_auth_credentials(args)
+
+    assert credentials == AuthCredentials("file-user", "file-pass", str(auth_config))
+
+
+def test_patch_ovpn_auth_user_pass_replaces_existing_directive() -> None:
+    original = "client\nauth-user-pass\nremote example 1194\n"
+
+    patched = patch_ovpn_auth_user_pass(original, "sample.auth.txt")
+
+    assert "auth-user-pass sample.auth.txt" in patched
+    assert "auth-user-pass\n" not in patched
+
+
+def test_build_auth_file_contents() -> None:
+    assert build_auth_file_contents(AuthCredentials("demo-user", "demo-pass", "cli")) == "demo-user\ndemo-pass\n"
+
+
+def test_download_candidate_writes_auth_file_and_patches_config(tmp_path: Path) -> None:
+    credentials = AuthCredentials("demo-user", "demo-pass", "cli")
+    candidate = make_candidate("au001.nordvpn.com")
+
+    class FakeClient:
+        def get_text(self, url: str) -> str:
+            return "client\nremote au001.nordvpn.com 1194\n<ca>\nCERT\n</ca>\nauth-user-pass\n"
+
+    destination = picker.download_candidate(
+        client=FakeClient(),
+        candidate=candidate,
+        output_dir=tmp_path,
+        force=False,
+        dry_run=False,
+        auth_credentials=credentials,
+    )
+
+    auth_path = tmp_path / "australia_au_melbourne_udp_standard_au001.auth.txt"
+
+    assert destination.exists()
+    assert auth_path.exists()
+    assert "auth-user-pass australia_au_melbourne_udp_standard_au001.auth.txt" in destination.read_text(
+        encoding="utf-8"
+    )
+    assert auth_path.read_text(encoding="utf-8") == "demo-user\ndemo-pass\n"
+
+
+def test_download_candidate_dry_run_with_auth_does_not_create_output_dir(tmp_path: Path) -> None:
+    credentials = AuthCredentials("demo-user", "demo-pass", "cli")
+    output_dir = tmp_path / "NordOVPNs"
+
+    destination = picker.download_candidate(
+        client=None,  # type: ignore[arg-type]
+        candidate=make_candidate("au001.nordvpn.com"),
+        output_dir=output_dir,
+        force=False,
+        dry_run=True,
+        auth_credentials=credentials,
+    )
+
+    assert destination == output_dir / "Australia (AU) - Melbourne [UDP] [Standard] - au001.ovpn"
+    assert not output_dir.exists()
+
+
+def test_download_candidate_removes_generated_auth_file_if_config_write_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    credentials = AuthCredentials("demo-user", "demo-pass", "cli")
+    candidate = make_candidate("au001.nordvpn.com")
+
+    class FakeClient:
+        def get_text(self, url: str) -> str:
+            return "client\nremote au001.nordvpn.com 1194\n<ca>\nCERT\n</ca>\n"
+
+    real_write_text_atomic = picker.write_text_atomic
+    call_count = {"value": 0}
+
+    def fake_write_text_atomic(destination: Path, text: str, encoding: str = "utf-8") -> None:
+        call_count["value"] += 1
+        if call_count["value"] == 1:
+            real_write_text_atomic(destination, text, encoding=encoding)
+            return
+        raise RuntimeError("config write failed")
+
+    monkeypatch.setattr(picker, "write_text_atomic", fake_write_text_atomic)
+
+    with pytest.raises(RuntimeError, match="config write failed"):
+        picker.download_candidate(
+            client=FakeClient(),
+            candidate=candidate,
+            output_dir=tmp_path,
+            force=False,
+            dry_run=False,
+            auth_credentials=credentials,
+        )
+
+    auth_path = tmp_path / "australia_au_melbourne_udp_standard_au001.auth.txt"
+    assert not auth_path.exists()

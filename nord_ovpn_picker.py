@@ -78,9 +78,6 @@ def resolve_repo_venv_python(venv_dir: Path) -> Optional[Path]:
 
 def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:
     active_argv = list(argv if argv is not None else sys.argv[1:])
-    if any(value in {"-h", "--help"} for value in active_argv):
-        return
-
     repo_venv_python = resolve_repo_venv_python(REPO_VENV_DIR)
     if not REPO_VENV_DIR.exists() or repo_venv_python is None:
         docs_hint = DOCS_PATH if DOCS_PATH.exists() else "docs/nord-ovpn-picker.md"
@@ -97,6 +94,10 @@ def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:
     ) != "1":
         os.environ["NORD_OVPN_PICKER_REEXEC"] = "1"
         os.execv(str(repo_venv_python), [str(repo_venv_python), str(SCRIPT_PATH), *active_argv])
+
+
+ensure_repo_venv_or_reexec()
+
 
 from prompt_toolkit.completion import Completer
 from prompt_toolkit.completion import Completion
@@ -220,6 +221,13 @@ class AutocompleteOption:
     aliases: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class AuthCredentials:
+    username: str
+    password: str
+    source: str
+
+
 PROTOCOLS: dict[str, ProtocolSpec] = {
     "udp": ProtocolSpec("udp", "UDP", "openvpn_udp", "ovpn_udp", "udp"),
     "tcp": ProtocolSpec("tcp", "TCP", "openvpn_tcp", "ovpn_tcp", "tcp"),
@@ -246,6 +254,8 @@ COUNTRY_SYNONYMS: dict[str, set[str]] = {
     "unitedarabemirates": {"uae"},
 }
 
+DEFAULT_AUTH_CONFIG_NAMES = ("nord_ovpn_auth.yaml", "nord_ovpn_auth.yml")
+
 
 def configure_logging(verbose: bool) -> None:
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO, format="%(message)s")
@@ -257,6 +267,51 @@ def normalize_text(value: str) -> str:
 
 def safe_slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", value.casefold()).strip("_") or "default"
+
+
+def resolve_default_auth_config_path() -> Optional[Path]:
+    for name in DEFAULT_AUTH_CONFIG_NAMES:
+        candidate = SCRIPT_DIR / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def load_auth_config(path: Path) -> AuthCredentials:
+    try:
+        import yaml
+    except ImportError as exc:
+        raise CliError("PyYAML is required to read the Nord auth config. Install the repo requirements first.") from exc
+
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except OSError as exc:
+        raise CliError(f"Could not read auth config {path}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise CliError(f"Invalid YAML in auth config {path}: {exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise CliError(f"Auth config {path} must be a YAML mapping with 'user' and 'pass' keys.")
+
+    username = str(payload.get("user", "")).strip()
+    password = str(payload.get("pass", "")).strip()
+    if not username or not password:
+        raise CliError(f"Auth config {path} must define non-empty 'user' and 'pass' values.")
+    return AuthCredentials(username=username, password=password, source=str(path))
+
+
+def resolve_auth_credentials(args: argparse.Namespace) -> Optional[AuthCredentials]:
+    username = (args.auth_username or "").strip()
+    password = (args.auth_password or "").strip()
+    if bool(username) != bool(password):
+        raise CliError("--auth-username and --auth-password must be provided together.")
+    if username and password:
+        return AuthCredentials(username=username, password=password, source="cli")
+
+    auth_config_path = resolve_default_auth_config_path()
+    if auth_config_path is None:
+        return None
+    return load_auth_config(auth_config_path)
 
 
 def ensure_cache_dir() -> None:
@@ -367,6 +422,24 @@ def format_output_filename(server: NordServer, protocol_key: str, group_key: str
     hostname_label = format_hostname_label(server.hostname)
     name = f"{country} - {city} [{protocol.label}] [{group.label}] - {hostname_label}.ovpn"
     return sanitize_filename(name)
+
+
+def format_auth_output_filename(config_path: Path) -> str:
+    return f"{safe_slug(config_path.stem)}.auth.txt"
+
+
+def build_auth_file_contents(credentials: AuthCredentials) -> str:
+    return f"{credentials.username}\n{credentials.password}\n"
+
+
+def patch_ovpn_auth_user_pass(text: str, auth_filename: str) -> str:
+    directive = f"auth-user-pass {auth_filename}"
+    pattern = re.compile(r"(?m)^auth-user-pass(?:\s+\S+)?\s*$")
+    if pattern.search(text):
+        return pattern.sub(directive, text, count=1)
+
+    suffix = "" if text.endswith("\n") else "\n"
+    return f"{text}{suffix}{directive}\n"
 
 
 def atomic_temp_glob(destination_name: str) -> str:
@@ -1079,11 +1152,14 @@ def download_candidate(
     output_dir: Path,
     force: bool,
     dry_run: bool,
+    auth_credentials: Optional[AuthCredentials] = None,
 ) -> Path:
     url = build_cdn_url(candidate.server.hostname, candidate.protocol)
     filename = format_output_filename(candidate.server, candidate.protocol, candidate.group)
     destination = output_dir / filename
     cleanup_atomic_temp_files(output_dir, destination.name)
+    auth_destination = output_dir / format_auth_output_filename(destination)
+    cleanup_atomic_temp_files(output_dir, auth_destination.name)
 
     if destination.exists() and not force:
         if sys.stdin.isatty():
@@ -1097,15 +1173,46 @@ def download_candidate(
         else:
             raise CliError(f"{destination} already exists. Use --force to overwrite.")
 
+    if auth_credentials and auth_destination.exists() and not force:
+        if sys.stdin.isatty():
+            overwrite = questionary.confirm(
+                f"{auth_destination.name} already exists. Overwrite?",
+                default=False,
+                style=PROMPT_STYLE,
+            ).ask()
+            if not overwrite:
+                raise CliError(f"Skipped existing file: {auth_destination.name}")
+        else:
+            raise CliError(f"{auth_destination} already exists. Use --force to overwrite.")
+
     if dry_run:
         console.print(f"[yellow]DRY RUN[/yellow] {destination} <- {url}")
+        if auth_credentials:
+            console.print(
+                f"[yellow]DRY RUN[/yellow] patch auth-user-pass -> {auth_destination.name} "
+                f"(source: {auth_credentials.source})"
+            )
         return destination
 
     output_dir.mkdir(parents=True, exist_ok=True)
     text = client.get_text(url)
     if not validate_ovpn_payload(text):
         raise CliError(f"Downloaded config for {candidate.server.hostname} did not validate.")
-    write_text_atomic(destination, text, encoding="utf-8")
+
+    if auth_credentials:
+        patched_text = patch_ovpn_auth_user_pass(text, auth_destination.name)
+        auth_text = build_auth_file_contents(auth_credentials)
+        try:
+            write_text_atomic(auth_destination, auth_text, encoding="utf-8")
+            write_text_atomic(destination, patched_text, encoding="utf-8")
+        except BaseException:
+            try:
+                auth_destination.unlink()
+            except FileNotFoundError:
+                pass
+            raise
+    else:
+        write_text_atomic(destination, text, encoding="utf-8")
     return destination
 
 
@@ -1326,6 +1433,7 @@ def download_selected_candidates(
     output_dir: Path,
     force: bool,
     dry_run: bool,
+    auth_credentials: Optional[AuthCredentials],
 ) -> tuple[list[Path], list[str]]:
     downloaded: list[Path] = []
     errors: list[str] = []
@@ -1339,6 +1447,7 @@ def download_selected_candidates(
                     output_dir=output_dir,
                     force=force,
                     dry_run=dry_run,
+                    auth_credentials=auth_credentials,
                 )
             )
         except CliError as exc:
@@ -1376,6 +1485,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--list-groups", action="store_true", help="List supported groups.")
     parser.add_argument("--list-technologies", action="store_true", help="List Nord technologies from V2.")
     parser.add_argument("--advanced", action="store_true", help="Expose advanced prompt choices such as XOR.")
+    parser.add_argument("--auth-username", help="Override auth config username for downloaded OpenVPN auth files.")
+    parser.add_argument("--auth-password", help="Override auth config password for downloaded OpenVPN auth files.")
     parser.add_argument("--force", action="store_true", help="Overwrite existing files.")
     parser.add_argument("--dry-run", action="store_true", help="Print actions without writing files.")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
@@ -1385,6 +1496,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     configure_logging(args.verbose)
+    auth_credentials = resolve_auth_credentials(args)
     client = NordApiClient()
     v2_payload = client.get_v2_dataset(refresh=args.refresh_cache)
     prompt_protocol_keys = supported_protocol_keys(v2_payload, args.advanced)
@@ -1463,6 +1575,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         output_dir=output_dir,
         force=args.force,
         dry_run=args.dry_run,
+        auth_credentials=auth_credentials,
     )
 
     if downloaded:
@@ -1481,7 +1594,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 if __name__ == "__main__":
     previous_signal_handlers = install_signal_handlers()
     try:
-        ensure_repo_venv_or_reexec()
         raise SystemExit(main())
     except CancelledError as exc:
         console.print(f"[yellow]{exc.message}[/yellow]")

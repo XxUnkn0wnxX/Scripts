@@ -14,6 +14,7 @@
 - Rich results table with hostname, location, protocol, group, load, ping, score, station IP, and the recommended marker.
 - Visible per-host ping progress in TTY sessions before the final ranked table.
 - Direct `.ovpn` downloads for the best candidate, the top N, or an interactive selection.
+- Optional auth-file patching for downloaded OpenVPN configs.
 - Automatic re-exec into the repo-local `.venv` when the script is started from the wrong Python interpreter.
 - Current-working-directory output folder so aliases, symlinks, and absolute-path calls still write where you launched them from.
 - API response caching under an OS-native cache directory.
@@ -47,6 +48,42 @@ The re-exec path is OS-aware:
 
 - macOS and Linux use `.venv/bin/python` or `.venv/bin/python3`
 - Windows uses `.venv\Scripts\python.exe`
+
+## OpenVPN Auth File
+
+If you want downloaded `.ovpn` files to be prefilled for OpenVPN username/password auth, create one of these repo-local files yourself:
+
+```text
+nord_ovpn_auth.yaml
+nord_ovpn_auth.yml
+```
+
+Use this simple YAML format:
+
+```yaml
+user: YOUR_NORD_SERVICE_USERNAME
+pass: YOUR_NORD_SERVICE_PASSWORD
+```
+
+When one of those files exists, the script automatically:
+
+- writes a generated `.auth.txt` file next to each downloaded `.ovpn`
+- patches the downloaded config to use `auth-user-pass <generated-auth-file>`
+
+CLI credentials can override the YAML file:
+
+```bash
+python3 nord_ovpn_picker.py --country Australia --download-best --auth-username YOUR_USER --auth-password YOUR_PASS
+```
+
+Notes:
+
+- the YAML auth config is optional
+- the CLI username/password arguments are optional
+- if neither is present, downloads are left unpatched
+- if both CLI auth arguments are provided, they override the YAML auth config
+- the repo-local YAML auth config filename is git-ignored in this repo
+- the generated `.auth.txt` files contain plaintext credentials
 
 ## Platform Support
 
@@ -160,6 +197,7 @@ Mode notes:
 - Listing commands such as `--list-countries` and `--list-cities` are CLI-only and do not enter the prompt flow.
 - Flags such as `--advanced`, `--full-data`, `--refresh-cache`, `--force`, `--dry-run`, and `--verbose` are argument-driven switches. They can still affect a TTY run, but they are not separate interactive prompts.
 - `--advanced` controls which optional protocol/group keys appear in interactive prompts. Explicit CLI values are still accepted if Nord's live V2 metadata supports them.
+- Repo-local auth YAML detection works in both interactive runs and argument-only runs. CLI `--auth-username` and `--auth-password` are override-only flags and are not prompt-driven.
 
 ## Common Usage
 
@@ -339,6 +377,18 @@ Because the default output path is based on your current working directory, thes
       <td>CLI-only switch for prompt visibility. When present, advanced live-supported options such as XOR or advanced groups appear in TTY prompts. Explicit CLI values are still accepted when Nord's live V2 metadata supports them.</td>
     </tr>
     <tr>
+      <td><nobr><code>--auth-username &lt;value&gt;</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only override for the auth YAML username. Must be used together with <code>--auth-password</code>. When both are present, they override the repo-local auth YAML file.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--auth-password &lt;value&gt;</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only override for the auth YAML password. Must be used together with <code>--auth-username</code>. When both are present, they override the repo-local auth YAML file.</td>
+    </tr>
+    <tr>
       <td><nobr><code>--verbose</code></nobr></td>
       <td>No</td>
       <td>Yes</td>
@@ -408,6 +458,8 @@ If you request a key that is not currently supported by Nord's live metadata, th
 - `--dry-run` does not create the output directory or any files.
 - Existing files cause an error in non-interactive mode unless you pass `--force`.
 - In interactive mode, existing files trigger an overwrite prompt.
+- When auth credentials are detected, the script writes a generated adjacent `.auth.txt` file and patches the `.ovpn` to reference it.
+- The generated auth filename is slugged to avoid spaces in the `auth-user-pass` path.
 - `Ctrl+C` and normal termination signals are handled cleanly and exit with a cancellation status instead of a raw traceback.
 - If you selected multiple downloads and one fails, the script continues the rest and reports a partial-failure summary at the end.
 - Downloaded payloads are validated before being written as `.ovpn` files.
