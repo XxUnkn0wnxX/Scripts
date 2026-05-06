@@ -294,13 +294,13 @@ Because the default output path is based on your current working directory, thes
       <td><nobr><code>--download-best</code></nobr></td>
       <td>No</td>
       <td>Yes</td>
-      <td>CLI-only shortcut. Downloads only the top-ranked candidate and skips the interactive download-selection prompt.</td>
+      <td>CLI-only shortcut. Downloads only the top-ranked candidate and skips the interactive download-selection prompt. Mutually exclusive with <code>--download-top</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--download-top &lt;number&gt;</code></nobr></td>
       <td>No</td>
       <td>Yes</td>
-      <td>CLI-only shortcut. Downloads the top N candidates and skips the interactive download-selection prompt.</td>
+      <td>CLI-only shortcut. Downloads the top N candidates and skips the interactive download-selection prompt. Mutually exclusive with <code>--download-best</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--force</code></nobr></td>
@@ -426,7 +426,7 @@ The script caches Nord API responses under:
 Current cache behavior:
 
 - Recommendation queries are cached.
-- The V2 server dataset is cached.
+- The V2 metadata and server dataset are cached together in the V2 payload cache.
 - Default cache TTL is `6 hours`.
 - `--refresh-cache` bypasses the cache and refreshes those payloads.
 
