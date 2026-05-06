@@ -1,6 +1,6 @@
 # Nord OVPN Picker
 
-`nord_ovpn_picker.py` is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into a `NordOVPNs/` folder in your current working directory.
+[`nord_ovpn_picker.py`](../nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into a `NordOVPNs/` folder in your current working directory.
 
 ## Features
 
