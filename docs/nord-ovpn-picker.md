@@ -232,19 +232,19 @@ The script exposes friendly keys, but only accepts keys that Nord's live V2 meta
 
 Common protocol keys:
 
-- `udp`
-- `tcp`
-- `xor_udp` when available and `--advanced` is used
-- `xor_tcp` when available and `--advanced` is used
+- `udp` = OpenVPN UDP
+- `tcp` = OpenVPN TCP
+- `xor_udp` = OpenVPN XOR UDP when available and `--advanced` is used
+- `xor_tcp` = OpenVPN XOR TCP when available and `--advanced` is used
 
 Common group keys:
 
-- `standard`
-- `p2p`
-- `obfuscated` when available and `--advanced` is used
-- `double` when available and `--advanced` is used
-- `onion` when available and `--advanced` is used
-- `dedicated` when available and `--advanced` is used
+- `standard` = Standard
+- `p2p` = P2P
+- `obfuscated` = Obfuscated when available and `--advanced` is used
+- `double` = Double VPN when available and `--advanced` is used
+- `onion` = Onion over VPN when available and `--advanced` is used
+- `dedicated` = Dedicated IP when available and `--advanced` is used
 
 If you request a key that is not currently supported by Nord's live metadata, the script exits with a clear error listing the currently supported values.
 

@@ -53,6 +53,7 @@ from prompt_toolkit.completion import Completer
 from prompt_toolkit.completion import Completion
 from prompt_toolkit.document import Document
 from prompt_toolkit.shortcuts.prompt import CompleteStyle
+from prompt_toolkit.styles import Style
 
 import questionary
 import requests
@@ -77,6 +78,24 @@ HTTP_TIMEOUT = 10
 
 console = Console()
 logger = logging.getLogger(APP_NAME)
+
+PROMPT_STYLE = Style(
+    [
+        ("qmark", "fg:#ffd75f bold"),
+        ("question", "bold"),
+        ("answer", "fg:#ffd75f bold"),
+        ("completion-menu", "fg:#ffd75f bg:default"),
+        ("completion-menu.completion", "fg:#ffd75f bg:default"),
+        ("completion-menu.completion.current", "fg:#000000 bg:#ffd75f"),
+        ("completion-menu.meta.completion", "fg:#ffd75f bg:default"),
+        ("completion-menu.meta.completion.current", "fg:#000000 bg:#ffd75f"),
+        ("readline-like-completions", "fg:#ffd75f"),
+        ("readline-like-completions.completion", "fg:#ffd75f"),
+        ("readline-like-completions.completion.current", "fg:#000000 bg:#ffd75f"),
+        ("scrollbar.background", "bg:default"),
+        ("scrollbar.button", "bg:#ffd75f"),
+    ]
+)
 
 
 class CliError(RuntimeError):
@@ -525,7 +544,6 @@ class PrefixAutocompleteCompleter(Completer):
                 option.label,
                 start_position=-len(query),
                 display=option.label,
-                display_meta=option.value,
                 style="class:answer",
                 selected_style="class:selected",
             )
@@ -625,7 +643,7 @@ def ask_autocomplete(
             return str(exc)
         return True
 
-    answer = questionary.autocomplete(
+    prompt = questionary.autocomplete(
         message,
         choices=[option.label for option in options],
         completer=PrefixAutocompleteCompleter(options),
@@ -636,7 +654,12 @@ def ask_autocomplete(
         complete_while_typing=True,
         validate_while_typing=False,
         reserve_space_for_menu=min(max(len(options), 4), 10),
-    ).ask()
+        style=PROMPT_STYLE,
+    )
+    prompt.application.pre_run_callables.append(
+        lambda: prompt.application.current_buffer.start_completion(select_first=False)
+    )
+    answer = prompt.ask()
     if answer is None:
         return None
     stripped = answer.strip()
@@ -837,6 +860,7 @@ def pick_interactive_selection(candidates: Sequence[CandidateScore]) -> list[int
         answer = questionary.text(
             "Download which config(s)? Examples: 1, 1,3,5, top5, all, none",
             default="",
+            style=PROMPT_STYLE,
         ).ask()
         if answer is None:
             return []
@@ -863,6 +887,7 @@ def download_candidate(
             overwrite = questionary.confirm(
                 f"{destination.name} already exists. Overwrite?",
                 default=False,
+                style=PROMPT_STYLE,
             ).ask()
             if not overwrite:
                 raise CliError(f"Skipped existing file: {destination.name}")
@@ -943,32 +968,32 @@ def interactive_city_prompt(country: Country, cities: Sequence[City]) -> Optiona
 def interactive_protocol_prompt(protocol_keys: Sequence[str]) -> str:
     options = [protocol_prompt_option(key) for key in protocol_keys]
     answer = ask_autocomplete(
-        "Protocol",
+        "Protocol (blank for UDP)",
         options,
         lambda text: resolve_autocomplete_option(text, options, "Protocol"),
-        default=PROTOCOLS["udp"].label,
+        allow_blank=True,
     )
     if answer is None:
-        raise CliError("Protocol selection failed.")
+        return "udp"
     return resolve_autocomplete_option(answer, options, "Protocol").value
 
 
 def interactive_group_prompt(group_keys: Sequence[str]) -> str:
     options = [group_prompt_option(key) for key in group_keys]
     answer = ask_autocomplete(
-        "Server group",
+        "Server group (blank for Standard)",
         options,
         lambda text: resolve_autocomplete_option(text, options, "Group"),
-        default=GROUPS["standard"].label,
+        allow_blank=True,
     )
     if answer is None:
-        raise CliError("Group selection failed.")
+        return "standard"
     return resolve_autocomplete_option(answer, options, "Group").value
 
 
 def interactive_limit_prompt() -> int:
     while True:
-        answer = questionary.text("Result limit", default=str(DEFAULT_LIMIT)).ask()
+        answer = questionary.text("Result limit", default=str(DEFAULT_LIMIT), style=PROMPT_STYLE).ask()
         if answer is None or not answer.strip():
             return DEFAULT_LIMIT
         try:
@@ -978,7 +1003,7 @@ def interactive_limit_prompt() -> int:
 
 
 def interactive_ping_prompt() -> bool:
-    answer = questionary.confirm("Run ping test on the top candidates?", default=True).ask()
+    answer = questionary.confirm("Run ping test on the top candidates?", default=True, style=PROMPT_STYLE).ask()
     return bool(answer)
 
 
@@ -991,7 +1016,7 @@ def maybe_warn_obfuscated(group_key: str, protocol_key: str, interactive: bool) 
     )
     console.print(Panel(message, title="Obfuscated warning", border_style="yellow"))
     if interactive:
-        proceed = questionary.confirm("Continue?", default=True).ask()
+        proceed = questionary.confirm("Continue?", default=True, style=PROMPT_STYLE).ask()
         if not proceed:
             raise CliError("Cancelled after obfuscated warning.")
 
