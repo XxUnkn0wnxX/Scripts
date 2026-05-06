@@ -596,7 +596,7 @@ def resolve_autocomplete_matches(query: str, options: Sequence[AutocompleteOptio
     if not normalized:
         return list(options)
 
-    return [option for option in options if any(alias.startswith(normalized) for alias in option.aliases)]
+    return [option for option in options if normalized in normalize_text(option.label)]
 
 
 def resolve_autocomplete_option(
