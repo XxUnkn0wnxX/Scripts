@@ -81,7 +81,7 @@ Interactive defaults:
 - City: blank means country-wide results
 - Protocol: `udp`
 - Group: `standard`
-- Result limit: `10`
+- Result limit: `5`
 - Ping test: `yes`
 
 If you leave the final download selection blank, the script only prints the candidate table and exits without downloading anything.
@@ -91,10 +91,9 @@ When ping testing is enabled in a terminal, the script shows each ping test as i
 Interactive download selection accepts:
 
 - `1`
-- `1,3,5`
-- `top5`
+- `1-5`
+- `1,3-7,10`
 - `all`
-- `none`
 - blank input to skip downloading
 
 Examples of the interactive prefix matching:
@@ -105,6 +104,30 @@ Examples of the interactive prefix matching:
 - typing `P` narrows the default group list to `P2P`
 
 For the interactive prompts, filtering follows the visible labels instead of hidden country-code aliases. Country-code and alias shortcuts such as `USA`, `UK`, `UAE`, or `AU` are still supported on the non-interactive `--country` argument path.
+
+## Mode Behavior
+
+The script has three practical run styles:
+
+- Pure interactive: run `python3 nord_ovpn_picker.py` in a TTY and answer prompts for the full flow.
+- Mixed TTY: pass some arguments, then let the prompt UI fill in any missing filter values.
+- Non-interactive: run from a non-TTY or provide all needed arguments up front and skip prompt-only steps.
+
+Examples:
+
+```bash
+python3 nord_ovpn_picker.py
+python3 nord_ovpn_picker.py --country AU
+python3 nord_ovpn_picker.py --country AU --protocol udp --group standard --download-best
+```
+
+Mode notes:
+
+- If you run in a TTY and omit some of `--country`, `--city`, `--protocol`, `--group`, or `--limit`, the script prompts only for the missing pieces.
+- `--country` aliases such as `AU`, `USA`, `UK`, and `UAE` are accepted on the CLI argument path. The interactive country prompt filters only against the visible country names.
+- The live autocomplete prompt UI exists only in TTY interactive mode.
+- Listing commands such as `--list-countries` and `--list-cities` are CLI-only and do not enter the prompt flow.
+- Flags such as `--advanced`, `--full-data`, `--refresh-cache`, `--force`, `--dry-run`, and `--verbose` are argument-driven switches. They can still affect a TTY run, but they are not separate interactive prompts.
 
 ## Common Usage
 
@@ -123,7 +146,7 @@ Show candidates:
 python3 nord_ovpn_picker.py --country Australia
 python3 nord_ovpn_picker.py --country Australia --protocol udp --group standard --limit 5
 python3 nord_ovpn_picker.py --country Australia --city Melbourne --protocol tcp --group p2p --limit 5 --no-ping
-python3 nord_ovpn_picker.py --country AU --city Melb --protocol udp --group standard --limit 10
+python3 nord_ovpn_picker.py --country AU --city Melb --protocol udp --group standard --limit 5
 ```
 
 Download:
@@ -177,63 +200,142 @@ Because the default output path is based on your current working directory, thes
 
 ## Arguments
 
-### Filters
-
-- `--country <name-or-code>`
-  Required in non-interactive mode. Accepts names and common short matches such as `Australia`, `AU`, `aus`, and common aliases for some countries such as `USA`, `UK`, and `UAE`.
-- `--city <name>`
-  Optional city filter. Partial matches such as `Melb` work when they resolve cleanly.
-- `--protocol <key>`
-  Protocol key to use. Supported values are driven by Nord's current live metadata.
-- `--group <key>`
-  Group key to use. Supported values are driven by Nord's current live metadata.
-- `--limit <number>`
-  Number of candidate rows to return. Must be a positive integer.
-
-If you omit `--protocol`, `--group`, or `--limit` in non-interactive mode, the defaults are `udp`, `standard`, and `10`.
-
-### Download Control
-
-- `--output-dir <path>`
-  Override the default output directory.
-- `--download-best`
-  Download only the top candidate.
-- `--download-top <number>`
-  Download the top N candidates. Must be a positive integer.
-- `--force`
-  Overwrite existing files without prompting.
-- `--dry-run`
-  Show what would be downloaded without writing files.
-
-### Query Behavior
-
-- `--full-data`
-  Skip the recommendation-first shortcut and use the V2 dataset path.
-- `--no-ping`
-  Disable ping testing and rank only from load-based scoring.
-- `--ping-count <number>`
-  Ping attempts per host. Must be a positive integer. Default: `3`.
-- `--refresh-cache`
-  Ignore cached API payloads and fetch fresh data.
-- `--advanced`
-  Expose advanced live-supported options such as XOR OpenVPN protocols when Nord's current metadata supports them.
-- `--verbose`
-  Enable debug logging for HTTP requests, cache usage, and ping execution.
+<table>
+  <thead>
+    <tr>
+      <th>Argument</th>
+      <th>Prompt UI</th>
+      <th>CLI flag</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><nobr><code>--country &lt;name-or-code&gt;</code></nobr></td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Required in non-interactive mode. CLI accepts names, short forms, and aliases such as <code>Australia</code>, <code>AU</code>, <code>aus</code>, <code>USA</code>, <code>UK</code>, and <code>UAE</code>. The interactive prompt filters by visible country names only.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--city &lt;name&gt;</code></nobr></td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Optional in both paths. Blank in the prompt means no city filter. CLI partial matches such as <code>Melb</code> work when they resolve cleanly.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--protocol &lt;key&gt;</code></nobr></td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Prompted in TTY mode when missing. Defaults to <code>udp</code> when omitted in non-interactive mode.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--group &lt;key&gt;</code></nobr></td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Prompted in TTY mode when missing. Defaults to <code>standard</code> when omitted in non-interactive mode.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--limit &lt;number&gt;</code></nobr></td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>Prompted in TTY mode when missing. Default is <code>5</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--no-ping</code></nobr></td>
+      <td>Yes</td>
+      <td>Yes</td>
+      <td>In UI mode this maps to the ping yes/no prompt. On the CLI it disables ping immediately.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--output-dir &lt;path&gt;</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only setting. Overrides the default <code>./NordOVPNs</code> output path.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--download-best</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only shortcut. Downloads only the top-ranked candidate and skips the interactive download-selection prompt.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--download-top &lt;number&gt;</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only shortcut. Downloads the top N candidates and skips the interactive download-selection prompt.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--force</code></nobr></td>
+      <td>Partial</td>
+      <td>Yes</td>
+      <td>There is no dedicated <code>--force</code> prompt. In interactive mode, existing files normally trigger an overwrite confirmation; <code>--force</code> skips that prompt.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--dry-run</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only flag. Works in TTY or non-TTY runs, but there is no prompt equivalent.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--full-data</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only flag. Skips the recommendation-first shortcut and forces the V2 dataset path.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--ping-count &lt;number&gt;</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only tuning flag for how many ping attempts to run per host. Default is <code>3</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--refresh-cache</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only flag to bypass cached Nord API payloads.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--advanced</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only switch. When present, advanced live-supported options such as XOR or advanced groups can appear in both CLI validation and TTY prompts.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--verbose</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only flag. Enables debug logging for HTTP requests, cache usage, and ping execution.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--list-countries</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only listing mode. Prints all countries and exits.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--list-cities</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only listing mode. Requires <code>--country</code>, prints that country's cities, then exits.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--list-groups</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only listing mode. Prints currently supported live group keys, then exits.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--list-technologies</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>CLI-only listing mode. Prints live Nord technologies from V2, then exits.</td>
+    </tr>
+  </tbody>
+</table>
 
 If you do not pass `--no-ping`, non-interactive mode pings candidates by default.
 
 When ping testing is enabled in a TTY session, the script prints per-host ping progress and the measured average before the candidate table.
-
-### Listing Commands
-
-- `--list-countries`
-  Print all countries returned by Nord.
-- `--list-cities`
-  Print cities for the selected country. Requires `--country`.
-- `--list-groups`
-  Print the currently supported group keys from live V2 metadata.
-- `--list-technologies`
-  Print the currently available Nord technologies from live V2 metadata.
 
 ## Supported Keys
 
