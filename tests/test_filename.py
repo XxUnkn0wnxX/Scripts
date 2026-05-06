@@ -1,4 +1,4 @@
-from nord_ovpn_picker import NordServer, format_output_filename, sanitize_filename
+from nord_ovpn_picker import NordServer, format_hostname_label, format_output_filename, sanitize_filename
 
 
 def make_server() -> NordServer:
@@ -21,9 +21,14 @@ def make_server() -> NordServer:
 def test_format_output_filename() -> None:
     assert (
         format_output_filename(make_server(), "udp", "standard")
-        == "Australia (AU) - Melbourne [UDP] [Standard] - au666.nordvpn.com.ovpn"
+        == "Australia (AU) - Melbourne [UDP] [Standard] - au666.ovpn"
     )
 
 
 def test_sanitize_filename_replaces_invalid_characters() -> None:
     assert sanitize_filename('bad:/\\\\name*?"<>|') == "bad-name-"
+
+
+def test_format_hostname_label_trims_domain_suffix() -> None:
+    assert format_hostname_label("au666.nordvpn.com") == "au666"
+    assert format_hostname_label("au666") == "au666"

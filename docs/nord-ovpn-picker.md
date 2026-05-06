@@ -396,7 +396,7 @@ If you request a key that is not currently supported by Nord's live metadata, th
 ## Download Behavior
 
 - Download URLs are built from the selected hostname and protocol.
-- Output filenames include country, country code, city, protocol, group, and hostname.
+- Output filenames include country, country code, city, protocol, group, and the short server label such as `au654`.
 - The default output directory is `./NordOVPNs` relative to your current working directory.
 - The script creates the output directory if it does not exist.
 - Existing files cause an error in non-interactive mode unless you pass `--force`.

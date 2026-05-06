@@ -288,6 +288,10 @@ def build_cdn_url(hostname: str, protocol_key: str) -> str:
     )
 
 
+def format_hostname_label(hostname: str) -> str:
+    return hostname.split(".", 1)[0]
+
+
 def format_output_filename(server: NordServer, protocol_key: str, group_key: str) -> str:
     protocol = PROTOCOLS[protocol_key]
     group = GROUPS[group_key]
@@ -295,7 +299,8 @@ def format_output_filename(server: NordServer, protocol_key: str, group_key: str
     if server.country_code:
         country = f"{country} ({server.country_code})"
     city = server.city_name or "Country Wide"
-    name = f"{country} - {city} [{protocol.label}] [{group.label}] - {server.hostname}.ovpn"
+    hostname_label = format_hostname_label(server.hostname)
+    name = f"{country} - {city} [{protocol.label}] [{group.label}] - {hostname_label}.ovpn"
     return sanitize_filename(name)
 
 
