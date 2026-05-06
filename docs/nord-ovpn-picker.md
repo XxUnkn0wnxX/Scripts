@@ -16,7 +16,7 @@
 - Direct `.ovpn` downloads for the best candidate, the top N, or an interactive selection.
 - Automatic re-exec into the repo-local `.venv` when the script is started from the wrong Python interpreter.
 - Current-working-directory output folder so aliases, symlinks, and absolute-path calls still write where you launched them from.
-- API response caching under `~/.cache/nord-ovpn-picker/`.
+- API response caching under an OS-native cache directory.
 
 ## Setup
 
@@ -420,7 +420,9 @@ If you request a key that is not currently supported by Nord's live metadata, th
 The script caches Nord API responses under:
 
 ```text
-~/.cache/nord-ovpn-picker/
+macOS: ~/Library/Caches/nord-ovpn-picker/
+Linux: $XDG_CACHE_HOME/nord-ovpn-picker/ or ~/.cache/nord-ovpn-picker/
+Windows: %LOCALAPPDATA%\nord-ovpn-picker\
 ```
 
 Current cache behavior:
