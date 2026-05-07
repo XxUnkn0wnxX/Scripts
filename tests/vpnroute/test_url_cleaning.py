@@ -1,4 +1,4 @@
-from vpnroute import extract_hostname, normalize_domains
+from vpnroute import extract_hostname, normalize_domains, parse_input_entries
 
 
 def test_extract_hostname_strips_url_parts() -> None:
@@ -25,3 +25,18 @@ def test_normalize_domains_preserves_order_and_deduplicates() -> None:
             "ifconfig.me # inline comment",
         ]
     ) == ["example.com", "ifconfig.me"]
+
+
+def test_parse_input_entries_preserves_first_source_text_for_failed_or_successful_lookup() -> None:
+    entries = parse_input_entries(
+        [
+            "https://Example.com/path",
+            "example.com/duplicate",
+            "https://broken.example/path?q=1",
+        ]
+    )
+
+    assert entries[0].source_text == "https://Example.com/path"
+    assert entries[0].hostname == "example.com"
+    assert entries[1].source_text == "https://broken.example/path?q=1"
+    assert entries[1].hostname == "broken.example"
