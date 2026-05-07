@@ -127,14 +127,23 @@ class RouteOptions:
     gateway: str | None
     metric: str | None
     no_comments: bool
+    ip_only: bool
 
 
 @dataclass(frozen=True)
 class DomainResult:
     domain: str
+    source_text: str
     route_lines: list[str]
     resolved_ips: list[str]
+    unique_ips: list[str]
     failure_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class InputEntry:
+    source_text: str
+    hostname: str
 
 
 def configure_logging(verbose: bool) -> None:
@@ -157,8 +166,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--gateway", help="Optional route gateway.")
     parser.add_argument("--metric", help="Optional route metric.")
-    parser.add_argument("--no-comments", action="store_true", help="Write only route lines without grouping comments.")
-    parser.add_argument("--force", action="store_true", help="Overwrite an existing output file.")
+    parser.add_argument(
+        "--no-comments",
+        "--no-comment",
+        "--nocom",
+        dest="no_comments",
+        action="store_true",
+        help="Write only route lines without grouping comments.",
+    )
+    parser.add_argument("--iponly", action="store_true", help="Write only IPv4 addresses instead of route lines.")
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging.")
     return parser.parse_args(argv)
 
@@ -187,12 +203,20 @@ def strip_inline_comment(value: str) -> str:
     return value.split("#", 1)[0].strip()
 
 
-def extract_hostname(raw_line: str) -> str | None:
+def normalize_input_text(raw_line: str) -> str | None:
     stripped = raw_line.strip()
     if not stripped or stripped.startswith("#"):
         return None
 
-    candidate = strip_inline_comment(stripped)
+    return stripped
+
+
+def extract_hostname(raw_line: str) -> str | None:
+    normalized_input = normalize_input_text(raw_line)
+    if normalized_input is None:
+        return None
+
+    candidate = strip_inline_comment(normalized_input)
     if not candidate:
         return None
 
@@ -209,18 +233,26 @@ def extract_hostname(raw_line: str) -> str | None:
     return normalized or None
 
 
-def normalize_domains(lines: Iterable[str]) -> list[str]:
-    domains: list[str] = []
+def parse_input_entries(lines: Iterable[str]) -> list[InputEntry]:
+    entries: list[InputEntry] = []
     seen: set[str] = set()
 
     for line in lines:
+        source_text = normalize_input_text(line)
+        if source_text is None:
+            continue
+
         hostname = extract_hostname(line)
         if not hostname or hostname in seen:
             continue
         seen.add(hostname)
-        domains.append(hostname)
+        entries.append(InputEntry(source_text=source_text, hostname=hostname))
 
-    return domains
+    return entries
+
+
+def normalize_domains(lines: Iterable[str]) -> list[str]:
+    return [entry.hostname for entry in parse_input_entries(lines)]
 
 
 def load_input_lines(input_file: Path | None) -> list[str]:
@@ -317,7 +349,7 @@ def resolve_ipv4_records(domain: str, resolver: dns.resolver.Resolver | None = N
     return ipv4_records
 
 
-def resolve_domains(domains: list[str], route_options: RouteOptions) -> tuple[list[DomainResult], int]:
+def resolve_domains(entries: list[InputEntry], route_options: RouteOptions) -> tuple[list[DomainResult], int]:
     resolver = build_resolver()
     seen_ips: set[str] = set()
     results: list[DomainResult] = []
@@ -330,19 +362,31 @@ def resolve_domains(domains: list[str], route_options: RouteOptions) -> tuple[li
     ) as progress:
         task_id = progress.add_task("Resolving domains...", total=None)
 
-        for domain in domains:
+        for entry in entries:
+            domain = entry.hostname
             progress.update(task_id, description=f"Resolving {domain}")
             try:
                 resolved_ips = resolve_ipv4_records(domain, resolver=resolver)
             except CliError as exc:
-                results.append(DomainResult(domain=domain, route_lines=[], resolved_ips=[], failure_reason=str(exc)))
+                results.append(
+                    DomainResult(
+                        domain=domain,
+                        source_text=entry.source_text,
+                        route_lines=[],
+                        resolved_ips=[],
+                        unique_ips=[],
+                        failure_reason=str(exc),
+                    )
+                )
                 continue
 
             route_lines: list[str] = []
+            unique_ips: list[str] = []
             for ip_address in resolved_ips:
                 if ip_address in seen_ips:
                     continue
                 seen_ips.add(ip_address)
+                unique_ips.append(ip_address)
                 route_lines.append(
                     build_route_line(
                         ip_address,
@@ -352,39 +396,64 @@ def resolve_domains(domains: list[str], route_options: RouteOptions) -> tuple[li
                     )
                 )
 
-            results.append(DomainResult(domain=domain, route_lines=route_lines, resolved_ips=resolved_ips))
+            results.append(
+                DomainResult(
+                    domain=domain,
+                    source_text=entry.source_text,
+                    route_lines=route_lines,
+                    resolved_ips=resolved_ips,
+                    unique_ips=unique_ips,
+                )
+            )
 
     return results, len(seen_ips)
 
 
-def render_output(results: list[DomainResult], no_comments: bool) -> str:
+def render_output(results: list[DomainResult], route_options: RouteOptions) -> str:
+    if route_options.no_comments:
+        lines: list[str] = []
+        for result in results:
+            if result.failure_reason:
+                continue
+            lines.extend(result.unique_ips if route_options.ip_only else result.route_lines)
+
+        rendered = "\n".join(lines).strip()
+        return f"{rendered}\n" if rendered else ""
+
     chunks: list[str] = []
+    invalid_inputs: list[str] = []
 
     for result in results:
         lines: list[str] = []
         if result.failure_reason:
-            if no_comments:
-                continue
-            lines.append(f"# FAILED: {result.domain} - {result.failure_reason}")
-        else:
-            if not no_comments:
-                lines.append(f"# {result.domain}")
-            lines.extend(result.route_lines)
+            invalid_inputs.append(result.source_text)
+            continue
+
+        lines.append(f"# {result.domain}")
+        lines.extend(result.unique_ips if route_options.ip_only else result.route_lines)
 
         if lines:
             chunks.append("\n".join(lines))
+
+    if invalid_inputs:
+        chunks.append("\n".join(["# invalid urls", *invalid_inputs]))
 
     rendered = "\n\n".join(chunks).strip()
     return f"{rendered}\n" if rendered else ""
 
 
-def ensure_output_path(output_path: Path, force: bool) -> None:
-    if output_path.exists() and not force:
-        raise CliError(f"Output file already exists: {output_path}. Use --force to overwrite it.")
-
+def ensure_output_path(output_path: Path) -> None:
     parent = output_path.parent
     if parent != Path(""):
         parent.mkdir(parents=True, exist_ok=True)
+
+
+def resolve_output_path(output_path: Path, cwd: Path | None = None) -> Path:
+    active_cwd = cwd or Path.cwd()
+    expanded = output_path.expanduser()
+    if expanded.is_absolute():
+        return expanded
+    return active_cwd / expanded
 
 
 def write_text_atomic(destination: Path, content: str, encoding: str = "utf-8") -> None:
@@ -476,8 +545,8 @@ def main(argv: list[str] | None = None) -> int:
         lines = load_input_lines(args.input_file)
         if not lines and args.input_file is None:
             return 0
-        domains = normalize_domains(lines)
-        if not domains:
+        input_entries = parse_input_entries(lines)
+        if not input_entries:
             raise CliError("No valid domains or URLs were provided.")
 
         route_options = RouteOptions(
@@ -485,15 +554,17 @@ def main(argv: list[str] | None = None) -> int:
             gateway=args.gateway,
             metric=args.metric,
             no_comments=args.no_comments,
+            ip_only=args.iponly,
         )
 
         previous_handlers = install_signal_handlers()
         try:
-            results, unique_routes = resolve_domains(domains, route_options)
-            output_text = render_output(results, args.no_comments)
+            results, unique_routes = resolve_domains(input_entries, route_options)
+            output_text = render_output(results, route_options)
             output_path = args.output.expanduser()
-            ensure_output_path(output_path, args.force)
-            write_text_atomic(output_path, output_text)
+            resolved_output_path = resolve_output_path(output_path)
+            ensure_output_path(resolved_output_path)
+            write_text_atomic(resolved_output_path, output_text)
         finally:
             restore_signal_handlers(previous_handlers)
 

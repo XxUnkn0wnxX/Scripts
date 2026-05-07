@@ -8,6 +8,7 @@ from vpnroute import (
     ensure_repo_venv_or_reexec,
     get_repo_venv_python_candidates,
     normalize_platform_path,
+    parse_args,
 )
 
 
@@ -87,3 +88,9 @@ def test_ensure_repo_venv_or_reexec_calls_execv_when_prefix_differs(
 
     assert captured["path"] == [str(python_path)]
     assert captured["argv"] == [str(python_path), str(tmp_path / "vpnroute.py"), "sites.txt"]
+
+
+@pytest.mark.parametrize("flag", ["--no-comments", "--no-comment", "--nocom"])
+def test_parse_args_accepts_no_comments_aliases(flag: str) -> None:
+    parsed = parse_args([flag])
+    assert parsed.no_comments is True
