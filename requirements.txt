@@ -10,6 +10,7 @@ prompt-toolkit>=3.0.48
 questionary>=2.0.1
 requests>=2.32.5
 rich>=13.7.1
+dnspython>=2.6.1
 typing_extensions>=4.15.0
 urllib3>=2.5.0
 youtube-transcript-api>=1.2.3

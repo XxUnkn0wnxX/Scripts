@@ -20,6 +20,10 @@ A curated set of Python and shell utilities I use on macOS (or other Unix-like s
   - By default it writes to a `NordOVPNs/` folder in your current working directory, so it still behaves predictably when invoked through an alias, an absolute path, or a symlink from somewhere else.
   - Full usage and setup notes: [`docs/nord-ovpn-picker.md`](docs/nord-ovpn-picker.md)
 
+- [`vpnroute.py`](vpnroute.py)  
+  Converts websites/domains into OpenVPN/Viscosity route commands by resolving IPv4 `A` records, deduplicating routes, and writing a ready-to-copy output text file. Supports file input, interactive paste mode, CIDR/netmask conversion, optional gateway/metric fields, and Rich-powered terminal output.
+  - Full usage and setup notes: [`docs/vpnroute.md`](docs/vpnroute.md)
+
 ## Shell Utilities
 
 - [`mkv_extract_tracks.sh`](mkv_extract_tracks.sh)  
