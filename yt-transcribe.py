@@ -25,6 +25,11 @@ from urllib.parse import parse_qs, urlparse
 
 VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 DEFAULT_LANG_PREF = "en,en-US,en-GB"
+SCRIPT_PATH = Path(__file__).resolve()
+SCRIPT_DIR = SCRIPT_PATH.parent
+REPO_VENV_DIR = SCRIPT_DIR / ".venv"
+REQUIREMENTS_PATH = SCRIPT_DIR / "requirements.txt"
+REEXEC_ENV = "YT_TRANSCRIBE_REEXEC"
 STAGE_DIRECTIONS = (
     "music",
     "applause",
@@ -32,13 +37,105 @@ STAGE_DIRECTIONS = (
     "silence",
     "inaudible",
     "singing",
+    "screaming",
     "music and singing",
     "singing and music",
 )
+STAGE_DIRECTION_SET = {direction.casefold() for direction in STAGE_DIRECTIONS}
 STAGE_DIRECTION_PATTERN = re.compile(
-    r"\[(?:music|applause|laughter|silence|inaudible|singing|music and singing|singing and music)\]",
+    r"\[(?:" + "|".join(re.escape(direction) for direction in STAGE_DIRECTIONS) + r")\]",
     re.IGNORECASE,
 )
+BRACKETED_TAG_PATTERN = re.compile(r"\[([^\[\]\r\n]+)\]")
+STAGE_DIRECTION_WORD_PATTERN = re.compile(r"[a-z]+(?:['-][a-z]+)*")
+NON_STAGE_DIRECTION_LEAD_WORDS = {
+    "a",
+    "an",
+    "he",
+    "her",
+    "his",
+    "i",
+    "it",
+    "my",
+    "our",
+    "she",
+    "that",
+    "the",
+    "their",
+    "these",
+    "they",
+    "this",
+    "those",
+    "we",
+    "you",
+    "your",
+}
+
+
+def is_windows_platform(platform: Optional[str] = None) -> bool:
+    active_platform = platform or sys.platform
+    return active_platform.startswith("win")
+
+
+def get_repo_venv_python_candidates(venv_dir: Path, platform: Optional[str] = None) -> List[Path]:
+    if is_windows_platform(platform):
+        return [
+            venv_dir / "Scripts" / "python.exe",
+            venv_dir / "Scripts" / "python",
+        ]
+    return [
+        venv_dir / "bin" / "python",
+        venv_dir / "bin" / "python3",
+    ]
+
+
+def normalize_platform_path(path: Path) -> str:
+    return os.path.normcase(str(path.resolve()))
+
+
+def resolve_repo_venv_python(venv_dir: Path) -> Optional[Path]:
+    for candidate in get_repo_venv_python_candidates(venv_dir):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def fail_with_setup(reason: str, exit_code: int = 1) -> None:
+    print(f"{reason}\n")
+    print("Create a local .venv next to yt-transcribe.py and install the repo requirements first:")
+    print(f"  cd {SCRIPT_DIR}")
+    print("  /usr/local/bin/python3 -m venv .venv")
+    print("  source .venv/bin/activate")
+    print("  python -m pip install -r requirements.txt")
+    raise SystemExit(exit_code)
+
+
+def ensure_requirements_file_exists() -> None:
+    if not REQUIREMENTS_PATH.exists():
+        fail_with_setup("Missing requirements.txt next to yt-transcribe.py.")
+
+
+def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:
+    ensure_requirements_file_exists()
+
+    active_argv = list(argv if argv is not None else sys.argv[1:])
+    repo_venv_python = resolve_repo_venv_python(REPO_VENV_DIR)
+
+    if not REPO_VENV_DIR.exists() or repo_venv_python is None:
+        fail_with_setup("No local .venv was found for yt-transcribe.py.")
+
+    current_prefix = Path(sys.prefix)
+    target_prefix = REPO_VENV_DIR
+
+    if (
+        normalize_platform_path(current_prefix) != normalize_platform_path(target_prefix)
+        and os.environ.get(REEXEC_ENV) != "1"
+    ):
+        os.environ[REEXEC_ENV] = "1"
+        os.execv(str(repo_venv_python), [str(repo_venv_python), str(SCRIPT_PATH), *active_argv])
+
+
+ensure_repo_venv_or_reexec()
 
 
 class CliError(RuntimeError):
@@ -383,7 +480,7 @@ def clean_caption_text(text: str, keep_tags: bool = False) -> str:
 
     cleaned = unicodedata.normalize("NFC", text)
     if not keep_tags:
-        cleaned = STAGE_DIRECTION_PATTERN.sub("", cleaned)
+        cleaned = strip_stage_direction_tags(cleaned)
 
     if not keep_tags:
         cleaned = re.sub(r"^\s*>>\s*", "", cleaned)
@@ -392,6 +489,62 @@ def clean_caption_text(text: str, keep_tags: bool = False) -> str:
     cleaned = re.sub(r"\s+", " ", cleaned)
     cleaned = re.sub(r"\s+([,.!?;:])", r"\1", cleaned)
     return cleaned.strip()
+
+
+def normalize_stage_direction_label(value: str) -> str:
+    """Return a normalized stage-direction label for comparisons."""
+    return re.sub(r"\s+", " ", unicodedata.normalize("NFC", value).strip()).casefold()
+
+
+def is_dynamic_stage_direction_label(value: str) -> bool:
+    """Heuristically detect short non-speech cues while leaving ambiguous text intact."""
+    normalized = normalize_stage_direction_label(value)
+    if not normalized or normalized in STAGE_DIRECTION_SET:
+        return bool(normalized)
+    if len(normalized) > 40 or any(char.isdigit() for char in normalized):
+        return False
+    if re.search(r"https?://|www\.|[@#/]|[\"“”‘’]|[.!?,:;=]", normalized):
+        return False
+
+    words = normalized.split()
+    if not 1 <= len(words) <= 4:
+        return False
+    if words[0] in NON_STAGE_DIRECTION_LEAD_WORDS:
+        return False
+    if any(not STAGE_DIRECTION_WORD_PATTERN.fullmatch(word) for word in words):
+        return False
+    return any(word.endswith("ing") for word in words)
+
+
+def is_stage_direction_tag(text: str) -> bool:
+    """Return True for bracketed tags that should be treated as non-speech cues."""
+    match = BRACKETED_TAG_PATTERN.fullmatch((text or "").strip())
+    if not match:
+        return False
+
+    label = match.group(1)
+    if STAGE_DIRECTION_PATTERN.fullmatch(text.strip()):
+        return True
+    return is_dynamic_stage_direction_label(label)
+
+
+def strip_stage_direction_tags(text: str) -> str:
+    """Remove recognized stage-direction tags while preserving ambiguous bracketed text."""
+
+    def replace_tag(match: re.Match[str]) -> str:
+        return "" if is_stage_direction_tag(match.group(0)) else match.group(0)
+
+    return BRACKETED_TAG_PATTERN.sub(replace_tag, text)
+
+
+def is_stage_direction_only_text(text: str) -> bool:
+    """Return True when a caption line contains only removable stage-direction tags."""
+    if not text:
+        return False
+
+    stripped = strip_stage_direction_tags(unicodedata.normalize("NFC", text))
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+    return not stripped
 
 
 def normalize_entries(raw_entries: Sequence[object]) -> List[dict]:
@@ -565,16 +718,13 @@ def write_txt(
 
     for entry in transcript.entries:
         raw_text = entry.get("text", "")
-        is_stage_direction = False
-        if keep_tags and raw_text:
-            if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
-                is_stage_direction = True
+        is_stage_direction = bool(raw_text) and is_stage_direction_only_text(raw_text)
 
         is_speaker_marker = bool(re.match(r"^\s*>>", raw_text))
 
         text = clean_caption_text(raw_text, keep_tags=keep_tags)
 
-        if not keep_tags and raw_text and STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
+        if not keep_tags and is_stage_direction:
             if lines and lines[-1] != "":
                 lines.append("")
             continue
@@ -666,16 +816,13 @@ def write_docx(
 
     for entry in transcript.entries:
         raw_text = entry.get("text", "")
-        is_stage_direction = False
-        if keep_tags and raw_text:
-            if STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
-                is_stage_direction = True
+        is_stage_direction = bool(raw_text) and is_stage_direction_only_text(raw_text)
 
         is_speaker_marker = bool(re.match(r"^\s*>>", raw_text))
 
         text = clean_caption_text(raw_text, keep_tags=keep_tags)
 
-        if not keep_tags and raw_text and STAGE_DIRECTION_PATTERN.fullmatch(raw_text.strip()):
+        if not keep_tags and is_stage_direction:
             if not previous_blank:
                 document.add_paragraph()
                 previous_blank = True
