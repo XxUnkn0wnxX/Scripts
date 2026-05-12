@@ -606,7 +606,7 @@ def write_docx(
     """Write the transcript as a DOCX document."""
     try:
         from docx import Document  # type: ignore
-        from docx.shared import Inches, Pt  # type: ignore
+        from docx.shared import Inches, Mm, Pt  # type: ignore
         from docx.oxml import OxmlElement  # type: ignore
         from docx.oxml.ns import qn  # type: ignore
         from docx.opc.constants import RELATIONSHIP_TYPE  # type: ignore
@@ -617,6 +617,8 @@ def write_docx(
 
     document = Document()
     section = document.sections[0]
+    section.page_width = Mm(210)
+    section.page_height = Mm(297)
     section.top_margin = Inches(1)
     section.bottom_margin = Inches(1)
     section.left_margin = Inches(1)
