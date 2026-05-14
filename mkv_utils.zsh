@@ -13,6 +13,7 @@
 #
 # Ensure that python3 and pip are in your PATH.
 
+SCRIPT_NAME="${0:t}"
 SCRIPT_ROOT=${0:A:h}
 VENV_PATH="$SCRIPT_ROOT/.venv"
 PYTHON_BIN=""
@@ -331,12 +332,76 @@ PYCODE
   done
 }
 
-if [ $# -gt 1 ]; then
-  echo "Usage: ${0:t} [working_directory]" >&2
-  exit 1
-fi
+print_help() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [working_directory]
+       ${SCRIPT_NAME} --help
 
-display_dir="${1:-$(pwd)}"
+Interactive Matroska utility script for metadata edits, extraction, and track operations.
+
+Arguments:
+  --help, -h            Show this help page and exit.
+  working_directory     Directory to scan instead of the current directory.
+
+Menu options:
+  1) Set flag-forced for tracks
+     Set the forced flag on selected track IDs across one or more Matroska files.
+
+  2) Set flag-default for tracks
+     Set the default flag on selected track IDs across one or more Matroska files.
+
+  3) Set language for tracks
+     Change the language field on selected track IDs.
+
+  4) Set name for tracks
+     Rename selected track IDs.
+
+  5) Set title for MK file
+     Set or clear the container title on one or more files.
+
+  6) Extract all attachments from MK files
+     Extract every attachment into an Attachments directory.
+
+  7) Mass Remove tracks for multi-MK files
+     Remove selected track IDs and remux the remaining tracks.
+
+  8) Mass Re-order tracks for multi-MK files
+     Apply a new mkvmerge track order to selected files.
+
+  9) Extract Tracks for multi-MK files
+     Extract selected track IDs from one or more files.
+
+Notes:
+  - With no working_directory argument, the script uses the current directory.
+  - The script requires Matroska files in the target directory before the menu can run.
+EOF
+}
+
+display_dir="$(pwd)"
+working_dir_set=false
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --help|-h)
+      print_help
+      exit 0
+      ;;
+    -*)
+      echo "Usage: ${SCRIPT_NAME} [working_directory]" >&2
+      exit 1
+      ;;
+    *)
+      if [ "$working_dir_set" = true ]; then
+        echo "Usage: ${SCRIPT_NAME} [working_directory]" >&2
+        exit 1
+      fi
+      display_dir="$1"
+      working_dir_set=true
+      ;;
+  esac
+  shift
+done
+
 current_dir="$display_dir"
 if [ ! -d "$current_dir" ]; then
   echo "Error: Working directory not found: $current_dir" >&2
