@@ -1,87 +1,41 @@
 # Personal Script Toolkit
 
-A curated set of Python and shell utilities I use on macOS (or other Unix-like systems) for media handling, transcript workflows, and quick automation tasks. Feel free to reuse anything here—some scripts do require third‑party tools, which are noted below.
+A small collection of Python scripts, shell helpers, Cronus Zen files, and Tampermonkey userscripts I use for media work, quick automation, and a few game-specific tasks.
 
 > Python dependencies: `pip install -r requirements.txt`
 
 ## Python Utilities
 
-- [`yt-transcribe.py`](yt-transcribe.py)  
-  CLI tool that pulls YouTube captions (manual or auto-generated), cleans them, and exports either plain text or DOCX. Supports language preferences, caption translation, sanitized filenames, and `--time` filtering with either a single cutoff or a start/end range.
-
-- [`pyconvert.py`](pyconvert.py)  
-  Hex/float conversion helper that reads binary values, enforces bounds, and prints them in multiple numeric formats. Useful when inspecting save files or binary blobs.
-
-- [`MediaFire.py`](MediaFire.py)  
-  Automates MediaFire quickkey pairing. Supply a blocked file link while you’re logged in, and it builds a shareable URL by combining that ID with one from a folder you control. Includes Ctrl+C handling so you can abort cleanly.
-
-- [`nord_ovpn_picker.py`](nord_ovpn_picker.py)  
-  Interactive NordVPN OpenVPN config picker that searches by country, optional city, protocol, and server group, prefers the recommendation API first, optionally ping-ranks candidates, and downloads selected `.ovpn` files into the local `NordOVPNs/` folder.
-  - By default it writes to a `NordOVPNs/` folder in your current working directory, so it still behaves predictably when invoked through an alias, an absolute path, or a symlink from somewhere else.
-  - Full usage and setup notes: [`docs/nord-ovpn-picker.md`](docs/nord-ovpn-picker.md)
-
-- [`vpnroute.py`](vpnroute.py)  
-  Converts websites/domains into OpenVPN/Viscosity route commands by resolving IPv4 `A` records, deduplicating routes, and writing a ready-to-copy output text file. Supports file input, interactive paste mode, CIDR/netmask conversion, optional gateway/metric fields, and Rich-powered terminal output.
-  - Full usage and setup notes: [`docs/vpnroute.md`](docs/vpnroute.md)
+- [`yt-transcribe.py`](yt-transcribe.py) - Download YouTube captions and export them as text or DOCX. Docs: [`docs/yt-transcribe.md`](docs/yt-transcribe.md)
+- [`pyconvert.py`](pyconvert.py) - Convert decimal and hex values between common numeric formats. Docs: [`docs/pyconvert.md`](docs/pyconvert.md)
+- [`MediaFire.py`](MediaFire.py) - Combine two MediaFire quickkeys into one shareable link. Docs: [`docs/mediafire.md`](docs/mediafire.md)
+- [`nord_ovpn_picker.py`](nord_ovpn_picker.py) - Browse and download NordVPN OpenVPN configs. Docs: [`docs/nord-ovpn-picker.md`](docs/nord-ovpn-picker.md)
+- [`vpnroute.py`](vpnroute.py) - Turn domains or URLs into VPN route output. Docs: [`docs/vpnroute.md`](docs/vpnroute.md)
 
 ## Shell Utilities
 
-- [`mkv_extract_tracks.sh`](mkv_extract_tracks.sh)  
-  Batch-extracts every attachment from each MKV in the current directory using `mkvextract`. Handy for grabbing embedded fonts or images.
+- [`mkv_extract_tracks.sh`](mkv_extract_tracks.sh) - Extract every attachment from each MKV in the current folder. Docs: [`docs/mkv-extract-tracks.md`](docs/mkv-extract-tracks.md)
+- [`mkv_mux.zsh`](mkv_mux.zsh) - Interactive MKV remux and volume-boost helper. Docs: [`docs/mkv-mux.md`](docs/mkv-mux.md)
+- [`mkv_utils.zsh`](mkv_utils.zsh) - Interactive MKV metadata, extraction, and track-edit helper. Docs: [`docs/mkv-utils.md`](docs/mkv-utils.md)
+- [`satisfactory_balancer.zsh`](satisfactory_balancer.zsh) - Satisfactory splitter, balancer, and compressor planner. Docs: [`docs/satisfactory-balancer.md`](docs/satisfactory-balancer.md)
+- [`brew-custom-compare.zsh`](brew-custom-compare.zsh) - Compare custom tap formulas against upstream Homebrew versions. Docs: [`docs/brew-custom-compare.md`](docs/brew-custom-compare.md)
+- [`fetch-ios-pkgs.zsh`](fetch-ios-pkgs.zsh) - Download and install current Apple mobile-device support packages. Docs: [`docs/fetch-ios-pkgs.md`](docs/fetch-ios-pkgs.md)
 
-- [`mkv_mux.zsh`](mkv_mux.zsh)  
-  Interactive Matroska toolbox that wraps `mkvmerge`, `ffmpeg`, `fzf`, and `jq` to remux sources, back up originals, boost audio, and inspect tracks with a guided menu.
+## [Audio Helpers](Audio/)
 
-- [`mkv_utils.zsh`](mkv_utils.zsh)  
-  Companion script for power users: enumerates MKV tracks, applies codec-to-extension overrides, extracts streams, and leverages Python helpers for tricky cases.
-
-- [`satisfactory_balancer.zsh`](satisfactory_balancer.zsh)  
-  CLI helper that mirrors the official [Satisfactory Balancer wiki](https://satisfactory.wiki.gg/wiki/Balancer) layouts (load balancer, belt balancer, belt compressor) plus NicoBuilds’ complex ratio math.
-  - **Usage:** `zsh satisfactory_balancer.zsh [options] n:m [n:m ...]` (ratios must be positive integers; bare `44` is invalid).
-  
-  - **Flags:** only `-h/--help` for usage info.
-  
-  - **Auto-detected modes:**
-    - `LOAD-BALANCER` (`1:n`) – classic splitter trees; non-clean sizes are rounded up and loop-back lanes are reported.
-    - `BELT-BALANCER` (`n>1`, `m≥n`) – describes split stages per input and merge stages per output, including loop-back/padding info.
-    - `BELT-COMPRESSOR` (`n>1`, `m<n`) – pack-first merger stacks with explicit lane budgets and priority chains.
-    - `NICO` complex ratios (`1:A:B[:C...]`) – automatically detected; the script reuses the clean 1→N planner, then prints a lane allocation table just like [NicoBuilds’ guide](https://www.reddit.com/r/SatisfactoryGame/comments/1mitmza/guide_how_to_load_balance_weird_ratios_without/).
-    
-  - **Examples:**
-    
-    - `zsh satisfactory_balancer.zsh 1:48` → LOAD-BALANCER blueprint for a clean 1→48 split.
-    - `zsh satisfactory_balancer.zsh 4:7` → BELT-BALANCER showing split layers, merge layers, lane budgets, and loop-back counts.
-    - `zsh satisfactory_balancer.zsh 5:2` → BELT-COMPRESSOR with pack-first priority notes (`O1→O2`).
-    - `zsh satisfactory_balancer.zsh 1:44:8` → Nico-style split that divides 54 clean lanes into `44:8` plus loop-back.
-    
-    > Recipes and layer steps always enumerate the exact number of splitters/mergers per layer (`place 6 splitters to create 18 outputs`), followed by a branch-sequence summary so you can double-check the math in game.
-
-- [`brew-custom-compare.zsh`](brew-custom-compare.zsh)  
-  Recursively scans every `*.rb` in a tap (root, `Formula/`, `Casks/`, etc.), fetches their stable versions via `brew info --json=v2`, and compares them with the official Homebrew JSON API so you can see which of your patched formulae are ahead, behind, or missing upstream equivalents. When the API lacks an entry or version, the script immediately checks all other tapped repos (excluding `homebrew/core`) and reports the first match inline—handy when your custom formula or cask mirrors one in another tap. Anything listed by `brew list --pinned` is labelled `PINNED` so you can tell at a glance which outdated builds you’ve intentionally frozen.
-  > *Hard-coded to `custom/versions` by default; edit the `DEFAULT_CUSTOM_TAP` variable near the top of the script if your overrides live elsewhere.*
-
-- [`fetch-ios-pkgs.zsh`](fetch-ios-pkgs.zsh)  
-  Fetches the newest Apple `MobileDeviceOnDemand.pkg` entry from the current `DeveloperSeed` software catalog, downloads its matching `CoreTypes.pkg`, installs both with Homebrew-style `installer -verboseR` output, and then attempts a cross-version-safe `usbmuxd` restart with PID checks so iPhone/iPad support comes back online without a reboot.
+- [`Audio/strip_audio_tags.zsh`](Audio/strip_audio_tags.zsh) - Strip metadata from `.m4a` files in the current folder. Docs: [`docs/strip-audio-tags.md`](docs/strip-audio-tags.md)
+- [`Audio/fix_tags.zsh`](Audio/fix_tags.zsh) - Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. Docs: [`docs/fix-tags.md`](docs/fix-tags.md)
 
 ## [Zen Scripts](Zen%20Scripts/)
 
-- [`BO3 AO-Mod (Version 2.4b) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.gpc)  
-  Cronus Zen GPC script for Black Ops 3 (Zombies/MP) with lightbar/rumble feedback and in-game toggles for features like Rapid Fire, Anti-Recoil, Drop Shot, Burst Fire, ZAim, Auto Sprint, and more. See [`BO3 AO-Mod (Version 2.4b) [ZEN].md`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.md) for full button mappings, modifier rules, and toggle combos.
-
-### [Audio Helpers](Audio/)
-
-- [`strip_audio_tags.zsh`](Audio/strip_audio_tags.zsh)  
-  Removes all metadata tags from `.m4a` files in the current directory using `ffmpeg`, overwriting each file in place.
-
-- [`fix_tags.zsh`](Audio/fix_tags.zsh)  
-  Extracts `.m4a` metadata to a sidecar file, strips the tags, then re-applies the clean metadata—useful when tags get corrupted but you want to keep the originals.
+- [`BO3 AO-Mod (Version 2.4b) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.gpc) - Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. Docs: [`docs/bo3-ao-mod.md`](docs/bo3-ao-mod.md)
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
-- [Reveal Steam Spoilers](userscripts/Steam-Reveal-Spoilers.user.js?raw=1)
-- [Reveal StackExchange Spoilers](userscripts/StackExchange-Reveal-Spoilers.user.js?raw=1)
-- [Youtube Shorts Switcher](userscripts/Youtube-shorts-switcher.user.js?raw=1)
+- [`Steam-Reveal-Spoilers.user.js`](userscripts/Steam-Reveal-Spoilers.user.js) - Reveal Steam community spoilers automatically. Docs: [`docs/steam-reveal-spoilers.md`](docs/steam-reveal-spoilers.md)
+- [`StackExchange-Reveal-Spoilers.user.js`](userscripts/StackExchange-Reveal-Spoilers.user.js) - Reveal Stack Exchange spoilers automatically. Docs: [`docs/stackexchange-reveal-spoilers.md`](docs/stackexchange-reveal-spoilers.md)
+- [`Youtube-shorts-switcher.user.js`](userscripts/Youtube-shorts-switcher.user.js) - Open YouTube Shorts in the full player with a button or hotkey. Docs: [`docs/youtube-shorts-switcher.md`](docs/youtube-shorts-switcher.md)
 
 ---
 
-Most scripts expect Homebrew-installed tooling (e.g., `mkvtoolnix`, `ffmpeg`, `jq`, `fzf`, or Microsoft Word for DOCX workflows). Check the top of each script for specific prerequisites before running.
+Some scripts expect Homebrew-installed tooling such as `mkvtoolnix`, `ffmpeg`, `jq`, `fzf`, or Microsoft Word for DOCX workflows. Check the linked doc page for each script before running it.
