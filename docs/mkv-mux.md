@@ -7,7 +7,7 @@
 - Remux video files into MKV with `ffmpeg`
 - Remux video files into MKV with `mkvmerge`
 - Boost one audio track and mux the boosted versions back into the file
-- Optionally apply a ceiling limiter during volume boost with `--climit`
+- Optionally apply a ceiling limiter during supported audio re-encode paths with `--climit`
 - Uses `fzf` for interactive file picking
 - Uses `jq` with `mkvmerge -J` to inspect audio-track metadata
 - Creates backup originals in safe mode before writing changes
@@ -40,7 +40,7 @@ Show help:
 zsh mkv_mux.zsh --help
 ```
 
-Enable the extra limiter prompt for volume boost:
+Enable the extra limiter prompt for supported audio re-encode paths:
 
 ```bash
 zsh mkv_mux.zsh --climit
@@ -71,7 +71,7 @@ zsh mkv_mux.zsh --climit /path/to/folder
     <tr>
       <td><nobr><code>--climit</code></nobr></td>
       <td>Flag</td>
-      <td>Only affects menu option <code>3</code>. Adds one extra prompt so you can apply an <code>alimiter</code> ceiling filter during volume boost.</td>
+      <td>Adds one extra prompt for supported audio re-encode paths so you can apply an <code>alimiter</code> ceiling filter.</td>
     </tr>
     <tr>
       <td><nobr><code>--help</code>, <code>-h</code></nobr></td>
@@ -90,6 +90,7 @@ What it does:
 - Uses `ffmpeg` to put the selected file into an MKV container
 - Can keep the current audio as-is
 - Can optionally re-encode incompatible audio tracks to AAC
+- With <code>--climit</code>, the replacement AAC encode path can also apply the limiter
 
 Good for:
 
@@ -115,6 +116,8 @@ Then choose:
 1
 N
 ```
+
+If you choose to replace audio tracks and launch the script with `--climit`, it asks one extra limiter prompt before the AAC re-encode starts.
 
 ### 2) Remux to MKV (mkvmerge)
 
@@ -174,11 +177,13 @@ That creates two boosted tracks, one at `2dB` and one at `3.5dB`.
 
 Without `--climit`:
 
-- the script only applies the volume filter
+- option `1` re-encodes replacement audio without the limiter
+- option `3` applies only the volume filter
 
 With `--climit`:
 
-- the script asks one extra limiter prompt after the dB prompt
+- option `1` asks one extra limiter prompt if you choose to replace audio tracks
+- option `3` asks one extra limiter prompt after the dB prompt
 - pressing `Enter` uses the default limiter:
 
 ```text
@@ -198,6 +203,16 @@ Example:
 ```bash
 zsh mkv_mux.zsh --climit /Volumes/Media/My Show
 ```
+
+Option `1` example:
+
+```text
+1
+Y
+<press Enter for default limiter>
+```
+
+Option `3` example:
 
 Then choose:
 
