@@ -91,7 +91,7 @@ handle_ctrl_c() {
 trap 'handle_ctrl_c' INT
 
 # Global variable for safe mode
-safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
+safe_mode_write=true
 thread_count=8  # Hard-coded to use 8 threads
 max_concurrent_jobs=4  # Hard-coded max concurrent ffmpeg jobs for volume boost
 ceiling_limiter_default="alimiter=limit=0.99:attack=20:release=20"
@@ -136,6 +136,27 @@ prompt_yes_no() {
       *) echo "Invalid choice. Please enter Y or N." >&2 ;;
     esac
   done
+}
+
+collect_audio_stream_metadata() {
+  local source_file="$1"
+  ffprobe -v error \
+    -show_entries stream=index,codec_type:stream_tags=language,title:stream_disposition \
+    -of json \
+    "$source_file" \
+    | jq -c '
+        .streams[]
+        | select(.codec_type == "audio")
+        | {
+            index: .index,
+            language: ((.tags.language // "") | if . == "" then "und" else . end),
+            title: (.tags.title // ""),
+            disposition: (
+              [(.disposition // {}) | to_entries[]? | select(.value == 1) | .key]
+              | if length == 0 then "0" else join("+") end
+            )
+          }
+      '
 }
 
 # Function to remove the temporary directory
@@ -268,12 +289,39 @@ remux_to_mkv_ffmpeg() {
     echo "Re-encoding all audio to AAC & muxing → $output_file"
     WORK_DIR="${base}_temp"
     rm -rf "$WORK_DIR" && mkdir -p "$WORK_DIR"
-    local -a ffmpeg_inputs=() ffmpeg_maps=()
+    local -a ffmpeg_inputs=() ffmpeg_maps=() audio_metadata_lines=() audio_metadata_opts=()
+    audio_metadata_lines=(${(@f)$(collect_audio_stream_metadata "$source_file")})
+    local any_explicit_audio_disposition=false
+    local metadata_line=""
+    for metadata_line in "${audio_metadata_lines[@]}"; do
+      local metadata_disposition="0"
+      metadata_disposition=$(printf '%s\n' "$metadata_line" | jq -r '.disposition // "0"')
+      if [[ "$metadata_disposition" != "0" ]]; then
+        any_explicit_audio_disposition=true
+        break
+      fi
+    done
     local ai=0
 
     # Extract & re-encode each audio track
     while IFS= read -r idx; do
       local out_audio="${WORK_DIR}/${base}_a${idx}.m4a"
+      local audio_language="und"
+      local audio_title=""
+      local audio_disposition="0"
+      local audio_metadata_index=$((ai + 1))
+      if (( audio_metadata_index <= ${#audio_metadata_lines[@]} )); then
+        audio_language=$(printf '%s\n' "${audio_metadata_lines[$audio_metadata_index]}" | jq -r '.language // "und"')
+        audio_title=$(printf '%s\n' "${audio_metadata_lines[$audio_metadata_index]}" | jq -r '.title // ""')
+        audio_disposition=$(printf '%s\n' "${audio_metadata_lines[$audio_metadata_index]}" | jq -r '.disposition // "0"')
+      fi
+      if [[ -z "$audio_language" ]]; then
+        audio_language="und"
+      fi
+      if [[ "$audio_disposition" == "0" && "$any_explicit_audio_disposition" != true && "$ai" -eq 0 ]]; then
+        audio_disposition="default"
+      fi
+
       local -a ffmpeg_reencode_cmd
       ffmpeg_reencode_cmd=(
         ffmpeg -nostdin -y -i "$source_file"
@@ -296,6 +344,11 @@ remux_to_mkv_ffmpeg() {
       [[ $ret -ne 0 ]] && { rm -rf "$WORK_DIR"; TEMP_FILE=""; WORK_DIR=""; return 1; }
       ffmpeg_inputs+=("-i" "$out_audio")
       ffmpeg_maps+=("-map" "$((ai+1)):a:0")
+      audio_metadata_opts+=("-metadata:s:a:${ai}" "language=${audio_language}")
+      if [[ -n "$audio_title" ]]; then
+        audio_metadata_opts+=("-metadata:s:a:${ai}" "title=${audio_title}")
+      fi
+      audio_metadata_opts+=("-disposition:a:${ai}" "$audio_disposition")
       ((ai++))
     done < <(
       ffprobe -v error \
@@ -318,6 +371,7 @@ remux_to_mkv_ffmpeg() {
       -c:s copy \
       -dn \
       -disposition:v:0 default \
+      "${audio_metadata_opts[@]}" \
       -map_metadata 0 \
       -map_chapters 0 \
       "$temp_file" &
@@ -738,13 +792,14 @@ canonicalize_volume_changes() {
 
 print_help() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--climit] [working_directory]
+Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [working_directory]
        ${SCRIPT_NAME} --help
 
 Interactive Matroska remux and audio volume tool.
 
 Arguments:
   --climit              Enable the extra ceiling limiter prompt for audio re-encode paths.
+  --nsafe               Disable safe mode and allow in-place/non-safe writes.
   --help, -h            Show this help page and exit.
   working_directory     Directory to scan instead of the current directory.
 
@@ -763,8 +818,8 @@ Menu options:
 
 Notes:
   - With no working_directory argument, the script uses the current directory.
-  - In safe mode, the script writes new filenames instead of overwriting originals.
-  - In non-safe mode, overwrite prompts appear when a target MKV already exists.
+  - Safe mode is on by default and writes new filenames instead of overwriting originals.
+  - Use --nsafe to allow non-safe writes and overwrite prompts when a target MKV already exists.
 EOF
 }
 
@@ -778,17 +833,20 @@ while [ $# -gt 0 ]; do
     --climit|-climit)
       use_ceiling_limiter=true
       ;;
+    --nsafe|-nsafe)
+      safe_mode_write=false
+      ;;
     --help|-h)
       print_help
       exit 0
       ;;
     -*)
-      echo "Usage: ${SCRIPT_NAME} [--climit] [working_directory]" >&2
+      echo "Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [working_directory]" >&2
       exit 1
       ;;
     *)
       if [ "$working_dir_set" = true ]; then
-        echo "Usage: ${SCRIPT_NAME} [--climit] [working_directory]" >&2
+        echo "Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [working_directory]" >&2
         exit 1
       fi
       display_dir="$1"
