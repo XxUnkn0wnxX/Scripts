@@ -92,6 +92,7 @@ trap 'handle_ctrl_c' INT
 safe_mode_write="${safe_mode_write:-true}"  # Set to true by default if not set in the environment
 thread_count=8  # Hard-coded to use 8 threads
 max_concurrent_jobs=4  # Hard-coded max concurrent ffmpeg jobs for volume boost
+ceiling_limiter_default="alimiter=limit=0.99:attack=20:release=20"
 # ——————————————————————————————
 # Extension overrides for Plex/VLC (audio only)
 typeset -A ext_override=(
@@ -317,6 +318,7 @@ boost_audio_volume() {
   local volume_changes="$3"
   local codec_extension="$4"
   local safe_mode_write="${5:-false}" # Default to false if not provided
+  local ceiling_limiter="$6"
   # Determine output extension matching source (e.g., mkv, mka, mks, mk3d)
   local ext="${source_file##*.}"
   local output_file="${source_file%.*}.${ext}"
@@ -372,7 +374,11 @@ boost_audio_volume() {
     track_names+=("$track_name")
 
     echo "Boosting volume by ${clean_volume_change}dB..."
-    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "volume=${clean_volume_change}dB" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file" &
+    local audio_filter="volume=${clean_volume_change}dB"
+    if [[ -n "$ceiling_limiter" ]]; then
+      audio_filter+=",${ceiling_limiter}:level=0"
+    fi
+    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "$audio_filter" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file" &
     ffmpeg_pids+=($!)
   done
 
@@ -629,14 +635,39 @@ prompt_for_audio_track_info() {
   done
 }
 
-# Main script
-# Use the directory from which the script was invoked as the working directory
-if [ $# -gt 1 ]; then
-  echo "Usage: ${0:t} [working_directory]" >&2
-  exit 1
-fi
+normalize_ceiling_limiter() {
+  local limiter_input="$1"
+  limiter_input=$(printf '%s' "$limiter_input" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+  limiter_input=${limiter_input%:level=*}
+  printf '%s' "$limiter_input"
+}
 
-display_dir="${1:-$(pwd)}"
+# Main script
+use_ceiling_limiter=false
+display_dir="$(pwd)"
+working_dir_set=false
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --climit|-climit)
+      use_ceiling_limiter=true
+      ;;
+    -*)
+      echo "Usage: ${0:t} [--climit] [working_directory]" >&2
+      exit 1
+      ;;
+    *)
+      if [ "$working_dir_set" = true ]; then
+        echo "Usage: ${0:t} [--climit] [working_directory]" >&2
+        exit 1
+      fi
+      display_dir="$1"
+      working_dir_set=true
+      ;;
+  esac
+  shift
+done
+
 current_dir="$display_dir"
 if [ ! -d "$current_dir" ]; then
   echo "Error: Working directory not found: $current_dir" >&2
@@ -729,6 +760,7 @@ if [ "$choice" -eq 1 ]; then
     fi
 
     local global_volume_changes=""
+    local global_ceiling_limiter=""
     local is_first_file=true
     local batch_has_multiple_files=false
     local batch_track_prompted=false
@@ -846,6 +878,23 @@ if [ "$choice" -eq 1 ]; then
           fi
           echo "Volume change value cannot be empty. Please enter a dB adjustment."
         done
+        if [ "$use_ceiling_limiter" = true ]; then
+          while true; do
+            printf "Enter ceiling limiter settings (e.g., %s) [default]: " "$ceiling_limiter_default"
+            flush_input
+            read limiter_input
+            if [[ -z "$limiter_input" ]]; then
+              global_ceiling_limiter="$ceiling_limiter_default"
+              break
+            fi
+            limiter_input=$(normalize_ceiling_limiter "$limiter_input")
+            if [[ -n "$limiter_input" ]]; then
+              global_ceiling_limiter="$limiter_input"
+              break
+            fi
+            echo "Limiter value cannot be empty. Press Enter for default or enter a limiter string."
+          done
+        fi
         is_first_file=false
       fi
 
@@ -863,7 +912,7 @@ if [ "$choice" -eq 1 ]; then
       fi
 
       # Call the function to boost audio volume
-      boost_audio_volume "$source_file" "$track_id" "$global_volume_changes" "$codec_extension" "$safe_mode_write"
+      boost_audio_volume "$source_file" "$track_id" "$global_volume_changes" "$codec_extension" "$safe_mode_write" "$global_ceiling_limiter"
       local boost_status=$?
 
       # Check if boost_audio_volume completed successfully and safe_mode_write is true
