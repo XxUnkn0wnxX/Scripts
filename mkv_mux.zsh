@@ -115,6 +115,27 @@ flush_input() {
   while read -u 3 -t 0 -k 1 _c; do :; done
 }
 
+prompt_yes_no() {
+  local prompt_text="$1"
+  local default_choice="$2"
+  local response=""
+
+  while true; do
+    printf "%s" "$prompt_text" >&2
+    flush_input
+    read response
+    if [[ -z "$response" && -n "$default_choice" ]]; then
+      response="$default_choice"
+    fi
+
+    case "$response" in
+      Y|y) print -r -- "Y"; return 0 ;;
+      N|n) print -r -- "N"; return 0 ;;
+      *) echo "Invalid choice. Please enter Y or N." >&2 ;;
+    esac
+  done
+}
+
 # Function to remove the temporary directory
 remove_temp_dir() {
   local temp_dir="$1"
@@ -141,21 +162,15 @@ remux_to_mkv() {
   fi
 
   if [ -f "$output_file" ] && [ "$safe_mode_write" != true ]; then
-    echo "Warning: File $output_file already exists. Overwrite? (Y/N): "
-    flush_input
-    read overwrite_choice
-
+    local overwrite_choice
+    overwrite_choice=$(prompt_yes_no "Warning: File $output_file already exists. Overwrite? (Y/N): " "")
     case "$overwrite_choice" in
-      Y|y)
+      Y)
         echo "Overwriting existing file: $output_file"
         ;;
-      N|n)
+      N)
         echo "Skipped; $output_file unchanged."
         return 2
-        ;;
-      *)
-        echo "Invalid choice. Skipping file."
-        return 1
         ;;
     esac
   fi
@@ -216,12 +231,11 @@ remux_to_mkv_ffmpeg() {
 
   # ——————— prompt to overwrite if not safe-mode ———————
   if [[ "$safe_mode_write" != "true" && -f "$output_file" ]]; then
-    printf "Warning: File %s already exists. Overwrite? (Y/N) [N]: " "$output_file"
-    read resp
-    resp=${resp:-N}
+    local resp
+    resp=$(prompt_yes_no "Warning: File ${output_file} already exists. Overwrite? (Y/N) [N]: " "N")
     case "$resp" in
-      [Yy]*) echo "Overwriting $output_file...";;
-      *) echo "Skipped; $output_file unchanged."; return 2;;
+      Y) echo "Overwriting $output_file..." ;;
+      N) echo "Skipped; $output_file unchanged."; return 2 ;;
     esac
   fi
 
@@ -662,6 +676,32 @@ validate_ceiling_limiter() {
   '
 }
 
+normalize_volume_changes() {
+  local volume_input="$1"
+  volume_input=$(printf '%s' "$volume_input" | tr -d '[:space:]')
+  printf '%s' "$volume_input"
+}
+
+validate_volume_changes() {
+  local volume_input="$1"
+  printf '%s' "$volume_input" | grep -Eq '^[-+]?[0-9]+([.][0-9]+)?(dB)?(,[-+]?[0-9]+([.][0-9]+)?(dB)?)*$'
+}
+
+canonicalize_volume_changes() {
+  local volume_input="$1"
+  local -a volume_parts canonical_parts
+  IFS=',' read -r -A volume_parts <<< "$volume_input"
+
+  local part=""
+  for part in "${volume_parts[@]}"; do
+    part="${part%dB}"
+    canonical_parts+=("${part}dB")
+  done
+
+  local IFS=','
+  print -r -- "${canonical_parts[*]}"
+}
+
 # Main script
 use_ceiling_limiter=false
 display_dir="$(pwd)"
@@ -703,9 +743,15 @@ echo "Select an option:"
 echo "1) Remux to MKV (ffmpeg)"
 echo "2) Remux to MKV (mkvmerge)"
 echo "3) Volume Boost"
-printf "Enter choice: "
-flush_input
-read choice
+while true; do
+  printf "Enter choice: "
+  flush_input
+  read choice
+  if [[ "$choice" =~ ^[123]$ ]]; then
+    break
+  fi
+  echo "Invalid choice. Please enter 1, 2, or 3."
+done
 CHOICE="$choice"
 
 if [ "$choice" -eq 1 ]; then
@@ -719,10 +765,7 @@ if [ "$choice" -eq 1 ]; then
     fi
 
     # ASK FOR AUDIO RECODE PROMPT BEFORE THE QUEUE
-    echo -n "Do you wish to replace incompatible audio tracks (Y/N) [N]: "
-    flush_input
-    read replace_audio_tracks
-    replace_audio_tracks=${replace_audio_tracks:-N}
+    replace_audio_tracks=$(prompt_yes_no "Do you wish to replace incompatible audio tracks (Y/N) [N]: " "N")
     echo
 
     # Now process each file, passing the answer as $3 to our remux function
@@ -893,10 +936,12 @@ if [ "$choice" -eq 1 ]; then
           printf "Enter the amount of dB to change (e.g., 2dB,3.5dB,-5dB): "
           flush_input
           read global_volume_changes
-          if [[ -n "$global_volume_changes" ]]; then
+          global_volume_changes=$(normalize_volume_changes "$global_volume_changes")
+          if [[ -n "$global_volume_changes" ]] && validate_volume_changes "$global_volume_changes"; then
+            global_volume_changes=$(canonicalize_volume_changes "$global_volume_changes")
             break
           fi
-          echo "Volume change value cannot be empty. Please enter a dB adjustment."
+          echo "Invalid dB input. Use values like 2dB,3.5dB,-5dB."
         done
         if [ "$use_ceiling_limiter" = true ]; then
           while true; do
