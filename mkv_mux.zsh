@@ -10,6 +10,8 @@
 # Install these tools using Homebrew with the following command:
 # brew install mkvtoolnix ffmpeg fzf jq rsync
 
+SCRIPT_NAME="${0:t}"
+
 # Global variables for signal handling
 CHOICE=""
 SOURCE_FILE=""
@@ -702,6 +704,37 @@ canonicalize_volume_changes() {
   print -r -- "${canonical_parts[*]}"
 }
 
+print_help() {
+  cat <<EOF
+Usage: ${SCRIPT_NAME} [--climit] [working_directory]
+       ${SCRIPT_NAME} --help
+
+Interactive Matroska remux and audio volume tool.
+
+Arguments:
+  --climit              Enable the extra ceiling limiter prompt in Volume Boost mode.
+  --help, -h            Show this help page and exit.
+  working_directory     Directory to scan instead of the current directory.
+
+Menu options:
+  1) Remux to MKV (ffmpeg)
+     Remux selected video files into MKV with ffmpeg.
+     You can optionally re-encode incompatible audio tracks to AAC.
+
+  2) Remux to MKV (mkvmerge)
+     Remux selected video files into MKV with mkvmerge without ffmpeg stream remap logic.
+
+  3) Volume Boost
+     Extract one audio track, create one or more boosted AAC versions, then mux them back.
+     With --climit, each boosted version can also apply an alimiter ceiling filter.
+
+Notes:
+  - With no working_directory argument, the script uses the current directory.
+  - In safe mode, the script writes new filenames instead of overwriting originals.
+  - In non-safe mode, overwrite prompts appear when a target MKV already exists.
+EOF
+}
+
 # Main script
 use_ceiling_limiter=false
 display_dir="$(pwd)"
@@ -712,13 +745,17 @@ while [ $# -gt 0 ]; do
     --climit|-climit)
       use_ceiling_limiter=true
       ;;
+    --help|-h)
+      print_help
+      exit 0
+      ;;
     -*)
-      echo "Usage: ${0:t} [--climit] [working_directory]" >&2
+      echo "Usage: ${SCRIPT_NAME} [--climit] [working_directory]" >&2
       exit 1
       ;;
     *)
       if [ "$working_dir_set" = true ]; then
-        echo "Usage: ${0:t} [--climit] [working_directory]" >&2
+        echo "Usage: ${SCRIPT_NAME} [--climit] [working_directory]" >&2
         exit 1
       fi
       display_dir="$1"
