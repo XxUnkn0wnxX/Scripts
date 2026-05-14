@@ -215,6 +215,7 @@ remux_to_mkv() {
 remux_to_mkv_ffmpeg() {
   local source_file="$1"
   local replace_audio_tracks="${2:-N}"
+  local ceiling_limiter="$3"
   local base="${source_file%.*}"
   local temp_file="${base}_temp.mkv"
   local output_file
@@ -273,12 +274,21 @@ remux_to_mkv_ffmpeg() {
     # Extract & re-encode each audio track
     while IFS= read -r idx; do
       local out_audio="${WORK_DIR}/${base}_a${idx}.m4a"
-      ffmpeg -nostdin -y -i "$source_file" \
-        -vn \
-        -map 0:a:${ai} \
-        -c:a aac -q:a 0 \
-        -threads "$thread_count" \
-        "$out_audio" &
+      local -a ffmpeg_reencode_cmd
+      ffmpeg_reencode_cmd=(
+        ffmpeg -nostdin -y -i "$source_file"
+        -vn
+        -map "0:a:${ai}"
+      )
+      if [[ -n "$ceiling_limiter" ]]; then
+        ffmpeg_reencode_cmd+=(-filter:a "${ceiling_limiter}:level=0")
+      fi
+      ffmpeg_reencode_cmd+=(
+        -c:a aac -q:a 0
+        -threads "$thread_count"
+        "$out_audio"
+      )
+      "${ffmpeg_reencode_cmd[@]}" &
       FFMPEG_PID=$!
       wait $FFMPEG_PID
       ret=$?
@@ -678,6 +688,28 @@ validate_ceiling_limiter() {
   '
 }
 
+prompt_for_ceiling_limiter() {
+  local limiter_input=""
+
+  while true; do
+    printf "Enter ceiling limiter settings (e.g., %s) [default]: " "$ceiling_limiter_default" >&2
+    flush_input
+    read limiter_input
+    if [[ -z "$limiter_input" ]]; then
+      print -r -- "$ceiling_limiter_default"
+      return 0
+    fi
+
+    limiter_input=$(normalize_ceiling_limiter "$limiter_input")
+    if [[ -n "$limiter_input" ]] && validate_ceiling_limiter "$limiter_input"; then
+      print -r -- "$limiter_input"
+      return 0
+    fi
+
+    echo "Invalid limiter. Use alimiter=limit=0.99:attack=20:release=20 or press Enter for default." >&2
+  done
+}
+
 normalize_volume_changes() {
   local volume_input="$1"
   volume_input=$(printf '%s' "$volume_input" | tr -d '[:space:]')
@@ -712,7 +744,7 @@ Usage: ${SCRIPT_NAME} [--climit] [working_directory]
 Interactive Matroska remux and audio volume tool.
 
 Arguments:
-  --climit              Enable the extra ceiling limiter prompt in Volume Boost mode.
+  --climit              Enable the extra ceiling limiter prompt for audio re-encode paths.
   --help, -h            Show this help page and exit.
   working_directory     Directory to scan instead of the current directory.
 
@@ -720,6 +752,7 @@ Menu options:
   1) Remux to MKV (ffmpeg)
      Remux selected video files into MKV with ffmpeg.
      You can optionally re-encode incompatible audio tracks to AAC.
+     With --climit, those replacement AAC tracks can also apply an alimiter ceiling filter.
 
   2) Remux to MKV (mkvmerge)
      Remux selected video files into MKV with mkvmerge without ffmpeg stream remap logic.
@@ -803,12 +836,16 @@ if [ "$choice" -eq 1 ]; then
 
     # ASK FOR AUDIO RECODE PROMPT BEFORE THE QUEUE
     replace_audio_tracks=$(prompt_yes_no "Do you wish to replace incompatible audio tracks (Y/N) [N]: " "N")
+    local remux_ceiling_limiter=""
+    if [[ "$replace_audio_tracks" == "Y" && "$use_ceiling_limiter" == true ]]; then
+      remux_ceiling_limiter=$(prompt_for_ceiling_limiter)
+    fi
     echo
 
     # Now process each file, passing the answer as $3 to our remux function
     for source_file in "${video_files[@]}"; do
       source_file="${source_file#./}"   # strip leading ./
-      remux_to_mkv_ffmpeg "$source_file" "$replace_audio_tracks"
+      remux_to_mkv_ffmpeg "$source_file" "$replace_audio_tracks" "$remux_ceiling_limiter"
       local remux_status=$?
       if [ $remux_status -eq 2 ]; then
         continue
@@ -981,21 +1018,7 @@ if [ "$choice" -eq 1 ]; then
           echo "Invalid dB input. Use values like 2dB,3.5dB,-5dB."
         done
         if [ "$use_ceiling_limiter" = true ]; then
-          while true; do
-            printf "Enter ceiling limiter settings (e.g., %s) [default]: " "$ceiling_limiter_default"
-            flush_input
-            read limiter_input
-            if [[ -z "$limiter_input" ]]; then
-              global_ceiling_limiter="$ceiling_limiter_default"
-              break
-            fi
-            limiter_input=$(normalize_ceiling_limiter "$limiter_input")
-            if [[ -n "$limiter_input" ]] && validate_ceiling_limiter "$limiter_input"; then
-              global_ceiling_limiter="$limiter_input"
-              break
-            fi
-            echo "Invalid limiter. Use alimiter=limit=0.99:attack=20:release=20 or press Enter for default."
-          done
+          global_ceiling_limiter=$(prompt_for_ceiling_limiter)
         fi
         is_first_file=false
       fi
