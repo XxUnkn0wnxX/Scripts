@@ -8,10 +8,13 @@
 - asks you to paste a blocked MediaFire link
 - extracts both IDs
 - prints a combined shareable MediaFire URL
+- handles `Ctrl+C` cleanly if you want to abort
 
 ## Important Setup
 
 Before running it, edit the `Link1` value near the top of the script so it points to a MediaFire file link you own.
+
+This helper is meant for the case where you already control one MediaFire link and want to pair it with a blocked one you paste during the prompt flow.
 
 Example inside the script:
 
