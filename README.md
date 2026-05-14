@@ -32,9 +32,9 @@ A small collection of Python scripts, shell helpers, Cronus Zen files, and Tampe
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
-- [`Steam-Reveal-Spoilers.user.js`](userscripts/Steam-Reveal-Spoilers.user.js?raw=1) - Reveal Steam community spoilers automatically. [Docs](docs/steam-reveal-spoilers.md)
-- [`StackExchange-Reveal-Spoilers.user.js`](userscripts/StackExchange-Reveal-Spoilers.user.js?raw=1) - Reveal Stack Exchange spoilers automatically. [Docs](docs/stackexchange-reveal-spoilers.md)
-- [`Youtube-shorts-switcher.user.js`](userscripts/Youtube-shorts-switcher.user.js?raw=1) - Open YouTube Shorts in the full player with a button or hotkey. [Docs](docs/youtube-shorts-switcher.md)
+- [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/Steam-Reveal-Spoilers.user.js) - Reveal Steam community spoilers automatically. [Docs](docs/steam-reveal-spoilers.md)
+- [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/StackExchange-Reveal-Spoilers.user.js) - Reveal Stack Exchange spoilers automatically. [Docs](docs/stackexchange-reveal-spoilers.md)
+- [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/Youtube-shorts-switcher.user.js) - Open YouTube Shorts in the full player with a button or hotkey. [Docs](docs/youtube-shorts-switcher.md)
 
 ---
 
