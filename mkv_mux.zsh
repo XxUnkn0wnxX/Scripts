@@ -642,6 +642,26 @@ normalize_ceiling_limiter() {
   printf '%s' "$limiter_input"
 }
 
+validate_ceiling_limiter() {
+  local limiter_input="$1"
+  if ! printf '%s' "$limiter_input" | grep -Eq '^alimiter=limit=[0-9]+([.][0-9]+)?:attack=[0-9]+([.][0-9]+)?:release=[0-9]+([.][0-9]+)?$'; then
+    return 1
+  fi
+
+  local limit_value="${limiter_input#alimiter=limit=}"
+  limit_value="${limit_value%%:*}"
+
+  local attack_and_release="${limiter_input#*:attack=}"
+  local attack_value="${attack_and_release%%:*}"
+  local release_value="${limiter_input##*:release=}"
+
+  awk -v limit="$limit_value" -v attack="$attack_value" -v release="$release_value" '
+    BEGIN {
+      exit !(limit > 0 && limit <= 1 && attack >= 0 && release >= 0)
+    }
+  '
+}
+
 # Main script
 use_ceiling_limiter=false
 display_dir="$(pwd)"
@@ -888,11 +908,11 @@ if [ "$choice" -eq 1 ]; then
               break
             fi
             limiter_input=$(normalize_ceiling_limiter "$limiter_input")
-            if [[ -n "$limiter_input" ]]; then
+            if [[ -n "$limiter_input" ]] && validate_ceiling_limiter "$limiter_input"; then
               global_ceiling_limiter="$limiter_input"
               break
             fi
-            echo "Limiter value cannot be empty. Press Enter for default or enter a limiter string."
+            echo "Invalid limiter. Use alimiter=limit=0.99:attack=20:release=20 or press Enter for default."
           done
         fi
         is_first_file=false
