@@ -34,6 +34,12 @@ Run in another directory:
 zsh mkv_mux.zsh /path/to/folder
 ```
 
+Run in non-safe mode:
+
+```bash
+zsh mkv_mux.zsh --nsafe /path/to/folder
+```
+
 Show help:
 
 ```bash
@@ -50,6 +56,12 @@ Use both a directory and `--climit`:
 
 ```bash
 zsh mkv_mux.zsh --climit /path/to/folder
+```
+
+Use both `--climit` and non-safe mode:
+
+```bash
+zsh mkv_mux.zsh --climit --nsafe /path/to/folder
 ```
 
 ## Arguments
@@ -74,6 +86,11 @@ zsh mkv_mux.zsh --climit /path/to/folder
       <td>Adds one extra prompt for supported audio re-encode paths so you can apply an <code>alimiter</code> ceiling filter.</td>
     </tr>
     <tr>
+      <td><nobr><code>--nsafe</code></nobr></td>
+      <td>Flag</td>
+      <td>Turns off safe mode so the script can overwrite the normal target path instead of always creating a new filename.</td>
+    </tr>
+    <tr>
       <td><nobr><code>--help</code>, <code>-h</code></nobr></td>
       <td>Flag</td>
       <td>Prints the built-in help page and exits.</td>
@@ -90,6 +107,7 @@ What it does:
 - Uses `ffmpeg` to put the selected file into an MKV container
 - Can keep the current audio as-is
 - Can optionally re-encode incompatible audio tracks to AAC
+- Preserves audio track order plus language/title/disposition metadata when it re-encodes those tracks
 - With <code>--climit</code>, the replacement AAC encode path can also apply the limiter
 
 Good for:
@@ -248,7 +266,9 @@ Examples of invalid dB input:
 
 This script has a safe-mode path built in.
 
+- Safe mode is the default behavior.
 - In safe mode, it writes new filenames instead of overwriting the original file.
+- Use `--nsafe` if you want the non-safe path.
 - In non-safe mode, it can prompt before overwriting an existing MKV target.
 
 If you decline an overwrite prompt, that file is skipped and the batch moves on to the next selected file.
