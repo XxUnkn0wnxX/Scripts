@@ -118,6 +118,106 @@ function count_attachments() {
   local file="$1"
   mkvmerge --identify "$file" | grep -c "Attachment ID"
 }
+
+prompt_yes_no() {
+  local prompt_text="$1"
+  local default_choice="$2"
+  local response=""
+
+  while true; do
+    printf "%s" "$prompt_text" >&2
+    read response
+    if [[ -z "$response" && -n "$default_choice" ]]; then
+      response="$default_choice"
+    fi
+
+    case "${response:u}" in
+      Y) print -r -- "Y"; return 0 ;;
+      N) print -r -- "N"; return 0 ;;
+      *) echo "Invalid choice. Please enter Y or N." >&2 ;;
+    esac
+  done
+}
+
+normalize_track_id_input() {
+  local track_input="$1"
+  track_input=$(printf '%s' "$track_input" | tr -d '[:space:]')
+  printf '%s' "$track_input"
+}
+
+validate_track_id_list() {
+  local track_input="$1"
+  if ! printf '%s' "$track_input" | grep -Eq '^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$'; then
+    return 1
+  fi
+
+  local -a track_parts
+  IFS=',' read -rA track_parts <<< "$track_input"
+
+  local part=""
+  for part in "${track_parts[@]}"; do
+    if [[ "$part" == *-* ]]; then
+      local start=${part%-*}
+      local end=${part#*-}
+      if (( start > end )); then
+        return 1
+      fi
+    fi
+  done
+
+  return 0
+}
+
+prompt_for_track_ids() {
+  local prompt_text="$1"
+  local track_ids=""
+
+  while true; do
+    printf "%s" "$prompt_text" >&2
+    read track_ids
+    track_ids=$(normalize_track_id_input "$track_ids")
+    if [[ -z "$track_ids" ]]; then
+      echo "Track ID(s) cannot be empty. Please enter at least one Track ID." >&2
+      continue
+    fi
+    if validate_track_id_list "$track_ids"; then
+      print -r -- "$track_ids"
+      return 0
+    fi
+    echo "Invalid Track ID syntax. Use values like 0,1 or 1-2." >&2
+  done
+}
+
+normalize_track_order() {
+  local track_order="$1"
+  track_order=$(printf '%s' "$track_order" | tr -d '[:space:]')
+  printf '%s' "$track_order"
+}
+
+validate_track_order() {
+  local track_order="$1"
+  printf '%s' "$track_order" | grep -Eq '^[0-9]+:[0-9]+(,[0-9]+:[0-9]+)*$'
+}
+
+prompt_for_track_order() {
+  local prompt_text="$1"
+  local track_order=""
+
+  while true; do
+    printf "%s" "$prompt_text" >&2
+    read track_order
+    track_order=$(normalize_track_order "$track_order")
+    if [[ -z "$track_order" ]]; then
+      echo "Track order cannot be empty. Please enter at least one mapping." >&2
+      continue
+    fi
+    if validate_track_order "$track_order"; then
+      print -r -- "$track_order"
+      return 0
+    fi
+    echo "Invalid track order syntax. Use values like 0:0,0:1,0:2." >&2
+  done
+}
  
 # Function to display track information safely, projecting only the fields we need
 display_track_info() {
@@ -446,10 +546,7 @@ done
 
 if [ "$choice" = "1" ]; then
   # Prompt for multi-file or single-file selection
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   # Determine target files
   if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
@@ -481,23 +578,14 @@ if [ "$choice" = "1" ]; then
   # Display track info for first target
   display_track_info "${targets[1]}"
 
-  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-  read track_ids
-  while [[ -z "$track_ids" ]]; do
-    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-    read track_ids
-  done
+  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
 
   # Apply forced-flag edits (prompting per track)
   set_flag_forced_tracks "$track_ids"
 
 elif [ "$choice" = "2" ]; then
   # Prompt for multi-file or single-file selection
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   # Determine target files
   if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
@@ -529,23 +617,14 @@ elif [ "$choice" = "2" ]; then
   # Display track info for first target
   display_track_info "${targets[1]}"
 
-  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-  read track_ids
-  while [[ -z "$track_ids" ]]; do
-    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-    read track_ids
-  done
+  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
 
   # Apply default-flag edits (prompting per track)
   set_flag_default_tracks "$track_ids"
   
 elif [ "$choice" = "3" ]; then
   # Prompt for multi-file or single-file selection
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   # Determine target files
   if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
@@ -577,23 +656,14 @@ elif [ "$choice" = "3" ]; then
   # Display track info for first target
   display_track_info "${targets[1]}"
 
-  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-  read track_ids
-  while [[ -z "$track_ids" ]]; do
-    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-    read track_ids
-  done
+  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
 
   # Perform language setting on selected files (prompting per track)
   set_language_tracks "$track_ids"
   
 elif [ "$choice" = "4" ]; then
   # Prompt for multi-file or single-file selection
-  print -n "Enable multi-file target selection? (Y/N) [N]: "
-  read MULTI_FILE_SELECTION
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   # Determine target files
   if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
@@ -623,23 +693,14 @@ elif [ "$choice" = "4" ]; then
   # Display track info for first target
   display_track_info "${targets[1]}"
 
-  printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-  read track_ids
-  while [[ -z "$track_ids" ]]; do
-    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-    printf "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): "
-    read track_ids
-  done
+  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
 
 	# Perform renaming on selected files
 	rename_tracks "$track_ids"
 
-	elif [ "$choice" = "5" ]; then
-	  # Prompt for multi-file or single-file selection
-	  print -n "Enable multi-file target selection? (Y/N) [N]: "
-	  read MULTI_FILE_SELECTION
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+		elif [ "$choice" = "5" ]; then
+		  # Prompt for multi-file or single-file selection
+		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
 	  # Determine target files
 	  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
@@ -705,12 +766,9 @@ elif [ "$choice" = "4" ]; then
 	  done
 	  echo "Attachments extraction completed."
 
-	elif [ "$choice" = "7" ]; then
-	  # --- Choice 7: Mass Remove tracks ---
-	  print -n "Enable multi-file target selection? (Y/N) [N]: "
-	  read MULTI_FILE_SELECTION
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+		elif [ "$choice" = "7" ]; then
+		  # --- Choice 7: Mass Remove tracks ---
+		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   # Build fzf args
   fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
@@ -732,13 +790,7 @@ elif [ "$choice" = "4" ]; then
   display_track_info "$source_file"
 
   # Ask which track IDs to remove
-  printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
-  read track_ids
-  while [[ -z "$track_ids" ]]; do
-    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-    printf "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): "
-    read track_ids
-  done
+  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): ")
 
   # Build exclude_ids[] by splitting on commas and ranges
   exclude_ids=()
@@ -806,12 +858,9 @@ elif [ "$choice" = "4" ]; then
 	    fi
 	  done
 
-	elif [ "$choice" = "8" ]; then
-	  # --- Choice 8: Mass Re-order tracks ---
-	  print -n "Enable multi-file target selection? (Y/N) [N]: "
-	  read MULTI_FILE_SELECTION
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+		elif [ "$choice" = "8" ]; then
+		  # --- Choice 8: Mass Re-order tracks ---
+		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
   [[ $MULTI_FILE_SELECTION == "Y" ]] && fzf_args+=(--multi)
@@ -829,13 +878,7 @@ elif [ "$choice" = "4" ]; then
   source_file=${targets[1]}
   display_track_info "$source_file"
 
-  printf "Enter the new track order (e.g., 0:0,0:1,0:2,…): "
-  read track_order
-  while [[ -z "$track_order" ]]; do
-    echo "Track order cannot be empty. Please enter at least one mapping."
-    printf "Enter the new track order (e.g., 0:0,0:1,0:2,…): "
-    read track_order
-  done
+  track_order=$(prompt_for_track_order "Enter the new track order (e.g., 0:0,0:1,0:2,…): ")
 
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
@@ -854,11 +897,8 @@ elif [ "$choice" = "4" ]; then
 	  
 	# --- Choice 9: Extract Tracks ---
 	elif [ "$choice" = "9" ]; then
-	  # Prompt for multi-file or single-file selection
-	  print -n "Enable multi-file target selection? (Y/N) [N]: "
-	  read MULTI_FILE_SELECTION
-	  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:-N}
-  MULTI_FILE_SELECTION=${MULTI_FILE_SELECTION:u}
+		  # Prompt for multi-file or single-file selection
+		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
 
   # Determine target files
   if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
@@ -892,13 +932,7 @@ elif [ "$choice" = "4" ]; then
   display_track_info "$source_file"
 
   # Ask once for which tracks to extract
-  printf "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): "
-  read track_ids
-  while [[ -z "$track_ids" ]]; do
-    echo "Track ID(s) cannot be empty. Please enter at least one Track ID."
-    printf "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): "
-    read track_ids
-  done
+  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): ")
 
   # Loop over all selected files
   for source_file in "${targets[@]}"; do
