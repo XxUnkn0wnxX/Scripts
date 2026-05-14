@@ -9,6 +9,8 @@
 - supports unsigned integers from 8-bit to 64-bit
 - can swap endianness
 - supports little-endian mode
+- enforces the valid bounds for the selected conversion type
+- prints the converted value in the matching numeric form
 
 ## Basic Usage
 

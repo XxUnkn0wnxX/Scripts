@@ -7,8 +7,9 @@
 - finds the current DeveloperSeed catalog URL
 - locates the newest `MobileDeviceOnDemand.pkg`
 - also downloads the matching `CoreTypes.pkg`
-- installs both packages
-- attempts to restart `usbmuxd`
+- installs both packages with `installer -verboseR`
+- attempts a cross-version-safe `usbmuxd` restart
+- checks PIDs so it can confirm whether the restart actually happened
 
 ## Platform
 
@@ -42,3 +43,4 @@ After the downloads finish, it installs:
 - There are no CLI flags.
 - The script uses the live DeveloperSeed catalog, so results depend on what Apple currently publishes.
 - If `usbmuxd` cannot be confirmed as restarted, the script prints fallback advice instead of pretending it succeeded.
+- The restart logic is there so iPhone and iPad support can come back without forcing a full reboot when possible.

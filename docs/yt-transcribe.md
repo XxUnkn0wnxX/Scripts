@@ -7,9 +7,11 @@
 - accepts a YouTube URL or raw video ID
 - downloads manual captions when available
 - can prefer auto-generated captions
+- cleans caption text for export
 - can export plain text or `.docx`
 - can keep or remove stage-direction tags like `[Music]`
 - can trim output to one time point or a start/end range
+- sanitizes output filenames automatically
 
 ## Basic Usage
 

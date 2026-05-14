@@ -4,11 +4,17 @@
 
 ## What It Does
 
-- reads formulas from a custom tap
+- recursively scans Ruby formula files in the tap
 - gets local stable versions with `brew info --json=v2`
 - compares them against the public Homebrew API
 - falls back to other installed taps if the main API has no match
 - marks pinned formulas as `PINNED`
+
+That means it can scan formulas in places such as:
+
+- the tap root
+- `Formula/`
+- other Ruby-formula subfolders
 
 ## Basic Usage
 
@@ -91,4 +97,6 @@ zsh brew-custom-compare.zsh --tap XxUnkn0wnxX/tap bun
 ## Good To Know
 
 - If you pass no formula names, the script scans every Ruby formula file it finds in the tap.
+- If the Homebrew API has no entry or usable version, the script checks other installed taps and skips `homebrew/core` during that fallback path.
+- The built-in default tap is `custom/versions`.
 - The default tap can also be overridden with the `DEFAULT_CUSTOM_TAP` environment variable before running the script.

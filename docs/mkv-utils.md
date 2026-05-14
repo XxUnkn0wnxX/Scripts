@@ -1,6 +1,6 @@
 # mkv_utils.zsh
 
-[`mkv_utils.zsh`](../mkv_utils.zsh) is an interactive Matroska utility menu for metadata edits, attachment extraction, track extraction, track removal, and track reordering.
+[`mkv_utils.zsh`](../mkv_utils.zsh) is an interactive Matroska utility menu for metadata edits, attachment extraction, track extraction, track removal, and track reordering. It is the more power-user-oriented companion to `mkv_mux.zsh`.
 
 ## What It Does
 
@@ -12,6 +12,9 @@
 - extracts selected tracks
 - removes selected tracks
 - reorders tracks
+- enumerates track information before edits or extraction
+- uses codec-aware extension mapping when extracting tracks
+- relies on Python helper libraries for the codec-to-extension mapping path
 
 ## Requirements
 
@@ -21,6 +24,8 @@ Install the tools used by this script:
 brew install mkvtoolnix jq fzf python3
 python3 -m pip install pymkv pymkv2
 ```
+
+`pymkv` and `pymkv2` are used for the codec-to-extension mapping logic during track extraction.
 
 If this repo has a local virtualenv, install the repo requirements too:
 

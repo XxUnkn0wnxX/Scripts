@@ -8,6 +8,9 @@
 - Remux video files into MKV with `mkvmerge`
 - Boost one audio track and mux the boosted versions back into the file
 - Optionally apply a ceiling limiter during volume boost with `--climit`
+- Uses `fzf` for interactive file picking
+- Uses `jq` with `mkvmerge -J` to inspect audio-track metadata
+- Creates backup originals in safe mode before writing changes
 
 ## Requirements
 
