@@ -13,11 +13,11 @@ It depends on macOS-specific tools such as `/usr/libexec/java_home` and `ditto`,
 ### Required
 
 - A Java JDK must be installed so `/usr/libexec/java_home` can resolve `JAVA_HOME`.
-- Oracle JDK download page: [oracle.com/anz/java/technologies/downloads](https://www.oracle.com/anz/java/technologies/downloads/)
-- Homebrew Temurin cask: [formulae.brew.sh/cask/temurin](https://formulae.brew.sh/cask/temurin)
+- You can install one with Oracle JDK: [oracle.com/anz/java/technologies/downloads](https://www.oracle.com/anz/java/technologies/downloads/)
+- Or install one with the Homebrew Temurin cask: [formulae.brew.sh/cask/temurin](https://formulae.brew.sh/cask/temurin)
 - Homebrew install page: [brew.sh](https://brew.sh/)
 
-Install Java with Homebrew:
+Example Homebrew install:
 
 ```bash
 brew install --cask temurin
