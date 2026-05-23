@@ -25,9 +25,10 @@ brew install --cask temurin
 
 ### Optional
 
-- `7z` is optional.
-- If `7z` is installed, the script prefers it for ZIP extraction.
-- If `7z` is not installed, the script falls back to macOS `ditto`, so the launcher still works without it.
+- `7zz` or `7z` is optional.
+- If `7zz` is installed, the script prefers it for ZIP extraction.
+- If `7zz` is not installed but `7z` is available, it uses `7z`.
+- If neither `7zz` nor `7z` is installed, the script falls back to macOS `ditto`, so the launcher still works without them.
 
 Install the optional extractor with Homebrew:
 

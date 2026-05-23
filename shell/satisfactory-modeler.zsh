@@ -299,7 +299,12 @@ extract_zip_into_root() {
   rm -rf "${extract_dir}"
   mkdir -p "${extract_dir}"
 
-  if seven_zip="$(command -v 7z 2>/dev/null)" && [[ -n "${seven_zip}" ]]; then
+  if seven_zip="$(command -v 7zz 2>/dev/null)" && [[ -n "${seven_zip}" ]]; then
+    extract_tool="7zz"
+    if ! "${seven_zip}" x -y -bd "-o${extract_dir}" "${zip_file}" >/dev/null; then
+      return 1
+    fi
+  elif seven_zip="$(command -v 7z 2>/dev/null)" && [[ -n "${seven_zip}" ]]; then
     extract_tool="7z"
     if ! "${seven_zip}" x -y -bd "-o${extract_dir}" "${zip_file}" >/dev/null; then
       return 1
