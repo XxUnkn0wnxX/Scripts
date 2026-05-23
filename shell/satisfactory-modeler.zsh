@@ -367,7 +367,7 @@ run_self_update() {
 
   load_update_state
 
-  rm -rf "${UPDATER_DIR}/work" "${UPDATER_DIR}/extract"
+  rm -rf "${UPDATER_DIR}/extract"
   rm -f "${cookie_jar}" "${page_html}" "${file_json}" "${probe_headers}"
 
   echo "Checking for Satisfactory Modeler updates..."
