@@ -39,6 +39,7 @@ brew install sevenzip
 ## What It Does
 
 - keeps the unpacked app payload in a local `modeler/` subfolder beside the script
+- downloads and refreshes the upstream app payload into that `modeler/` subfolder when needed
 - resolves a Java JDK with `/usr/libexec/java_home`
 - launches detached by default so you can close Terminal after starting it
 - supports `--debug` mode so logs stay attached to the current terminal
@@ -49,10 +50,9 @@ brew install sevenzip
 
 ## Setup
 
-1. Download the upstream files from [Satisfactory Modeler](https://satisfactorymodeler.itch.io/satisfactorymodeler).
-2. Run the wrapper from this repo and let it populate `shell/modeler/` on first update or cache restore.
-3. Install a Java JDK.
-4. Run the wrapper with `zsh`.
+1. Install a Java JDK.
+2. Run the wrapper with `zsh`.
+3. Let the launcher populate `shell/modeler/` automatically on first run.
 
 ## Basic Usage
 
