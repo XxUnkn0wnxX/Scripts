@@ -15,7 +15,38 @@
 
 SCRIPT_NAME="${0:t}"
 SCRIPT_ROOT=${0:A:h}
-VENV_PATH="$SCRIPT_ROOT/.venv"
+looks_like_repo_root() {
+  local candidate="$1"
+  [[ -d "$candidate/.git" ]] && return 0
+  [[ -f "$candidate/requirements.txt" && -d "$candidate/docs" ]] && return 0
+  return 1
+}
+
+resolve_repo_root() {
+  local start_dir="$1"
+  local max_depth="${2:-1}"
+  local candidate="${start_dir:A}"
+  local depth=0
+  local fallback="$candidate"
+
+  while (( depth <= max_depth )); do
+    if (( depth == 1 )); then
+      fallback="$candidate"
+    fi
+    if looks_like_repo_root "$candidate"; then
+      print -r -- "$candidate"
+      return 0
+    fi
+    [[ "$candidate" == / ]] && break
+    candidate="${candidate:h}"
+    (( depth++ ))
+  done
+
+  print -r -- "$fallback"
+}
+
+REPO_ROOT="$(resolve_repo_root "$SCRIPT_ROOT" 1)"
+VENV_PATH="$REPO_ROOT/.venv"
 PYTHON_BIN=""
 typeset -gi _PY_READY=0
 

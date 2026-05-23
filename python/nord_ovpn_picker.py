@@ -5,7 +5,7 @@ nord_ovpn_picker.py
 Interactive NordVPN OpenVPN config picker that prefers the recommendation API
 first, falls back to the V2 dataset when needed, and downloads chosen .ovpn
 files into the current directory by default, or a local NordOVPNs folder when
-run from the script directory itself.
+run from the repo root itself.
 """
 
 from __future__ import annotations
@@ -28,8 +28,6 @@ from typing import Any, Iterable, Optional, Sequence
 
 SCRIPT_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
-REPO_VENV_DIR = SCRIPT_DIR / ".venv"
-DOCS_PATH = SCRIPT_DIR / "docs" / "nord-ovpn-picker.md"
 
 
 def is_windows_platform(platform: Optional[str] = None) -> bool:
@@ -51,6 +49,34 @@ def get_repo_venv_python_candidates(venv_dir: Path, platform: Optional[str] = No
 
 def normalize_platform_path(path: Path) -> str:
     return os.path.normcase(str(path.resolve()))
+
+
+def is_repo_root(candidate: Path) -> bool:
+    return (candidate / ".git").exists() or (
+        (candidate / "requirements.txt").is_file() and (candidate / "docs").is_dir()
+    )
+
+
+def resolve_repo_root(start_dir: Path, max_depth: int = 1) -> Path:
+    candidate = start_dir.resolve()
+    fallback = candidate
+
+    for depth in range(max_depth + 1):
+        if depth == 1:
+            fallback = candidate
+        if is_repo_root(candidate):
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+
+    return fallback
+
+
+REPO_ROOT = resolve_repo_root(SCRIPT_DIR)
+REPO_VENV_DIR = REPO_ROOT / ".venv"
+DOCS_PATH = REPO_ROOT / "docs" / "nord-ovpn-picker.md"
 
 
 def get_cache_dir(home: Optional[Path] = None, platform: Optional[str] = None, environ: Optional[dict[str, str]] = None) -> Path:
@@ -81,10 +107,10 @@ def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:
     active_argv = list(argv if argv is not None else sys.argv[1:])
     repo_venv_python = resolve_repo_venv_python(REPO_VENV_DIR)
     if not REPO_VENV_DIR.exists() or repo_venv_python is None:
-        docs_hint = DOCS_PATH if DOCS_PATH.exists() else "docs/nord-ovpn-picker.md"
+        docs_hint = str(DOCS_PATH.relative_to(REPO_ROOT)) if DOCS_PATH.exists() else "docs/nord-ovpn-picker.md"
         raise SystemExit(
             "No local .venv was found for nord_ovpn_picker.py.\n"
-            f"Create one in {SCRIPT_DIR} and install the repo requirements before running the script.\n"
+            f"Create one in {REPO_ROOT} and install the repo requirements before running the script.\n"
             f"See {docs_hint} for setup instructions."
         )
 
@@ -266,17 +292,19 @@ def normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.casefold())
 
 
-def get_default_output_dir(cwd: Optional[Path] = None, script_dir: Optional[Path] = None) -> Path:
+def get_default_output_dir(
+    cwd: Optional[Path] = None, repo_root: Optional[Path] = None, script_dir: Optional[Path] = None
+) -> Path:
     active_cwd = (cwd or Path.cwd()).resolve()
-    active_script_dir = (script_dir or SCRIPT_DIR).resolve()
-    if normalize_platform_path(active_cwd) == normalize_platform_path(active_script_dir):
+    active_repo_root = (repo_root or script_dir or REPO_ROOT).resolve()
+    if normalize_platform_path(active_cwd) == normalize_platform_path(active_repo_root):
         return active_cwd / DEFAULT_OUTPUT_SUBDIR
     return active_cwd
 
 
 def resolve_default_auth_config_path() -> Optional[Path]:
     for name in DEFAULT_AUTH_CONFIG_NAMES:
-        candidate = SCRIPT_DIR / name
+        candidate = REPO_ROOT / name
         if candidate.exists():
             return candidate
     return None

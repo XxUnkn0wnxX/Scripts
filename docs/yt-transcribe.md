@@ -1,6 +1,6 @@
 # yt-transcribe.py
 
-[`yt-transcribe.py`](../yt-transcribe.py) downloads YouTube captions and saves them as plain text or DOCX. It is meant for quick transcript export without having to manually copy captions from the browser.
+[`yt-transcribe.py`](../python/yt-transcribe.py) downloads YouTube captions and saves them as plain text or DOCX. It is meant for quick transcript export without having to manually copy captions from the browser.
 
 ## What It Does
 
@@ -16,19 +16,19 @@
 ## Basic Usage
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID'
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID'
 ```
 
 Export as DOCX:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --docx
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --docx
 ```
 
 Trim to a time range:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --time '00:04:03 - 00:08:50'
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --time '00:04:03 - 00:08:50'
 ```
 
 ## Arguments
@@ -105,31 +105,31 @@ python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --time '00:0
 Plain text export:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID'
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID'
 ```
 
 DOCX export with no timestamps:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --docx --nostamp
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --docx --nostamp
 ```
 
 Prefer generated captions and keep tags:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --gencaps --keep-tags
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --gencaps --keep-tags
 ```
 
 Translate to Dutch:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --translate nl
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --translate nl
 ```
 
 Write to a specific file:
 
 ```bash
-python3 yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --out transcript.txt
+python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --out transcript.txt
 ```
 
 ## Good To Know

@@ -1,6 +1,6 @@
 # fetch-ios-pkgs.zsh
 
-[`fetch-ios-pkgs.zsh`](../fetch-ios-pkgs.zsh) downloads the newest Apple mobile-device support packages from the current DeveloperSeed catalog, installs them, and tries to restart the relevant background service afterward.
+[`fetch-ios-pkgs.zsh`](../shell/fetch-ios-pkgs.zsh) downloads the newest Apple mobile-device support packages from the current DeveloperSeed catalog, installs them, and tries to restart the relevant background service afterward.
 
 ## What It Does
 
@@ -18,7 +18,7 @@ This script is for macOS.
 ## Basic Usage
 
 ```bash
-zsh fetch-ios-pkgs.zsh
+zsh shell/fetch-ios-pkgs.zsh
 ```
 
 ## What To Expect
@@ -30,7 +30,7 @@ zsh fetch-ios-pkgs.zsh
 ## Example
 
 ```bash
-zsh fetch-ios-pkgs.zsh
+zsh shell/fetch-ios-pkgs.zsh
 ```
 
 After the downloads finish, it installs:

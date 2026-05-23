@@ -4,27 +4,33 @@ A small collection of Python scripts, shell helpers, Cronus Zen files, and Tampe
 
 > Python dependencies: `pip install -r requirements.txt`
 
+Repo layout:
+- Python CLIs live under [`python/`](python/)
+- Shell scripts live under [`shell/`](shell/)
+- Audio shell helpers live under [`shell/audio/`](shell/audio/)
+
 ## Python Utilities
 
-- [`yt-transcribe.py`](yt-transcribe.py) - Download YouTube captions and export them as text or DOCX. [Docs](docs/yt-transcribe.md)
-- [`pyconvert.py`](pyconvert.py) - Convert decimal and hex values between common numeric formats. [Docs](docs/pyconvert.md)
-- [`MediaFire.py`](MediaFire.py) - Combine two MediaFire quickkeys into one shareable link. [Docs](docs/mediafire.md)
-- [`nord_ovpn_picker.py`](nord_ovpn_picker.py) - Browse and download NordVPN OpenVPN configs. [Docs](docs/nord-ovpn-picker.md)
-- [`vpnroute.py`](vpnroute.py) - Turn domains or URLs into VPN route output. [Docs](docs/vpnroute.md)
+- [`yt-transcribe.py`](python/yt-transcribe.py) - Download YouTube captions and export them as text or DOCX. [Docs](docs/yt-transcribe.md)
+- [`pyconvert.py`](python/pyconvert.py) - Convert decimal and hex values between common numeric formats. [Docs](docs/pyconvert.md)
+- [`MediaFire.py`](python/MediaFire.py) - Combine two MediaFire quickkeys into one shareable link. [Docs](docs/mediafire.md)
+- [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) - Browse and download NordVPN OpenVPN configs. [Docs](docs/nord-ovpn-picker.md)
+- [`vpnroute.py`](python/vpnroute.py) - Turn domains or URLs into VPN route output. [Docs](docs/vpnroute.md)
 
 ## Shell Utilities
 
-- [`mkv_extract_tracks.sh`](mkv_extract_tracks.sh) - Extract every attachment from each MKV in the current folder. [Docs](docs/mkv-extract-tracks.md)
-- [`mkv_mux.zsh`](mkv_mux.zsh) - Interactive MKV remux and volume-boost helper. [Docs](docs/mkv-mux.md)
-- [`mkv_utils.zsh`](mkv_utils.zsh) - Interactive MKV metadata, extraction, and track-edit helper. [Docs](docs/mkv-utils.md)
-- [`satisfactory_balancer.zsh`](satisfactory_balancer.zsh) - Satisfactory splitter, balancer, and compressor planner. [Docs](docs/satisfactory-balancer.md)
-- [`brew-custom-compare.zsh`](brew-custom-compare.zsh) - Compare custom tap formulas against upstream Homebrew versions. [Docs](docs/brew-custom-compare.md)
-- [`fetch-ios-pkgs.zsh`](fetch-ios-pkgs.zsh) - Download and install current Apple mobile-device support packages. [Docs](docs/fetch-ios-pkgs.md)
+- [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) - Extract every attachment from each MKV in the current folder. [Docs](docs/mkv-extract-tracks.md)
+- [`mkv_mux.zsh`](shell/mkv_mux.zsh) - Interactive MKV remux and volume-boost helper. [Docs](docs/mkv-mux.md)
+- [`mkv_utils.zsh`](shell/mkv_utils.zsh) - Interactive MKV metadata, extraction, and track-edit helper. [Docs](docs/mkv-utils.md)
+- [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) - Satisfactory splitter, balancer, and compressor planner. [Docs](docs/satisfactory-balancer.md)
+- [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) - macOS-only launcher and updater wrapper for Satisfactory Modeler. [Docs](docs/satisfactory-modeler.md)
+- [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) - Compare custom tap formulas against upstream Homebrew versions. [Docs](docs/brew-custom-compare.md)
+- [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) - Download and install current Apple mobile-device support packages. [Docs](docs/fetch-ios-pkgs.md)
 
-## [Audio Helpers](Audio/)
+## [Audio Helpers](shell/audio/)
 
-- [`Audio/strip_audio_tags.zsh`](Audio/strip_audio_tags.zsh) - Strip metadata from `.m4a` files in the current folder. [Docs](docs/strip-audio-tags.md)
-- [`Audio/fix_tags.zsh`](Audio/fix_tags.zsh) - Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. [Docs](docs/fix-tags.md)
+- [`shell/audio/strip_audio_tags.zsh`](shell/audio/strip_audio_tags.zsh) - Strip metadata from `.m4a` files in the current folder. [Docs](docs/strip-audio-tags.md)
+- [`shell/audio/fix_tags.zsh`](shell/audio/fix_tags.zsh) - Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. [Docs](docs/fix-tags.md)
 
 ## [Zen Scripts](Zen%20Scripts/)
 

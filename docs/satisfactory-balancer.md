@@ -1,6 +1,6 @@
 # satisfactory_balancer.zsh
 
-[`satisfactory_balancer.zsh`](../satisfactory_balancer.zsh) is a CLI helper for Satisfactory splitter and merger layouts. It mirrors the standard layouts from the official Satisfactory Balancer wiki and also supports Nico-style complex ratios.
+[`satisfactory_balancer.zsh`](../shell/satisfactory_balancer.zsh) is a CLI helper for Satisfactory splitter and merger layouts. It mirrors the standard layouts from the official Satisfactory Balancer wiki and also supports Nico-style complex ratios.
 
 ## Reference Guides
 
@@ -18,19 +18,19 @@
 ## Basic Usage
 
 ```bash
-zsh satisfactory_balancer.zsh [options] n:m [n:m ...]
+zsh shell/satisfactory_balancer.zsh [options] n:m [n:m ...]
 ```
 
 Simple example:
 
 ```bash
-zsh satisfactory_balancer.zsh 1:48
+zsh shell/satisfactory_balancer.zsh 1:48
 ```
 
 Show help:
 
 ```bash
-zsh satisfactory_balancer.zsh --help
+zsh shell/satisfactory_balancer.zsh --help
 ```
 
 ## Arguments
@@ -76,7 +76,7 @@ What it does:
 Example:
 
 ```bash
-zsh satisfactory_balancer.zsh 1:48
+zsh shell/satisfactory_balancer.zsh 1:48
 ```
 
 Meaning:
@@ -98,7 +98,7 @@ What it does:
 Example:
 
 ```bash
-zsh satisfactory_balancer.zsh 4:7
+zsh shell/satisfactory_balancer.zsh 4:7
 ```
 
 Meaning:
@@ -120,7 +120,7 @@ What it does:
 Example:
 
 ```bash
-zsh satisfactory_balancer.zsh 5:2
+zsh shell/satisfactory_balancer.zsh 5:2
 ```
 
 Meaning:
@@ -143,7 +143,7 @@ What it does:
 Example:
 
 ```bash
-zsh satisfactory_balancer.zsh 1:44:8
+zsh shell/satisfactory_balancer.zsh 1:44:8
 ```
 
 Meaning:
@@ -153,10 +153,10 @@ Meaning:
 ## Quick Examples
 
 ```bash
-zsh satisfactory_balancer.zsh 1:48
-zsh satisfactory_balancer.zsh 4:7
-zsh satisfactory_balancer.zsh 5:2
-zsh satisfactory_balancer.zsh 1:44:8
+zsh shell/satisfactory_balancer.zsh 1:48
+zsh shell/satisfactory_balancer.zsh 4:7
+zsh shell/satisfactory_balancer.zsh 5:2
+zsh shell/satisfactory_balancer.zsh 1:44:8
 ```
 
 What those do:

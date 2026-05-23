@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULE_PATH = ROOT / "yt-transcribe.py"
+MODULE_PATH = ROOT / "python" / "yt-transcribe.py"
 
 spec = importlib.util.spec_from_file_location("yt_transcribe_script", MODULE_PATH)
 assert spec and spec.loader

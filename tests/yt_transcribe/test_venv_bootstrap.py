@@ -8,7 +8,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULE_PATH = ROOT / "yt-transcribe.py"
+MODULE_PATH = ROOT / "python" / "yt-transcribe.py"
 
 spec = importlib.util.spec_from_file_location("yt_transcribe_script_venv", MODULE_PATH)
 assert spec and spec.loader
@@ -31,6 +31,11 @@ def test_normalize_platform_path_returns_resolved_string(tmp_path: Path) -> None
     assert yt_transcribe.normalize_platform_path(tmp_path) == str(tmp_path.resolve())
 
 
+def test_resolve_repo_root_uses_current_dir_when_markers_exist(tmp_path: Path) -> None:
+    (tmp_path / ".git").mkdir()
+    assert yt_transcribe.resolve_repo_root(tmp_path) == tmp_path.resolve()
+
+
 def test_ensure_requirements_file_exists_raises_when_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -41,7 +46,7 @@ def test_ensure_requirements_file_exists_raises_when_missing(
 
     captured = capsys.readouterr()
     assert excinfo.value.code == 1
-    assert "Missing requirements.txt next to yt-transcribe.py." in captured.out
+    assert "Missing requirements.txt in the repo root for yt-transcribe.py." in captured.out
     assert "python -m pip install -r requirements.txt" in captured.out
 
 

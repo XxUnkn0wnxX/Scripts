@@ -1,6 +1,6 @@
 # Nord OVPN Picker
 
-[`nord_ovpn_picker.py`](../nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the script directory itself. If you run it from anywhere else, it writes straight into your current working directory.
+[`nord_ovpn_picker.py`](../python/nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the repo root itself. If you run it from anywhere else, it writes straight into your current working directory.
 
 ## Features
 
@@ -42,7 +42,7 @@ The script expects this repo-local `.venv` to exist when you actually run the pi
 
 If the repo-local `.venv` exists but the script was launched from the wrong Python interpreter, it re-execs itself into that `.venv` automatically. This works whether you run it from the repo root, by absolute path, through an alias, or through a symlink. It does not activate your current shell session globally; it only reruns the script with the correct interpreter.
 
-Plain imports and `--help` can still work without the repo-local `.venv`. Normal picker execution still expects that repo-local environment.
+Running the real CLI, including `--help`, still expects that repo-local `.venv` to exist.
 
 The re-exec path is OS-aware:
 
@@ -77,7 +77,7 @@ YOUR_NORD_SERVICE_PASSWORD
 CLI credentials can override the YAML file:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia --download-best --auth-username YOUR_USER --auth-password YOUR_PASS
+python3 python/nord_ovpn_picker.py --country Australia --download-best --auth-username YOUR_USER --auth-password YOUR_PASS
 ```
 
 Notes:
@@ -132,7 +132,7 @@ That means a slightly higher ping can still win if the load is lower enough. For
 Run the script with no filter arguments to enter the prompt flow:
 
 ```bash
-python3 nord_ovpn_picker.py
+python3 python/nord_ovpn_picker.py
 ```
 
 The prompts run in this order:
@@ -181,16 +181,16 @@ For the interactive prompts, filtering follows the visible labels instead of hid
 
 The script has three practical run styles:
 
-- Pure interactive: run `python3 nord_ovpn_picker.py` in a TTY and answer prompts for the full flow.
+- Pure interactive: run `python3 python/nord_ovpn_picker.py` in a TTY and answer prompts for the full flow.
 - Mixed TTY: pass some arguments, then let the prompt UI fill in any missing filter values.
 - Non-interactive: run from a non-TTY or provide all needed arguments up front and skip prompt-only steps.
 
 Examples:
 
 ```bash
-python3 nord_ovpn_picker.py
-python3 nord_ovpn_picker.py --country AU
-python3 nord_ovpn_picker.py --country AU --protocol udp --group standard --download-best
+python3 python/nord_ovpn_picker.py
+python3 python/nord_ovpn_picker.py --country AU
+python3 python/nord_ovpn_picker.py --country AU --protocol udp --group standard --download-best
 ```
 
 Mode notes:
@@ -208,52 +208,52 @@ Mode notes:
 Basic listing:
 
 ```bash
-python3 nord_ovpn_picker.py --list-countries
-python3 nord_ovpn_picker.py --country Australia --list-cities
-python3 nord_ovpn_picker.py --list-groups
-python3 nord_ovpn_picker.py --list-technologies
+python3 python/nord_ovpn_picker.py --list-countries
+python3 python/nord_ovpn_picker.py --country Australia --list-cities
+python3 python/nord_ovpn_picker.py --list-groups
+python3 python/nord_ovpn_picker.py --list-technologies
 ```
 
 Show candidates:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia
-python3 nord_ovpn_picker.py --country Australia --protocol udp --group standard --limit 5
-python3 nord_ovpn_picker.py --country Australia --city Melbourne --protocol tcp --group p2p --limit 5 --no-ping
-python3 nord_ovpn_picker.py --country AU --city Melb --protocol udp --group standard --limit 5
+python3 python/nord_ovpn_picker.py --country Australia
+python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --limit 5
+python3 python/nord_ovpn_picker.py --country Australia --city Melbourne --protocol tcp --group p2p --limit 5 --no-ping
+python3 python/nord_ovpn_picker.py --country AU --city Melb --protocol udp --group standard --limit 5
 ```
 
 Download:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best
-python3 nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-top 3 --force
-python3 nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
-python3 nord_ovpn_picker.py --country Australia --city Melbourne --protocol udp --group p2p --download-top 5
+python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best
+python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-top 3 --force
+python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
+python3 python/nord_ovpn_picker.py --country Australia --city Melbourne --protocol udp --group p2p --download-top 5
 ```
 
 Custom output directory:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-top 2 --output-dir /path/to/output
+python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-top 2 --output-dir /path/to/output
 ```
 
 Force the V2 dataset path:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia --city Melbourne --protocol udp --group standard --full-data
+python3 python/nord_ovpn_picker.py --country Australia --city Melbourne --protocol udp --group standard --full-data
 ```
 
 Refresh cached Nord API payloads:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia --refresh-cache
+python3 python/nord_ovpn_picker.py --country Australia --refresh-cache
 ```
 
 Show debug logging:
 
 ```bash
-python3 nord_ovpn_picker.py --country Australia --verbose
+python3 python/nord_ovpn_picker.py --country Australia --verbose
 ```
 
 ## Invocation From Anywhere
@@ -263,7 +263,7 @@ The script can be run directly, through an alias, by absolute path, or through a
 That means these styles all work as long as the repo-local `.venv` exists:
 
 ```bash
-python3 /Users/USER/Apps/Scripts/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
+python3 /Users/USER/Apps/Scripts/python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
 ```
 
 ```bash
@@ -273,12 +273,12 @@ python3 /some/symlink/to/nord_ovpn_picker.py --country Australia --protocol udp 
 On Windows, use the same script path with the normal Windows launcher:
 
 ```powershell
-py -3 C:\path\to\nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
+py -3 C:\path\to\python\nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
 ```
 
 Default output behavior depends on where you launch the command:
 
-- If your current working directory is the same directory that contains `nord_ovpn_picker.py`, downloads go into `./NordOVPNs/`.
+- If your current working directory is the repo root, downloads go into `./NordOVPNs/`.
 - If you launch the script from anywhere else, downloads go directly into your current working directory with no extra `NordOVPNs/` folder.
 
 ## Arguments
