@@ -1,6 +1,6 @@
 # fix_tags.zsh
 
-[`Audio/fix_tags.zsh`](../Audio/fix_tags.zsh) tries to repair `.m4a` metadata by exporting the tags, stripping them, then applying the clean metadata back onto the file.
+[`shell/audio/fix_tags.zsh`](../shell/audio/fix_tags.zsh) tries to repair `.m4a` metadata by exporting the tags, stripping them, then applying the clean metadata back onto the file.
 
 ## What It Does
 
@@ -18,14 +18,14 @@ brew install ffmpeg
 ## Basic Usage
 
 ```bash
-zsh Audio/fix_tags.zsh
+zsh shell/audio/fix_tags.zsh
 ```
 
 ## Example
 
 ```bash
 cd /Volumes/Media/Album
-zsh /Users/ovidijus/Apps/Scripts/Audio/fix_tags.zsh
+zsh /Users/ovidijus/Apps/Scripts/shell/audio/fix_tags.zsh
 ```
 
 ## Good To Know

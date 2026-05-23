@@ -7,8 +7,10 @@ from vpnroute import (
     ensure_requirements_file_exists,
     ensure_repo_venv_or_reexec,
     get_repo_venv_python_candidates,
+    is_repo_root,
     normalize_platform_path,
     parse_args,
+    resolve_repo_root,
 )
 
 
@@ -26,6 +28,28 @@ def test_normalize_platform_path_returns_resolved_string(tmp_path: Path) -> None
     assert normalize_platform_path(tmp_path) == str(tmp_path.resolve())
 
 
+def test_is_repo_root_accepts_git_or_requirements_markers(tmp_path: Path) -> None:
+    repo_a = tmp_path / "repo-a"
+    repo_a.mkdir()
+    (repo_a / ".git").mkdir()
+    assert is_repo_root(repo_a) is True
+
+    repo_b = tmp_path / "repo-b"
+    (repo_b / "docs").mkdir(parents=True)
+    (repo_b / "requirements.txt").write_text("rich\n", encoding="utf-8")
+    assert is_repo_root(repo_b) is True
+
+
+def test_resolve_repo_root_uses_parent_when_script_is_one_level_deep(tmp_path: Path) -> None:
+    repo_root = tmp_path / "repo"
+    (repo_root / "docs").mkdir(parents=True)
+    (repo_root / "requirements.txt").write_text("rich\n", encoding="utf-8")
+    script_dir = repo_root / "python"
+    script_dir.mkdir()
+
+    assert resolve_repo_root(script_dir) == repo_root.resolve()
+
+
 def test_ensure_requirements_file_exists_raises_when_missing(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -36,7 +60,7 @@ def test_ensure_requirements_file_exists_raises_when_missing(
 
     captured = capsys.readouterr()
     assert excinfo.value.code == 1
-    assert "Missing requirements.txt next to vpnroute.py." in captured.out
+    assert "Missing requirements.txt in the repo root for vpnroute.py." in captured.out
 
 
 def test_ensure_repo_venv_or_reexec_raises_without_repo_venv(

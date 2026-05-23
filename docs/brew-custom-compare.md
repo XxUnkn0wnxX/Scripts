@@ -1,6 +1,6 @@
 # brew-custom-compare.zsh
 
-[`brew-custom-compare.zsh`](../brew-custom-compare.zsh) compares formulas from a custom Homebrew tap against upstream Homebrew data and tells you whether your custom versions are ahead, outdated, equal, or pinned.
+[`brew-custom-compare.zsh`](../shell/brew-custom-compare.zsh) compares formulas from a custom Homebrew tap against upstream Homebrew data and tells you whether your custom versions are ahead, outdated, equal, or pinned.
 
 ## What It Does
 
@@ -21,19 +21,19 @@ That means it can scan formulas in places such as:
 Use the default tap:
 
 ```bash
-zsh brew-custom-compare.zsh
+zsh shell/brew-custom-compare.zsh
 ```
 
 Use a specific tap:
 
 ```bash
-zsh brew-custom-compare.zsh --tap myuser/mytap
+zsh shell/brew-custom-compare.zsh --tap myuser/mytap
 ```
 
 Check only specific formulas:
 
 ```bash
-zsh brew-custom-compare.zsh node ffmpeg
+zsh shell/brew-custom-compare.zsh node ffmpeg
 ```
 
 ## Arguments
@@ -70,19 +70,19 @@ zsh brew-custom-compare.zsh node ffmpeg
 Scan the default tap:
 
 ```bash
-zsh brew-custom-compare.zsh
+zsh shell/brew-custom-compare.zsh
 ```
 
 Scan a custom tap:
 
 ```bash
-zsh brew-custom-compare.zsh --tap XxUnkn0wnxX/tap
+zsh shell/brew-custom-compare.zsh --tap XxUnkn0wnxX/tap
 ```
 
 Check just one formula:
 
 ```bash
-zsh brew-custom-compare.zsh --tap XxUnkn0wnxX/tap bun
+zsh shell/brew-custom-compare.zsh --tap XxUnkn0wnxX/tap bun
 ```
 
 ## Status Labels

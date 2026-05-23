@@ -9,9 +9,6 @@ from pathlib import Path
 APP_NAME = "vpnroute"
 SCRIPT_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
-REPO_VENV_DIR = SCRIPT_DIR / ".venv"
-REQUIREMENTS_PATH = SCRIPT_DIR / "requirements.txt"
-DOCS_PATH = SCRIPT_DIR / "docs" / "vpnroute.md"
 REEXEC_ENV = "VPNROUTE_REEXEC"
 
 
@@ -36,6 +33,35 @@ def normalize_platform_path(path: Path) -> str:
     return os.path.normcase(str(path.resolve()))
 
 
+def is_repo_root(candidate: Path) -> bool:
+    return (candidate / ".git").exists() or (
+        (candidate / "requirements.txt").is_file() and (candidate / "docs").is_dir()
+    )
+
+
+def resolve_repo_root(start_dir: Path, max_depth: int = 1) -> Path:
+    candidate = start_dir.resolve()
+    fallback = candidate
+
+    for depth in range(max_depth + 1):
+        if depth == 1:
+            fallback = candidate
+        if is_repo_root(candidate):
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+
+    return fallback
+
+
+REPO_ROOT = resolve_repo_root(SCRIPT_DIR)
+REPO_VENV_DIR = REPO_ROOT / ".venv"
+REQUIREMENTS_PATH = REPO_ROOT / "requirements.txt"
+DOCS_PATH = REPO_ROOT / "docs" / "vpnroute.md"
+
+
 def resolve_repo_venv_python(venv_dir: Path) -> Path | None:
     for candidate in get_repo_venv_python_candidates(venv_dir):
         if candidate.exists():
@@ -44,7 +70,7 @@ def resolve_repo_venv_python(venv_dir: Path) -> Path | None:
 
 
 def docs_hint() -> str:
-    return str(DOCS_PATH.relative_to(SCRIPT_DIR)) if DOCS_PATH.exists() else "docs/vpnroute.md"
+    return str(DOCS_PATH.relative_to(REPO_ROOT)) if DOCS_PATH.exists() else "docs/vpnroute.md"
 
 
 def fail_with_docs(reason: str, exit_code: int = 1) -> None:
@@ -56,7 +82,7 @@ def fail_with_docs(reason: str, exit_code: int = 1) -> None:
 
 def ensure_requirements_file_exists() -> None:
     if not REQUIREMENTS_PATH.exists():
-        fail_with_docs("Missing requirements.txt next to vpnroute.py.")
+        fail_with_docs("Missing requirements.txt in the repo root for vpnroute.py.")
 
 
 def ensure_repo_venv_or_reexec(argv: list[str] | None = None) -> None:

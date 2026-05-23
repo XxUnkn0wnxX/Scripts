@@ -1,4 +1,4 @@
-# Ignore common video and audio files
+# Media outputs
 *.mkv
 *.mka
 *.mk3d
@@ -7,13 +7,24 @@
 *.m4a
 *.m4v
 
-# Ignore any folder whose name ends with "_temp"
+# Temporary folders and scratch files
 **/*_temp/
 tmp/
+Backup/
+
+# Local agent and environment files
 AGENTS.md
 .venv/
+__pycache__/
+.pytest_cache/
+
+# Local data and credentials
 NordOVPNs/
 nord_ovpn_auth.yaml
 nord_ovpn_auth.yml
-__pycache__/
-Backup/
+
+# Satisfactory Modeler launcher files
+shell/modeler/
+
+# Local-only test work
+tests/

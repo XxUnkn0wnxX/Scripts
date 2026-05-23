@@ -27,8 +27,6 @@ VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
 DEFAULT_LANG_PREF = "en,en-US,en-GB"
 SCRIPT_PATH = Path(__file__).resolve()
 SCRIPT_DIR = SCRIPT_PATH.parent
-REPO_VENV_DIR = SCRIPT_DIR / ".venv"
-REQUIREMENTS_PATH = SCRIPT_DIR / "requirements.txt"
 REEXEC_ENV = "YT_TRANSCRIBE_REEXEC"
 STAGE_DIRECTIONS = (
     "music",
@@ -93,6 +91,34 @@ def normalize_platform_path(path: Path) -> str:
     return os.path.normcase(str(path.resolve()))
 
 
+def is_repo_root(candidate: Path) -> bool:
+    return (candidate / ".git").exists() or (
+        (candidate / "requirements.txt").is_file() and (candidate / "docs").is_dir()
+    )
+
+
+def resolve_repo_root(start_dir: Path, max_depth: int = 1) -> Path:
+    candidate = start_dir.resolve()
+    fallback = candidate
+
+    for depth in range(max_depth + 1):
+        if depth == 1:
+            fallback = candidate
+        if is_repo_root(candidate):
+            return candidate
+        parent = candidate.parent
+        if parent == candidate:
+            break
+        candidate = parent
+
+    return fallback
+
+
+REPO_ROOT = resolve_repo_root(SCRIPT_DIR)
+REPO_VENV_DIR = REPO_ROOT / ".venv"
+REQUIREMENTS_PATH = REPO_ROOT / "requirements.txt"
+
+
 def resolve_repo_venv_python(venv_dir: Path) -> Optional[Path]:
     for candidate in get_repo_venv_python_candidates(venv_dir):
         if candidate.exists():
@@ -102,8 +128,8 @@ def resolve_repo_venv_python(venv_dir: Path) -> Optional[Path]:
 
 def fail_with_setup(reason: str, exit_code: int = 1) -> None:
     print(f"{reason}\n")
-    print("Create a local .venv next to yt-transcribe.py and install the repo requirements first:")
-    print(f"  cd {SCRIPT_DIR}")
+    print("Create the repo-local .venv in the repo root and install the repo requirements first:")
+    print(f"  cd {REPO_ROOT}")
     print("  /usr/local/bin/python3 -m venv .venv")
     print("  source .venv/bin/activate")
     print("  python -m pip install -r requirements.txt")
@@ -112,7 +138,7 @@ def fail_with_setup(reason: str, exit_code: int = 1) -> None:
 
 def ensure_requirements_file_exists() -> None:
     if not REQUIREMENTS_PATH.exists():
-        fail_with_setup("Missing requirements.txt next to yt-transcribe.py.")
+        fail_with_setup("Missing requirements.txt in the repo root for yt-transcribe.py.")
 
 
 def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:

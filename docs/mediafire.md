@@ -1,6 +1,6 @@
 # MediaFire.py
 
-[`MediaFire.py`](../MediaFire.py) is a tiny interactive helper that combines the quickkey from one MediaFire link you control with the quickkey from a blocked MediaFire link you paste at runtime.
+[`MediaFire.py`](../python/MediaFire.py) is a tiny interactive helper that combines the quickkey from one MediaFire link you control with the quickkey from a blocked MediaFire link you paste at runtime.
 
 ## What It Does
 
@@ -27,7 +27,7 @@ Link1 = "https://www.mediafire.com/file/your-id/YourFile.zip/file"
 Run the script:
 
 ```bash
-python3 MediaFire.py
+python3 python/MediaFire.py
 ```
 
 When prompted, paste the blocked MediaFire link:
@@ -39,7 +39,7 @@ Enter Your Blocked Mediafire Link:
 ## Example
 
 ```bash
-python3 MediaFire.py
+python3 python/MediaFire.py
 ```
 
 Then paste:

@@ -1,6 +1,6 @@
 # pyconvert.py
 
-[`pyconvert.py`](../pyconvert.py) converts decimal and hex values between several binary-friendly formats. It is useful when checking save-file values, memory values, or other binary data.
+[`pyconvert.py`](../python/pyconvert.py) converts decimal and hex values between several binary-friendly formats. It is useful when checking save-file values, memory values, or other binary data.
 
 ## What It Does
 
@@ -17,19 +17,19 @@
 Convert a float:
 
 ```bash
-python3 pyconvert.py --float 3.14
+python3 python/pyconvert.py --float 3.14
 ```
 
 Convert a 32-bit unsigned integer:
 
 ```bash
-python3 pyconvert.py --uint32 4294967295
+python3 python/pyconvert.py --uint32 4294967295
 ```
 
 Swap endianness:
 
 ```bash
-python3 pyconvert.py --swap 1234ABCD
+python3 python/pyconvert.py --swap 1234ABCD
 ```
 
 ## Arguments
@@ -106,25 +106,25 @@ python3 pyconvert.py --swap 1234ABCD
 Half float:
 
 ```bash
-python3 pyconvert.py --halffloat 3.5
+python3 python/pyconvert.py --halffloat 3.5
 ```
 
 Little-endian float:
 
 ```bash
-python3 pyconvert.py --float --little 1.25
+python3 python/pyconvert.py --float --little 1.25
 ```
 
 Unsigned short:
 
 ```bash
-python3 pyconvert.py --ushort 65535
+python3 python/pyconvert.py --ushort 65535
 ```
 
 Endianness swap:
 
 ```bash
-python3 pyconvert.py --swap DEADBEEF
+python3 python/pyconvert.py --swap DEADBEEF
 ```
 
 ## Good To Know

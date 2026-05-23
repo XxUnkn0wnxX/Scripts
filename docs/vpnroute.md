@@ -1,6 +1,6 @@
 # vpnroute
 
-[`vpnroute.py`](../vpnroute.py) is a local CLI that converts websites/domains into OpenVPN/Viscosity route commands. Dependencies are installed from [`requirements.txt`](../requirements.txt).
+[`vpnroute.py`](../python/vpnroute.py) is a local CLI that converts websites/domains into OpenVPN/Viscosity route commands. Dependencies are installed from [`requirements.txt`](../requirements.txt).
 
 ## Features
 
@@ -35,7 +35,7 @@ pip install -r requirements.txt
 
 ## Repo-local `.venv` behavior
 
-`vpnroute.py` expects a repo-local `.venv` next to the script. If that `.venv` exists but the script was started from a different Python interpreter, it re-execs itself into the repo-local `.venv` automatically.
+`vpnroute.py` expects the repo-local `.venv` in the repo root. If that `.venv` exists but the script was started from a different Python interpreter, it re-execs itself into the repo-local `.venv` automatically.
 
 This does not activate your parent shell session. It only reruns the script through the correct interpreter.
 
@@ -50,7 +50,7 @@ If `.venv` is missing, the script does not create it for you. It exits with a sh
 
 The startup path is stdlib-only until the script confirms that:
 
-- `requirements.txt` exists next to `vpnroute.py`
+- `requirements.txt` exists in the repo root
 - the repo-local `.venv` exists
 - a usable Python executable exists inside that `.venv`
 
@@ -63,7 +63,7 @@ After the re-exec step, runtime imports such as Rich and dnspython are loaded. I
 Use a text file as the first positional argument:
 
 ```bash
-python3 vpnroute.py sites.txt
+python3 python/vpnroute.py sites.txt
 ```
 
 Each line may be a domain or URL:
@@ -82,7 +82,7 @@ The script strips schemes, paths, query strings, fragments, trailing dots, blank
 Run the script without an input file:
 
 ```bash
-python3 vpnroute.py
+python3 python/vpnroute.py
 ```
 
 You will see a Rich instruction panel, then you can type or paste one domain/URL per line. Press `Enter` on a blank line after at least one entry to start processing.
@@ -94,49 +94,49 @@ If the first line is blank, the script exits cleanly with `No input provided.`
 Basic file usage:
 
 ```bash
-python3 vpnroute.py sites.txt
+python3 python/vpnroute.py sites.txt
 ```
 
 Full OpenVPN/Viscosity route usage:
 
 ```bash
-python3 vpnroute.py sites.txt --netmask 32 --gateway vpn_gateway
+python3 python/vpnroute.py sites.txt --netmask 32 --gateway vpn_gateway
 ```
 
 With gateway and metric:
 
 ```bash
-python3 vpnroute.py sites.txt --netmask 32 --gateway vpn_gateway --metric default
+python3 python/vpnroute.py sites.txt --netmask 32 --gateway vpn_gateway --metric default
 ```
 
 Using default gateway/metric values:
 
 ```bash
-python3 vpnroute.py sites.txt --netmask 255.255.255.255 --gateway default --metric default
+python3 python/vpnroute.py sites.txt --netmask 255.255.255.255 --gateway default --metric default
 ```
 
 Custom output path:
 
 ```bash
-python3 vpnroute.py sites.txt --output viscosity_routes.txt
+python3 python/vpnroute.py sites.txt --output viscosity_routes.txt
 ```
 
 Interactive mode:
 
 ```bash
-python3 vpnroute.py --gateway vpn_gateway
+python3 python/vpnroute.py --gateway vpn_gateway
 ```
 
 IP-only output:
 
 ```bash
-python3 vpnroute.py sites.txt --iponly
+python3 python/vpnroute.py sites.txt --iponly
 ```
 
 IP-only output with no comments:
 
 ```bash
-python3 vpnroute.py sites.txt --iponly --no-comments
+python3 python/vpnroute.py sites.txt --iponly --no-comments
 ```
 
 ## Arguments
@@ -252,14 +252,14 @@ By default, comments stay enabled because they make the generated route file eas
 If you want pure route lines only, pass:
 
 ```bash
-python3 vpnroute.py sites.txt --no-comments
+python3 python/vpnroute.py sites.txt --no-comments
 ```
 
 Aliases:
 
 ```bash
-python3 vpnroute.py sites.txt --no-comment
-python3 vpnroute.py sites.txt --nocom
+python3 python/vpnroute.py sites.txt --no-comment
+python3 python/vpnroute.py sites.txt --nocom
 ```
 
 That removes domain headings and failed-domain comments from the output file, but failures are still shown in the terminal UI.
@@ -269,7 +269,7 @@ That removes domain headings and failed-domain comments from the output file, bu
 If you want only IPv4 addresses with no `route`, subnet mask, gateway, or metric fields, pass:
 
 ```bash
-python3 vpnroute.py sites.txt --iponly
+python3 python/vpnroute.py sites.txt --iponly
 ```
 
 That changes each generated output line to just the IPv4 address itself.
@@ -285,7 +285,7 @@ Examples:
 If you combine it with `--no-comments`, the file becomes one plain block of IP addresses with one IP per line:
 
 ```bash
-python3 vpnroute.py sites.txt --iponly --no-comments
+python3 python/vpnroute.py sites.txt --iponly --no-comments
 ```
 
 ```text
@@ -336,7 +336,7 @@ python -m pytest
 When editing the Python sources, it is also useful to run:
 
 ```bash
-python -m compileall vpnroute.py tests/vpnroute
+python -m compileall python/vpnroute.py tests/vpnroute
 ```
 
 ## CDN-backed domains and DNS changes

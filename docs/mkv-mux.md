@@ -1,6 +1,6 @@
 # mkv_mux.zsh
 
-[`mkv_mux.zsh`](../mkv_mux.zsh) is an interactive Matroska helper for quick remuxing and audio-volume jobs. It is menu-driven, so you launch it, pick an option, then follow the prompts.
+[`mkv_mux.zsh`](../shell/mkv_mux.zsh) is an interactive Matroska helper for quick remuxing and audio-volume jobs. It is menu-driven, so you launch it, pick an option, then follow the prompts.
 
 ## What It Does
 
@@ -25,43 +25,43 @@ brew install mkvtoolnix ffmpeg fzf jq rsync
 Run in the current directory:
 
 ```bash
-zsh mkv_mux.zsh
+zsh shell/mkv_mux.zsh
 ```
 
 Run in another directory:
 
 ```bash
-zsh mkv_mux.zsh /path/to/folder
+zsh shell/mkv_mux.zsh /path/to/folder
 ```
 
 Run in non-safe mode:
 
 ```bash
-zsh mkv_mux.zsh --nsafe /path/to/folder
+zsh shell/mkv_mux.zsh --nsafe /path/to/folder
 ```
 
 Show help:
 
 ```bash
-zsh mkv_mux.zsh --help
+zsh shell/mkv_mux.zsh --help
 ```
 
 Enable the extra limiter prompt for supported audio re-encode paths:
 
 ```bash
-zsh mkv_mux.zsh --climit
+zsh shell/mkv_mux.zsh --climit
 ```
 
 Use both a directory and `--climit`:
 
 ```bash
-zsh mkv_mux.zsh --climit /path/to/folder
+zsh shell/mkv_mux.zsh --climit /path/to/folder
 ```
 
 Use both `--climit` and non-safe mode:
 
 ```bash
-zsh mkv_mux.zsh --climit --nsafe /path/to/folder
+zsh shell/mkv_mux.zsh --climit --nsafe /path/to/folder
 ```
 
 ## Arguments
@@ -125,7 +125,7 @@ Do you wish to replace incompatible audio tracks (Y/N) [N]:
 Simple example run:
 
 ```bash
-zsh mkv_mux.zsh /Volumes/Media/My Show
+zsh shell/mkv_mux.zsh /Volumes/Media/My Show
 ```
 
 Then choose:
@@ -153,7 +153,7 @@ Good for:
 Example:
 
 ```bash
-zsh mkv_mux.zsh /Volumes/Media/My Show
+zsh shell/mkv_mux.zsh /Volumes/Media/My Show
 ```
 
 Then choose:
@@ -219,7 +219,7 @@ The script always appends `:level=0` itself.
 Example:
 
 ```bash
-zsh mkv_mux.zsh --climit /Volumes/Media/My Show
+zsh shell/mkv_mux.zsh --climit /Volumes/Media/My Show
 ```
 
 Option `1` example:
@@ -278,7 +278,7 @@ If you decline an overwrite prompt, that file is skipped and the batch moves on 
 Remux an MP4 to MKV with `ffmpeg`:
 
 ```bash
-zsh mkv_mux.zsh /Volumes/Media/My Show
+zsh shell/mkv_mux.zsh /Volumes/Media/My Show
 ```
 
 Then pick:
@@ -291,7 +291,7 @@ N
 Boost one track by `2dB` and `3.5dB`:
 
 ```bash
-zsh mkv_mux.zsh /Volumes/Media/My Show
+zsh shell/mkv_mux.zsh /Volumes/Media/My Show
 ```
 
 Then pick:
@@ -304,7 +304,7 @@ Then pick:
 Boost one track and apply the default ceiling limiter:
 
 ```bash
-zsh mkv_mux.zsh --climit /Volumes/Media/My Show
+zsh shell/mkv_mux.zsh --climit /Volumes/Media/My Show
 ```
 
 Then pick:

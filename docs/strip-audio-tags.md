@@ -1,6 +1,6 @@
 # strip_audio_tags.zsh
 
-[`Audio/strip_audio_tags.zsh`](../Audio/strip_audio_tags.zsh) removes metadata tags from every `.m4a` file in the current directory.
+[`shell/audio/strip_audio_tags.zsh`](../shell/audio/strip_audio_tags.zsh) removes metadata tags from every `.m4a` file in the current directory.
 
 ## What It Does
 
@@ -17,14 +17,14 @@ brew install ffmpeg
 ## Basic Usage
 
 ```bash
-zsh Audio/strip_audio_tags.zsh
+zsh shell/audio/strip_audio_tags.zsh
 ```
 
 ## Example
 
 ```bash
 cd /Volumes/Media/Album
-zsh /Users/ovidijus/Apps/Scripts/Audio/strip_audio_tags.zsh
+zsh /Users/ovidijus/Apps/Scripts/shell/audio/strip_audio_tags.zsh
 ```
 
 ## Good To Know

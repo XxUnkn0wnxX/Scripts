@@ -1,6 +1,6 @@
 # mkv_utils.zsh
 
-[`mkv_utils.zsh`](../mkv_utils.zsh) is an interactive Matroska utility menu for metadata edits, attachment extraction, track extraction, track removal, and track reordering. It is the more power-user-oriented companion to `mkv_mux.zsh`.
+[`mkv_utils.zsh`](../shell/mkv_utils.zsh) is an interactive Matroska utility menu for metadata edits, attachment extraction, track extraction, track removal, and track reordering. It is the more power-user-oriented companion to `mkv_mux.zsh`.
 
 ## What It Does
 
@@ -40,19 +40,19 @@ pip install -r requirements.txt
 Run in the current directory:
 
 ```bash
-zsh mkv_utils.zsh
+zsh shell/mkv_utils.zsh
 ```
 
 Run in another directory:
 
 ```bash
-zsh mkv_utils.zsh /path/to/folder
+zsh shell/mkv_utils.zsh /path/to/folder
 ```
 
 Show help:
 
 ```bash
-zsh mkv_utils.zsh --help
+zsh shell/mkv_utils.zsh --help
 ```
 
 ## Arguments
@@ -91,7 +91,7 @@ What it does:
 Example:
 
 ```bash
-zsh mkv_utils.zsh /Volumes/Media/My Show
+zsh shell/mkv_utils.zsh /Volumes/Media/My Show
 ```
 
 Then choose:
@@ -292,7 +292,7 @@ Behavior:
 Rename one audio track:
 
 ```bash
-zsh mkv_utils.zsh /Volumes/Media/My Show
+zsh shell/mkv_utils.zsh /Volumes/Media/My Show
 ```
 
 Then choose:
