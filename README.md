@@ -9,7 +9,7 @@ Repo layout:
 - Shell scripts live under [`shell/`](shell/)
 - Audio shell helpers live under [`shell/audio/`](shell/audio/)
 
-## Python Utilities
+## [Python Utilities](python/)
 
 - [`yt-transcribe.py`](python/yt-transcribe.py) - Download YouTube captions and export them as text or DOCX. [Docs](docs/yt-transcribe.md)
 - [`pyconvert.py`](python/pyconvert.py) - Convert decimal and hex values between common numeric formats. [Docs](docs/pyconvert.md)
@@ -17,7 +17,7 @@ Repo layout:
 - [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) - Browse and download NordVPN OpenVPN configs. [Docs](docs/nord-ovpn-picker.md)
 - [`vpnroute.py`](python/vpnroute.py) - Turn domains or URLs into VPN route output. [Docs](docs/vpnroute.md)
 
-## Shell Utilities
+## [Shell Utilities](shell/)
 
 - [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) - Extract every attachment from each MKV in the current folder. [Docs](docs/mkv-extract-tracks.md)
 - [`mkv_mux.zsh`](shell/mkv_mux.zsh) - Interactive MKV remux and volume-boost helper. [Docs](docs/mkv-mux.md)
