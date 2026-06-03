@@ -8,6 +8,7 @@ Repo layout:
 - Python CLIs live under [`python/`](python/)
 - Shell scripts live under [`shell/`](shell/)
 - Audio shell helpers live under [`shell/audio/`](shell/audio/)
+- Downloadable tools live under [`tools/`](tools/)
 
 ## [Python Utilities](python/)
 
@@ -36,6 +37,10 @@ Repo layout:
 ## [Zen Scripts](Zen%20Scripts/)
 
 - [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc) - Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. [Docs](docs/bo3-ao-mod.md)
+
+## [Tools](tools/)
+
+- [`GPC Builder by Jimmy CrakCrn.zip`](tools/GPC%20Builder%20by%20Jimmy%20CrakCrn.zip) - Portable Cronus Zen GPC scripting IDE by Jimmy CrakCrn with a code editor, validator, component builder, OLED layout designer, embedded references, and Anthropic API-powered assistance.
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
