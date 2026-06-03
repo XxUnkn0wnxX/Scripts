@@ -11,6 +11,7 @@
 **/*_temp/
 tmp/
 Backup/
+*.html
 
 # Local agent and environment files
 AGENTS.md
