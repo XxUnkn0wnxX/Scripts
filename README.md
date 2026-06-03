@@ -34,7 +34,7 @@ Repo layout:
 
 ## [Zen Scripts](Zen%20Scripts/)
 
-- [`BO3 AO-Mod (Version 2.4b) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4b%29%20%5BZEN%5D.gpc) - Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. [Docs](docs/bo3-ao-mod.md)
+- [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc) - Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. [Docs](docs/bo3-ao-mod.md)
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 

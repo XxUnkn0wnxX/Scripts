@@ -30,6 +30,7 @@ Version 2.1a:  Fixed issue with Jitter
 Version 2.2: Zen port + preset split (ADS/L1), new rumble/LED indicators, cleanup
 Version 2.3: INF grenades toggle + EQUIPMENT tap, LEFT bind, documentation updates
 Version 2.4b: Cleanup legacy placeholders, ZMode/INFNade toggles, defaults updated
+Version 2.4c: Added ZMode-only GobbleGum one-shot on D-PAD DOWN double-tap, with Mrorion credit.
 =============================================================================
 TOGGLES: (You MUST press the listed modifier button first before)
 Press ADS (aim down sights) (L2) in addition with any of the below:
@@ -56,11 +57,12 @@ Press GRENADE (R1) in addition with any of the below:
 - GRENADE + double-tap L3 then hold 500ms = Auto Sprint ON/OFF.
 
 Press D-PAD DOWN in addition with any of the below:
-- D-PAD DOWN + RELOAD = HLX Recharge Bypass ON/OFF.
+- D-PAD DOWN + RELOAD = HLX Recharge Bypass ON/OFF when ZMode is FALSE.
 - D-PAD DOWN + MELEE  = Turbo Melee ON/OFF (single-tap).
 - D-PAD DOWN + double-tap MELEE then hold 500ms = ZAim ON/OFF (ADS auto-tap).
 
 Optional:
+- D-PAD DOWN double-tap = GobbleGum one-shot when ZMode is TRUE.
 - LEFT (no modifiers) hold 500ms = INF grenades ON/OFF if INFNade = TRUE.
 - LEFT (no modifiers) tap = run EQUIPMENT once (only when INF loop is OFF).
 - TOUCHPAD hold 6000ms = INFNade master ON/OFF (double rumble; blocked when ZMode is TRUE).
@@ -213,6 +215,7 @@ int JitterMode                   = 0;     // 0 = disabled, 1 = normal jitter (pu
 // HLX Recharge Bypass
 // ---------------------------
 int HLXBypass                    = FALSE; // HLX recharge bypass toggle
+int GobbleGumTapPending          = 0;     // pending second tap for ZMode D-PAD DOWN double-tap
 
 // ---------------------------
 // Turbo Melee
@@ -600,6 +603,19 @@ main {
         combo_run(DropScopeModeBlink);
     }
 
+    if(ZMode && event_press(DOWN) && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(TACTICAL)) { // D-PAD DOWN double-tap
+        if(!GobbleGumTapPending) {
+            GobbleGumTapPending = 1;
+            combo_run(GobbleGumTapWindow);
+        } else {
+            GobbleGumTapPending = 0;
+            combo_stop(GobbleGumTapWindow);
+            if(!combo_running(GobbleGum)) {
+                combo_run(GobbleGum);
+            }
+        }
+    }
+
     if(!ZMode && get_val(DOWN) && get_ptime(DOWN) >= MODIFIER_TIMER && !get_val(ADS) && !get_val(CROUCH) && !get_val(GRENADE) && !get_val(TACTICAL)) { // D-PAD DOWN + RELOAD
         if(event_press(RELOAD)) {
             HLXBypass = !HLXBypass;
@@ -955,6 +971,32 @@ combo HLXBypass {
     wait(20);
 }
 
+/*
+Thanks to Mrorion from forums.cronusmax.com for the GobbleGum combo.
+*/
+combo GobbleGum {
+    set_val(RELOAD, 100);
+    wait(200);
+    set_val(RELOAD, 100);
+    set_val(GRENADE, 100);
+    wait(1000);
+    set_val(RELOAD, 0);
+    set_val(GRENADE, 0);
+    wait(70);
+    set_val(SWAP_WEAPONS, 100);
+    wait(40);
+    wait(40);
+    set_val(SWAP_WEAPONS, 100);
+    wait(40);
+    wait(40);
+    set_val(SWAP_WEAPONS, 100);
+    wait(40);
+    wait(40);
+    set_val(SWAP_WEAPONS, 0);
+    wait(40);
+    wait(40);
+}
+
 combo TurboMelee {
     set_val(MELEE, 100);
     wait(40);
@@ -1278,6 +1320,8 @@ combo ZAimTapWindow {
         }
     }
 }
+
+combo GobbleGumTapWindow { wait(DT_WINDOW); GobbleGumTapPending = 0; }
 
 combo AutoSprintTapWindow { wait(DT_WINDOW); AutoSprintTapPending = 0; }
 
