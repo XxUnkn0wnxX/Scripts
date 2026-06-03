@@ -976,13 +976,13 @@ Thanks to Mrorion from forums.cronusmax.com for the GobbleGum combo.
 */
 combo GobbleGum {
     set_val(RELOAD, 100);
-    wait(200);
+    wait(190);
     set_val(RELOAD, 100);
     set_val(GRENADE, 100);
     wait(1000);
     set_val(RELOAD, 0);
     set_val(GRENADE, 0);
-    wait(70);
+    wait(100);
     set_val(SWAP_WEAPONS, 100);
     wait(40);
     wait(40);
@@ -993,8 +993,6 @@ combo GobbleGum {
     wait(40);
     wait(40);
     set_val(SWAP_WEAPONS, 0);
-    wait(40);
-    wait(40);
 }
 
 combo TurboMelee {
