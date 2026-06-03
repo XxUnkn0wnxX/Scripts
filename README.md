@@ -16,6 +16,7 @@ Repo layout:
 - [`MediaFire.py`](python/MediaFire.py) - Combine two MediaFire quickkeys into one shareable link. [Docs](docs/mediafire.md)
 - [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) - Browse and download NordVPN OpenVPN configs. [Docs](docs/nord-ovpn-picker.md)
 - [`vpnroute.py`](python/vpnroute.py) - Turn domains or URLs into VPN route output. [Docs](docs/vpnroute.md)
+- [`safari_bookmarks_export.py`](python/safari_bookmarks_export.py) - Export selected Safari bookmark folders to Firefox/Chrome HTML. [Docs](docs/safari-bookmarks-export.md)
 
 ## [Shell Utilities](shell/)
 
