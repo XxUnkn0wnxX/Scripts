@@ -5,7 +5,7 @@
 // @author       OpenAI
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js
-// @version      2.8.0
+// @version      2.8.1
 // @description  Round button in the Shorts actions column + configurable hotkey to open the full player. No fallback pill or debug flags. Trusted-Types safe.
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
@@ -128,6 +128,10 @@
 
   function findActionsColumn() {
     const selectors = [
+      '.ytReelPlayerOverlayViewModelActionsContainer reel-action-bar-view-model',
+      'yt-reel-player-overlay-view-model reel-action-bar-view-model',
+      'reel-action-bar-view-model.ytwReelActionBarViewModelHost',
+      '.ytReelPlayerOverlayViewModelActionsContainer',
       'ytd-reel-player-overlay-renderer #actions',
       'ytd-reel-video-renderer #actions',
       '#actions.ytd-reel-player-overlay-renderer',
@@ -157,13 +161,18 @@
     if (!(isShortsUrl() || isShortsViewActive())) return tearDownColumnButton();
     const column = findActionsColumn();
     if (!column) return tearDownColumnButton();
-    if (colHost && colHost.isConnected) return; // already mounted
+    if (colHost && colHost.isConnected) {
+      if (colHost.parentNode === column) return; // already mounted in the active action bar
+      colHost.remove();
+    }
 
     colHost = document.createElement('div');
+    colHost.className = 'ytwReelActionBarViewModelHostDesktopActionButton';
     const shadow = colHost.attachShadow({ mode: 'open' });
 
     const style = document.createElement('style');
     style.textContent = `
+      :host { display: block; }
       .btnwrap { display: flex; flex-direction: column; align-items: center; gap: 6px; margin: 6px 0; }
       .round { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
                background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12);
