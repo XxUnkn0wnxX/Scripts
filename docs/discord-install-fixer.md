@@ -35,7 +35,7 @@ Use `--channel all` to apply the selected action to all three channels.
 - gracefully quits only the selected Discord client and waits up to 10 seconds
 - with `--channel all`, stops all selected Discord clients before replacement or cleanup starts
 - force-kills only the selected channel's executable if it does not quit cleanly
-- deletes the detected core installation and updater state
+- deletes the detected core installation and updater state before app replacement or OpenAsar injection
 - relaunches a selected client only when that selected client was running when the script started
 - with `--channel all`, processes Stable, PTB, and Canary sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
@@ -86,6 +86,8 @@ shell/Discord-canary-installer.dmg
 ```
 
 Any existing DMG at that path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
+
+If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. If all attempts fail, the selected app is not replaced and the script exits with an error.
 
 With `--channel all`, each channel's DMG and mountpoint are cleaned up immediately after that channel's app replacement finishes, before the script moves to the next channel.
 
