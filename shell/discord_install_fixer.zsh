@@ -113,7 +113,6 @@ case "$selected_channel" in
 esac
 
 typeset -A channel_was_running=()
-typeset -A channel_should_relaunch=()
 
 app_name_for_channel() {
   print -- "${channel_app_names[$1]}"
@@ -373,7 +372,6 @@ clean_channel() {
   local channel="$1"
   local was_running_at_start="${2:-false}"
   local allow_missing_data_dir="${3:-false}"
-  local defer_relaunch="${4:-false}"
   local app_name
   local data_dir
   local targets
@@ -388,13 +386,8 @@ clean_channel() {
       print "$app_name data directory not found, so there is no App Support cleanup to run:"
       print "  $data_dir"
       if [[ "$was_running_at_start" == true ]]; then
-        if [[ "$defer_relaunch" == true ]]; then
-          channel_should_relaunch[$channel]=true
-          print "$app_name will be relaunched after all selected channels finish."
-        else
-          print "Relaunching $app_name because it was running when this script started..."
-          open "$(app_path_for_channel "$channel")"
-        fi
+        print "Relaunching $app_name because it was running when this script started..."
+        open "$(app_path_for_channel "$channel")"
       fi
       return 0
     fi
@@ -436,13 +429,8 @@ clean_channel() {
     print
     print "Nothing was changed for $app_name."
     if [[ "$was_running_at_start" == true ]]; then
-      if [[ "$defer_relaunch" == true ]]; then
-        channel_should_relaunch[$channel]=true
-        print "$app_name will be relaunched after all selected channels finish."
-      else
-        print "Relaunching $app_name because it was running when this script started..."
-        open "$(app_path_for_channel "$channel")"
-      fi
+      print "Relaunching $app_name because it was running when this script started..."
+      open "$(app_path_for_channel "$channel")"
     fi
     return 0
   fi
@@ -471,13 +459,8 @@ clean_channel() {
   print "$app_name installation files cleaned successfully."
 
   if [[ "$was_running_at_start" == true ]]; then
-    if [[ "$defer_relaunch" == true ]]; then
-      channel_should_relaunch[$channel]=true
-      print "$app_name will be relaunched after all selected channels finish."
-    else
-      print "Relaunching $app_name because it was running when this script started..."
-      open "$(app_path_for_channel "$channel")"
-    fi
+    print "Relaunching $app_name because it was running when this script started..."
+    open "$(app_path_for_channel "$channel")"
   else
     print "$app_name was not running, so it will remain closed."
   fi
@@ -540,7 +523,6 @@ for channel in "${selected_channels[@]}"; do
   app_name="$(app_name_for_channel "$channel")"
   was_running_at_start="${channel_was_running[$channel]:-false}"
   allow_missing_data_dir=false
-  defer_relaunch=false
 
   print
   print "== $app_name =="
@@ -562,21 +544,10 @@ for channel in "${selected_channels[@]}"; do
 
   if [[ "$selected_channel" == all ]]; then
     allow_missing_data_dir=true
-    defer_relaunch=true
   fi
 
-  clean_channel "$channel" "$was_running_at_start" "$allow_missing_data_dir" "$defer_relaunch"
+  clean_channel "$channel" "$was_running_at_start" "$allow_missing_data_dir"
 done
-
-if [[ "$selected_channel" == all ]]; then
-  for channel in "${selected_channels[@]}"; do
-    if [[ "${channel_should_relaunch[$channel]:-false}" == true ]]; then
-      app_name="$(app_name_for_channel "$channel")"
-      print "Relaunching $app_name..."
-      open "$(app_path_for_channel "$channel")"
-    fi
-  done
-fi
 
 if [[ "$openasar_requested" == true ]]; then
   cleanup_openasar_payload
