@@ -129,6 +129,59 @@ OpenAsar injection happens before any selected client is relaunched.
 
 ## Usage
 
+```text
+discord_install_fixer.zsh --channel stable|ptb|canary|all [--update] [--openasar]
+discord_install_fixer.zsh --help
+```
+
+## Arguments
+
+<table>
+  <thead>
+    <tr>
+      <th>Argument</th>
+      <th>Type</th>
+      <th>Values</th>
+      <th>Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><nobr><code>--channel &lt;channel&gt;</code></nobr></td>
+      <td>Option</td>
+      <td><nobr><code>stable</code>, <code>ptb</code>, <code>canary</code>, <code>all</code></nobr></td>
+      <td>Selects the Discord client or clients to purge, update, or inject. <code>all</code> processes Stable, PTB, and Canary sequentially.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--update</code></nobr></td>
+      <td>Flag</td>
+      <td><nobr>none</nobr></td>
+      <td>Downloads a fresh Discord DMG for the selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. Requires <code>--channel</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--openasar</code></nobr></td>
+      <td>Flag</td>
+      <td><nobr>none</nobr></td>
+      <td>Downloads OpenAsar and overwrites the selected app's <code>Contents/Resources/app.asar</code>. Requires <code>--channel</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--help</code>, <code>-h</code></nobr></td>
+      <td>Flag</td>
+      <td><nobr>none</nobr></td>
+      <td>Prints the built-in help message and exits.</td>
+    </tr>
+  </tbody>
+</table>
+
+Notes:
+
+- Running the script with no arguments preserves the old default and cleans Discord Stable only.
+- `--channel` alone only purges the selected client or clients' App Support updater files.
+- `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
+- `--update` and `--openasar` can be combined.
+
+## Examples
+
 Show help:
 
 ```bash
@@ -170,12 +223,6 @@ Download, replace, inject OpenAsar, and clean all channels:
 ```bash
 zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 ```
-
-`--update` must be paired with `--channel`. Running `--update` by itself exits with an error because the app replacement target must be explicit.
-
-`--openasar` must also be paired with `--channel`.
-
-Running the script with no arguments preserves the old default and cleans Discord Stable only.
 
 ## Safety Guards
 
