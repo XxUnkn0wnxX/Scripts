@@ -37,7 +37,7 @@ Use `--channel all` to apply the selected action to all three channels.
 - force-kills only the selected channel's executable if it does not quit cleanly
 - deletes the detected core installation and updater state
 - relaunches a selected client only when that selected client was running when the script started
-- with `--channel all`, waits until all selected channels finish before relaunching clients that were previously running
+- with `--channel all`, processes Stable, PTB, and Canary sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
 - with `--openasar`, downloads OpenAsar, overwrites the selected app's `Contents/Resources/app.asar`, and deletes the downloaded payload afterward
 
@@ -87,6 +87,8 @@ shell/Discord-canary-installer.dmg
 
 Any existing DMG at that path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
 
+With `--channel all`, each channel's DMG and mountpoint are cleaned up immediately after that channel's app replacement finishes, before the script moves to the next channel.
+
 Temporary mountpoints are created beside the script file and are removed after use. In this repository the preferred paths are:
 
 ```text
@@ -119,7 +121,7 @@ OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/do
 
 Change `OPENASAR_RELEASE_URL` in the script if you want to use a different OpenAsar fork or the main upstream OpenAsar release channel.
 
-The downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the run. It does not keep an archived copy and does not create `.stock` backups.
+The downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. It does not keep an archived copy and does not create `.stock` backups.
 
 OpenAsar injection happens before any selected client is relaunched.
 
