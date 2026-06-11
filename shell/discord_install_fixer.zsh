@@ -6,6 +6,7 @@ setopt null_glob
 script_name="${0:t}"
 script_dir="${0:A:h}"
 downloads_dir="$HOME/Downloads"
+OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
 
 typeset -A channel_app_names=(
   stable "Discord"
@@ -28,22 +29,25 @@ typeset -A channel_download_urls=(
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [--update]
+  $script_name --channel stable|ptb|canary|all [--update] [--openasar]
   $script_name --help
 
 Options:
   --channel  Select the Discord channel to clean. Use "all" for Stable, PTB, and Canary.
   --update   Download and replace the selected Discord app before cleaning updater files.
+  --openasar Download and inject OpenAsar app.asar into the selected Discord app.
   --help     Show this help message.
 
 Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
+  $script_name --channel canary --openasar
   $script_name --channel all --update
 
 Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
+  --openasar must be paired with --channel so the target app is explicit.
 EOF
 }
 
@@ -56,6 +60,7 @@ fail_usage() {
 
 selected_channel=""
 update_requested=false
+openasar_requested=false
 explicit_channel=false
 
 while (( $# > 0 )); do
@@ -74,6 +79,10 @@ while (( $# > 0 )); do
       update_requested=true
       shift
       ;;
+    --openasar)
+      openasar_requested=true
+      shift
+      ;;
     *)
       fail_usage "Unknown argument: $1"
       ;;
@@ -82,6 +91,10 @@ done
 
 if [[ "$update_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--update requires --channel stable|ptb|canary|all."
+fi
+
+if [[ "$openasar_requested" == true && "$explicit_channel" != true ]]; then
+  fail_usage "--openasar requires --channel stable|ptb|canary|all."
 fi
 
 if [[ "$explicit_channel" != true ]]; then
@@ -134,6 +147,36 @@ mount_point_for_channel() {
   print -- "$script_dir/mount-${channel}"
 }
 
+openasar_payload_path() {
+  print -- "$script_dir/openasar-app.asar"
+}
+
+available_openasar_payload_path() {
+  local base_path
+  local candidate
+  local random_number
+
+  base_path="$(openasar_payload_path)"
+
+  if [[ ! -e "$base_path" ]]; then
+    print -- "$base_path"
+    return 0
+  fi
+
+  for _ in {1..100}; do
+    random_number=$(( RANDOM % 90 + 10 ))
+    candidate="${base_path:r}-${random_number}.${base_path:e}"
+    if [[ ! -e "$candidate" ]]; then
+      print -- "$candidate"
+      return 0
+    fi
+  done
+
+  print -u2 "Could not find an unused OpenAsar payload path for:"
+  print -u2 "  $base_path"
+  return 1
+}
+
 available_mount_point_for_channel() {
   local channel="$1"
   local base_mount_point
@@ -166,6 +209,62 @@ discord_is_running() {
   local executable
   executable="$(executable_path_for_channel "$channel")"
   pgrep -f "^${executable}$" >/dev/null 2>&1
+}
+
+download_openasar_payload() {
+  local payload_path="$1"
+
+  print "Downloading OpenAsar payload to:"
+  print "  $payload_path"
+  if ! curl -L --fail --show-error --output "$payload_path" "$OPENASAR_RELEASE_URL"; then
+    rm -f -- "$payload_path"
+    return 1
+  fi
+
+  if [[ ! -f "$payload_path" ]]; then
+    print -u2 "OpenAsar payload download failed:"
+    print -u2 "  $payload_path"
+    rm -f -- "$payload_path"
+    return 1
+  fi
+}
+
+inject_openasar() {
+  local channel="$1"
+  local payload_path="$2"
+  local app_name
+  local app_path
+  local resources_dir
+  local target_asar
+
+  app_name="$(app_name_for_channel "$channel")"
+  app_path="$(app_path_for_channel "$channel")"
+  resources_dir="$app_path/Contents/Resources"
+  target_asar="$resources_dir/app.asar"
+
+  if [[ ! -d "$app_path" ]]; then
+    print -u2 "$app_name app was not found:"
+    print -u2 "  $app_path"
+    return 1
+  fi
+
+  if [[ ! -d "$resources_dir" ]]; then
+    print -u2 "$app_name resources directory was not found:"
+    print -u2 "  $resources_dir"
+    return 1
+  fi
+
+  print "Injecting OpenAsar into $app_name..."
+  cp "$payload_path" "$target_asar"
+
+  if [[ ! -f "$target_asar" ]]; then
+    print -u2 "OpenAsar injection failed; app.asar was not found after copy:"
+    print -u2 "  $target_asar"
+    return 1
+  fi
+
+  print "OpenAsar injected into $app_name:"
+  print "  $target_asar"
 }
 
 quit_discord() {
@@ -405,6 +504,22 @@ validate_selected_data_dirs() {
 
 validate_selected_data_dirs
 
+openasar_payload=""
+openasar_payload_downloaded=false
+
+if [[ "$openasar_requested" == true ]]; then
+  openasar_payload="$(available_openasar_payload_path)"
+  cleanup_openasar_payload() {
+    if [[ "$openasar_payload_downloaded" == true && -n "$openasar_payload" ]]; then
+      rm -f -- "$openasar_payload"
+    fi
+  }
+
+  trap cleanup_openasar_payload EXIT
+  download_openasar_payload "$openasar_payload"
+  openasar_payload_downloaded=true
+fi
+
 for channel in "${selected_channels[@]}"; do
   if discord_is_running "$channel"; then
     channel_was_running[$channel]=true
@@ -417,7 +532,7 @@ if [[ "$selected_channel" == all ]]; then
   print
   print "Stopping all selected Discord clients before continuing..."
   for channel in "${selected_channels[@]}"; do
-    if [[ "${channel_was_running[$channel]}" == true ]]; then
+    if discord_is_running "$channel"; then
       quit_discord "$channel"
     fi
   done
@@ -432,14 +547,19 @@ for channel in "${selected_channels[@]}"; do
   print
   print "== $app_name =="
 
+  if [[ "$selected_channel" != all && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
+    if discord_is_running "$channel"; then
+      quit_discord "$channel"
+    fi
+  fi
+
   if [[ "$update_requested" == true ]]; then
     allow_missing_data_dir=true
-    if [[ "$selected_channel" != all ]]; then
-      if discord_is_running "$channel"; then
-        quit_discord "$channel"
-      fi
-    fi
     download_and_replace_app "$channel"
+  fi
+
+  if [[ "$openasar_requested" == true ]]; then
+    inject_openasar "$channel" "$openasar_payload"
   fi
 
   if [[ "$selected_channel" == all ]]; then
@@ -458,4 +578,8 @@ if [[ "$selected_channel" == all ]]; then
       open "$(app_path_for_channel "$channel")"
     fi
   done
+fi
+
+if [[ "$openasar_requested" == true ]]; then
+  cleanup_openasar_payload
 fi
