@@ -149,32 +149,6 @@ openasar_payload_path() {
   print -- "$script_dir/openasar-app.asar"
 }
 
-available_openasar_payload_path() {
-  local base_path
-  local candidate
-  local random_number
-
-  base_path="$(openasar_payload_path)"
-
-  if [[ ! -e "$base_path" ]]; then
-    print -- "$base_path"
-    return 0
-  fi
-
-  for _ in {1..100}; do
-    random_number=$(( RANDOM % 90 + 10 ))
-    candidate="${base_path:r}-${random_number}.${base_path:e}"
-    if [[ ! -e "$candidate" ]]; then
-      print -- "$candidate"
-      return 0
-    fi
-  done
-
-  print -u2 "Could not find an unused OpenAsar payload path for:"
-  print -u2 "  $base_path"
-  return 1
-}
-
 available_mount_point_for_channel() {
   local channel="$1"
   local base_mount_point
@@ -211,6 +185,8 @@ discord_is_running() {
 
 download_openasar_payload() {
   local payload_path="$1"
+
+  rm -f -- "$payload_path"
 
   print "Downloading OpenAsar payload to:"
   print "  $payload_path"
@@ -261,8 +237,15 @@ inject_openasar() {
     return 1
   fi
 
+  if ! cmp -s "$payload_path" "$target_asar"; then
+    print -u2 "OpenAsar injection failed; app.asar does not match the downloaded payload:"
+    print -u2 "  $target_asar"
+    return 1
+  fi
+
   print "OpenAsar injected into $app_name:"
   print "  $target_asar"
+  sleep 1
 }
 
 quit_discord() {
@@ -300,16 +283,19 @@ download_and_replace_app() {
   local channel="$1"
   local app_name
   local app_path
+  local executable_path
   local download_url
   local dmg_path
   local mount_point
   local mounted=false
   local mount_point_created=false
   local source_app=""
+  local attempt
   local -a found_apps
 
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
+  executable_path="$(executable_path_for_channel "$channel")"
   download_url="$(download_url_for_channel "$channel")"
   dmg_path="$(dmg_path_for_channel "$channel")"
   mount_point="$(available_mount_point_for_channel "$channel")"
@@ -331,10 +317,21 @@ download_and_replace_app() {
 
   print "Downloading $app_name installer to:"
   print "  $dmg_path"
-  if ! curl -L --fail --show-error --output "$dmg_path" "$download_url"; then
+  for attempt in {1..3}; do
+    if curl -L --fail --show-error --output "$dmg_path" "$download_url"; then
+      break
+    fi
+
     rm -f -- "$dmg_path"
-    return 1
-  fi
+    if (( attempt == 3 )); then
+      print -u2 "$app_name installer download failed after $attempt attempts."
+      print -u2 "$app_name was not replaced."
+      return 1
+    fi
+
+    print "$app_name installer download failed. Retrying in 3 seconds..."
+    sleep 3
+  done
 
   {
     hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_point" >/dev/null
@@ -361,17 +358,23 @@ download_and_replace_app() {
       print -u2 "  $app_path"
       exit 1
     fi
+
+    if [[ ! -x "$executable_path" ]]; then
+      print -u2 "Copy failed; app executable was not found after replacement:"
+      print -u2 "  $executable_path"
+      exit 1
+    fi
   } always {
     cleanup_mount_and_dmg
   }
 
   print "$app_name app replaced successfully."
+  sleep 2
 }
 
 clean_channel() {
   local channel="$1"
-  local was_running_at_start="${2:-false}"
-  local allow_missing_data_dir="${3:-false}"
+  local allow_missing_data_dir="${2:-false}"
   local app_name
   local data_dir
   local targets
@@ -385,10 +388,6 @@ clean_channel() {
     if [[ "$allow_missing_data_dir" == true ]]; then
       print "$app_name data directory not found, so there is no App Support cleanup to run:"
       print "  $data_dir"
-      if [[ "$was_running_at_start" == true ]]; then
-        print "Relaunching $app_name because it was running when this script started..."
-        open "$(app_path_for_channel "$channel")"
-      fi
       return 0
     fi
 
@@ -428,10 +427,6 @@ clean_channel() {
     print "  download/"
     print
     print "Nothing was changed for $app_name."
-    if [[ "$was_running_at_start" == true ]]; then
-      print "Relaunching $app_name because it was running when this script started..."
-      open "$(app_path_for_channel "$channel")"
-    fi
     return 0
   fi
 
@@ -457,10 +452,40 @@ clean_channel() {
   done
 
   print "$app_name installation files cleaned successfully."
+}
+
+relaunch_channel_if_needed() {
+  local channel="$1"
+  local was_running_at_start="${2:-false}"
+  local app_name
+  local app_path
+  local executable_path
+  local attempt
+
+  app_name="$(app_name_for_channel "$channel")"
+  app_path="$(app_path_for_channel "$channel")"
+  executable_path="$(executable_path_for_channel "$channel")"
 
   if [[ "$was_running_at_start" == true ]]; then
     print "Relaunching $app_name because it was running when this script started..."
-    open "$(app_path_for_channel "$channel")"
+    for attempt in {1..3}; do
+      if open "$app_path"; then
+        return 0
+      fi
+
+      print "$app_name did not relaunch cleanly with open. Retrying..."
+      sleep 1
+    done
+
+    if [[ -x "$executable_path" ]]; then
+      print "Falling back to launching $app_name executable directly..."
+      "$executable_path" >/dev/null 2>&1 &!
+      return 0
+    fi
+
+    print -u2 "$app_name could not be relaunched because its executable is missing:"
+    print -u2 "  $executable_path"
+    return 1
   else
     print "$app_name was not running, so it will remain closed."
   fi
@@ -489,7 +514,7 @@ openasar_payload=""
 openasar_payload_downloaded=false
 
 if [[ "$openasar_requested" == true ]]; then
-  openasar_payload="$(available_openasar_payload_path)"
+  openasar_payload="$(openasar_payload_path)"
   cleanup_openasar_payload() {
     if [[ "$openasar_payload_downloaded" == true && -n "$openasar_payload" ]]; then
       rm -f -- "$openasar_payload"
@@ -533,8 +558,13 @@ for channel in "${selected_channels[@]}"; do
     fi
   fi
 
-  if [[ "$update_requested" == true ]]; then
+  if [[ "$selected_channel" == all || "$update_requested" == true ]]; then
     allow_missing_data_dir=true
+  fi
+
+  clean_channel "$channel" "$allow_missing_data_dir"
+
+  if [[ "$update_requested" == true ]]; then
     download_and_replace_app "$channel"
   fi
 
@@ -542,11 +572,7 @@ for channel in "${selected_channels[@]}"; do
     inject_openasar "$channel" "$openasar_payload"
   fi
 
-  if [[ "$selected_channel" == all ]]; then
-    allow_missing_data_dir=true
-  fi
-
-  clean_channel "$channel" "$was_running_at_start" "$allow_missing_data_dir"
+  relaunch_channel_if_needed "$channel" "$was_running_at_start"
 done
 
 if [[ "$openasar_requested" == true ]]; then
