@@ -2,7 +2,7 @@
 
 [`discord_install_fixer.zsh`](../shell/discord_install_fixer.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
 
-It can also download a fresh Discord DMG, replace the selected app in `/Applications`, and then run the same App Support cleanup.
+It can also download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the app bundle, and then run the same App Support cleanup.
 
 ## Channels
 
@@ -39,6 +39,7 @@ Use `--channel all` to apply the selected action to all three channels.
 - relaunches a selected client only when that selected client was running when the script started
 - with `--channel all`, waits until all selected channels finish before relaunching clients that were previously running
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
+- with `--openasar`, downloads OpenAsar, overwrites the selected app's `Contents/Resources/app.asar`, and deletes the downloaded payload afterward
 
 ## What It Deletes
 
@@ -96,6 +97,32 @@ shell/mount-canary
 
 If a preferred mountpoint path already exists as a file or folder, the script chooses a random unused numbered fallback such as `shell/mount-stable-45`. It checks that the fallback path does not exist before creating it.
 
+## OpenAsar
+
+Use `--openasar` with `--channel` to inject OpenAsar into the selected Discord app bundle:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel stable --openasar
+```
+
+It can also be combined with `--update`:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel all --update --openasar
+```
+
+The OpenAsar download URL is defined inside the script:
+
+```zsh
+OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
+```
+
+Change `OPENASAR_RELEASE_URL` in the script if you want to use a different OpenAsar fork or the main upstream OpenAsar release channel.
+
+The downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the run. It does not keep an archived copy and does not create `.stock` backups.
+
+OpenAsar injection happens before any selected client is relaunched.
+
 ## Usage
 
 Show help:
@@ -122,13 +149,27 @@ Download, replace, and clean Discord Canary:
 zsh shell/discord_install_fixer.zsh --channel canary --update
 ```
 
+Inject OpenAsar and clean Discord Stable:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel stable --openasar
+```
+
 Download, replace, and clean Stable, PTB, and Canary:
 
 ```bash
 zsh shell/discord_install_fixer.zsh --channel all --update
 ```
 
+Download, replace, inject OpenAsar, and clean all channels:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel all --update --openasar
+```
+
 `--update` must be paired with `--channel`. Running `--update` by itself exits with an error because the app replacement target must be explicit.
+
+`--openasar` must also be paired with `--channel`.
 
 Running the script with no arguments preserves the old default and cleans Discord Stable only.
 
@@ -138,6 +179,7 @@ Running the script with no arguments preserves the old default and cleans Discor
 - Existing data directories must contain `settings.json` or `Local Storage/` so they resemble Discord data directories.
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
+- OpenAsar injection only runs after the selected app has been stopped.
 - If no updater-managed targets are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully.
 - Existing apps in `/Applications` are always replaced during `--update`.
 
