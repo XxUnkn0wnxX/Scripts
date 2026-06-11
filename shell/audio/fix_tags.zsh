@@ -1,4 +1,4 @@
-#!/bin/local/zsh
+#!/usr/bin/env zsh
 
 # Store the current directory
 current_dir=$(pwd)
