@@ -5,7 +5,6 @@ setopt null_glob
 
 script_name="${0:t}"
 script_dir="${0:A:h}"
-downloads_dir="$HOME/Downloads"
 OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
 
 typeset -A channel_app_names=(
@@ -139,7 +138,7 @@ download_url_for_channel() {
 
 dmg_path_for_channel() {
   local channel="$1"
-  print -- "$downloads_dir/Discord-${channel}-installer.dmg"
+  print -- "$script_dir/Discord-${channel}-installer.dmg"
 }
 
 mount_point_for_channel() {
@@ -316,7 +315,6 @@ download_and_replace_app() {
   dmg_path="$(dmg_path_for_channel "$channel")"
   mount_point="$(available_mount_point_for_channel "$channel")"
 
-  mkdir -p "$downloads_dir"
   rm -f -- "$dmg_path"
 
   mkdir -p "$mount_point"
