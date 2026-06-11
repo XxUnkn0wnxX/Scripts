@@ -75,14 +75,14 @@ It also does not modify the macOS Keychain item used by Discord's Electron stora
 
 Discord stores the local login token in `Local Storage/leveldb/`. Preserving the complete `Local Storage/` directory prevents the reset from signing the user out.
 
-## Downloads
+## DMG Downloads
 
-When `--update` is used, the DMG is downloaded into the running user's Downloads folder:
+When `--update` is used, the DMG is downloaded beside the script file. In this repository that means:
 
 ```text
-$HOME/Downloads/Discord-stable-installer.dmg
-$HOME/Downloads/Discord-ptb-installer.dmg
-$HOME/Downloads/Discord-canary-installer.dmg
+shell/Discord-stable-installer.dmg
+shell/Discord-ptb-installer.dmg
+shell/Discord-canary-installer.dmg
 ```
 
 Any existing DMG at that path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
