@@ -175,7 +175,7 @@ discord_install_fixer.zsh --help
 
 Notes:
 
-- Running the script with no arguments preserves the old default and cleans Discord Stable only.
+- Running the script with no arguments exits without changing anything and prints the help text.
 - `--channel` alone only purges the selected client or clients' App Support updater files.
 - `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
 - `--update` and `--openasar` can be combined.
