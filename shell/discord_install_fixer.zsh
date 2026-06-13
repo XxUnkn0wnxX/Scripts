@@ -97,7 +97,7 @@ if [[ "$openasar_requested" == true && "$explicit_channel" != true ]]; then
 fi
 
 if [[ "$explicit_channel" != true ]]; then
-  selected_channel="stable"
+  fail_usage "No channel specified. Use --channel stable|ptb|canary|all."
 fi
 
 case "$selected_channel" in
