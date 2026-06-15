@@ -409,6 +409,8 @@ clean_channel() {
     "$data_dir/modules"
     "$data_dir/module_data"
     "$data_dir/download"
+    "$data_dir/Cache"
+    "$data_dir/Code Cache"
   )
 
   existing_targets=()
@@ -425,6 +427,8 @@ clean_channel() {
     print "  modules/"
     print "  module_data/"
     print "  download/"
+    print "  Cache/"
+    print "  Code Cache/"
     print
     print "Nothing was changed for $app_name."
     return 0
