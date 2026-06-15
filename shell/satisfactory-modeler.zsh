@@ -368,6 +368,7 @@ run_self_update() {
   local remote_etag=""
   local remote_size=""
   local remote_last_modified=""
+  local state_page_updated=""
   local zip_sha256=""
 
   load_update_state
@@ -393,20 +394,24 @@ run_self_update() {
   csrf_token="$(extract_csrf_token "${page_html}")"
   upload_id="$(extract_zip_upload_id "${page_html}")"
 
-  if [[ -z "${page_updated}" || -z "${csrf_token}" || -z "${upload_id}" ]]; then
+  if [[ -z "${csrf_token}" || -z "${upload_id}" ]]; then
     print -u2 -- "Warning: Could not parse the updater metadata from ${UPDATE_PAGE_URL}."
     print -u2 -- "Warning: The itch.io page format may have changed. Update/fix satisfactory-modeler.zsh."
     print -u2 -- "Warning: Skipping updater for this launch."
     return 0
   fi
 
-  echo "  Page updated : ${page_updated}"
+  # itch.io currently omits the page-level Updated field.
+  # Keep page_updated parsing above for possible future restoration.
+  # if [[ -n "${page_updated}" ]]; then
+  #   echo "  Page updated : ${page_updated}"
+  # fi
   echo "  Upload ID    : ${upload_id}"
 
-  if [[ "${force_update}" != true && -n "${STATE_PAGE_UPDATED}" && "${page_updated}" == "${STATE_PAGE_UPDATED}" ]]; then
-    echo "  Update check : page timestamp unchanged; skipping download."
-    return 0
-  fi
+  # if [[ "${force_update}" != true && -n "${page_updated}" && -n "${STATE_PAGE_UPDATED}" && "${page_updated}" == "${STATE_PAGE_UPDATED}" ]]; then
+  #   echo "  Update check : page timestamp unchanged; skipping download."
+  #   return 0
+  # fi
 
   if ! curl -fsSL \
     --connect-timeout "${MODEL_UPDATE_TIMEOUT}" \
@@ -450,10 +455,12 @@ run_self_update() {
   echo "  Remote size  : ${remote_size:-unknown}"
   echo "  Last modified: ${remote_last_modified:-unknown}"
 
+  state_page_updated="${page_updated}"
+
   if [[ "${force_update}" != true && -n "${STATE_REMOTE_ETAG}" && "${remote_etag}" == "${STATE_REMOTE_ETAG}" ]]; then
     echo "  Update check : ETag unchanged; skipping full download."
     write_update_state \
-      "${page_updated}" \
+      "${state_page_updated}" \
       "${upload_id}" \
       "${remote_etag}" \
       "${remote_size}" \
@@ -485,7 +492,7 @@ run_self_update() {
   if [[ "${force_update}" != true && -n "${STATE_ZIP_SHA256}" && "${zip_sha256}" == "${STATE_ZIP_SHA256}" ]]; then
     echo "  Update check : ZIP hash unchanged; skipping extraction."
     write_update_state \
-      "${page_updated}" \
+      "${state_page_updated}" \
       "${upload_id}" \
       "${remote_etag}" \
       "${remote_size}" \
@@ -501,7 +508,7 @@ run_self_update() {
   fi
 
   write_update_state \
-    "${page_updated}" \
+    "${state_page_updated}" \
     "${upload_id}" \
     "${remote_etag}" \
     "${remote_size}" \
