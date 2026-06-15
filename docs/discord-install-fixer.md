@@ -52,6 +52,8 @@ app-*/
 modules/
 module_data/
 download/
+Cache/
+Code Cache/
 ```
 
 The `0.0.*/` and `app-*/` patterns are version-independent, so the script continues to match future Discord version directories.
