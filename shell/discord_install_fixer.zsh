@@ -185,22 +185,27 @@ discord_is_running() {
 
 download_openasar_payload() {
   local payload_path="$1"
-
-  rm -f -- "$payload_path"
+  local attempt
 
   print "Downloading OpenAsar payload to:"
   print "  $payload_path"
-  if ! curl -L --fail --show-error --output "$payload_path" "$OPENASAR_RELEASE_URL"; then
-    rm -f -- "$payload_path"
-    return 1
-  fi
 
-  if [[ ! -f "$payload_path" ]]; then
-    print -u2 "OpenAsar payload download failed:"
-    print -u2 "  $payload_path"
+  for attempt in {1..3}; do
     rm -f -- "$payload_path"
-    return 1
-  fi
+    if curl -L --fail --show-error --output "$payload_path" "$OPENASAR_RELEASE_URL" && [[ -s "$payload_path" ]]; then
+      return 0
+    fi
+
+    rm -f -- "$payload_path"
+    if (( attempt == 3 )); then
+      print -u2 "OpenAsar payload download failed after $attempt attempts:"
+      print -u2 "  $payload_path"
+      return 1
+    fi
+
+    print "OpenAsar payload download failed. Retrying in 3 seconds..."
+    sleep 3
+  done
 }
 
 inject_openasar() {
@@ -289,6 +294,7 @@ download_and_replace_app() {
   local mount_point
   local mounted=false
   local mount_point_created=false
+  local replacement_succeeded=false
   local source_app=""
   local attempt
   local -a found_apps
@@ -326,6 +332,7 @@ download_and_replace_app() {
     if (( attempt == 3 )); then
       print -u2 "$app_name installer download failed after $attempt attempts."
       print -u2 "$app_name was not replaced."
+      cleanup_mount_and_dmg
       return 1
     fi
 
@@ -346,23 +353,42 @@ download_and_replace_app() {
     if [[ -z "$source_app" || ! -d "$source_app" ]]; then
       print -u2 "Could not find a Discord app inside the mounted installer:"
       print -u2 "  $mount_point"
-      exit 1
+      return 1
     fi
 
-    print "Replacing $app_name in /Applications..."
-    rm -rf -- "$app_path"
-    ditto "$source_app" "$app_path"
+    for attempt in {1..3}; do
+      guard_update_replacement "$channel"
+      print "Replacing $app_name in /Applications (attempt $attempt of 3)..."
 
-    if [[ ! -d "$app_path" ]]; then
-      print -u2 "Copy failed; app was not found after replacement:"
-      print -u2 "  $app_path"
-      exit 1
-    fi
+      if ! rm -rf -- "$app_path" || [[ -e "$app_path" ]]; then
+        print -u2 "Failed to remove the existing $app_name app."
+      else
+        guard_update_replacement "$channel"
 
-    if [[ ! -x "$executable_path" ]]; then
-      print -u2 "Copy failed; app executable was not found after replacement:"
-      print -u2 "  $executable_path"
-      exit 1
+        if ditto "$source_app" "$app_path" &&
+           [[ -d "$app_path" ]] &&
+           [[ -x "$executable_path" ]] &&
+           ! discord_is_running "$channel"; then
+          replacement_succeeded=true
+          break
+        fi
+
+        print -u2 "Failed to copy or verify the replacement $app_name app."
+      fi
+
+      guard_update_replacement "$channel"
+      rm -rf -- "$app_path" || true
+
+      if (( attempt < 3 )); then
+        print "Retrying $app_name replacement in 2 seconds..."
+        sleep 2
+      fi
+    done
+
+    if [[ "$replacement_succeeded" != true ]]; then
+      print -u2 "$app_name replacement failed after 3 attempts."
+      print -u2 "$app_name was not successfully replaced."
+      return 1
     fi
   } always {
     cleanup_mount_and_dmg
@@ -458,6 +484,18 @@ clean_channel() {
   print "$app_name installation files cleaned successfully."
 }
 
+guard_update_replacement() {
+  local channel="$1"
+  local app_name
+
+  discord_is_running "$channel" || return 0
+
+  app_name="$(app_name_for_channel "$channel")"
+  print "$app_name restarted during update replacement. Stopping it and purging App Support again..."
+  quit_discord "$channel"
+  clean_channel "$channel" true
+}
+
 relaunch_channel_if_needed() {
   local channel="$1"
   local was_running_at_start="${2:-false}"
@@ -515,19 +553,22 @@ validate_selected_data_dirs() {
 validate_selected_data_dirs
 
 openasar_payload=""
-openasar_payload_downloaded=false
+openasar_initial_download_succeeded=false
 
 if [[ "$openasar_requested" == true ]]; then
   openasar_payload="$(openasar_payload_path)"
   cleanup_openasar_payload() {
-    if [[ "$openasar_payload_downloaded" == true && -n "$openasar_payload" ]]; then
+    if [[ -n "$openasar_payload" ]]; then
       rm -f -- "$openasar_payload"
     fi
   }
 
   trap cleanup_openasar_payload EXIT
-  download_openasar_payload "$openasar_payload"
-  openasar_payload_downloaded=true
+  if download_openasar_payload "$openasar_payload"; then
+    openasar_initial_download_succeeded=true
+  else
+    print -u2 "OpenAsar injection will be skipped because the payload could not be downloaded."
+  fi
 fi
 
 for channel in "${selected_channels[@]}"; do
@@ -573,7 +614,18 @@ for channel in "${selected_channels[@]}"; do
   fi
 
   if [[ "$openasar_requested" == true ]]; then
-    inject_openasar "$channel" "$openasar_payload"
+    if [[ "$openasar_initial_download_succeeded" != true ]]; then
+      print -u2 "Skipping OpenAsar injection for $app_name because the initial payload download failed."
+    elif [[ ! -s "$openasar_payload" ]]; then
+      print "The initial OpenAsar payload is missing or was deleted before injection. Downloading it again..."
+      if ! download_openasar_payload "$openasar_payload"; then
+        print -u2 "Skipping OpenAsar injection for $app_name because the payload is unavailable."
+      else
+        inject_openasar "$channel" "$openasar_payload"
+      fi
+    else
+      inject_openasar "$channel" "$openasar_payload"
+    fi
   fi
 
   relaunch_channel_if_needed "$channel" "$was_running_at_start"

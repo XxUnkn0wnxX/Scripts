@@ -91,6 +91,8 @@ Any existing DMG at that path is replaced before downloading. After the app bund
 
 If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. If all attempts fail, the selected app is not replaced and the script exits with an error.
 
+After mounting the DMG, the script checks again for a self-restarted Discord client immediately before deleting and copying the app. If detected, it stops that client and repeats the App Support purge. App deletion/copying is attempted up to three times; each failed attempt repeats the running-client guard before retrying.
+
 With `--channel all`, each channel's DMG and mountpoint are cleaned up immediately after that channel's app replacement finishes, before the script moves to the next channel.
 
 Temporary mountpoints are created beside the script file and are removed after use. In this repository the preferred paths are:
@@ -126,6 +128,8 @@ OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/do
 Change `OPENASAR_RELEASE_URL` in the script if you want to use a different OpenAsar fork or the main upstream OpenAsar release channel.
 
 The downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. It does not keep an archived copy and does not create `.stock` backups.
+
+OpenAsar downloads are retried up to three times. If the initial download still fails, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries the download and skips only that injection if the payload remains unavailable.
 
 OpenAsar injection happens before any selected client is relaunched.
 
@@ -232,7 +236,9 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 - Existing data directories must contain `settings.json` or `Local Storage/` so they resemble Discord data directories.
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
+- During `--update`, the selected client is checked again before app deletion/copying and after failed replacement attempts.
 - OpenAsar injection only runs after the selected app has been stopped.
+- A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - If no updater-managed targets are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully.
 - Existing apps in `/Applications` are always replaced during `--update`.
 
