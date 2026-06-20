@@ -890,12 +890,8 @@ elif [ "$choice" = "4" ]; then
       || cmd+=(--no-subtitles)
     cmd+=("$target")
 
-    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-      if [[ $file_index -eq 1 ]]; then
-        echo "Total Files Count: $files_count"
-      else
-        echo "Files Remaining: $((files_count - file_index + 1))"
-      fi
+    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 && $file_index -eq 1 ]]; then
+      echo "Total Files Count: $files_count"
     fi
     echo "Executing: ${cmd[*]}"
     remux_start=$SECONDS
@@ -952,12 +948,8 @@ elif [ "$choice" = "4" ]; then
     tmp="${base}_temp.${ext}"
     cmd=(mkvmerge -o "$tmp" --track-order "$track_order" "$target")
 
-    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-      if [[ $file_index -eq 1 ]]; then
-        echo "Total Files Count: $files_count"
-      else
-        echo "Files Remaining: $((files_count - file_index + 1))"
-      fi
+    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 && $file_index -eq 1 ]]; then
+      echo "Total Files Count: $files_count"
     fi
     echo "Executing: ${cmd[*]}"
     remux_start=$SECONDS
