@@ -150,6 +150,14 @@ function count_attachments() {
   mkvmerge --identify "$file" | grep -c "Attachment ID"
 }
 
+format_duration() {
+  local total_seconds="$1"
+  printf "%02d:%02d:%02d" \
+    $((total_seconds / 3600)) \
+    $(((total_seconds % 3600) / 60)) \
+    $((total_seconds % 60))
+}
+
 prompt_yes_no() {
   local prompt_text="$1"
   local default_choice="$2"
@@ -863,6 +871,8 @@ elif [ "$choice" = "4" ]; then
   # Apply removal to each file
   files_count=${#targets[@]}
   file_index=1
+  total_processing_seconds=0
+  successful_files=0
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     [[ ${#video_keep[@]} -eq 0 ]] && out_ext=mka || out_ext=$ext
@@ -888,10 +898,22 @@ elif [ "$choice" = "4" ]; then
       fi
     fi
     echo "Executing: ${cmd[*]}"
+    remux_start=$SECONDS
     if "${cmd[@]}"; then
+      remux_duration=$((SECONDS - remux_start))
       mv "$tmp" "${base}.${out_ext}"
       echo "Replaced: ${base}.${out_ext}"
       [[ "$out_ext" != "$ext" ]] && rm -f "$target" && echo "Removed original: $target"
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        total_processing_seconds=$((total_processing_seconds + remux_duration))
+        successful_files=$((successful_files + 1))
+        files_remaining=$((files_count - file_index))
+        estimated_seconds=$(((total_processing_seconds * files_remaining + successful_files / 2) / successful_files))
+        echo "Processed In: $(format_duration "$remux_duration")"
+        echo "Files Done: $file_index"
+        echo "Files Remaining: $files_remaining"
+        echo "Estimated Time Remaining: $(format_duration "$estimated_seconds")"
+      fi
     else
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
@@ -923,6 +945,8 @@ elif [ "$choice" = "4" ]; then
 
   files_count=${#targets[@]}
   file_index=1
+  total_processing_seconds=0
+  successful_files=0
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     tmp="${base}_temp.${ext}"
@@ -936,9 +960,21 @@ elif [ "$choice" = "4" ]; then
       fi
     fi
     echo "Executing: ${cmd[*]}"
+    remux_start=$SECONDS
     if "${cmd[@]}"; then
+      remux_duration=$((SECONDS - remux_start))
       mv "$tmp" "${base}.${ext}"
       echo "Replaced: ${base}.${ext}"
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        total_processing_seconds=$((total_processing_seconds + remux_duration))
+        successful_files=$((successful_files + 1))
+        files_remaining=$((files_count - file_index))
+        estimated_seconds=$(((total_processing_seconds * files_remaining + successful_files / 2) / successful_files))
+        echo "Processed In: $(format_duration "$remux_duration")"
+        echo "Files Done: $file_index"
+        echo "Files Remaining: $files_remaining"
+        echo "Estimated Time Remaining: $(format_duration "$estimated_seconds")"
+      fi
     else
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
