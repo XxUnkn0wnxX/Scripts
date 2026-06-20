@@ -158,6 +158,46 @@ format_duration() {
     $((total_seconds % 60))
 }
 
+reset_propedit_summary() {
+  propedit_summary_started=0
+  propedit_files_count=${#targets[@]}
+  propedit_failed_files=()
+}
+
+start_propedit_summary() {
+  if [[ $propedit_summary_started -eq 0 ]]; then
+    propedit_summary_started=1
+    if [[ $MULTI_FILE_SELECTION == "Y" && $propedit_files_count -gt 1 ]]; then
+      echo "Total Files To Edit: $propedit_files_count"
+    fi
+  fi
+}
+
+record_propedit_failure() {
+  local failed_file="$1"
+  local existing_file
+
+  for existing_file in "${propedit_failed_files[@]}"; do
+    [[ "$existing_file" == "$failed_file" ]] && return
+  done
+  propedit_failed_files+=("$failed_file")
+}
+
+finish_propedit_summary() {
+  if [[ $MULTI_FILE_SELECTION == "Y" && $propedit_files_count -gt 1 ]]; then
+    local successful_files=$((propedit_files_count - ${#propedit_failed_files[@]}))
+    local failed_file
+
+    echo "Total Files Edited: $successful_files"
+    if [[ ${#propedit_failed_files[@]} -gt 0 ]]; then
+      printf "Failed Files: %02d\n" ${#propedit_failed_files[@]}
+      for failed_file in "${propedit_failed_files[@]}"; do
+        echo "  ${failed_file:t}"
+      done
+    fi
+  fi
+}
+
 prompt_yes_no() {
   local prompt_text="$1"
   local default_choice="$2"
@@ -284,6 +324,7 @@ rename_tracks() {
   local track_ids="$1"
   # Split track_ids by comma and space into array ids
   IFS=', ' read -rA ids <<< "$track_ids"
+  reset_propedit_summary
   # Loop over each track ID
   for id in "${ids[@]}"; do
     # Determine range or single ID
@@ -295,11 +336,13 @@ rename_tracks() {
         printf "Name: "
         read name
         # Apply name change to each target file
+        start_propedit_summary
         for file in "${targets[@]}"; do
           if (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((i+1)) --set name="$name" < /dev/null); then
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
+            record_propedit_failure "$file"
           fi
         done
       done
@@ -307,35 +350,43 @@ rename_tracks() {
       echo "--------------------  Track ID $id Name ---------------------"
       printf "Name: "
       read name
+      start_propedit_summary
       for file in "${targets[@]}"; do
         if (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((id+1)) --set name="$name" < /dev/null); then
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
+          record_propedit_failure "$file"
         fi
       done
     fi
   done
+  finish_propedit_summary
 }
 
 set_mkv_title() {
   local title="$1"
 
+  reset_propedit_summary
+  start_propedit_summary
   for file in "${targets[@]}"; do
     if [[ -z "$title" ]]; then
       if mkvpropedit "$file" --delete title < /dev/null; then
         echo "Edited File: ${file:t}"
       else
         echo "Failed File: ${file:t}"
+        record_propedit_failure "$file"
       fi
     else
       if mkvpropedit "$file" --set title="$title" < /dev/null; then
         echo "Edited File: ${file:t}"
       else
         echo "Failed File: ${file:t}"
+        record_propedit_failure "$file"
       fi
     fi
   done
+  finish_propedit_summary
 }
 
 
@@ -343,6 +394,7 @@ set_mkv_title() {
 set_language_tracks() {
   local track_ids="$1"
   IFS=', ' read -rA ids <<< "$track_ids"
+  reset_propedit_summary
   for id in "${ids[@]}"; do
     if [[ $id == *-* ]]; then
       local start=${id%-*}
@@ -351,11 +403,13 @@ set_language_tracks() {
         echo "--------------------  Track ID $i Language ---------------------"
         printf "Language: "
         read lang
+        start_propedit_summary
         for file in "${targets[@]}"; do
           if mkvpropedit "$file" --edit track:$((i+1)) --set language="$lang"; then
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
+            record_propedit_failure "$file"
           fi
         done
       done
@@ -363,21 +417,25 @@ set_language_tracks() {
       echo "--------------------  Track ID $id Language ---------------------"
       printf "Language: "
       read lang
+      start_propedit_summary
       for file in "${targets[@]}"; do
         if mkvpropedit "$file" --edit track:$((id+1)) --set language="$lang"; then
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
+          record_propedit_failure "$file"
         fi
       done
     fi
   done
+  finish_propedit_summary
 }
 
 # Function to set forced flag for tracks across multiple files
 set_flag_forced_tracks() {
   local track_ids="$1"
   IFS=', ' read -rA ids <<< "$track_ids"
+  reset_propedit_summary
   for id in "${ids[@]}"; do
     # Determine range or single ID
     if [[ $id == *-* ]]; then
@@ -388,11 +446,13 @@ set_flag_forced_tracks() {
         printf "Flag-forced (1 or 0) [0]: "
         read value
         value=${value:-0}
+        start_propedit_summary
         for file in "${targets[@]}"; do
           if mkvpropedit "$file" --edit track:$((i+1)) --set flag-forced=$value; then
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
+            record_propedit_failure "$file"
           fi
         done
       done
@@ -401,21 +461,25 @@ set_flag_forced_tracks() {
       printf "Flag-forced (1 or 0) [0]: "
       read value
       value=${value:-0}
+      start_propedit_summary
       for file in "${targets[@]}"; do
         if mkvpropedit "$file" --edit track:$((id+1)) --set flag-forced=$value; then
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
+          record_propedit_failure "$file"
         fi
       done
     fi
   done
+  finish_propedit_summary
 }
 
 # Function to set default flag for tracks across multiple files
 set_flag_default_tracks() {
   local track_ids="$1"
   IFS=', ' read -rA ids <<< "$track_ids"
+  reset_propedit_summary
   for id in "${ids[@]}"; do
     # Determine range or single ID
     if [[ $id == *-* ]]; then
@@ -426,11 +490,13 @@ set_flag_default_tracks() {
         printf "Flag-default (1 or 0) [1]: "
         read value
         value=${value:-1}
+        start_propedit_summary
         for file in "${targets[@]}"; do
           if mkvpropedit "$file" --edit track:$((i+1)) --set flag-default=$value; then
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
+            record_propedit_failure "$file"
           fi
         done
       done
@@ -439,15 +505,18 @@ set_flag_default_tracks() {
       printf "Flag-default (1 or 0) [1]: "
       read value
       value=${value:-1}
+      start_propedit_summary
       for file in "${targets[@]}"; do
         if mkvpropedit "$file" --edit track:$((id+1)) --set flag-default=$value; then
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
+          record_propedit_failure "$file"
         fi
       done
     fi
   done
+  finish_propedit_summary
 }
 
 # Helper: extract one track by id, with enhanced output
@@ -966,10 +1035,12 @@ elif [ "$choice" = "4" ]; then
 	  done
   if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
     echo "Total Files Done: $successful_files"
-    printf "Failed Files: %02d\n" ${#failed_files[@]}
-    for failed_file in "${failed_files[@]}"; do
-      echo "  $failed_file"
-    done
+    if [[ ${#failed_files[@]} -gt 0 ]]; then
+      printf "Failed Files: %02d\n" ${#failed_files[@]}
+      for failed_file in "${failed_files[@]}"; do
+        echo "  $failed_file"
+      done
+    fi
     echo "Elapsed Time: $(format_duration "$((SECONDS - queue_start))")"
   fi
 
@@ -1039,10 +1110,12 @@ elif [ "$choice" = "4" ]; then
 	  done
   if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
     echo "Total Files Done: $successful_files"
-    printf "Failed Files: %02d\n" ${#failed_files[@]}
-    for failed_file in "${failed_files[@]}"; do
-      echo "  $failed_file"
-    done
+    if [[ ${#failed_files[@]} -gt 0 ]]; then
+      printf "Failed Files: %02d\n" ${#failed_files[@]}
+      for failed_file in "${failed_files[@]}"; do
+        echo "  $failed_file"
+      done
+    fi
     echo "Elapsed Time: $(format_duration "$((SECONDS - queue_start))")"
   fi
 	  

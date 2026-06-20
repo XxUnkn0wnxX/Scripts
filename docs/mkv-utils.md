@@ -191,6 +191,21 @@ Failed File: My Episode.mkv
 
 Only the filename is displayed, not its directory path.
 
+When multi-file mode contains at least two files, options `1` through `5` also print the total count before the first edit and a final summary:
+
+```text
+Total Files To Edit: 36
+...
+Total Files Edited: 33
+Failed Files: 03
+  Broken Episode.mkv
+  Missing Track Episode.mkv
+  Damaged Episode.mkv
+```
+
+These metadata-edit queues do not print processing times or an ETA. If multiple Track IDs are edited, a file is counted as failed when any requested edit on that file fails.
+The `Failed Files` section is omitted when every selected file is edited successfully.
+
 ### 6) Extract all attachments from MK files
 
 What it does:
@@ -334,6 +349,8 @@ Failed Files: 03
   Damaged Episode.mkv
 Elapsed Time: 00:05:04
 ```
+
+The `Failed Files` section is omitted when every selected file is remuxed successfully.
 
 Single-file runs and multi-file mode with only one selected file do not print these queue statistics.
 
