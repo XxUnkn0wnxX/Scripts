@@ -15,6 +15,8 @@
 - enumerates track information before edits or extraction
 - uses codec-aware extension mapping when extracting tracks
 - relies on Python helper libraries for the codec-to-extension mapping path
+- reports the filename after successful or failed metadata edits
+- tracks progress, average ETA, failures, and elapsed time for multi-file remux queues
 
 ## Requirements
 
@@ -100,7 +102,7 @@ Then choose:
 1
 N
 1
-yes
+1
 ```
 
 ### 2) Set flag-default for tracks
@@ -116,7 +118,7 @@ Example:
 2
 N
 1
-yes
+1
 ```
 
 ### 3) Set language for tracks
@@ -175,6 +177,20 @@ N
 <press Enter at the title prompt>
 ```
 
+Options `1` through `5` report the filename after each `mkvpropedit` operation:
+
+```text
+Edited File: My Episode.mkv
+```
+
+If the edit fails, the original `mkvpropedit` error is followed by:
+
+```text
+Failed File: My Episode.mkv
+```
+
+Only the filename is displayed, not its directory path.
+
 ### 6) Extract all attachments from MK files
 
 What it does:
@@ -194,6 +210,8 @@ What it does:
 
 - removes selected Track IDs
 - remuxes the remaining tracks back into the file
+- reports per-file progress and an average ETA when multi-file mode contains at least two files
+- lists failed remuxes in a final queue summary
 
 Example:
 
@@ -211,6 +229,8 @@ What it does:
 
 - changes track order using `mkvmerge --track-order`
 - useful when you want a different audio or subtitle order
+- reports per-file progress and an average ETA when multi-file mode contains at least two files
+- lists failed remuxes in a final queue summary
 
 Example:
 
@@ -286,6 +306,36 @@ Behavior:
 - `Y` lets you pick multiple files in `fzf`
 - `N` picks one file
 - pressing `Enter` uses the default `N`
+
+For options `7` and `8`, selecting at least two files enables queue reporting. The total count is printed before the first remux. Each successful remux then reports its filename, processing time, successful-file count, files remaining in the queue, and estimated time remaining:
+
+```text
+Total Files Count: 36
+My Episode.mkv
+  Processed In: 00:00:07
+  Files Done: 1
+  Files Remaining: 35
+  Estimated Time Remaining: 00:04:05
+```
+
+The ETA uses the cumulative average duration of all successful remuxes completed so far. Failed remuxes do not increase `Files Done` or contribute to that average:
+
+```text
+Failed: Broken Episode.mkv
+```
+
+After the queue finishes, the script prints successful and failed totals, lists failed filenames with indentation, and reports total elapsed queue time:
+
+```text
+Total Files Done: 33
+Failed Files: 03
+  Broken Episode.mkv
+  Missing Track Episode.mkv
+  Damaged Episode.mkv
+Elapsed Time: 00:05:04
+```
+
+Single-file runs and multi-file mode with only one selected file do not print these queue statistics.
 
 ## Quick Examples
 
