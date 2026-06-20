@@ -162,6 +162,8 @@ reset_propedit_summary() {
   propedit_summary_started=0
   propedit_files_count=${#targets[@]}
   propedit_failed_files=()
+  typeset -gA propedit_failed_track_ids
+  propedit_failed_track_ids=()
 }
 
 start_propedit_summary() {
@@ -175,24 +177,40 @@ start_propedit_summary() {
 
 record_propedit_failure() {
   local failed_file="$1"
+  local track_id="${2:-}"
   local existing_file
+  local existing_id
+  local existing_ids
 
   for existing_file in "${propedit_failed_files[@]}"; do
-    [[ "$existing_file" == "$failed_file" ]] && return
+    [[ "$existing_file" == "$failed_file" ]] && break
   done
-  propedit_failed_files+=("$failed_file")
+  if [[ "$existing_file" != "$failed_file" ]]; then
+    propedit_failed_files+=("$failed_file")
+  fi
+
+  [[ -z "$track_id" ]] && return
+  existing_ids="${propedit_failed_track_ids[$failed_file]:-}"
+  for existing_id in ${(s:,:)existing_ids}; do
+    [[ "$existing_id" == "$track_id" ]] && return
+  done
+  propedit_failed_track_ids[$failed_file]="${existing_ids:+$existing_ids,}$track_id"
 }
 
 finish_propedit_summary() {
   if [[ $MULTI_FILE_SELECTION == "Y" && $propedit_files_count -gt 1 ]]; then
     local successful_files=$((propedit_files_count - ${#propedit_failed_files[@]}))
     local failed_file
+    local track_id
 
     echo "Total Files Edited: $successful_files"
     if [[ ${#propedit_failed_files[@]} -gt 0 ]]; then
       printf "Failed Files: %02d\n" ${#propedit_failed_files[@]}
       for failed_file in "${propedit_failed_files[@]}"; do
         echo "  ${failed_file:t}"
+        for track_id in ${(s:,:)${propedit_failed_track_ids[$failed_file]:-}}; do
+          [[ -n "$track_id" ]] && echo "    Track ID: $track_id"
+        done
       done
     fi
   fi
@@ -342,7 +360,7 @@ rename_tracks() {
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
-            record_propedit_failure "$file"
+            record_propedit_failure "$file" "$i"
           fi
         done
       done
@@ -356,7 +374,7 @@ rename_tracks() {
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
-          record_propedit_failure "$file"
+          record_propedit_failure "$file" "$id"
         fi
       done
     fi
@@ -409,7 +427,7 @@ set_language_tracks() {
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
-            record_propedit_failure "$file"
+            record_propedit_failure "$file" "$i"
           fi
         done
       done
@@ -423,7 +441,7 @@ set_language_tracks() {
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
-          record_propedit_failure "$file"
+          record_propedit_failure "$file" "$id"
         fi
       done
     fi
@@ -452,7 +470,7 @@ set_flag_forced_tracks() {
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
-            record_propedit_failure "$file"
+            record_propedit_failure "$file" "$i"
           fi
         done
       done
@@ -467,7 +485,7 @@ set_flag_forced_tracks() {
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
-          record_propedit_failure "$file"
+          record_propedit_failure "$file" "$id"
         fi
       done
     fi
@@ -496,7 +514,7 @@ set_flag_default_tracks() {
             echo "Edited File: ${file:t}"
           else
             echo "Failed File: ${file:t}"
-            record_propedit_failure "$file"
+            record_propedit_failure "$file" "$i"
           fi
         done
       done
@@ -511,7 +529,7 @@ set_flag_default_tracks() {
           echo "Edited File: ${file:t}"
         else
           echo "Failed File: ${file:t}"
-          record_propedit_failure "$file"
+          record_propedit_failure "$file" "$id"
         fi
       done
     fi
