@@ -296,7 +296,11 @@ rename_tracks() {
         read name
         # Apply name change to each target file
         for file in "${targets[@]}"; do
-          (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((i+1)) --set name="$name" < /dev/null)
+          if (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((i+1)) --set name="$name" < /dev/null); then
+            echo "Edited File: ${file:t}"
+          else
+            echo "Failed File: ${file:t}"
+          fi
         done
       done
     else
@@ -304,7 +308,11 @@ rename_tracks() {
       printf "Name: "
       read name
       for file in "${targets[@]}"; do
-        (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((id+1)) --set name="$name" < /dev/null)
+        if (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((id+1)) --set name="$name" < /dev/null); then
+          echo "Edited File: ${file:t}"
+        else
+          echo "Failed File: ${file:t}"
+        fi
       done
     fi
   done
@@ -315,9 +323,17 @@ set_mkv_title() {
 
   for file in "${targets[@]}"; do
     if [[ -z "$title" ]]; then
-      mkvpropedit "$file" --delete title < /dev/null
+      if mkvpropedit "$file" --delete title < /dev/null; then
+        echo "Edited File: ${file:t}"
+      else
+        echo "Failed File: ${file:t}"
+      fi
     else
-      mkvpropedit "$file" --set title="$title" < /dev/null
+      if mkvpropedit "$file" --set title="$title" < /dev/null; then
+        echo "Edited File: ${file:t}"
+      else
+        echo "Failed File: ${file:t}"
+      fi
     fi
   done
 }
@@ -336,7 +352,11 @@ set_language_tracks() {
         printf "Language: "
         read lang
         for file in "${targets[@]}"; do
-          mkvpropedit "$file" --edit track:$((i+1)) --set language="$lang"
+          if mkvpropedit "$file" --edit track:$((i+1)) --set language="$lang"; then
+            echo "Edited File: ${file:t}"
+          else
+            echo "Failed File: ${file:t}"
+          fi
         done
       done
     else
@@ -344,7 +364,11 @@ set_language_tracks() {
       printf "Language: "
       read lang
       for file in "${targets[@]}"; do
-        mkvpropedit "$file" --edit track:$((id+1)) --set language="$lang"
+        if mkvpropedit "$file" --edit track:$((id+1)) --set language="$lang"; then
+          echo "Edited File: ${file:t}"
+        else
+          echo "Failed File: ${file:t}"
+        fi
       done
     fi
   done
@@ -365,7 +389,11 @@ set_flag_forced_tracks() {
         read value
         value=${value:-0}
         for file in "${targets[@]}"; do
-          mkvpropedit "$file" --edit track:$((i+1)) --set flag-forced=$value
+          if mkvpropedit "$file" --edit track:$((i+1)) --set flag-forced=$value; then
+            echo "Edited File: ${file:t}"
+          else
+            echo "Failed File: ${file:t}"
+          fi
         done
       done
     else
@@ -374,7 +402,11 @@ set_flag_forced_tracks() {
       read value
       value=${value:-0}
       for file in "${targets[@]}"; do
-        mkvpropedit "$file" --edit track:$((id+1)) --set flag-forced=$value
+        if mkvpropedit "$file" --edit track:$((id+1)) --set flag-forced=$value; then
+          echo "Edited File: ${file:t}"
+        else
+          echo "Failed File: ${file:t}"
+        fi
       done
     fi
   done
@@ -395,7 +427,11 @@ set_flag_default_tracks() {
         read value
         value=${value:-1}
         for file in "${targets[@]}"; do
-          mkvpropedit "$file" --edit track:$((i+1)) --set flag-default=$value
+          if mkvpropedit "$file" --edit track:$((i+1)) --set flag-default=$value; then
+            echo "Edited File: ${file:t}"
+          else
+            echo "Failed File: ${file:t}"
+          fi
         done
       done
     else
@@ -404,7 +440,11 @@ set_flag_default_tracks() {
       read value
       value=${value:-1}
       for file in "${targets[@]}"; do
-        mkvpropedit "$file" --edit track:$((id+1)) --set flag-default=$value
+        if mkvpropedit "$file" --edit track:$((id+1)) --set flag-default=$value; then
+          echo "Edited File: ${file:t}"
+        else
+          echo "Failed File: ${file:t}"
+        fi
       done
     fi
   done
