@@ -913,6 +913,8 @@ elif [ "$choice" = "4" ]; then
   file_index=1
   total_processing_seconds=0
   successful_files=0
+  failed_files=()
+  queue_start=$SECONDS
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     [[ ${#video_keep[@]} -eq 0 ]] && out_ext=mka || out_ext=$ext
@@ -945,17 +947,31 @@ elif [ "$choice" = "4" ]; then
         successful_files=$((successful_files + 1))
         files_remaining=$((files_count - file_index))
         estimated_seconds=$(((total_processing_seconds * files_remaining + successful_files / 2) / successful_files))
-        echo "Processed In: $(format_duration "$remux_duration")"
-        echo "Files Done: $file_index"
-        echo "Files Remaining: $files_remaining"
-        echo "Estimated Time Remaining: $(format_duration "$estimated_seconds")"
+        echo "${target:t}"
+        echo "  Processed In: $(format_duration "$remux_duration")"
+        echo "  Files Done: $successful_files"
+        echo "  Files Remaining: $files_remaining"
+        echo "  Estimated Time Remaining: $(format_duration "$estimated_seconds")"
       fi
     else
-      echo "Error on $target; cleaning up."
       rm -f "$tmp"
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        failed_files+=("${target:t}")
+        echo "Failed: ${target:t}"
+      else
+        echo "Error on $target; cleaning up."
+      fi
 	    fi
     file_index=$((file_index + 1))
 	  done
+  if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+    echo "Total Files Done: $successful_files"
+    printf "Failed Files: %02d\n" ${#failed_files[@]}
+    for failed_file in "${failed_files[@]}"; do
+      echo "  $failed_file"
+    done
+    echo "Elapsed Time: $(format_duration "$((SECONDS - queue_start))")"
+  fi
 
 		elif [ "$choice" = "8" ]; then
 		  # --- Choice 8: Mass Re-order tracks ---
@@ -983,6 +999,8 @@ elif [ "$choice" = "4" ]; then
   file_index=1
   total_processing_seconds=0
   successful_files=0
+  failed_files=()
+  queue_start=$SECONDS
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     tmp="${base}_temp.${ext}"
@@ -1002,17 +1020,31 @@ elif [ "$choice" = "4" ]; then
         successful_files=$((successful_files + 1))
         files_remaining=$((files_count - file_index))
         estimated_seconds=$(((total_processing_seconds * files_remaining + successful_files / 2) / successful_files))
-        echo "Processed In: $(format_duration "$remux_duration")"
-        echo "Files Done: $file_index"
-        echo "Files Remaining: $files_remaining"
-        echo "Estimated Time Remaining: $(format_duration "$estimated_seconds")"
+        echo "${target:t}"
+        echo "  Processed In: $(format_duration "$remux_duration")"
+        echo "  Files Done: $successful_files"
+        echo "  Files Remaining: $files_remaining"
+        echo "  Estimated Time Remaining: $(format_duration "$estimated_seconds")"
       fi
     else
-      echo "Error on $target; cleaning up."
       rm -f "$tmp"
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        failed_files+=("${target:t}")
+        echo "Failed: ${target:t}"
+      else
+        echo "Error on $target; cleaning up."
+      fi
     fi
     file_index=$((file_index + 1))
 	  done
+  if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+    echo "Total Files Done: $successful_files"
+    printf "Failed Files: %02d\n" ${#failed_files[@]}
+    for failed_file in "${failed_files[@]}"; do
+      echo "  $failed_file"
+    done
+    echo "Elapsed Time: $(format_duration "$((SECONDS - queue_start))")"
+  fi
 	  
 	# --- Choice 9: Extract Tracks ---
 	elif [ "$choice" = "9" ]; then
