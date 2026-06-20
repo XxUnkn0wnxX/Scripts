@@ -199,11 +199,16 @@ Total Files To Edit: 36
 Total Files Edited: 33
 Failed Files: 03
   Broken Episode.mkv
+    Track ID: 3
+    Track ID: 4
   Missing Track Episode.mkv
+    Track ID: 4
   Damaged Episode.mkv
+    Track ID: 3
 ```
 
 These metadata-edit queues do not print processing times or an ETA. If multiple Track IDs are edited, a file is counted as failed when any requested edit on that file fails.
+Failed Track IDs are listed under each filename. Title edits have no Track ID, so title failures list only the filename.
 The `Failed Files` section is omitted when every selected file is edited successfully.
 
 ### 6) Extract all attachments from MK files
