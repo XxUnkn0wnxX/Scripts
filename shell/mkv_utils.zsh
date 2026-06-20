@@ -861,6 +861,8 @@ elif [ "$choice" = "4" ]; then
   subtitle_keep=($(filter_keep "${subtitle_keep[@]}"))
 
   # Apply removal to each file
+  files_count=${#targets[@]}
+  file_index=1
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     [[ ${#video_keep[@]} -eq 0 ]] && out_ext=mka || out_ext=$ext
@@ -878,6 +880,13 @@ elif [ "$choice" = "4" ]; then
       || cmd+=(--no-subtitles)
     cmd+=("$target")
 
+    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+      if [[ $file_index -eq 1 ]]; then
+        echo "Total Files Count: $files_count"
+      else
+        echo "Files Remaining: $((files_count - file_index + 1))"
+      fi
+    fi
     echo "Executing: ${cmd[*]}"
     if "${cmd[@]}"; then
       mv "$tmp" "${base}.${out_ext}"
@@ -887,6 +896,7 @@ elif [ "$choice" = "4" ]; then
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
 	    fi
+    file_index=$((file_index + 1))
 	  done
 
 		elif [ "$choice" = "8" ]; then
@@ -911,11 +921,20 @@ elif [ "$choice" = "4" ]; then
 
   track_order=$(prompt_for_track_order "Enter the new track order (e.g., 0:0,0:1,0:2,…): ")
 
+  files_count=${#targets[@]}
+  file_index=1
   for target in "${targets[@]}"; do
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     tmp="${base}_temp.${ext}"
     cmd=(mkvmerge -o "$tmp" --track-order "$track_order" "$target")
 
+    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+      if [[ $file_index -eq 1 ]]; then
+        echo "Total Files Count: $files_count"
+      else
+        echo "Files Remaining: $((files_count - file_index + 1))"
+      fi
+    fi
     echo "Executing: ${cmd[*]}"
     if "${cmd[@]}"; then
       mv "$tmp" "${base}.${ext}"
@@ -924,6 +943,7 @@ elif [ "$choice" = "4" ]; then
       echo "Error on $target; cleaning up."
       rm -f "$tmp"
     fi
+    file_index=$((file_index + 1))
 	  done
 	  
 	# --- Choice 9: Extract Tracks ---
