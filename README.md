@@ -45,6 +45,7 @@ Repo layout:
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
+- [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-Show-Product-SKU.user.js) - Display and copy the public PlayStation product SKU on PSPrices product pages. [Docs](docs/psprices-show-product-sku.md)
 - [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Steam-Reveal-Spoilers.user.js) - Reveal Steam community spoilers automatically. [Docs](docs/steam-reveal-spoilers.md)
 - [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js) - Reveal Stack Exchange spoilers automatically. [Docs](docs/stackexchange-reveal-spoilers.md)
 - [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js) - Open YouTube Shorts in the full player with a button or hotkey. [Docs](docs/youtube-shorts-switcher.md)
