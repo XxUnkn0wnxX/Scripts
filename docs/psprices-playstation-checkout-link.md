@@ -4,15 +4,19 @@
 
 Current documented release: `1.0.4`.
 
-## PlayStation Store Redirect Caveat
+## PlayStation Store Setup and Redirect Caveat
+
+Before using any PSNPrices Add to Cart button:
+
+1. Open [https://store.playstation.com](https://store.playstation.com).
+2. Sign in to the PlayStation account for the region being used on PSNPrices.
+3. Ideally, leave the signed-in PlayStation Store page open in another tab.
+
+The generated checkout link does not sign the user in. Opening the store first gives the checkout redirect an existing PlayStation session and makes the Add to Cart flow more reliable.
 
 The PlayStation checkout redirect may occasionally display an error page even when the item was added successfully.
 
-If this happens:
-
-1. Open or return to [https://store.playstation.com](https://store.playstation.com).
-2. Refresh the PlayStation Store page.
-3. Check the shopping cart before trying the Add to Cart action again.
+If this happens, return to the signed-in PlayStation Store tab, refresh it, and check the shopping cart before trying the Add to Cart action again.
 
 > Some items cannot be added, or will not remain in the cart, because their regional SKU is no longer valid on Sony's servers.
 
