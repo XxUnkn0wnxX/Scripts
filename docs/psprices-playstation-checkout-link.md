@@ -2,6 +2,8 @@
 
 [`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that injects working purchase panels for PSNPrices avatar and theme pages.
 
+Current documented release: `1.0.1`.
+
 ## What It Does
 
 - reads the public base product SKU and price from PSPrices' JSON-LD product metadata
@@ -16,14 +18,14 @@
 
 ## Where It Works
 
-The userscript runs on product URLs matching:
+The userscript loads across PSNPrices so the `🏴‍☠️ unlocked` header badge can be displayed globally:
 
 ```text
-https://psprices.com/region-*/game/*
-https://www.psprices.com/region-*/game/*
+https://psprices.com/*
+https://www.psprices.com/*
 ```
 
-It only replaces a purchase target when the page contains one exact supported avatar or theme structure. If no supported target exists, it does not insert a checkout card.
+Checkout-panel replacement remains restricted to supported `/region-*/game/*` product pages containing one exact avatar or theme structure. On other pages, the script only maintains the global header badge and does not insert a checkout card.
 
 ## Basic Install
 
@@ -168,7 +170,7 @@ After the click cooldown, the button returns to the blue Add to Cart state when 
 
 ## Header Badge
 
-The script adds this badge immediately after the PSPrices wordmark:
+The script adds this badge immediately after the PSPrices wordmark on every PSNPrices page where the standard header exists:
 
 ```text
 🏴‍☠️ unlocked
