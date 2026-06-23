@@ -4,6 +4,18 @@
 
 Current documented release: `1.0.1`.
 
+## PlayStation Store Redirect Caveat
+
+The PlayStation checkout redirect may occasionally display an error page even when the item was added successfully.
+
+If this happens:
+
+1. Open or return to [https://store.playstation.com](https://store.playstation.com).
+2. Refresh the PlayStation Store page.
+3. Check the shopping cart before trying the Add to Cart action again.
+
+> Some items cannot be added, or will not remain in the cart, because their regional SKU is no longer valid on Sony's servers.
+
 ## What It Does
 
 - reads the public base product SKU and price from PSPrices' JSON-LD product metadata
