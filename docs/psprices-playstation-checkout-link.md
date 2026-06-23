@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that injects working purchase panels for PSNPrices avatar and theme pages.
 
-Current documented release: `1.0.2`.
+Current documented release: `1.0.3`.
 
 ## PlayStation Store Redirect Caveat
 
@@ -65,7 +65,11 @@ It validates the product ID and region against the URL, canonical link, product 
 https://store.playstation.com/store/api/chihiro/00_09_000/container/
 ```
 
-A returned SKU must match the page's base SKU plus a regional suffix such as `-E001`. After validation, the script creates:
+A returned SKU must match the page's exact base SKU plus Sony's four-character alphanumeric regional suffix. Supported Sony examples include `-E001`, `-U001`, and `-UA01`. The complete suffix is taken from Sony's `default_sku.id`; it is not guessed or generated locally.
+
+The local validator remains as a response-integrity check. It rejects an empty SKU, a SKU belonging to another base product, a missing or incorrectly sized suffix, and suffixes containing URL/path punctuation. It does not require one specific letter-and-digit arrangement within Sony's four-character suffix.
+
+After validation, the script creates:
 
 ```text
 https://checkout.playstation.com/add/FULL_SKU?clientId=...

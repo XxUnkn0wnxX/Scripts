@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.2
+// @version      1.0.3
 // @description  Generate regional PlayStation checkout links on PSPrices product pages.
 // @homepageURL  https://discord.gg/slayersicerealm
 // @author       OpenAI
@@ -23,7 +23,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.2';
+  const SCRIPT_VERSION = '1.0.3';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -78,7 +78,8 @@
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
-  const FULL_SKU_SUFFIX_RE = /-[A-Z]\d{3}$/i;
+  const FULL_SKU_SUFFIX_RE = /-[A-Z0-9]{4}$/i;
+  const SONY_SKU_SUFFIX_RE = /^[A-Z0-9]{4}$/;
 
   function enableBootstrapSuppression() {
     if (!PRODUCT_PATH.test(window.location.pathname)) return;
@@ -431,6 +432,16 @@
 
   function encodeSku(value) {
     return encodeURIComponent(value).replace(/%2D/gi, '-').replace(/%5F/gi, '_');
+  }
+
+  function normalizeSonyFullSku(value, baseProductId) {
+    if (typeof value !== 'string') return null;
+    const fullSku = value.trim().toUpperCase();
+    const expectedPrefix = `${baseProductId}-`;
+    if (!fullSku.startsWith(expectedPrefix)) return null;
+    const suffix = fullSku.slice(expectedPrefix.length);
+    if (!SONY_SKU_SUFFIX_RE.test(suffix)) return null;
+    return fullSku;
   }
 
   function hasProductType(type) {
@@ -1535,9 +1546,8 @@
         error.safeCause = sanitizeLogValue(payload?.cause || 'No regional SKU was returned.');
         throw error;
       }
-      const fullSku = rawSku.trim().toUpperCase();
-      const expected = new RegExp(`^${mount.baseProductId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-[A-Z]\\d{3}$`);
-      if (!expected.test(fullSku)) {
+      const fullSku = normalizeSonyFullSku(rawSku, mount.baseProductId);
+      if (!fullSku) {
         const error = new Error('Unexpected regional SKU.');
         error.category = 'unexpected-sku';
         throw error;
