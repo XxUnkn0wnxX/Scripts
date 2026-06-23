@@ -1,6 +1,6 @@
 # PSPrices-PlayStation-Checkout-Link.user.js
 
-[`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces supported PSPrices avatar and theme purchase panels with a regional PlayStation checkout action.
+[`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that injects working purchase panels for PSNPrices avatar and theme pages.
 
 ## What It Does
 
