@@ -63,7 +63,8 @@
   const BOOTSTRAP_STYLE_ID = 'psprices-checkout-bootstrap-style';
   const WRAPPER_ENTER_CLASS = 'psprices-checkout-wrapper-enter';
   const WRAPPER_ENTER_ACTIVE_CLASS = 'psprices-checkout-wrapper-enter-active';
-  const WRAPPER_ENTER_MS = 600;
+  const WRAPPER_ENTER_MS = 450;
+  const LINKGEN_START_DELAY_MS = 150;
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
@@ -152,7 +153,7 @@
     );
   }
 
-  function fadeInBuyBlock(buyBlock, ownerId) {
+  function fadeInBuyBlock(buyBlock, ownerId, onComplete = null) {
     clearBuyBlockFade(buyBlock);
     const fadeSequence = ++wrapperFadeSequence;
     buyBlock.classList.add(WRAPPER_ENTER_CLASS);
@@ -164,6 +165,7 @@
       window.setTimeout(() => {
         if (!buyBlock.isConnected || fadeSequence !== wrapperFadeSequence) return;
         buyBlock.classList.remove(WRAPPER_ENTER_ACTIVE_CLASS);
+        if (typeof onComplete === 'function') onComplete();
       }, WRAPPER_ENTER_MS + 40);
     });
   }
@@ -929,7 +931,8 @@
       'div',
       '',
       mount.fullSku ? `SKU: ${mount.fullSku}` :
-        mount.state === 'terminal-error' ? 'SKU: Unavailable' : 'SKU: Resolving...'
+        mount.state === 'terminal-error' ? 'SKU: Unavailable' :
+          mount.state === 'loading' ? 'SKU: Resolving...' : 'SKU: Pending'
     );
     diagnostics.append(locale, sku);
 
@@ -1055,6 +1058,10 @@
   function invalidateMountAsync(mount, expectedAbort = true) {
     if (!mount) return;
     cancelClickAttempt(mount);
+    if (mount.linkgenStartTimer) {
+      window.clearTimeout(mount.linkgenStartTimer);
+      mount.linkgenStartTimer = 0;
+    }
     mount.checkoutUrl = null;
     if (mount.requestAbort) {
       mount.requestAbort.expected = expectedAbort;
@@ -1148,8 +1155,31 @@
     removeChildren(mount.targetElement);
     mount.targetElement.append(renderCard(mount));
     hideSticky(mount);
-    fadeInBuyBlock(mount.buyBlock, mount.ownerId);
+    fadeInBuyBlock(
+      mount.buyBlock,
+      mount.ownerId,
+      mount.state === 'waiting' ? () => scheduleRegionalSkuResolution(mount) : null
+    );
     logger.verbose('Replacement card re-rendered after native overwrite.');
+  }
+
+  function beginRegionalSkuResolution(mount) {
+    if (activeMount !== mount || !activeCardIsIntact(mount)) return;
+    mount.linkgenStartTimer = 0;
+    mount.state = 'loading';
+    mount.ui.sku.textContent = 'SKU: Resolving...';
+    setButtonMode(mount, 'disabled', 'Add to Cart');
+    setStatus(mount, 'Resolving regional PlayStation SKU...');
+    void resolveRegionalSku(mount);
+  }
+
+  function scheduleRegionalSkuResolution(mount) {
+    if (activeMount !== mount || !activeCardIsIntact(mount)) return;
+    if (mount.linkgenStartTimer) window.clearTimeout(mount.linkgenStartTimer);
+    mount.linkgenStartTimer = window.setTimeout(
+      () => beginRegionalSkuResolution(mount),
+      LINKGEN_START_DELAY_MS
+    );
   }
 
   function chooseRequestApi() {
@@ -1663,7 +1693,8 @@
       signatureKey: context.signatureKey,
       generation: ++requestGeneration,
       requestAbort: null,
-      state: 'loading',
+      linkgenStartTimer: 0,
+      state: 'waiting',
       fullSku: null,
       checkoutUrl: null,
       terminalFailureCategory: null,
@@ -1693,7 +1724,11 @@
       activeMount = mount;
       transitionActive = false;
       hideSticky(mount);
-      fadeInBuyBlock(mount.buyBlock, ownerId);
+      fadeInBuyBlock(
+        mount.buyBlock,
+        ownerId,
+        () => scheduleRegionalSkuResolution(mount)
+      );
       logger.info(
         'Eligible purchase flow found and replacement mounted.',
         mount.targetType,
@@ -1701,7 +1736,6 @@
         mount.regionAlias,
         mount.sonyLocale
       );
-      void resolveRegionalSku(mount);
     } catch (error) {
       logger.error('Checkout replacement mount failed internally.', error);
       if (activeMount === mount) activeMount = null;
