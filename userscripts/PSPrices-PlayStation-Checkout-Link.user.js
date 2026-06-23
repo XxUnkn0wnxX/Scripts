@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.3
+// @version      1.0.4
 // @description  Generate regional PlayStation checkout links on PSPrices product pages.
 // @homepageURL  https://discord.gg/slayersicerealm
 // @author       OpenAI
@@ -23,7 +23,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.3';
+  const SCRIPT_VERSION = '1.0.4';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -65,6 +65,7 @@
   const BOOTSTRAP_CLASS = 'psprices-checkout-pending';
   const TRANSITION_SUPPRESS_CLASS = 'psprices-checkout-transition-pending';
   const BOOTSTRAP_STYLE_ID = 'psprices-checkout-bootstrap-style';
+  const COSMETIC_STYLE_ID = 'psprices-checkout-cosmetic-style';
   const WRAPPER_ENTER_CLASS = 'psprices-checkout-wrapper-enter';
   const WRAPPER_ENTER_ACTIVE_CLASS = 'psprices-checkout-wrapper-enter-active';
   const WRAPPER_ENTER_MS = 450;
@@ -81,7 +82,23 @@
   const FULL_SKU_SUFFIX_RE = /-[A-Z0-9]{4}$/i;
   const SONY_SKU_SUFFIX_RE = /^[A-Z0-9]{4}$/;
 
+  function enablePermanentCosmeticSuppression() {
+    if (document.getElementById(COSMETIC_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = COSMETIC_STYLE_ID;
+    style.textContent = `
+      [data-test-id="avatar-collection-bridge"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+    `;
+    (document.head || document.documentElement).append(style);
+  }
+
   function enableBootstrapSuppression() {
+    enablePermanentCosmeticSuppression();
     if (!PRODUCT_PATH.test(window.location.pathname)) return;
     if (!document.documentElement.classList.contains(BOOTSTRAP_CLASS)) {
       document.documentElement.classList.add(BOOTSTRAP_CLASS);
