@@ -59,6 +59,8 @@
   const DIAGNOSTICS_TEST_ID = 'psprices-checkout-diagnostics';
   const MANUAL_LINK_TEST_ID = 'psprices-checkout-manual-link';
   const STICKY_OWNER_ATTR = 'data-psprices-checkout-sticky';
+  const HEADER_BADGE_ATTR = 'data-psprices-checkout-unlocked-badge';
+  const HEADER_BADGE_HOST_ATTR = 'data-psprices-checkout-header-badge-ready';
   const WRAPPER_READY_ATTR = 'data-psprices-checkout-ready';
   const BOOTSTRAP_CLASS = 'psprices-checkout-pending';
   const TRANSITION_SUPPRESS_CLASS = 'psprices-checkout-transition-pending';
@@ -67,6 +69,12 @@
   const WRAPPER_ENTER_ACTIVE_CLASS = 'psprices-checkout-wrapper-enter-active';
   const WRAPPER_ENTER_MS = 450;
   const LINKGEN_START_DELAY_MS = 150;
+  const HEADER_WORDMARK_CLASS =
+    'text-base font-bold leading-none group-hover:underline text-text ' +
+    'group-hover:text-primary dark:group-hover:text-white';
+  const HEADER_BADGE_CLASS =
+    'text-[8px] font-bold bg-blue-700 dark:bg-blue-600 text-white ' +
+    'px-1 py-0 rounded lowercase overflow-hidden';
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
@@ -145,6 +153,67 @@
     if (buyBlocks.length !== 1) return false;
     markBuyBlockReady(buyBlocks[0], 'native');
     return true;
+  }
+
+  function ensureHeaderUnlockedBadge() {
+    if (headerBadgeHost?.isConnected) {
+      const ownedBadges = [...headerBadgeHost.children].filter((child) =>
+        child.hasAttribute(HEADER_BADGE_ATTR)
+      );
+      const competingBadges = [...headerBadgeHost.children].filter(
+        (child) =>
+          !child.hasAttribute(HEADER_BADGE_ATTR) &&
+          child.matches('span') &&
+          child.textContent.trim().toLowerCase() === 'unlocked'
+      );
+      if (
+        ownedBadges.length === 1 &&
+        ownedBadges[0].className === HEADER_BADGE_CLASS &&
+        ownedBadges[0].textContent === '🏴‍☠️ unlocked' &&
+        competingBadges.length === 0
+      ) {
+        return;
+      }
+    }
+    headerBadgeHost = null;
+    for (const homeLink of document.querySelectorAll(
+      'a[aria-label="PSprices Home"]'
+    )) {
+      const wordmark = [...homeLink.querySelectorAll('span')].find(
+        (span) =>
+          span.className === HEADER_WORDMARK_CLASS &&
+          span.textContent.trim().toLowerCase() === 'psprices'
+      );
+      const line = wordmark?.parentElement;
+      if (!line?.classList.contains('leading-5')) continue;
+      const existingBadges = [...line.children].filter(
+        (child) =>
+          child !== wordmark &&
+          child.matches('span') &&
+          (
+            child.hasAttribute(HEADER_BADGE_ATTR) ||
+            child.textContent.trim().toLowerCase() === 'unlocked'
+          )
+      );
+      for (const existingBadge of existingBadges) {
+        if (
+          existingBadge.hasAttribute(HEADER_BADGE_ATTR) &&
+          existingBadge.previousSibling?.nodeType === Node.TEXT_NODE &&
+          existingBadge.previousSibling.textContent === ' '
+        ) {
+          existingBadge.previousSibling.remove();
+        }
+        existingBadge.remove();
+      }
+      const badge = document.createElement('span');
+      badge.className = HEADER_BADGE_CLASS;
+      badge.textContent = '🏴‍☠️ unlocked';
+      badge.setAttribute(HEADER_BADGE_ATTR, '');
+      wordmark.after(document.createTextNode(' '), badge);
+      line.setAttribute(HEADER_BADGE_HOST_ATTR, '');
+      headerBadgeHost = line;
+      return;
+    }
   }
 
   function clearBuyBlockFade(buyBlock) {
@@ -265,6 +334,7 @@
   let stabilizationCandidate = null;
   let htmxSwapPending = false;
   let wrapperFadeSequence = 0;
+  let headerBadgeHost = null;
 
   function sanitizeLogValue(value) {
     return String(value ?? '')
@@ -1806,6 +1876,7 @@
   }
 
   function lifecyclePass() {
+    ensureHeaderUnlockedBadge();
     if (PRODUCT_PATH.test(window.location.pathname)) {
       enableBootstrapSuppression();
     }
@@ -1896,6 +1967,7 @@
   }
 
   const observer = new MutationObserver(() => {
+    ensureHeaderUnlockedBadge();
     if (PRODUCT_PATH.test(window.location.pathname)) {
       enableBootstrapSuppression();
     }
@@ -1922,6 +1994,7 @@
     subtree: true
   });
   window.addEventListener('pageshow', () => {
+    ensureHeaderUnlockedBadge();
     enableBootstrapSuppression();
     scheduleLifecycle('pageshow');
   });
@@ -1929,7 +2002,10 @@
     enableBootstrapSuppression();
     scheduleLifecycle('popstate');
   });
-  document.addEventListener('DOMContentLoaded', () => scheduleLifecycle('DOMContentLoaded'));
+  document.addEventListener('DOMContentLoaded', () => {
+    ensureHeaderUnlockedBadge();
+    scheduleLifecycle('DOMContentLoaded');
+  });
   document.addEventListener('htmx:beforeSwap', (event) => {
     if (htmxTargetAffectsProductArea(event)) {
       htmxSwapPending = true;

@@ -45,6 +45,7 @@ Repo layout:
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
+- [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) - Replace supported PSPrices avatar and theme purchase panels with regional PlayStation checkout links. [Docs](docs/psprices-playstation-checkout-link.md)
 - [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-Show-Product-SKU.user.js) - Display and copy the public PlayStation product SKU on PSPrices product pages. [Docs](docs/psprices-show-product-sku.md)
 - [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Steam-Reveal-Spoilers.user.js) - Reveal Steam community spoilers automatically. [Docs](docs/steam-reveal-spoilers.md)
 - [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js) - Reveal Stack Exchange spoilers automatically. [Docs](docs/stackexchange-reveal-spoilers.md)
