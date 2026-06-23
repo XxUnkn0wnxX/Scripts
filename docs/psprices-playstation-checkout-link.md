@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that injects working purchase panels for PSNPrices avatar and theme pages.
 
-Current documented release: `1.0.1`.
+Current documented release: `1.0.2`.
 
 ## PlayStation Store Redirect Caveat
 
@@ -25,7 +25,7 @@ If this happens:
 - keeps the Add to Cart button disabled until a validated checkout URL is ready
 - supports PSPrices product pages across all configured PlayStation regions
 - preserves the visual-map and SKU panels outside the replaced purchase target
-- hides the matching logged-out sticky Buy Unlocked bar while the replacement is active
+- blocks the matching bottom Buy Unlocked banner from painting on supported product pages
 - adds a dominant `🏴‍☠️ unlocked` badge beside the PSPrices header wordmark
 
 ## Where It Works
@@ -76,6 +76,8 @@ Only successfully validated full SKUs are cached for the current page session. F
 ## Rendering and Timing
 
 The script starts at `document-start` and temporarily suppresses the shared PSPrices purchase wrapper while it validates and replaces the purchase target. The completed wrapper then fades into view.
+
+The bottom sticky Buy Unlocked banner is suppressed by bootstrap CSS as soon as its matching `stickyReveal('#avatar-buy-block')` element is parsed. It remains `display: none` on supported avatar and theme product pages, preventing the native banner from flashing before the JavaScript mount completes.
 
 The normal-use timing constants are near the top of the userscript:
 

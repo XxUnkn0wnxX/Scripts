@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1
+// @version      1.0.2
 // @description  Generate regional PlayStation checkout links on PSPrices product pages.
 // @homepageURL  https://discord.gg/slayersicerealm
 // @author       OpenAI
@@ -23,7 +23,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.1';
+  const SCRIPT_VERSION = '1.0.2';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -98,6 +98,13 @@
         opacity: 0 !important;
         pointer-events: none !important;
         transition: none !important;
+      }
+      html.${BOOTSTRAP_CLASS}
+        [x-data*="stickyReveal"][x-data*="#avatar-buy-block"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
       }
       #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_CLASS} {
         opacity: 0 !important;
