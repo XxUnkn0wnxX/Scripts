@@ -26,6 +26,8 @@
   const SCRIPT_VERSION = '1.0.0';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
+  const FORCE_CLIPBOARD_FALLBACK = false;
+  const FORCE_MANUAL_LINK_FALLBACK = false;
 
   /*
    * Logging levels:
@@ -1621,20 +1623,30 @@
 
     let opened = false;
     let blankTab = null;
-    try {
-      blankTab = window.open('about:blank', '_blank');
-      if (blankTab) {
-        try {
-          blankTab.opener = null;
-        } catch (_) {}
-        blankTab.location.href = attempt.checkoutUrl;
-        opened = true;
-      }
-    } catch (error) {
-      logger.verbose('New-tab creation or navigation failed.', error);
+    const forceManualLink = FORCE_MANUAL_LINK_FALLBACK;
+    const forceClipboard = FORCE_CLIPBOARD_FALLBACK && !forceManualLink;
+    if (!forceClipboard && !forceManualLink) {
       try {
-        blankTab?.close();
-      } catch (_) {}
+        blankTab = window.open('about:blank', '_blank');
+        if (blankTab) {
+          try {
+            blankTab.opener = null;
+          } catch (_) {}
+          blankTab.location.href = attempt.checkoutUrl;
+          opened = true;
+        }
+      } catch (error) {
+        logger.verbose('New-tab creation or navigation failed.', error);
+        try {
+          blankTab?.close();
+        } catch (_) {}
+      }
+    } else {
+      logger.info(
+        forceManualLink
+          ? 'Manual Link fallback forced for testing.'
+          : 'Clipboard fallback forced for testing.'
+      );
     }
 
     if (!clickAttemptStillCurrent(mount, attempt)) return;
@@ -1648,7 +1660,9 @@
       logger.info('New tab opened and checkout navigation assigned.');
     } else {
       logger.warn('New tab blocked; attempting checkout-link clipboard fallback.');
-      const clipboardMethod = await copyCheckoutUrl(attempt.checkoutUrl);
+      const clipboardMethod = forceManualLink
+        ? null
+        : await copyCheckoutUrl(attempt.checkoutUrl);
       if (!clickAttemptStillCurrent(mount, attempt)) return;
       if (clipboardMethod) {
         attempt.label = 'Link copied';
@@ -1659,7 +1673,9 @@
         removeManualLink(mount);
         logger.info('Clipboard fallback succeeded.', clipboardMethod);
       } else {
-        mount.popupStatus = 'New tab blocked — use the Manual Link below.';
+        attempt.label = 'Manual Link Rendered';
+        setButtonMode(mount, 'success', attempt.label);
+        mount.popupStatus = 'New tab blocked — use the Manual Link above.';
         setStatus(mount, mount.popupStatus);
         mount.manualLinkVisible = true;
         showManualLink(mount);
