@@ -9,7 +9,7 @@
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js
 // @match        https://psprices.com/region-*/game/*
 // @match        https://www.psprices.com/region-*/game/*
-// @run-at       document-idle
+// @run-at       document-start
 // @grant        GM_xmlhttpRequest
 // @grant        GM.xmlHttpRequest
 // @grant        GM_setClipboard
@@ -25,6 +25,7 @@
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
   const SCRIPT_VERSION = '1.0.0';
   const LOG_LEVEL = 'info';
+  const SHOW_DIAGNOSTICS = false;
 
   /*
    * Logging levels:
@@ -56,10 +57,118 @@
   const DIAGNOSTICS_TEST_ID = 'psprices-checkout-diagnostics';
   const MANUAL_LINK_TEST_ID = 'psprices-checkout-manual-link';
   const STICKY_OWNER_ATTR = 'data-psprices-checkout-sticky';
+  const WRAPPER_READY_ATTR = 'data-psprices-checkout-ready';
+  const BOOTSTRAP_CLASS = 'psprices-checkout-pending';
+  const TRANSITION_SUPPRESS_CLASS = 'psprices-checkout-transition-pending';
+  const BOOTSTRAP_STYLE_ID = 'psprices-checkout-bootstrap-style';
+  const WRAPPER_ENTER_CLASS = 'psprices-checkout-wrapper-enter';
+  const WRAPPER_ENTER_ACTIVE_CLASS = 'psprices-checkout-wrapper-enter-active';
+  const WRAPPER_ENTER_MS = 600;
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
   const FULL_SKU_SUFFIX_RE = /-[A-Z]\d{3}$/i;
+
+  function enableBootstrapSuppression() {
+    if (!PRODUCT_PATH.test(window.location.pathname)) return;
+    if (!document.documentElement.classList.contains(BOOTSTRAP_CLASS)) {
+      document.documentElement.classList.add(BOOTSTRAP_CLASS);
+    }
+    if (document.getElementById(BOOTSTRAP_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = BOOTSTRAP_STYLE_ID;
+    style.textContent = `
+      html.${BOOTSTRAP_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]
+        #avatar-buy-block[data-avatar-buy-block]:not([${WRAPPER_READY_ATTR}]),
+      html.${TRANSITION_SUPPRESS_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]
+        #avatar-buy-block[data-avatar-buy-block] {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        transition: none !important;
+      }
+      #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_CLASS} {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_ACTIVE_CLASS} {
+        opacity: 1;
+        transition: opacity ${WRAPPER_ENTER_MS}ms ease-out;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_ACTIVE_CLASS} {
+          transition: none;
+        }
+      }
+    `;
+    (document.head || document.documentElement).append(style);
+  }
+
+  function releaseTransitionSuppression() {
+    if (document.documentElement.classList.contains(TRANSITION_SUPPRESS_CLASS)) {
+      document.documentElement.classList.remove(TRANSITION_SUPPRESS_CLASS);
+    }
+  }
+
+  function disableBootstrapSuppression() {
+    releaseTransitionSuppression();
+    document.documentElement.classList.remove(BOOTSTRAP_CLASS);
+  }
+
+  function enableTransitionSuppression() {
+    enableBootstrapSuppression();
+    if (!document.documentElement.classList.contains(TRANSITION_SUPPRESS_CLASS)) {
+      document.documentElement.classList.add(TRANSITION_SUPPRESS_CLASS);
+    }
+  }
+
+  function markBuyBlockReady(buyBlock, value) {
+    if (!buyBlock?.isConnected) return;
+    if (buyBlock.getAttribute(WRAPPER_READY_ATTR) !== value) {
+      buyBlock.setAttribute(WRAPPER_READY_ATTR, value);
+    }
+    releaseTransitionSuppression();
+  }
+
+  function revealCurrentNativeBuyBlock() {
+    const gameDetails = document.querySelectorAll(
+      '#game-detail.game-detail--unlockable[data-game-id]'
+    );
+    if (gameDetails.length !== 1) return false;
+    const buyBlocks = gameDetails[0].querySelectorAll(
+      '#avatar-buy-block[data-avatar-buy-block]'
+    );
+    if (buyBlocks.length !== 1) return false;
+    markBuyBlockReady(buyBlocks[0], 'native');
+    return true;
+  }
+
+  function clearBuyBlockFade(buyBlock) {
+    wrapperFadeSequence += 1;
+    buyBlock?.classList.remove(
+      WRAPPER_ENTER_CLASS,
+      WRAPPER_ENTER_ACTIVE_CLASS
+    );
+  }
+
+  function fadeInBuyBlock(buyBlock, ownerId) {
+    clearBuyBlockFade(buyBlock);
+    const fadeSequence = ++wrapperFadeSequence;
+    buyBlock.classList.add(WRAPPER_ENTER_CLASS);
+    markBuyBlockReady(buyBlock, ownerId);
+    window.requestAnimationFrame(() => {
+      if (!buyBlock.isConnected || fadeSequence !== wrapperFadeSequence) return;
+      buyBlock.classList.add(WRAPPER_ENTER_ACTIVE_CLASS);
+      buyBlock.classList.remove(WRAPPER_ENTER_CLASS);
+      window.setTimeout(() => {
+        if (!buyBlock.isConnected || fadeSequence !== wrapperFadeSequence) return;
+        buyBlock.classList.remove(WRAPPER_ENTER_ACTIVE_CLASS);
+      }, WRAPPER_ENTER_MS + 40);
+    });
+  }
+
+  enableBootstrapSuppression();
 
   const REGION_CONFIG = Object.freeze({
     ar: { country: 'Argentina', defaultLocale: 'es-AR', locales: ['en-AR', 'es-AR'] },
@@ -151,6 +260,7 @@
   let stabilizationFrame = 0;
   let stabilizationCandidate = null;
   let htmxSwapPending = false;
+  let wrapperFadeSequence = 0;
 
   function sanitizeLogValue(value) {
     return String(value ?? '')
@@ -707,6 +817,10 @@
     const button = mount.ui?.button;
     if (!button) return;
     button.classList.remove('btn-disabled', 'btn-primary', 'btn-success');
+    button.style.removeProperty('background-color');
+    button.style.removeProperty('border-color');
+    button.style.removeProperty('color');
+    button.style.removeProperty('opacity');
     mount.ui.buttonLabel.textContent = label;
     if (mode === 'ready') {
       button.classList.add('btn-primary');
@@ -714,6 +828,10 @@
       button.removeAttribute('aria-disabled');
     } else if (mode === 'success') {
       button.classList.add('btn-success');
+      button.style.setProperty('background-color', 'var(--color-success)', 'important');
+      button.style.setProperty('border-color', 'var(--color-success)', 'important');
+      button.style.setProperty('color', 'var(--color-success-content)', 'important');
+      button.style.setProperty('opacity', '1', 'important');
       button.disabled = true;
       button.setAttribute('aria-disabled', 'true');
     } else {
@@ -805,6 +923,7 @@
     const diagnostics = document.createElement('div');
     diagnostics.dataset.testId = DIAGNOSTICS_TEST_ID;
     diagnostics.className = 'space-y-1 text-xs text-base-content/60 break-words';
+    diagnostics.hidden = !SHOW_DIAGNOSTICS;
     const locale = createTextElement('div', '', `Locale: ${mount.sonyLocale}`);
     const sku = createTextElement(
       'div',
@@ -862,6 +981,17 @@
     }
     return mount.targetElement.matches('div.flex-shrink-0') &&
       mount.targetElement.parentElement === mount.buyBlock;
+  }
+
+  function activeCardIsIntact(mount) {
+    if (!activeTargetIsOwned(mount)) return false;
+    const expectedCard = [...mount.targetElement.children].find(
+      (child) => child.getAttribute(OWNER_ATTR) === mount.ownerId
+    );
+    return Boolean(
+      expectedCard?.dataset.testId === CARD_TEST_ID &&
+      mount.targetElement.childNodes.length === 1
+    );
   }
 
   function restoreSticky(mount) {
@@ -984,11 +1114,13 @@
     requestGeneration += 1;
     invalidateMountAsync(mount, true);
     restoreSticky(mount);
+    clearBuyBlockFade(mount.buyBlock);
 
     if (restore && canRestoreNative(mount)) {
       removeChildren(mount.targetElement);
       mount.targetElement.append(mount.savedChildren);
       clearMarkers(mount);
+      markBuyBlockReady(mount.buyBlock, 'native');
       logger.info('Native purchase target restored.', reason);
     } else {
       if (activeTargetIsOwned(mount)) removeChildren(mount.targetElement);
@@ -1001,6 +1133,7 @@
   function enterTransition(reason) {
     if (!transitionActive) logger.info('Page context changed; invalidating old checkout state.', reason);
     transitionActive = true;
+    enableTransitionSuppression();
     stabilizationCandidate = null;
     if (stabilizationFrame) {
       window.cancelAnimationFrame(stabilizationFrame);
@@ -1015,6 +1148,7 @@
     removeChildren(mount.targetElement);
     mount.targetElement.append(renderCard(mount));
     hideSticky(mount);
+    fadeInBuyBlock(mount.buyBlock, mount.ownerId);
     logger.verbose('Replacement card re-rendered after native overwrite.');
   }
 
@@ -1547,6 +1681,7 @@
       const current = gatherPageContext();
       if (!sameSignature(context, current)) {
         logger.verbose('Mount cancelled because page signature changed before mutation.');
+        scheduleLifecycle('mount-signature-changed');
         return;
       }
       while (mount.targetElement.firstChild) {
@@ -1558,6 +1693,7 @@
       activeMount = mount;
       transitionActive = false;
       hideSticky(mount);
+      fadeInBuyBlock(mount.buyBlock, ownerId);
       logger.info(
         'Eligible purchase flow found and replacement mounted.',
         mount.targetType,
@@ -1571,13 +1707,20 @@
       if (activeMount === mount) activeMount = null;
       invalidateMountAsync(mount, true);
       restoreSticky(mount);
-      if (canRestoreNative(mount, false)) {
+      const restoredNative = canRestoreNative(mount, false);
+      if (restoredNative) {
         removeChildren(mount.targetElement);
         mount.targetElement.append(savedChildren);
       } else if (mount.targetElement.isConnected) {
         removeChildren(mount.targetElement);
       }
       clearMarkers(mount);
+      clearBuyBlockFade(mount.buyBlock);
+      if (restoredNative) {
+        markBuyBlockReady(mount.buyBlock, 'native');
+      } else {
+        releaseTransitionSuppression();
+      }
     }
   }
 
@@ -1613,6 +1756,9 @@
   }
 
   function lifecyclePass() {
+    if (PRODUCT_PATH.test(window.location.pathname)) {
+      enableBootstrapSuppression();
+    }
     const context = gatherPageContext();
     logger.verbose('Lifecycle pass.', context.valid ? context.signatureKey : context.reason);
 
@@ -1622,11 +1768,7 @@
         return;
       }
       hideSticky(activeMount);
-      const expectedCard = [...activeMount.targetElement.children].find(
-        (child) => child.getAttribute(OWNER_ATTR) === activeMount.ownerId
-      );
-      if (!expectedCard || expectedCard.dataset.testId !== CARD_TEST_ID ||
-          activeMount.targetElement.childNodes.length !== 1) {
+      if (!activeCardIsIntact(activeMount)) {
         rerenderActiveMount();
       }
       return;
@@ -1634,7 +1776,17 @@
 
     if (!context.valid) {
       stabilizationCandidate = null;
-      transitionActive = Boolean(context.temporary);
+      if (context.reason === 'unsupported-route') {
+        transitionActive = false;
+        disableBootstrapSuppression();
+      } else if (context.temporary || htmxSwapPending) {
+        enableTransitionSuppression();
+      } else {
+        transitionActive = false;
+        if (!revealCurrentNativeBuyBlock() && document.readyState !== 'loading') {
+          releaseTransitionSuppression();
+        }
+      }
       return;
     }
     if (htmxSwapPending) {
@@ -1693,7 +1845,16 @@
     logger.verbose('Userscript manager: unknown');
   }
 
-  const observer = new MutationObserver(() => scheduleLifecycle('mutation'));
+  const observer = new MutationObserver(() => {
+    if (PRODUCT_PATH.test(window.location.pathname)) {
+      enableBootstrapSuppression();
+    }
+    if (activeMount && !activeCardIsIntact(activeMount)) {
+      enableTransitionSuppression();
+      activeMount.buyBlock?.removeAttribute(WRAPPER_READY_ATTR);
+    }
+    scheduleLifecycle('mutation');
+  });
   observer.observe(document.documentElement, {
     childList: true,
     attributes: true,
@@ -1710,8 +1871,15 @@
     ],
     subtree: true
   });
-  window.addEventListener('pageshow', () => scheduleLifecycle('pageshow'));
-  window.addEventListener('popstate', () => scheduleLifecycle('popstate'));
+  window.addEventListener('pageshow', () => {
+    enableBootstrapSuppression();
+    scheduleLifecycle('pageshow');
+  });
+  window.addEventListener('popstate', () => {
+    enableBootstrapSuppression();
+    scheduleLifecycle('popstate');
+  });
+  document.addEventListener('DOMContentLoaded', () => scheduleLifecycle('DOMContentLoaded'));
   document.addEventListener('htmx:beforeSwap', (event) => {
     if (htmxTargetAffectsProductArea(event)) {
       htmxSwapPending = true;
