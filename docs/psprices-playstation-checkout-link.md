@@ -49,7 +49,7 @@ On regional `/collection/*` pages, the script also permanently hides `[data-test
 ## Basic Install
 
 1. Install a userscript manager such as Tampermonkey.
-2. Open the [raw userscript](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js).
+2. Open the [raw userscript](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js).
 3. Confirm the installation in the userscript manager.
 4. Open a supported PSPrices avatar or theme product page.
 
