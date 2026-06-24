@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         StackExchange Reveal All Spoilers
 // @namespace    https://github.com/XxUnkn0wnxX
-// @version      1.0.1.1
+// @version      1.0.1.2
 // @description  Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -9,9 +9,6 @@
 // @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
-// @run-at       document-start
-// @noframes
-// @grant        none
 // @match        *://*.stackexchange.com/*
 // @match        *://stackoverflow.com/*
 // @match        *://superuser.com/*
@@ -20,6 +17,9 @@
 // @match        *://mathoverflow.net/*
 // @match        *://stackapps.com/*
 // @match        *://stackauth.com/*
+// @run-at       document-start
+// @grant        none
+// @noframes
 // ==/UserScript==
 
 (function () {

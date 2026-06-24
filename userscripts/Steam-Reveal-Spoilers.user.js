@@ -1,17 +1,17 @@
 // ==UserScript==
 // @name         Steam Reveal Spoilers
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1.1
+// @version      1.0.1.2
 // @description  Automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates. Vibe coded with OpenAI.
-// @author       XxUnkn0wnxX
-// @match        *://steamcommunity.com/*
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
+// @author       XxUnkn0wnxX
 // @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Steam-Reveal-Spoilers.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Steam-Reveal-Spoilers.user.js
-// @grant        none
+// @match        *://steamcommunity.com/*
 // @run-at       document-idle
+// @grant        none
 // ==/UserScript==
 (function(){
   const reveal = () => {
