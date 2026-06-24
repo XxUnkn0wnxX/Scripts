@@ -7,8 +7,8 @@
 // @supportURL   https://discord.gg/slayersicerealm
 // @author       XxUnkn0wnxX
 // @license      AGPL-3.0-or-later
-// @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
-// @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
+// @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js
+// @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js
 // @match        *://*.stackexchange.com/*
 // @match        *://stackoverflow.com/*
 // @match        *://superuser.com/*

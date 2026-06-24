@@ -7,8 +7,8 @@
 // @supportURL   https://discord.gg/slayersicerealm
 // @author       XxUnkn0wnxX
 // @license      AGPL-3.0-or-later
-// @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js
-// @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js
+// @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js
+// @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js
 // @match        https://www.youtube.com/*
 // @match        https://m.youtube.com/*
 // @run-at       document-idle
