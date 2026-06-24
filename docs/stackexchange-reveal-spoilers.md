@@ -2,7 +2,7 @@
 
 [`userscripts/StackExchange-Reveal-Spoilers.user.js`](../userscripts/StackExchange-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers.
 
-Current documented release: `1.0.0.1`.
+Current documented release: `1.0.1.1`.
 
 ## What It Does
 
