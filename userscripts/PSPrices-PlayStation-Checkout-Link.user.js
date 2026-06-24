@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.1
+// @version      1.0.4.2
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm

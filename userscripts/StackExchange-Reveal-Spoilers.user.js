@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         StackExchange Reveal All Spoilers
 // @namespace    https://github.com/XxUnkn0wnxX
-// @version      1.0.1.2
+// @version      1.0.1.3
 // @description  Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
