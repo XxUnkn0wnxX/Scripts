@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Steam Reveal Spoilers
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1.2
+// @version      1.0.1.3
 // @description  Automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm

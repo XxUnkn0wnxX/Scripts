@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Shorts → Full Player (Action Button + Hotkey)
 // @namespace    https://github.com/XxUnkn0wnxX
-// @version      2.8.1.2
+// @version      2.8.1.3
 // @description  Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
