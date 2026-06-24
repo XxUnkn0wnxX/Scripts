@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4
-// @description  Generate regional PlayStation checkout links on PSPrices product pages.
-// @homepageURL  https://discord.gg/slayersicerealm
-// @author       OpenAI
+// @version      1.0.4.1
+// @description  Replaces PSPrices paywalled avatar/theme purchase panels with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
+// @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
+// @supportURL   https://discord.gg/slayersicerealm
+// @author       XxUnkn0wnxX
+// @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js
 // @match        https://psprices.com/*
@@ -23,7 +25,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4';
+  const SCRIPT_VERSION = '1.0.4.1';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;

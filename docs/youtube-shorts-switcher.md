@@ -1,6 +1,8 @@
 # Youtube-shorts-switcher.user.js
 
-[`userscripts/Youtube-shorts-switcher.user.js`](../userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a quick way to open YouTube Shorts in the normal full player.
+[`userscripts/Youtube-shorts-switcher.user.js`](../userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a Shorts action-column button and configurable hotkey to open the current YouTube Short in the normal watch player.
+
+Current documented release: `2.8.1.1`.
 
 ## What It Does
 
