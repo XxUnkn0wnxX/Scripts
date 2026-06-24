@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Show Product SKU
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.0.1
+// @version      1.0.1.1
 // @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel only when PSPrices does not already show one. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
