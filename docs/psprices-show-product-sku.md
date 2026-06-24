@@ -1,6 +1,8 @@
 # PSPrices-Show-Product-SKU.user.js
 
-[`userscripts/PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays the public PlayStation product SKU on PSPrices product pages.
+[`userscripts/PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel only when PSPrices does not already show one.
+
+Current documented release: `1.0.0.1`.
 
 ## What It Does
 

@@ -1,6 +1,8 @@
 # Steam-Reveal-Spoilers.user.js
 
-[`userscripts/Steam-Reveal-Spoilers.user.js`](../userscripts/Steam-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals hidden spoiler text on Steam community pages.
+[`userscripts/Steam-Reveal-Spoilers.user.js`](../userscripts/Steam-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates.
+
+Current documented release: `1.0.0.1`.
 
 ## What It Does
 

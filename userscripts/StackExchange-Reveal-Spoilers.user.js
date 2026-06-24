@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         StackExchange Reveal All Spoilers
 // @namespace    https://github.com/XxUnkn0wnxX
-// @version      1.0.0
-// @description  Reveal all Stack Exchange spoilers by adding "is-visible".
-// @homepageURL  https://discord.gg/slayersicerealm
-// @author       OpenAI
+// @version      1.0.0.1
+// @description  Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. Vibe coded with OpenAI.
+// @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
+// @supportURL   https://discord.gg/slayersicerealm
+// @author       XxUnkn0wnxX
+// @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js
 // @run-at       document-start

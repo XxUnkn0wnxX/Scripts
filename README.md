@@ -45,12 +45,14 @@ Repo layout:
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
-- [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) - Inject working purchase panels for PSNPrices avatar and theme pages. [Docs](docs/psprices-playstation-checkout-link.md)
-- [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-Show-Product-SKU.user.js) - Display and copy the public PlayStation product SKU on PSPrices product pages. [Docs](docs/psprices-show-product-sku.md)
-- [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Steam-Reveal-Spoilers.user.js) - Reveal Steam community spoilers automatically. [Docs](docs/steam-reveal-spoilers.md)
-- [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js) - Reveal Stack Exchange spoilers automatically. [Docs](docs/stackexchange-reveal-spoilers.md)
-- [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js) - Open YouTube Shorts in the full player with a button or hotkey. [Docs](docs/youtube-shorts-switcher.md)
+- [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) - Replaces PSPrices paywalled avatar/theme purchase panels with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. [Docs](docs/psprices-playstation-checkout-link.md)
+- [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-Show-Product-SKU.user.js) - Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel only when PSPrices does not already show one. [Docs](docs/psprices-show-product-sku.md)
+- [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Steam-Reveal-Spoilers.user.js) - Automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates. [Docs](docs/steam-reveal-spoilers.md)
+- [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/StackExchange-Reveal-Spoilers.user.js) - Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. [Docs](docs/stackexchange-reveal-spoilers.md)
+- [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/Youtube-shorts-switcher.user.js) - Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. [Docs](docs/youtube-shorts-switcher.md)
 
 ---
 
 Some scripts expect Homebrew-installed tooling such as `mkvtoolnix`, `ffmpeg`, `jq`, `fzf`, or Microsoft Word for DOCX workflows. Check the linked doc page for each script before running it.
+
+_All tools and scripts in this repo were vibe coded with OpenAI agents._

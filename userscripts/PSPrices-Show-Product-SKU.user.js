@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         PSPrices Show Product SKU
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.0
-// @description  Show the public PlayStation product SKU on PSPrices product pages.
-// @homepageURL  https://discord.gg/slayersicerealm
-// @author       OpenAI
+// @version      1.0.0.1
+// @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel only when PSPrices does not already show one. Vibe coded with OpenAI.
+// @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
+// @supportURL   https://discord.gg/slayersicerealm
+// @author       XxUnkn0wnxX
+// @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-Show-Product-SKU.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/main/userscripts/PSPrices-Show-Product-SKU.user.js
 // @match        https://psprices.com/region-*/game/*
