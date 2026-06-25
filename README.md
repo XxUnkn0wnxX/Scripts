@@ -1,6 +1,7 @@
 # Personal Script Toolkit
 
-> Warning: this `main` branch is stale and will be removed soon. It only exists to sync any installed userscripts that still point at `main` so they can move to the current `master` branch.
+> [!WARNING]
+> This `main` branch is stale and will be removed soon. It only exists to sync any installed userscripts that still point at `main` so they can move to the current `master` branch.
 
 A small collection of Python scripts, shell helpers, Cronus Zen files, and Tampermonkey userscripts I use for media work, quick automation, and a few game-specific tasks.
 
