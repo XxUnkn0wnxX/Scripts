@@ -283,7 +283,7 @@ The cache keeps the stored index small. Detailed visible cards are hydrated for 
 
 When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
-While candidate hydration is still running, the UI labels already verified matches as confirmed results and separately reports how many unconfirmed candidates are being checked.
+While candidate hydration is still running, the UI labels already verified matches as confirmed results. Remaining undisplayed items are reported through the `Show more` button.
 
 The main controls are:
 

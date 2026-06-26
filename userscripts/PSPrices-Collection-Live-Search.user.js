@@ -2130,6 +2130,7 @@
     renderResults(state, results, {
       ...options,
       hydrationCandidates,
+      confirmedMode: needsConfirmedDetails,
       totalResultCount,
       checkedResultCount,
     });
@@ -2240,6 +2241,7 @@
     const hydrationCandidates = Array.isArray(options.hydrationCandidates)
       ? options.hydrationCandidates
       : [];
+    const confirmedMode = Boolean(options.confirmedMode);
 
     reconcileRenderedResults(state, visibleResults, {
       preserveStaleResults: options.preserveStaleResults !== false,
@@ -2247,8 +2249,8 @@
 
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
-      state.ui.empty.textContent = hydrationCandidates.length > 0
-        ? `Checking ${hydrationCandidates.length} unconfirmed candidate${hydrationCandidates.length === 1 ? '' : 's'} for the selected filters...`
+      state.ui.empty.textContent = confirmedMode
+        ? '0 confirmed results found.'
         : !moreCacheMayArrive
         ? 'No collection items found.'
         : 'No indexed items found yet. More pages are still indexing.';
@@ -2257,21 +2259,15 @@
       const capNote = MAX_RENDER_LIMIT >= 0 && results.length > MAX_RENDER_LIMIT
         ? ` Showing ${limit} of ${results.length}; refine search to narrow results.`
         : '';
-      const hydrateNote = hydrationCandidates.length > 0
-        ? ` Checking ${hydrationCandidates.length} unconfirmed candidate${hydrationCandidates.length === 1 ? '' : 's'}.`
-        : '';
-      const checkedNote = totalResultCount > checkedResultCount
-        ? ` in first ${checkedResultCount} checked`
-        : '';
-      const resultLabel = hydrationCandidates.length > 0
+      const resultLabel = confirmedMode
         ? `confirmed result${results.length === 1 ? '' : 's'}`
         : `result${results.length === 1 ? '' : 's'}`;
-      state.ui.empty.textContent = `${results.length} ${resultLabel} found${checkedNote}.${capNote}${hydrateNote}`;
+      state.ui.empty.textContent = `${results.length} ${resultLabel} found.${capNote}`;
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
     if (limit < hardLimit) {
-      state.ui.showMore.textContent = `Show more (${hardLimit - limit} hidden)`;
+      state.ui.showMore.textContent = `Show more (${hardLimit - limit} remaining)`;
       state.ui.showMore.classList.remove('pspls-hidden');
     } else {
       state.ui.showMore.classList.add('pspls-hidden');
