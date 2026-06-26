@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.11
+// @version      1.0.12
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.11';
+  const SCRIPT_VERSION = '1.0.12';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -1665,6 +1665,8 @@
       liveDetailRunId: 0,
       liveDetailSignature: '',
       liveDetailContextSignature: '',
+      initialFilterHydrationQueued: false,
+      initialFilterHydrationDone: false,
       autoIndexTimer: 0,
       autoIndexEnabled: Boolean(AUTO_INDEX_ON_LOAD),
       autoIndexReady: background,
@@ -2059,6 +2061,7 @@
     if (wasControlsLocked && !state.controlsLocked) {
       logger.info('Region caches complete; rendering collection results.', state.route.region, state.route.collection);
       runSearch(state, { preserveStaleResults: false });
+      scheduleInitialFilterHydration(state);
     }
   }
 
@@ -2305,6 +2308,24 @@
     cancelLiveDetailHydration(state);
     clearRenderedResults(state);
     runSearch(state, { preserveStaleResults: false });
+  }
+
+  function scheduleInitialFilterHydration(state) {
+    if (!state || state.background || !state.ui) return;
+    if (!isThemeCollection(state.route && state.route.collection)) return;
+    if (state.initialFilterHydrationDone || state.initialFilterHydrationQueued) return;
+    if (isInteractionLocked(state)) return;
+
+    state.initialFilterHydrationQueued = true;
+    setTimeout(() => {
+      state.initialFilterHydrationQueued = false;
+      if (!isStateActive(state) || isInteractionLocked(state)) return;
+
+      state.initialFilterHydrationDone = true;
+      cancelLiveDetailHydration(state);
+      clearRenderedResults(state);
+      runSearch(state, { preserveStaleResults: false });
+    }, 0);
   }
 
   function platformOptionsForRoute(route) {
@@ -3327,6 +3348,7 @@
     syncAppWithBackgroundState();
     updateStatus(state);
     runSearch(state);
+    scheduleInitialFilterHydration(state);
     ensureNetworkIndexing(state);
   }
 

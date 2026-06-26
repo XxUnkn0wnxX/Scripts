@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.11`.
+Current documented release: `1.0.12`.
 
 ## What It Does
 
@@ -291,7 +291,7 @@ When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows
 
 While a visible result batch is hydrating, partial re-renders keep that batch's hydration queue stable. Search text, filter, or `Show more` changes still cancel and retarget hydration so stale result details are not fetched longer than needed. When the active metadata worker batch drains, the grid is forced through one final render so completed theme details cannot stay hidden behind a pending debounce. If compact cached rows are reloaded without metadata, they can be hydrated again even when their key was fetched earlier in the same page session.
 
-Result cards use detail-confirmed rendering, including blank All platforms views, so grids fill progressively with real thumbnails, prices, and platform badges instead of painting a full page of placeholders first. Avatar All platforms is treated as a `PS3`/`PS4`/`PS5` union while compact rows are being confirmed. Themes are locked to `PS4` in the UI and cache-derived metadata, matching the available PSPrices theme catalog while live detail hydration fills the final item data. Product detail rows that fail hydration are not rendered for avatars or themes; the status line reports how many matching rows failed metadata fetching.
+Result cards use detail-confirmed rendering, including blank All platforms views, so grids fill progressively with real thumbnails, prices, and platform badges instead of painting a full page of placeholders first. Avatar All platforms is treated as a `PS3`/`PS4`/`PS5` union while compact rows are being confirmed. Themes are locked to `PS4` in the UI and cache-derived metadata, matching the available PSPrices theme catalog while live detail hydration fills the final item data. On theme page launch, the initial PS4 state performs the same one-shot hydration restart as a manual filter switch. Product detail rows that fail hydration are not rendered for avatars or themes; the status line reports how many matching rows failed metadata fetching.
 
 While candidate hydration, same-region collection cache indexing, or queued same-region lease work is still running, the UI labels already verified matches as confirmed results and shows a small pulsing indicator beside that status. The indicator is refreshed from cache status updates as well as result renders, so the avatar page can pulse while the theme cache builds and the theme page can pulse while the avatar cache builds, including after page reloads or region navigation. Remaining undisplayed items are reported through the `Show more` button.
 
