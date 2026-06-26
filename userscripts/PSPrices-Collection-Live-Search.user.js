@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.14
+// @version      1.0.15
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.14';
+  const SCRIPT_VERSION = '1.0.15';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -328,8 +328,7 @@
 
   function defaultPlatformTextForCollection(collection) {
     const value = String(collection || '').toLowerCase();
-    if (value === 'themes') return 'PS4';
-    if (value === 'avatars') return '';
+    if (value === 'avatars' || value === 'themes') return '';
     return '';
   }
 
@@ -2353,10 +2352,6 @@
   }
 
   function platformOptionsForRoute(route) {
-    if (isThemeCollection(route && route.collection)) {
-      return [['ps4', 'PS4']];
-    }
-
     return [
       ['', 'All platforms'],
       ['ps3', 'PS3'],
@@ -2366,7 +2361,6 @@
   }
 
   function normalizedPlatformFilterForRoute(route, value) {
-    if (isThemeCollection(route && route.collection)) return 'ps4';
     return PLATFORM_FILTER_VALUES.includes(value) ? value : '';
   }
 
