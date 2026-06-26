@@ -1731,6 +1731,24 @@
       html.pspls-route-themes a[href*="/collection/themes?page="] { display: none !important; }
       [${OWNER_ATTR}] .pspls-hidden { display: none !important; }
       [${HIDDEN_ATTR}="true"] { display: none !important; }
+      [${OWNER_ATTR}] .pspls-status-spinner {
+        display: inline-block;
+        width: 0.45rem;
+        height: 0.45rem;
+        margin-left: 0.45rem;
+        border-radius: 9999px;
+        background: currentColor;
+        opacity: 0.65;
+        vertical-align: 0.08em;
+        animation: pspls-status-pulse 900ms ease-in-out infinite;
+      }
+      @keyframes pspls-status-pulse {
+        0%, 100% { transform: scale(0.75); opacity: 0.35; }
+        50% { transform: scale(1); opacity: 0.95; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        [${OWNER_ATTR}] .pspls-status-spinner { animation: none; opacity: 0.75; }
+      }
     `;
     const styleRoot = document.head || document.documentElement || document.body;
     if (styleRoot) {
@@ -2249,11 +2267,13 @@
 
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
-      state.ui.empty.textContent = confirmedMode
+      setResultStatus(state, confirmedMode
         ? '0 confirmed results found.'
         : !moreCacheMayArrive
         ? 'No collection items found.'
-        : 'No indexed items found yet. More pages are still indexing.';
+        : 'No indexed items found yet. More pages are still indexing.',
+        hydrationCandidates.length > 0 || isLiveDetailHydrationActive(state)
+      );
       state.ui.empty.classList.remove('pspls-hidden');
     } else {
       const capNote = MAX_RENDER_LIMIT >= 0 && results.length > MAX_RENDER_LIMIT
@@ -2262,7 +2282,11 @@
       const resultLabel = confirmedMode
         ? `confirmed result${results.length === 1 ? '' : 's'}`
         : `result${results.length === 1 ? '' : 's'}`;
-      state.ui.empty.textContent = `${results.length} ${resultLabel} found.${capNote}`;
+      setResultStatus(
+        state,
+        `${results.length} ${resultLabel} found.${capNote}`,
+        hydrationCandidates.length > 0 || isLiveDetailHydrationActive(state)
+      );
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
@@ -2310,6 +2334,7 @@
     if (!signature) {
       cancelLiveDetailHydration(state);
       state.liveDetailSignature = '';
+      setResultStatusWorking(state, false);
       return;
     }
 
@@ -2325,6 +2350,42 @@
         logger.warn('Live detail hydration failed.', error);
       });
     }, LIVE_DETAIL_HYDRATION_DELAY_MS);
+  }
+
+  function setResultStatus(state, text, working = false) {
+    if (!state || !state.ui || !state.ui.empty) return;
+
+    state.ui.empty.replaceChildren(document.createTextNode(text || ''));
+    setResultStatusWorking(state, working);
+  }
+
+  function setResultStatusWorking(state, working) {
+    if (!state || !state.ui || !state.ui.empty) return;
+
+    const existing = state.ui.empty.querySelector('.pspls-status-spinner');
+    if (!working) {
+      if (existing) existing.remove();
+      return;
+    }
+
+    if (existing) return;
+
+    const spinner = document.createElement('span');
+    spinner.className = 'pspls-status-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+    state.ui.empty.appendChild(spinner);
+  }
+
+  function isLiveDetailHydrationActive(state) {
+    return Boolean(
+      state &&
+        (
+          state.liveDetailFetching ||
+          state.liveDetailItemQueue.length > 0 ||
+          state.liveDetailQueuedItems.size > 0 ||
+          state.liveDetailInFlightItems.size > 0
+        )
+    );
   }
 
   function needsLiveDetailHydration(item) {
@@ -2519,6 +2580,8 @@
           logger.warn('Live detail hydration failed.', error);
         });
       }, LIVE_DETAIL_HYDRATION_DELAY_MS);
+    } else if (isStateActive(state) && !isLiveDetailHydrationActive(state)) {
+      setResultStatusWorking(state, false);
     }
   }
 
@@ -2592,6 +2655,7 @@
     state.liveDetailTargetItems.clear();
     state.liveDetailSignature = '';
     abortLiveDetailFetches(state);
+    setResultStatusWorking(state, false);
   }
 
   function abortLiveDetailFetches(state, keepKeys = new Set()) {
