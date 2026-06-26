@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1
+// @version      1.0.2
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.1';
+  const SCRIPT_VERSION = '1.0.2';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -2039,6 +2039,7 @@
       stateNote = `Queued ${localTarget}; ${ownerTarget} is indexing. ${stateNote}`;
     }
 
+    const wasControlsLocked = Boolean(state.controlsLocked);
     state.ui.status.textContent = `${stateNote} ${itemCount} item${itemCount === 1 ? '' : 's'} from ${loaded} / ${total}${totalSuffix} page${total === 1 ? '' : 's'}.${failureNote}${cacheNote}`;
     const regionProgress = readRegionCacheProgress(state);
     state.ui.progress.max = regionProgress.totalPages;
@@ -2046,6 +2047,10 @@
     state.ui.progress.title = `Region cache progress: ${regionProgress.loadedPages} / ${regionProgress.totalPages}${regionProgress.approximate ? '+' : ''} pages across avatars and themes.`;
     syncInteractionLock(state);
     refreshResultStatusWorking(state);
+    if (wasControlsLocked && !state.controlsLocked) {
+      logger.info('Region caches complete; rendering collection results.', state.route.region, state.route.collection);
+      runSearch(state, { preserveStaleResults: false });
+    }
   }
 
   function useLocalStatusProgress(state) {
@@ -2487,15 +2492,26 @@
     const confirmedMode = Boolean(options.confirmedMode);
     const controlsLocked = isInteractionLocked(state);
 
+    if (controlsLocked) {
+      clearRenderedResults(state);
+      cancelLiveDetailHydration(state);
+      state.ui.showMore.classList.add('pspls-hidden');
+      setResultStatus(
+        state,
+        `Region caches are building. Results unlock when avatars and themes reach 100%.`,
+        isResultStatusWorking(state, hydrationCandidates)
+      );
+      state.ui.empty.classList.remove('pspls-hidden');
+      return;
+    }
+
     reconcileRenderedResults(state, visibleResults, {
       preserveStaleResults: options.preserveStaleResults !== false,
     });
 
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
-      setResultStatus(state, controlsLocked
-        ? `Showing initial indexed ${displayCollection(state.route.collection).toLowerCase()} while region caches build. First visible cards can hydrate; search, filters, Show more, and full detail loading unlock at 100%.`
-        : confirmedMode
+      setResultStatus(state, confirmedMode
         ? '0 confirmed results found.'
         : !moreCacheMayArrive
         ? 'No collection items found.'
@@ -2512,37 +2528,22 @@
         : `result${results.length === 1 ? '' : 's'}`;
       setResultStatus(
         state,
-        controlsLocked
-          ? `${visibleResults.length} initial ${resultLabel} shown while region caches build. First visible cards can hydrate; search, filters, Show more, and full detail loading unlock at 100%.`
-          : `${results.length} ${resultLabel} found.${capNote}`,
+        `${results.length} ${resultLabel} found.${capNote}`,
         isResultStatusWorking(state, hydrationCandidates)
       );
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
-    if (!controlsLocked && limit < hardLimit) {
+    if (limit < hardLimit) {
       state.ui.showMore.textContent = `Show more (${hardLimit - limit} remaining)`;
       state.ui.showMore.classList.remove('pspls-hidden');
     } else {
       state.ui.showMore.classList.add('pspls-hidden');
     }
 
-    if (!options.skipLiveDetailHydration && (!controlsLocked || canHydrateLockedInitialResults(state))) {
+    if (!options.skipLiveDetailHydration) {
       scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates);
-    } else if (controlsLocked) {
-      cancelLiveDetailHydration(state);
     }
-  }
-
-  function canHydrateLockedInitialResults(state) {
-    return Boolean(
-      state &&
-        isInteractionLocked(state) &&
-        !normalizeQuery(state.query) &&
-        !state.platformFilter &&
-        !state.freeOnly &&
-        state.resultLimit <= INITIAL_RENDER_LIMIT
-    );
   }
 
   function scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates = []) {
