@@ -92,6 +92,8 @@ The native PSPrices collection grid and native pagination are hidden on the cano
 
 With an empty query and `All platforms` selected, the first rendered batch is the first `108` indexed items sorted alphabetically. Typing in the search box or enabling platform/free filters narrows that same sorted result set.
 
+Text-query changes can keep matching partial results on screen briefly while the next live result set hydrates. Platform and `Free only` changes are treated as hard filter changes: the visible grid is rebuilt from scratch, the render limit resets to `108`, and in-flight detail hydration is abandoned for the previous filter state.
+
 Leading punctuation is ignored for sorting. Result order is:
 
 - titles beginning with `A-Z`

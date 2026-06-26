@@ -2033,10 +2033,11 @@
   function applyFilterChange(state) {
     if (!state || !state.ui) return;
 
+    clearTimeout(state.searchTimer);
     state.resultLimit = INITIAL_RENDER_LIMIT;
     cancelLiveDetailHydration(state);
     clearRenderedResults(state);
-    runSearch(state);
+    runSearch(state, { preserveStaleResults: false });
   }
 
   function runSearch(state, options = {}) {
@@ -2134,7 +2135,9 @@
     const limit = Math.min(state.resultLimit, hardLimit);
     const visibleResults = results.slice(0, limit);
 
-    reconcileRenderedResults(state, visibleResults);
+    reconcileRenderedResults(state, visibleResults, {
+      preserveStaleResults: options.preserveStaleResults !== false,
+    });
 
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
@@ -2216,10 +2219,11 @@
     state.renderedResultStaleUntil.clear();
   }
 
-  function reconcileRenderedResults(state, visibleResults) {
+  function reconcileRenderedResults(state, visibleResults, options = {}) {
     const visibleKeys = new Set();
     const fragment = document.createDocumentFragment();
     const now = Date.now();
+    const preserveStaleResults = options.preserveStaleResults !== false;
 
     for (const item of visibleResults) {
       const key = itemKey(item);
@@ -2244,6 +2248,15 @@
 
     for (const [key, node] of Array.from(state.renderedResultNodes)) {
       if (visibleKeys.has(key)) continue;
+      if (!preserveStaleResults) {
+        if (node && node.parentElement === state.ui.resultGrid) {
+          node.remove();
+        }
+        state.renderedResultNodes.delete(key);
+        state.renderedResultVersions.delete(key);
+        state.renderedResultStaleUntil.delete(key);
+        continue;
+      }
       if (!state.renderedResultStaleUntil.has(key)) {
         state.renderedResultStaleUntil.set(key, now + RENDER_STALE_RESULT_GRACE_MS);
       }
