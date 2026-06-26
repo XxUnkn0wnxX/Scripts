@@ -1,6 +1,6 @@
 # PSPrices-PlayStation-Checkout-Link.user.js
 
-[`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
+[`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
 
 Current documented release: `1.0.4.5`.
 
@@ -214,8 +214,8 @@ If the native `unlocked` badge already exists, the userscript replaces it with i
 
 This userscript can run alongside:
 
-- [`PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js)
-- [`PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js)
+- [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js)
+- [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js)
 
 The checkout script replaces only the first exact supported purchase target. It leaves the surrounding buy wrapper and separate SKU panel intact. The SKU userscript can therefore retain a native SKU block or inject its fallback SKU panel without the checkout script treating that change as a new purchase target.
 

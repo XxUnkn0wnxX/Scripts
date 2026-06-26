@@ -1,6 +1,6 @@
 # Steam-Reveal-Spoilers.user.js
 
-[`userscripts/Steam-Reveal-Spoilers.user.js`](../userscripts/Steam-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates.
+[`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Steam-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates.
 
 Current documented release: `1.0.1.3`.
 
@@ -18,7 +18,7 @@ Current documented release: `1.0.1.3`.
 ## Basic Install
 
 1. Install a userscript manager such as Tampermonkey.
-2. Open [`userscripts/Steam-Reveal-Spoilers.user.js`](../userscripts/Steam-Reveal-Spoilers.user.js).
+2. Open [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Steam-Reveal-Spoilers.user.js).
 3. Create a new userscript in Tampermonkey and paste the file contents.
 4. Save it, then reload a Steam community page.
 

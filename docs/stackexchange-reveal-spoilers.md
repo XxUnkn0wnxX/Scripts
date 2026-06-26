@@ -1,6 +1,6 @@
 # StackExchange-Reveal-Spoilers.user.js
 
-[`userscripts/StackExchange-Reveal-Spoilers.user.js`](../userscripts/StackExchange-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers.
+[`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js) is a Tampermonkey userscript that automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers.
 
 Current documented release: `1.0.1.3`.
 
@@ -25,7 +25,7 @@ Current documented release: `1.0.1.3`.
 ## Basic Install
 
 1. Install a userscript manager such as Tampermonkey.
-2. Open [`userscripts/StackExchange-Reveal-Spoilers.user.js`](../userscripts/StackExchange-Reveal-Spoilers.user.js).
+2. Open [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js).
 3. Create a new userscript in Tampermonkey and paste the file contents.
 4. Save it, then reload a supported Stack Exchange page.
 
