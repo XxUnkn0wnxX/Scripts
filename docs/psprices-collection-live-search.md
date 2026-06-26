@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.15`.
+Current documented release: `1.0.16`.
 
 ## What It Does
 
@@ -270,14 +270,14 @@ The script does not render every indexed item or match at once on large collecti
 ```js
 const INITIAL_RENDER_LIMIT = 108;
 const RENDER_STEP = 54;
-const MAX_RENDER_LIMIT = 1200;
+const MAX_RENDER_LIMIT = -1;
 ```
 
 Their purposes are:
 
 - `INITIAL_RENDER_LIMIT`: number of custom collection results shown first, including the empty-query default view
 - `RENDER_STEP`: number of additional results added by each `Show more` click
-- `MAX_RENDER_LIMIT`: hard cap for rendered results
+- `MAX_RENDER_LIMIT`: hard cap for rendered results; the default `-1` means no hard cap
 
 Set `MAX_RENDER_LIMIT` to `-1` for no hard cap. This can be heavy on low-memory machines.
 
