@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.8
+// @version      1.0.9
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.8';
+  const SCRIPT_VERSION = '1.0.9';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -2497,7 +2497,7 @@
     const limit = Math.min(state.resultLimit, hardLimit);
     const visibleResults = results.slice(0, limit);
     const failedResultCount = results.filter((item) => state.liveDetailFailedItems.has(itemKey(item))).length;
-    const renderedVisibleResults = visibleResults.filter((item) => !shouldHideVisibleResultRender(state, item));
+    const renderedVisibleResults = renderableResultsForDisplay(state, results, visibleResults, limit);
     const hydrationCandidates = Array.isArray(options.hydrationCandidates)
       ? options.hydrationCandidates
       : [];
@@ -2566,6 +2566,15 @@
     if (state.liveDetailFailedItems.has(itemKey(item))) return true;
     if (!isThemeCollection(state.route && state.route.collection)) return false;
     return needsLiveDetailHydration(item);
+  }
+
+  function renderableResultsForDisplay(state, results, visibleResults, limit) {
+    const source = isThemeCollection(state && state.route && state.route.collection)
+      ? results
+      : visibleResults;
+    return source
+      .filter((item) => !shouldHideVisibleResultRender(state, item))
+      .slice(0, limit);
   }
 
   function scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates = []) {
