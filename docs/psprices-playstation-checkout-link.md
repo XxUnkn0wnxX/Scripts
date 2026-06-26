@@ -1,8 +1,8 @@
 # PSPrices-PlayStation-Checkout-Link.user.js
 
-[`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
+[`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
 
-Current documented release: `1.0.4.4`.
+Current documented release: `1.0.4.5`.
 
 ## PlayStation Store Setup and Redirect Caveat
 
@@ -26,12 +26,12 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 - resolves the regional full PlayStation SKU through Sony's public store endpoint
 - builds a regional `checkout.playstation.com/add/` URL
 - replaces the first supported avatar or theme purchase panel with a PSPrices-style checkout card
-- also replaces the PlayStation Store unavailable warning column when no native buy block is present
+- also replaces the PlayStation Store availability loading placeholder or unavailable warning column when no native buy block is present
 - keeps the Add to Cart button disabled until a validated checkout URL is ready
 - shows the specific checkout-link failure reason in the card status area when Sony lookup fails
 - supports PSPrices product pages across all configured PlayStation regions
 - preserves the visual-map and SKU panels outside the replaced purchase target
-- blocks the native PlayStation Store unavailable warning from painting before replacement
+- blocks the native PlayStation Store availability loading placeholder and unavailable warning from painting before replacement
 - blocks the matching bottom Buy Unlocked banner from painting on supported product pages
 - blocks the avatar collection's `Avatars available for purchase` bridge before it paints
 - adds a dominant `🏴‍☠️ unlocked` badge beside the PSPrices header wordmark
@@ -45,7 +45,7 @@ https://psprices.com/*
 https://www.psprices.com/*
 ```
 
-Checkout-panel replacement remains restricted to supported `/region-*/game/*` product pages containing one exact avatar/theme buy structure, or one PlayStation Store unavailable warning where the buy block would normally be. On other pages, the script only maintains the global header badge and does not insert a checkout card.
+Checkout-panel replacement remains restricted to supported `/region-*/game/*` product pages containing one exact avatar/theme buy structure, or one PlayStation Store availability placeholder/unavailable warning where the buy block would normally be. On other pages, the script only maintains the global header badge and does not insert a checkout card.
 
 On regional `/collection/*` pages, the script also permanently hides `[data-test-id="avatar-collection-bridge"]`. This covers collection routes such as `/collection/avatars`, `/collection/ps4-avatars`, and equivalent paths in every region.
 
