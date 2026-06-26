@@ -88,7 +88,15 @@ Multi-word queries are handled in two passes:
 
 Search runs with a small input debounce so fast typing does not rebuild the result grid on every key event.
 
-When search or filter controls are active, the native PSPrices collection grid and native pagination are hidden. When the search box and filters are cleared, the native grid is shown again.
+The native PSPrices collection grid and native pagination are hidden on the canonical mounted routes. The userscript always renders its own collection grid, even when the search box is empty and no filters are active.
+
+With an empty query and `All platforms` selected, the first rendered batch is the first `108` indexed items sorted alphabetically. Typing in the search box or enabling platform/free filters narrows that same sorted result set.
+
+Leading punctuation is ignored for sorting. Result order is:
+
+- titles beginning with `A-Z`
+- titles beginning with `0-9`
+- remaining titles without a letter or number after normalization
 
 ## Built-In Filters
 
@@ -249,7 +257,7 @@ const PAUSED_SEARCH_RESUME_COOLDOWN_MS = 60 * 1000;
 
 ## Result Rendering Limits
 
-The script does not render every match at once on large collections. It starts with a practical batch and expands on demand:
+The script does not render every indexed item or match at once on large collections. It starts with a practical sorted batch and expands on demand:
 
 ```js
 const INITIAL_RENDER_LIMIT = 108;
@@ -259,7 +267,7 @@ const MAX_RENDER_LIMIT = 1200;
 
 Their purposes are:
 
-- `INITIAL_RENDER_LIMIT`: number of custom search results shown first
+- `INITIAL_RENDER_LIMIT`: number of custom collection results shown first, including the empty-query default view
 - `RENDER_STEP`: number of additional results added by each `Show more` click
 - `MAX_RENDER_LIMIT`: hard cap for rendered results
 
@@ -305,6 +313,7 @@ The userscript runs at `document-start` so selected native PSPrices controls can
 
 - on canonical `/collection/avatars`, it hides the native tablist block
 - on canonical `/collection/themes`, it hides the native platform stripe
+- native collection grids, native pagination links, and anything marked `data-psprices-live-search-hidden="true"` are hidden with bootstrap CSS
 
 The theme platform stripe hide is scoped to the route class for `/collection/themes` only. It does not apply on product pages, avatar pages, or `/collection/themes?platform=...` query-filter URLs.
 
