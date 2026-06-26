@@ -210,11 +210,16 @@ It uses PSPrices' native badge classes, including `bg-blue-700` for light mode a
 
 If the native `unlocked` badge already exists, the userscript replaces it with its own marked version so the pirate-flag badge remains authoritative. Header remounts are detected without creating duplicate badges.
 
-## Compatibility With the SKU Userscript
+## Compatibility With Other PSPrices Userscripts
 
-This userscript can run alongside [`PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js).
+This userscript can run alongside:
+
+- [`PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js)
+- [`PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js)
 
 The checkout script replaces only the first exact supported purchase target. It leaves the surrounding buy wrapper and separate SKU panel intact. The SKU userscript can therefore retain a native SKU block or inject its fallback SKU panel without the checkout script treating that change as a new purchase target.
+
+The collection live-search script primarily owns the canonical avatar/theme collection pages and fetches product pages only for visible result hydration. The checkout script primarily owns supported product-page purchase targets, so the two scripts do not compete for the same mounted UI.
 
 ## Failure Handling
 

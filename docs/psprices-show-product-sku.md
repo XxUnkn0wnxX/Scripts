@@ -57,6 +57,15 @@ Some avatar pages already contain a native PSPrices SKU block. When one exists, 
 
 On pages without that block, the script injects its matching SKU panel into the product detail area. If the checkout userscript has replaced a PlayStation Store unavailable warning, this script mounts the SKU panel below that checkout card. If the checkout userscript is not running, it mounts below the unavailable warning itself. It also watches for dynamic page updates so the panel can be restored when PSPrices changes product content without a full reload.
 
+## Compatibility With Other PSPrices Userscripts
+
+This userscript can run alongside:
+
+- [`PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js)
+- [`PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js)
+
+The SKU script only injects or preserves a product-page SKU panel. The checkout script can replace a supported purchase target while leaving the SKU panel mount point available, and the collection live-search script primarily owns collection pages plus product-page fetches used for visible result hydration. These ownership boundaries let the three PSPrices userscripts coexist without intentionally replacing each other's UI.
+
 ## Good To Know
 
 - The displayed value is the base product SKU published in the page's JSON-LD metadata.

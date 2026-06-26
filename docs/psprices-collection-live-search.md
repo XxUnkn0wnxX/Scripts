@@ -364,7 +364,7 @@ This userscript can run alongside:
 - [`PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js)
 - [`PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js)
 
-The collection live-search script primarily affects collection pages and product-page fetches used for visible result hydration. The checkout and SKU scripts primarily affect individual product pages.
+The collection live-search script primarily owns the canonical avatar/theme collection pages and product-page fetches used for visible result hydration. The checkout script primarily owns supported product-page purchase targets, and the SKU script owns the product-page SKU panel. These ownership boundaries let the three PSPrices userscripts coexist without intentionally replacing each other's UI.
 
 ## Failure Handling
 
