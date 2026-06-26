@@ -2248,7 +2248,7 @@
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
       state.ui.empty.textContent = hydrationCandidates.length > 0
-        ? `Checking ${hydrationCandidates.length} matching item detail${hydrationCandidates.length === 1 ? '' : 's'} for the selected filters...`
+        ? `Checking ${hydrationCandidates.length} unconfirmed candidate${hydrationCandidates.length === 1 ? '' : 's'} for the selected filters...`
         : !moreCacheMayArrive
         ? 'No collection items found.'
         : 'No indexed items found yet. More pages are still indexing.';
@@ -2258,12 +2258,15 @@
         ? ` Showing ${limit} of ${results.length}; refine search to narrow results.`
         : '';
       const hydrateNote = hydrationCandidates.length > 0
-        ? ` Checking ${hydrationCandidates.length} more possible match${hydrationCandidates.length === 1 ? '' : 'es'}.`
+        ? ` Checking ${hydrationCandidates.length} unconfirmed candidate${hydrationCandidates.length === 1 ? '' : 's'}.`
         : '';
       const checkedNote = totalResultCount > checkedResultCount
         ? ` in first ${checkedResultCount} checked`
         : '';
-      state.ui.empty.textContent = `${results.length} result${results.length === 1 ? '' : 's'} found${checkedNote}.${capNote}${hydrateNote}`;
+      const resultLabel = hydrationCandidates.length > 0
+        ? `confirmed result${results.length === 1 ? '' : 's'}`
+        : `result${results.length === 1 ? '' : 's'}`;
+      state.ui.empty.textContent = `${results.length} ${resultLabel} found${checkedNote}.${capNote}${hydrateNote}`;
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
