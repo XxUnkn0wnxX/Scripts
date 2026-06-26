@@ -50,7 +50,7 @@
   const CACHE_BUDGET_CHECK_INTERVAL_MS = 5 * 1000;
   const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
   const INPUT_DEBOUNCE_MS = 120;
-  const FETCH_CONCURRENCY = 5;
+  const FETCH_CONCURRENCY = 6;
   const FETCH_RETRY_COUNT = 1;
   const FETCH_TIMEOUT_MS = 30000;
   const FETCH_DELAY_MS = 800;
@@ -61,7 +61,7 @@
   const AUTO_INDEX_ON_LOAD = true;
   const AUTO_INDEX_DELAY_MS = 2500;
   const AUTO_INDEX_ON_SITE_VISIT = true;
-  const PREWARM_FETCH_CONCURRENCY = 5;
+  const PREWARM_FETCH_CONCURRENCY = 6;
   const PREWARM_COLLECTION_DELAY_MS = 1500;
   const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
   const PREWARM_LEASE_HEARTBEAT_MS = 5000;
@@ -1647,6 +1647,7 @@
       query: '',
       platformFilter: '',
       freeOnly: false,
+      controlsLocked: true,
       resultLimit: INITIAL_RENDER_LIMIT,
       searchTimer: null,
       liveDetailHydrationTimer: 0,
@@ -1900,6 +1901,11 @@
     showMore.className = 'btn btn-sm btn-outline mt-4 pspls-hidden';
     showMore.textContent = 'Show more';
     showMore.addEventListener('click', () => {
+      if (isInteractionLocked(state)) {
+        syncInteractionLock(state);
+        runSearch(state, { preserveStaleResults: false });
+        return;
+      }
       const nextLimit = state.resultLimit + RENDER_STEP;
       state.resultLimit = MAX_RENDER_LIMIT < 0 ? nextLimit : Math.min(MAX_RENDER_LIMIT, nextLimit);
       runSearch(state);
@@ -1949,6 +1955,7 @@
       empty,
       showMore,
     };
+    syncInteractionLock(state);
 
     return state.ui;
   }
@@ -2035,6 +2042,7 @@
     state.ui.status.textContent = `${stateNote} ${itemCount} item${itemCount === 1 ? '' : 's'} from ${loaded} / ${total}${totalSuffix} page${total === 1 ? '' : 's'}.${failureNote}${cacheNote}`;
     state.ui.progress.max = total;
     state.ui.progress.value = Math.min(loaded, total);
+    syncInteractionLock(state);
   }
 
   function useLocalStatusProgress(state) {
@@ -2075,8 +2083,115 @@
     }
   }
 
+  function isCacheScopeComplete(scope) {
+    if (!scope) return false;
+
+    const meta = readJsonStorage(cacheMetaKey(scope));
+    if (meta && meta.version === CACHE_VERSION) {
+      updateCacheMetaProgress(meta);
+      if (meta.complete) return true;
+    }
+
+    return false;
+  }
+
+  function isStateCacheScopeComplete(state) {
+    if (!state) return false;
+
+    if (isCacheScopeComplete(state.cacheScope)) return true;
+
+    if (!state.cacheEnabled) {
+      return Boolean(
+        state.indexingDone &&
+          state.loadedPages.size >= Math.max(1, state.lastPage || 1) &&
+          state.failedPages.size === 0 &&
+          !state.indexingPaused
+      );
+    }
+
+    return Boolean(
+      state.indexingDone &&
+        state.loadedPages.size >= Math.max(1, state.lastPage || 1) &&
+        state.failedPages.size === 0 &&
+        !state.fetchingStarted &&
+        !state.indexingPaused &&
+        !isBackgroundIndexingScope(state.cacheScope)
+    );
+  }
+
+  function isRegionCacheComplete(state) {
+    if (!state) return false;
+
+    if (!state.cacheEnabled) {
+      return isStateCacheScopeComplete(state);
+    }
+
+    const context = {
+      host: state.route.host,
+      origin: state.route.origin,
+      region: state.route.region,
+      language: state.route.language,
+    };
+
+    return PREWARM_COLLECTIONS.every((collection) => {
+      const route = makeCollectionRoute(context, collection);
+      const scope = cacheScope(route);
+      return scope === state.cacheScope
+        ? isStateCacheScopeComplete(state)
+        : isCacheScopeComplete(scope);
+    });
+  }
+
+  function isInteractionLocked(state) {
+    return !isRegionCacheComplete(state);
+  }
+
+  function resetInteractiveFiltersForLock(state) {
+    if (!state || !state.ui) return;
+
+    state.query = '';
+    state.platformFilter = '';
+    state.freeOnly = false;
+    state.resultLimit = INITIAL_RENDER_LIMIT;
+
+    state.ui.input.value = '';
+    state.ui.platformSelect.value = '';
+    state.ui.platformSelectText.textContent = 'All platforms';
+    state.ui.freeOnlyCheckbox.checked = false;
+    state.ui.clearButton.classList.add('pspls-hidden');
+  }
+
+  function syncInteractionLock(state) {
+    if (!state || !state.ui) return;
+
+    const locked = isInteractionLocked(state);
+    const target = displayRegion(state.route.region);
+    const title = locked
+      ? `Search, filters, Show more, and detail loading unlock when all ${target} region caches reach 100%.`
+      : '';
+
+    if (locked) {
+      resetInteractiveFiltersForLock(state);
+    }
+
+    state.controlsLocked = locked;
+    state.ui.input.disabled = locked;
+    state.ui.input.title = title;
+    state.ui.platformSelect.disabled = locked;
+    state.ui.platformSelect.title = title || 'Filter by platform';
+    state.ui.freeOnlyCheckbox.disabled = locked;
+    state.ui.freeOnlyCheckbox.title = title;
+    state.ui.showMore.disabled = locked;
+    state.ui.showMore.title = title;
+  }
+
   function applyFilterChange(state) {
     if (!state || !state.ui) return;
+    if (isInteractionLocked(state)) {
+      resetInteractiveFiltersForLock(state);
+      runSearch(state, { preserveStaleResults: false });
+      return;
+    }
 
     clearTimeout(state.searchTimer);
     state.resultLimit = INITIAL_RENDER_LIMIT;
@@ -2087,6 +2202,12 @@
 
   function runSearch(state, options = {}) {
     if (!state || !state.ui) return;
+
+    const controlsLocked = isInteractionLocked(state);
+    if (controlsLocked) {
+      resetInteractiveFiltersForLock(state);
+      cancelLiveDetailHydration(state);
+    }
 
     const query = normalizeQuery(state.query);
     const hasQuery = query.length > 0;
@@ -2105,7 +2226,7 @@
       if (item.searchText.includes(query)) return true;
       return terms.length > 1 && terms.every((term) => item.searchText.includes(term));
     }).sort(compareItemsForDisplay);
-    const needsConfirmedDetails = filteredResultsNeedConfirmedDetails(state);
+    const needsConfirmedDetails = !controlsLocked && filteredResultsNeedConfirmedDetails(state);
     const emptyQueryFilterWindowLimit = needsConfirmedDetails && !hasQuery
       ? Math.min(state.resultLimit, maxRenderableResults(queryMatches.length))
       : queryMatches.length;
@@ -2143,7 +2264,9 @@
       'checkedCandidates',
       checkedResultCount,
       'indexedItems',
-      state.items.length
+      state.items.length,
+      'controlsLocked',
+      controlsLocked
     );
     renderResults(state, results, {
       ...options,
@@ -2260,6 +2383,7 @@
       ? options.hydrationCandidates
       : [];
     const confirmedMode = Boolean(options.confirmedMode);
+    const controlsLocked = isInteractionLocked(state);
 
     reconcileRenderedResults(state, visibleResults, {
       preserveStaleResults: options.preserveStaleResults !== false,
@@ -2267,7 +2391,9 @@
 
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
-      setResultStatus(state, confirmedMode
+      setResultStatus(state, controlsLocked
+        ? `Showing initial indexed ${displayCollection(state.route.collection).toLowerCase()} while region caches build. Search, filters, Show more, and detail loading unlock at 100%.`
+        : confirmedMode
         ? '0 confirmed results found.'
         : !moreCacheMayArrive
         ? 'No collection items found.'
@@ -2284,21 +2410,25 @@
         : `result${results.length === 1 ? '' : 's'}`;
       setResultStatus(
         state,
-        `${results.length} ${resultLabel} found.${capNote}`,
+        controlsLocked
+          ? `${visibleResults.length} initial ${resultLabel} shown while region caches build. Search, filters, Show more, and detail loading unlock at 100%.`
+          : `${results.length} ${resultLabel} found.${capNote}`,
         isResultStatusWorking(state, hydrationCandidates)
       );
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
-    if (limit < hardLimit) {
+    if (!controlsLocked && limit < hardLimit) {
       state.ui.showMore.textContent = `Show more (${hardLimit - limit} remaining)`;
       state.ui.showMore.classList.remove('pspls-hidden');
     } else {
       state.ui.showMore.classList.add('pspls-hidden');
     }
 
-    if (!options.skipLiveDetailHydration) {
+    if (!controlsLocked && !options.skipLiveDetailHydration) {
       scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates);
+    } else if (controlsLocked) {
+      cancelLiveDetailHydration(state);
     }
   }
 
