@@ -1715,9 +1715,19 @@
     style.textContent = `
       html.pspls-route-avatars div[role="tablist"].tabs.tabs-box { display: none !important; }
       html.pspls-route-avatars .avatar-card[hx-swap] { display: none !important; }
+      html.pspls-route-avatars nav[aria-label="Pagination"] { display: none !important; }
+      html.pspls-route-avatars nav:has(a[href*="/collection/avatars?page="]),
+      html.pspls-route-avatars .join:has(a[href*="/collection/avatars?page="]),
+      html.pspls-route-avatars .pagination:has(a[href*="/collection/avatars?page="]),
+      html.pspls-route-avatars [class*="pagination"]:has(a[href*="/collection/avatars?page="]) { display: none !important; }
       html.pspls-route-avatars a[href*="/collection/avatars?page="] { display: none !important; }
       html.pspls-route-themes [data-test-id="platforms-stripe"] { display: none !important; }
       html.pspls-route-themes .listing-card-grid:not([${RESULTS_ATTR}="true"]) { display: none !important; }
+      html.pspls-route-themes nav[aria-label="Pagination"] { display: none !important; }
+      html.pspls-route-themes nav:has(a[href*="/collection/themes?page="]),
+      html.pspls-route-themes .join:has(a[href*="/collection/themes?page="]),
+      html.pspls-route-themes .pagination:has(a[href*="/collection/themes?page="]),
+      html.pspls-route-themes [class*="pagination"]:has(a[href*="/collection/themes?page="]) { display: none !important; }
       html.pspls-route-themes a[href*="/collection/themes?page="] { display: none !important; }
       [${OWNER_ATTR}] .pspls-hidden { display: none !important; }
       [${HIDDEN_ATTR}="true"] { display: none !important; }
