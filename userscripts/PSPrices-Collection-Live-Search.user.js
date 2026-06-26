@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.9
+// @version      1.0.10
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.9';
+  const SCRIPT_VERSION = '1.0.10';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -74,6 +74,7 @@
   const THEME_CANONICAL_COLLECTION = 'themes';
   const AVATAR_FILTER_COLLECTIONS = new Set();
   const THEME_FILTER_COLLECTIONS = new Set();
+  const PLATFORM_FILTER_VALUES = Object.freeze(['ps3', 'ps4', 'ps5']);
   const INITIAL_RENDER_LIMIT = 108;
   const RENDER_STEP = 54;
   // Set to -1 for no hard render cap. High values can be heavy on low-memory machines.
@@ -324,7 +325,8 @@
 
   function defaultPlatformTextForCollection(collection) {
     const value = String(collection || '').toLowerCase();
-    if (value === 'avatars' || value === 'themes') return '';
+    if (value === 'themes') return 'PS4';
+    if (value === 'avatars') return '';
     return '';
   }
 
@@ -2387,7 +2389,8 @@
     }
 
     const flags = new Set(itemFilterFlags(item));
-    if (state.platformFilter && !flags.has(state.platformFilter)) {
+    const platformFilterValues = platformFilterValuesForState(state);
+    if (platformFilterValues.length > 0 && !platformFilterValues.some((flag) => flags.has(flag))) {
       return false;
     }
     if (state.freeOnly && !flags.has('free')) {
@@ -2397,7 +2400,13 @@
   }
 
   function filteredResultsNeedConfirmedDetails(state) {
-    return Boolean(state && (state.platformFilter || state.freeOnly));
+    return Boolean(state && (state.platformFilter || state.freeOnly || state.route));
+  }
+
+  function platformFilterValuesForState(state) {
+    if (!state) return [];
+    if (state.platformFilter) return [state.platformFilter];
+    return filteredResultsNeedConfirmedDetails(state) ? PLATFORM_FILTER_VALUES : [];
   }
 
   function hasKnownPlatformFlags(item) {
@@ -2415,10 +2424,11 @@
     const flags = new Set(itemFilterFlags(item));
     const hasPlatformFlags = hasKnownPlatformFlags(item);
     const hasPriceFlags = hasKnownPriceFlags(item);
+    const platformFilterValues = platformFilterValuesForState(state);
 
-    if (state.platformFilter) {
+    if (platformFilterValues.length > 0) {
       if (!hasPlatformFlags) return true;
-      if (!flags.has(state.platformFilter)) return false;
+      if (!platformFilterValues.some((flag) => flags.has(flag))) return false;
     }
     if (state.freeOnly) {
       if (!hasPriceFlags) return true;
