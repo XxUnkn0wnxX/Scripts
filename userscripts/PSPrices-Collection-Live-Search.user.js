@@ -2088,10 +2088,25 @@
       return terms.length > 1 && terms.every((term) => item.searchText.includes(term));
     }).sort(compareItemsForDisplay);
     const needsConfirmedDetails = filteredResultsNeedConfirmedDetails(state);
-    const results = queryMatches.filter((item) => itemMatchesUiFilters(item, state));
+    const emptyQueryFilterWindowLimit = needsConfirmedDetails && !hasQuery
+      ? Math.min(state.resultLimit, maxRenderableResults(queryMatches.length))
+      : queryMatches.length;
+    const filterCandidatePool = needsConfirmedDetails && !hasQuery
+      ? queryMatches.slice(0, emptyQueryFilterWindowLimit)
+      : queryMatches;
+    const resultPool = needsConfirmedDetails && !hasQuery
+      ? filterCandidatePool
+      : queryMatches;
+    const results = resultPool.filter((item) => itemMatchesUiFilters(item, state));
     const hydrationCandidates = needsConfirmedDetails
-      ? limitLiveDetailFilterCandidates(queryMatches.filter((item) => itemNeedsUiFilterHydration(item, state)))
+      ? limitLiveDetailFilterCandidates(filterCandidatePool.filter((item) => itemNeedsUiFilterHydration(item, state)))
       : [];
+    const totalResultCount = needsConfirmedDetails && !hasQuery
+      ? queryMatches.length
+      : results.length;
+    const checkedResultCount = needsConfirmedDetails && !hasQuery
+      ? emptyQueryFilterWindowLimit
+      : results.length;
 
     logger.verbose(
       'Search updated.',
@@ -2107,12 +2122,16 @@
       queryMatches.length,
       'detailCandidates',
       hydrationCandidates.length,
+      'checkedCandidates',
+      checkedResultCount,
       'indexedItems',
       state.items.length
     );
     renderResults(state, results, {
       ...options,
       hydrationCandidates,
+      totalResultCount,
+      checkedResultCount,
     });
   }
 
@@ -2209,7 +2228,13 @@
   }
 
   function renderResults(state, results, options = {}) {
-    const hardLimit = maxRenderableResults(results.length);
+    const totalResultCount = Number.isFinite(options.totalResultCount)
+      ? Math.max(0, Number(options.totalResultCount))
+      : results.length;
+    const checkedResultCount = Number.isFinite(options.checkedResultCount)
+      ? Math.max(0, Number(options.checkedResultCount))
+      : results.length;
+    const hardLimit = maxRenderableResults(totalResultCount);
     const limit = Math.min(state.resultLimit, hardLimit);
     const visibleResults = results.slice(0, limit);
     const hydrationCandidates = Array.isArray(options.hydrationCandidates)
@@ -2235,7 +2260,10 @@
       const hydrateNote = hydrationCandidates.length > 0
         ? ` Checking ${hydrationCandidates.length} more possible match${hydrationCandidates.length === 1 ? '' : 'es'}.`
         : '';
-      state.ui.empty.textContent = `${results.length} result${results.length === 1 ? '' : 's'} found.${capNote}${hydrateNote}`;
+      const checkedNote = totalResultCount > checkedResultCount
+        ? ` in first ${checkedResultCount} checked`
+        : '';
+      state.ui.empty.textContent = `${results.length} result${results.length === 1 ? '' : 's'} found${checkedNote}.${capNote}${hydrateNote}`;
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
