@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.7
+// @version      1.0.8
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.7';
+  const SCRIPT_VERSION = '1.0.8';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -2585,10 +2585,7 @@
     for (const item of combinedResults) {
       if (!item || !item.url || !needsLiveDetailHydration(item)) continue;
       const key = itemKey(item);
-      if (
-        state.liveDetailFetchedItems.has(key) ||
-        state.liveDetailFailedItems.has(key)
-      ) {
+      if (state.liveDetailFailedItems.has(key)) {
         continue;
       }
 
