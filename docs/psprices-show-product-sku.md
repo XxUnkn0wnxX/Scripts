@@ -1,6 +1,6 @@
 # PSPrices-Show-Product-SKU.user.js
 
-[`userscripts/PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections only when PSPrices does not already show one.
+[`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections only when PSPrices does not already show one.
 
 Current documented release: `1.0.1.3`.
 
@@ -26,7 +26,7 @@ This includes region paths such as `region-au`, `region-us`, and `region-gb`.
 ## Basic Install
 
 1. Install a userscript manager such as Tampermonkey.
-2. Open [`userscripts/PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js).
+2. Open [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js).
 3. Create a new userscript in Tampermonkey and paste the file contents.
 4. Save it, then open a PSPrices product page.
 
@@ -61,8 +61,8 @@ On pages without that block, the script injects its matching SKU panel into the 
 
 This userscript can run alongside:
 
-- [`PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js)
-- [`PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js)
+- [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js)
+- [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js)
 
 The SKU script only injects or preserves a product-page SKU panel. The checkout script can replace a supported purchase target while leaving the SKU panel mount point available, and the collection live-search script primarily owns collection pages plus product-page fetches used for visible result hydration. These ownership boundaries let the three PSPrices userscripts coexist without intentionally replacing each other's UI.
 

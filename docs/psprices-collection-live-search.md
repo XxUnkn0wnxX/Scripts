@@ -1,6 +1,6 @@
 # PSPrices-Collection-Live-Search.user.js
 
-[`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
+[`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
 Current documented release: `1.0.19`.
 
@@ -361,8 +361,8 @@ Logging is designed not to include cookies, credential headers, full response bo
 
 This userscript can run alongside:
 
-- [`PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js)
-- [`PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js)
+- [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js)
+- [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js)
 
 The collection live-search script primarily owns the canonical avatar/theme collection pages and product-page fetches used for visible result hydration. The checkout script primarily owns supported product-page purchase targets, and the SKU script owns the product-page SKU panel. These ownership boundaries let the three PSPrices userscripts coexist without intentionally replacing each other's UI.
 

@@ -1,6 +1,6 @@
 # Youtube-shorts-switcher.user.js
 
-[`userscripts/Youtube-shorts-switcher.user.js`](../userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a Shorts action-column button and configurable hotkey to open the current YouTube Short in the normal watch player.
+[`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a Shorts action-column button and configurable hotkey to open the current YouTube Short in the normal watch player.
 
 Current documented release: `2.8.1.3`.
 
@@ -19,7 +19,7 @@ Current documented release: `2.8.1.3`.
 ## Basic Install
 
 1. Install a userscript manager such as Tampermonkey.
-2. Open [`userscripts/Youtube-shorts-switcher.user.js`](../userscripts/Youtube-shorts-switcher.user.js).
+2. Open [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js).
 3. Create a new userscript in Tampermonkey and paste the file contents.
 4. Save it, then open a YouTube Shorts page.
 
