@@ -140,6 +140,8 @@ Queued Themes (US); Avatars (AU) is indexing. 0 items from 0 / 1 page.
 Paused: PSPrices returned a bot-protection or rate-limit page.
 ```
 
+The progress bar tracks combined current-region cache progress across both canonical collections, so it reaches the end only after both avatars and themes are fully cached. It refreshes from local worker state and cache metadata written by other tabs.
+
 If the user navigates away from the mounted collection page but stays on PSPrices, indexing continues in the background. If the regional route disappears, the worker waits for a grace period before pausing.
 
 ## Region and Tab Handling
