@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.18`.
+Current documented release: `1.0.19`.
 
 ## What It Does
 
@@ -334,7 +334,7 @@ The userscript runs at `document-start` so selected native PSPrices controls can
 - on canonical `/collection/themes`, it hides the native platform stripe and native Likes/Filter controls
 - native collection grids, native pagination blocks, and anything marked `data-psprices-live-search-hidden="true"` are hidden with bootstrap CSS
 
-The theme platform stripe and Likes/Filter hides are scoped to the route class for `/collection/themes` only. They do not apply on product pages, avatar pages, or `/collection/themes?platform=...` query-filter URLs.
+The theme platform stripe and Likes/Filter hides are scoped to the route class for `/collection/themes` only. The Likes/Filter action row hide is additionally constrained to the collection `main` content and the native filter toggle, so it does not hide the PSPrices header/home block. These hides do not apply on product pages, avatar pages, or `/collection/themes?platform=...` query-filter URLs.
 
 ## Console Logging
 
