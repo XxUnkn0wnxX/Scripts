@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.21
+// @version      1.0.22
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.21';
+  const SCRIPT_VERSION = '1.0.22';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -45,8 +45,8 @@
   const CACHE_SCHEMA_VERSION = 8;
   const CACHE_MIGRATION_VERSION = `cache-schema-${CACHE_SCHEMA_VERSION}`;
   const CACHE_MIGRATION_KEY = `${CACHE_PREFIX}:migration-version`;
-  const CACHE_MAX_BYTES = 4 * 1024 * 1024;
-  const CACHE_TARGET_BYTES = 3 * 1024 * 1024;
+  const CACHE_MAX_BYTES = 4.4 * 1024 * 1024;
+  const CACHE_TARGET_BYTES = 3.4 * 1024 * 1024;
   const CACHE_BUDGET_CHECK_INTERVAL_MS = 5 * 1000;
   const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
   const INPUT_DEBOUNCE_MS = 120;
