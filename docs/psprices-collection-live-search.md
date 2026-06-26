@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.2`.
+Current documented release: `1.0.3`.
 
 ## What It Does
 
@@ -15,7 +15,7 @@ Current documented release: `1.0.2`.
 - provides a `Free only` checkbox that can combine with text and platform filters
 - progressively hydrates visible results with thumbnails, prices, and platform badges from each product page
 - supports light and dark themes by reusing PSPrices utility classes where practical
-- hides the native avatar tablist and theme platform stripe on the mounted collection routes before they paint
+- hides the native avatar tablist plus theme platform stripe and Likes/Filter controls on the mounted collection routes before they paint
 
 ## Where It Works
 
@@ -326,10 +326,10 @@ This avoids repeatedly clearing and rebuilding the entire grid while the user is
 The userscript runs at `document-start` so selected native PSPrices controls can be hidden before they paint:
 
 - on canonical `/collection/avatars`, it hides the native tablist block
-- on canonical `/collection/themes`, it hides the native platform stripe
+- on canonical `/collection/themes`, it hides the native platform stripe and native Likes/Filter controls
 - native collection grids, native pagination blocks, and anything marked `data-psprices-live-search-hidden="true"` are hidden with bootstrap CSS
 
-The theme platform stripe hide is scoped to the route class for `/collection/themes` only. It does not apply on product pages, avatar pages, or `/collection/themes?platform=...` query-filter URLs.
+The theme platform stripe and Likes/Filter hides are scoped to the route class for `/collection/themes` only. They do not apply on product pages, avatar pages, or `/collection/themes?platform=...` query-filter URLs.
 
 ## Console Logging
 
