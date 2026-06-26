@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.18
+// @version      1.0.19
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.18';
+  const SCRIPT_VERSION = '1.0.19';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -1746,7 +1746,7 @@
       html.pspls-route-avatars [class*="pagination"]:has(a[href*="/collection/avatars?page="]) { display: none !important; }
       html.pspls-route-avatars a[href*="/collection/avatars?page="] { display: none !important; }
       html.pspls-route-themes [data-test-id="platforms-stripe"] { display: none !important; }
-      html.pspls-route-themes .flex.items-center.gap-2.shrink-0 { display: none !important; }
+      html.pspls-route-themes main .flex.items-center.gap-2.shrink-0:has([data-test-id="filter-toggle"]) { display: none !important; }
       html.pspls-route-themes .listing-card-grid:not([${RESULTS_ATTR}="true"]) { display: none !important; }
       html.pspls-route-themes nav[aria-label="Pagination"] { display: none !important; }
       html.pspls-route-themes nav:has(a[href*="/collection/themes?page="]),
