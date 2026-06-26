@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.13
+// @version      1.0.14
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.13';
+  const SCRIPT_VERSION = '1.0.14';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -92,9 +92,9 @@
   // Set to -1 to check every unknown candidate for platform/free filters at once.
   const LIVE_DETAIL_FILTER_CANDIDATE_BATCH = 108;
   const RENDER_STALE_RESULT_GRACE_MS = 2500;
-  const THEME_INITIAL_HYDRATION_DELAY_MS = 1500;
-  const THEME_INITIAL_HYDRATION_RETRY_MS = 2500;
-  const THEME_INITIAL_HYDRATION_MAX_ATTEMPTS = 3;
+  const INITIAL_HYDRATION_DELAY_MS = 1500;
+  const INITIAL_HYDRATION_RETRY_MS = 2500;
+  const INITIAL_HYDRATION_MAX_ATTEMPTS = 3;
 
   const STYLE_ID = 'psprices-live-search-style';
   const OWNER_ATTR = 'data-psprices-live-search';
@@ -2316,29 +2316,40 @@
 
   function scheduleInitialFilterHydration(state) {
     if (!state || state.background || !state.ui) return;
-    if (!isThemeCollection(state.route && state.route.collection)) return;
     if (state.initialFilterHydrationDone || state.initialFilterHydrationQueued) return;
     if (isInteractionLocked(state)) return;
 
     state.initialFilterHydrationQueued = true;
-    setTimeout(() => {
-      state.initialFilterHydrationQueued = false;
-      if (!isStateActive(state) || isInteractionLocked(state)) return;
-
-      state.initialFilterHydrationAttempts += 1;
-      cancelLiveDetailHydration(state);
-      clearRenderedResults(state);
-      runSearch(state, { preserveStaleResults: false });
-
+    runAfterPageReady(() => {
       setTimeout(() => {
+        state.initialFilterHydrationQueued = false;
         if (!isStateActive(state) || isInteractionLocked(state)) return;
-        if (state.ui.resultGrid.children.length > 0 || state.initialFilterHydrationAttempts >= THEME_INITIAL_HYDRATION_MAX_ATTEMPTS) {
-          state.initialFilterHydrationDone = true;
-          return;
-        }
-        scheduleInitialFilterHydration(state);
-      }, THEME_INITIAL_HYDRATION_RETRY_MS);
-    }, document.readyState === 'complete' ? THEME_INITIAL_HYDRATION_DELAY_MS : THEME_INITIAL_HYDRATION_DELAY_MS * 2);
+        if (!state.ui || !document.documentElement.contains(state.ui.panel)) return;
+
+        state.initialFilterHydrationAttempts += 1;
+        cancelLiveDetailHydration(state);
+        clearRenderedResults(state);
+        runSearch(state, { preserveStaleResults: false });
+
+        setTimeout(() => {
+          if (!isStateActive(state) || isInteractionLocked(state)) return;
+          if (state.ui.resultGrid.children.length > 0 || state.initialFilterHydrationAttempts >= INITIAL_HYDRATION_MAX_ATTEMPTS) {
+            state.initialFilterHydrationDone = true;
+            return;
+          }
+          scheduleInitialFilterHydration(state);
+        }, INITIAL_HYDRATION_RETRY_MS);
+      }, INITIAL_HYDRATION_DELAY_MS);
+    });
+  }
+
+  function runAfterPageReady(callback) {
+    if (document.readyState === 'complete') {
+      callback();
+      return;
+    }
+
+    window.addEventListener('load', callback, { once: true });
   }
 
   function platformOptionsForRoute(route) {
