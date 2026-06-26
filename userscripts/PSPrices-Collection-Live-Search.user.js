@@ -2167,7 +2167,7 @@
     const locked = isInteractionLocked(state);
     const target = displayRegion(state.route.region);
     const title = locked
-      ? `Search, filters, Show more, and detail loading unlock when all ${target} region caches reach 100%.`
+      ? `Search, filters, Show more, and full detail loading unlock when all ${target} region caches reach 100%.`
       : '';
 
     if (locked) {
@@ -2206,7 +2206,6 @@
     const controlsLocked = isInteractionLocked(state);
     if (controlsLocked) {
       resetInteractiveFiltersForLock(state);
-      cancelLiveDetailHydration(state);
     }
 
     const query = normalizeQuery(state.query);
@@ -2405,7 +2404,7 @@
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
       setResultStatus(state, controlsLocked
-        ? `Showing initial indexed ${displayCollection(state.route.collection).toLowerCase()} while region caches build. Search, filters, Show more, and detail loading unlock at 100%.`
+        ? `Showing initial indexed ${displayCollection(state.route.collection).toLowerCase()} while region caches build. First visible cards can hydrate; search, filters, Show more, and full detail loading unlock at 100%.`
         : confirmedMode
         ? '0 confirmed results found.'
         : !moreCacheMayArrive
@@ -2424,7 +2423,7 @@
       setResultStatus(
         state,
         controlsLocked
-          ? `${visibleResults.length} initial ${resultLabel} shown while region caches build. Search, filters, Show more, and detail loading unlock at 100%.`
+          ? `${visibleResults.length} initial ${resultLabel} shown while region caches build. First visible cards can hydrate; search, filters, Show more, and full detail loading unlock at 100%.`
           : `${results.length} ${resultLabel} found.${capNote}`,
         isResultStatusWorking(state, hydrationCandidates)
       );
@@ -2438,11 +2437,22 @@
       state.ui.showMore.classList.add('pspls-hidden');
     }
 
-    if (!controlsLocked && !options.skipLiveDetailHydration) {
+    if (!options.skipLiveDetailHydration && (!controlsLocked || canHydrateLockedInitialResults(state))) {
       scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates);
     } else if (controlsLocked) {
       cancelLiveDetailHydration(state);
     }
+  }
+
+  function canHydrateLockedInitialResults(state) {
+    return Boolean(
+      state &&
+        isInteractionLocked(state) &&
+        !normalizeQuery(state.query) &&
+        !state.platformFilter &&
+        !state.freeOnly &&
+        state.resultLimit <= INITIAL_RENDER_LIMIT
+    );
   }
 
   function scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates = []) {
