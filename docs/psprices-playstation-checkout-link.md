@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-PlayStation-Checkout-Link.user.js`](../userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
 
-Current documented release: `1.0.4.3`.
+Current documented release: `1.0.4.4`.
 
 ## PlayStation Store Setup and Redirect Caveat
 
@@ -28,6 +28,7 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 - replaces the first supported avatar or theme purchase panel with a PSPrices-style checkout card
 - also replaces the PlayStation Store unavailable warning column when no native buy block is present
 - keeps the Add to Cart button disabled until a validated checkout URL is ready
+- shows the specific checkout-link failure reason in the card status area when Sony lookup fails
 - supports PSPrices product pages across all configured PlayStation regions
 - preserves the visual-map and SKU panels outside the replaced purchase target
 - blocks the native PlayStation Store unavailable warning from painting before replacement
@@ -227,7 +228,7 @@ The Add to Cart button remains disabled when:
 Safe error information is written to the browser console. The card displays a shorter user-facing status such as:
 
 ```text
-Checkout link unavailable. See browser console.
+Not found on PSN Store.
 ```
 
 Navigation and dynamic PSPrices updates invalidate stale requests, checkout URLs, click attempts, and pending LinkGen timers before another supported context is mounted.

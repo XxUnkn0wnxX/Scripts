@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.3
+// @version      1.0.4.4
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -25,7 +25,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4.3';
+  const SCRIPT_VERSION = '1.0.4.4';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -1027,6 +1027,41 @@
     mount.ui.status.hidden = !message;
   }
 
+  function checkoutFailureStatusMessage(category, error = null) {
+    const status = error?.status;
+    if (category === 'not-found') {
+      return 'Not found on PSN Store.';
+    }
+    if (category === 'http') {
+      return `PlayStation Store lookup failed with HTTP ${status || 'unknown'}.`;
+    }
+    if (category === 'timeout') {
+      return 'PlayStation Store lookup timed out.';
+    }
+    if (category === 'network') {
+      return 'PlayStation Store lookup failed due to a network error.';
+    }
+    if (category === 'empty-response') {
+      return 'PlayStation Store returned an empty SKU response.';
+    }
+    if (category === 'malformed-json' || category === 'unexpected-json-type') {
+      return 'PlayStation Store returned an unreadable SKU response.';
+    }
+    if (category === 'redirect') {
+      return 'PlayStation Store lookup redirected unexpectedly.';
+    }
+    if (category === 'missing-sku') {
+      return 'PlayStation Store did not return a regional SKU.';
+    }
+    if (category === 'unexpected-sku') {
+      return 'PlayStation Store returned an unexpected regional SKU.';
+    }
+    if (category === 'unsupported-manager') {
+      return 'Userscript manager does not support the required request API.';
+    }
+    return 'Checkout link unavailable.';
+  }
+
   function removeManualLink(mount) {
     mount.ui?.manualLink?.remove();
     if (mount.ui) mount.ui.manualLink = null;
@@ -1132,7 +1167,11 @@
     if (mount.state === 'loading') {
       setStatus(mount, 'Resolving regional PlayStation SKU...');
     } else if (mount.state === 'terminal-error') {
-      setStatus(mount, 'Checkout link unavailable. See browser console.');
+      setStatus(
+        mount,
+        mount.terminalFailureStatus ||
+          checkoutFailureStatusMessage(mount.terminalFailureCategory)
+      );
     } else if (mount.popupStatus) {
       setStatus(mount, mount.popupStatus);
     }
@@ -1571,12 +1610,13 @@
   function markTerminalFailure(mount, category, error) {
     mount.state = 'terminal-error';
     mount.terminalFailureCategory = category;
+    mount.terminalFailureStatus = checkoutFailureStatusMessage(category, error);
     mount.fullSku = null;
     mount.checkoutUrl = null;
     if (mount.ui) {
       mount.ui.sku.textContent = 'SKU: Unavailable';
       setButtonMode(mount, 'disabled', 'Add to Cart');
-      setStatus(mount, 'Checkout link unavailable. See browser console.');
+      setStatus(mount, mount.terminalFailureStatus);
     }
     const status = error?.status;
     if (category === 'not-found') {
@@ -1901,6 +1941,7 @@
       fullSku: null,
       checkoutUrl: null,
       terminalFailureCategory: null,
+      terminalFailureStatus: null,
       managedStickyElement: null,
       managedStickyOriginalStyle: '',
       managedStickyHadStyle: false,
