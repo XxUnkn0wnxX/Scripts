@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4
+// @version      1.0.6
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.4';
+  const SCRIPT_VERSION = '1.0.6';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -2496,6 +2496,8 @@
     const hardLimit = maxRenderableResults(totalResultCount);
     const limit = Math.min(state.resultLimit, hardLimit);
     const visibleResults = results.slice(0, limit);
+    const failedResultCount = results.filter((item) => state.liveDetailFailedItems.has(itemKey(item))).length;
+    const renderedVisibleResults = visibleResults.filter((item) => !shouldHideVisibleResultRender(state, item));
     const hydrationCandidates = Array.isArray(options.hydrationCandidates)
       ? options.hydrationCandidates
       : [];
@@ -2515,7 +2517,7 @@
       return;
     }
 
-    reconcileRenderedResults(state, visibleResults, {
+    reconcileRenderedResults(state, renderedVisibleResults, {
       preserveStaleResults: options.preserveStaleResults !== false,
     });
 
@@ -2533,12 +2535,15 @@
       const capNote = MAX_RENDER_LIMIT >= 0 && results.length > MAX_RENDER_LIMIT
         ? ` Showing ${limit} of ${results.length}; refine search to narrow results.`
         : '';
+      const failureNote = failedResultCount > 0
+        ? ` ${failedResultCount} metadata fetch${failedResultCount === 1 ? '' : 'es'} failed.`
+        : '';
       const resultLabel = confirmedMode
         ? `confirmed result${results.length === 1 ? '' : 's'}`
         : `result${results.length === 1 ? '' : 's'}`;
       setResultStatus(
         state,
-        `${results.length} ${resultLabel} found.${capNote}`,
+        `${results.length} ${resultLabel} found.${capNote}${failureNote}`,
         isResultStatusWorking(state, hydrationCandidates)
       );
       state.ui.empty.classList.remove('pspls-hidden');
@@ -2554,6 +2559,13 @@
     if (!options.skipLiveDetailHydration) {
       scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates);
     }
+  }
+
+  function shouldHideVisibleResultRender(state, item) {
+    if (!LIVE_DETAIL_HYDRATION_ENABLED || !state || !item) return false;
+    if (state.liveDetailFailedItems.has(itemKey(item))) return true;
+    if (!isThemeCollection(state.route && state.route.collection)) return false;
+    return needsLiveDetailHydration(item);
   }
 
   function scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates = []) {
@@ -2601,6 +2613,7 @@
 
     if (signature !== state.liveDetailSignature || contextSignature !== state.liveDetailContextSignature) {
       retargetLiveDetailHydration(state, targetItems, signature, contextSignature);
+      refreshResultStatusWorking(state);
     }
 
     if (state.liveDetailItemQueue.length === 0 || state.liveDetailFetching) return;

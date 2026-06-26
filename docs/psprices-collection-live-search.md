@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.4`.
+Current documented release: `1.0.6`.
 
 ## What It Does
 
@@ -290,6 +290,8 @@ The cache keeps the stored index small. Detail hydration waits until the current
 When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
 While a visible result batch is hydrating, partial re-renders keep that batch's hydration queue stable. Search text, filter, or `Show more` changes still cancel and retarget hydration so stale result details are not fetched longer than needed.
+
+Theme result cards wait for live detail hydration before they render, so the theme grid fills progressively with real thumbnails, prices, and platform badges instead of painting a full page of placeholders first. Product detail rows that fail hydration are not rendered for avatars or themes; the status line reports how many matching rows failed metadata fetching.
 
 While candidate hydration, same-region collection cache indexing, or queued same-region lease work is still running, the UI labels already verified matches as confirmed results and shows a small pulsing indicator beside that status. The indicator is refreshed from cache status updates as well as result renders, so the avatar page can pulse while the theme cache builds and the theme page can pulse while the avatar cache builds, including after page reloads or region navigation. Remaining undisplayed items are reported through the `Show more` button.
 
