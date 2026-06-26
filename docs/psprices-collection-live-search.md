@@ -213,6 +213,8 @@ Browser quota is still controlled by the browser and userscript manager environm
 
 ## Fetch and Rate-Limit Controls
 
+This userscript can be network-heavy. Cache indexing walks the collection pages with concurrent requests, and live detail hydration can fetch product pages for the currently visible or filter-confirmation candidates. The defaults are intended to be moderately fast, but lowering the concurrency or adding delay is the safest option if PSPrices starts responding slowly, shows bot protection, or rate-limits the browser session.
+
 Collection indexing uses these main knobs:
 
 ```js
