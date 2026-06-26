@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.10
+// @version      1.0.11
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.10';
+  const SCRIPT_VERSION = '1.0.11';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -1849,7 +1849,8 @@
 
     const platformSelectText = document.createElement('span');
     platformSelectText.className = 'flex items-center h-full leading-none font-semibold';
-    platformSelectText.textContent = 'All platforms';
+    state.platformFilter = normalizedPlatformFilterForRoute(state.route, state.platformFilter);
+    platformSelectText.textContent = platformLabelForValue(state.route, state.platformFilter);
 
     const platformSelectIcon = document.createElement('span');
     platformSelectIcon.className = 'material-symbols-outlined text-[20px] text-secondary';
@@ -1861,17 +1862,13 @@
     platformSelect.className = 'absolute inset-0 h-9 w-full cursor-pointer opacity-0';
     platformSelect.title = 'Filter by platform';
     platformSelect.setAttribute('aria-label', 'Filter by platform');
-    for (const [value, label] of [
-      ['', 'All platforms'],
-      ['ps3', 'PS3'],
-      ['ps4', 'PS4'],
-      ['ps5', 'PS5'],
-    ]) {
+    for (const [value, label] of platformOptionsForRoute(state.route)) {
       const option = document.createElement('option');
       option.value = value;
       option.textContent = label;
       platformSelect.appendChild(option);
     }
+    platformSelect.value = state.platformFilter;
     platformWrap.append(platformSelectShell, platformSelect);
 
     const freeOnlyLabel = document.createElement('label');
@@ -2257,13 +2254,13 @@
     if (!state || !state.ui) return;
 
     state.query = '';
-    state.platformFilter = '';
+    state.platformFilter = normalizedPlatformFilterForRoute(state.route, '');
     state.freeOnly = false;
     state.resultLimit = INITIAL_RENDER_LIMIT;
 
     state.ui.input.value = '';
-    state.ui.platformSelect.value = '';
-    state.ui.platformSelectText.textContent = 'All platforms';
+    state.ui.platformSelect.value = state.platformFilter;
+    state.ui.platformSelectText.textContent = platformLabelForValue(state.route, state.platformFilter);
     state.ui.freeOnlyCheckbox.checked = false;
     state.ui.clearButton.classList.add('pspls-hidden');
   }
@@ -2282,6 +2279,9 @@
     }
 
     state.controlsLocked = locked;
+    state.platformFilter = normalizedPlatformFilterForRoute(state.route, state.platformFilter);
+    state.ui.platformSelect.value = state.platformFilter;
+    state.ui.platformSelectText.textContent = platformLabelForValue(state.route, state.platformFilter);
     state.ui.input.disabled = locked;
     state.ui.input.title = title;
     state.ui.platformSelect.disabled = locked;
@@ -2305,6 +2305,30 @@
     cancelLiveDetailHydration(state);
     clearRenderedResults(state);
     runSearch(state, { preserveStaleResults: false });
+  }
+
+  function platformOptionsForRoute(route) {
+    if (isThemeCollection(route && route.collection)) {
+      return [['ps4', 'PS4']];
+    }
+
+    return [
+      ['', 'All platforms'],
+      ['ps3', 'PS3'],
+      ['ps4', 'PS4'],
+      ['ps5', 'PS5'],
+    ];
+  }
+
+  function normalizedPlatformFilterForRoute(route, value) {
+    if (isThemeCollection(route && route.collection)) return 'ps4';
+    return PLATFORM_FILTER_VALUES.includes(value) ? value : '';
+  }
+
+  function platformLabelForValue(route, value) {
+    const normalized = normalizedPlatformFilterForRoute(route, value);
+    const option = platformOptionsForRoute(route).find(([optionValue]) => optionValue === normalized);
+    return option ? option[1] : 'All platforms';
   }
 
   function runSearch(state, options = {}) {
