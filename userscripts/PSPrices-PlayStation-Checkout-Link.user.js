@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.2
-// @description  Replaces PSPrices paywalled avatar/theme purchase panels with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
+// @version      1.0.4.3
+// @description  Replaces PSPrices paywalled avatar/theme purchase panels or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
 // @author       XxUnkn0wnxX
@@ -25,7 +25,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4.1';
+  const SCRIPT_VERSION = '1.0.4.3';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -78,6 +78,9 @@
   const HEADER_BADGE_CLASS =
     'text-[8px] font-bold bg-blue-700 dark:bg-blue-600 text-white ' +
     'px-1 py-0 rounded lowercase overflow-hidden';
+  const SKU_SCRIPT_CARD_ID = 'psprices-product-sku-userscript';
+  const UNAVAILABLE_STORE_TEXT =
+    'This item is no longer available for purchase on the PlayStation Store';
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
@@ -120,21 +123,34 @@
         transition: none !important;
       }
       html.${BOOTSTRAP_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
+        .order-last.lg\\:order-1.lg\\:col-span-4 > .alert.alert-warning,
+      html.${TRANSITION_SUPPRESS_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
+        .order-last.lg\\:order-1.lg\\:col-span-4 > .alert.alert-warning {
+        opacity: 0 !important;
+        pointer-events: none !important;
+        transition: none !important;
+      }
+      html.${BOOTSTRAP_CLASS}
         [x-data*="stickyReveal"][x-data*="#avatar-buy-block"] {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
         pointer-events: none !important;
       }
+      [${TARGET_TYPE_ATTR}].${WRAPPER_ENTER_CLASS},
       #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_CLASS} {
         opacity: 0 !important;
         pointer-events: none !important;
       }
+      [${TARGET_TYPE_ATTR}].${WRAPPER_ENTER_ACTIVE_CLASS},
       #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_ACTIVE_CLASS} {
         opacity: 1;
         transition: opacity ${WRAPPER_ENTER_MS}ms ease-out;
       }
       @media (prefers-reduced-motion: reduce) {
+        [${TARGET_TYPE_ATTR}].${WRAPPER_ENTER_ACTIVE_CLASS},
         #avatar-buy-block[data-avatar-buy-block].${WRAPPER_ENTER_ACTIVE_CLASS} {
           transition: none;
         }
@@ -604,6 +620,52 @@
     };
   }
 
+  function isUnavailableStoreAlert(element) {
+    return Boolean(
+      element?.matches?.('.alert.alert-warning') &&
+      element.textContent.replace(/\s+/g, ' ').trim().includes(UNAVAILABLE_STORE_TEXT)
+    );
+  }
+
+  function selectUnavailablePurchaseTarget(gameDetail) {
+    if (
+      activeMount?.targetType === 'unavailable' &&
+      activeMount.targetElement?.isConnected &&
+      gameDetail.contains(activeMount.targetElement)
+    ) {
+      return {
+        type: 'unavailable',
+        element: activeMount.targetElement,
+        buyBlock: activeMount.buyBlock
+      };
+    }
+
+    const alerts = [...gameDetail.querySelectorAll('.alert.alert-warning')].filter(
+      isUnavailableStoreAlert
+    );
+    if (alerts.length !== 1) {
+      return {
+        invalid: true,
+        reason: alerts.length ? 'multiple-unavailable-targets' : 'missing-purchase-target'
+      };
+    }
+    const alert = alerts[0];
+    const container = alert.parentElement;
+    const unexpectedChildren = container
+      ? [...container.children].filter(
+        (child) => child !== alert && child.id !== SKU_SCRIPT_CARD_ID
+      )
+      : [];
+    if (
+      !container ||
+      unexpectedChildren.length ||
+      !gameDetail.contains(container)
+    ) {
+      return { invalid: true, reason: 'unsupported-unavailable-target' };
+    }
+    return { type: 'unavailable', element: container, buyBlock: container };
+  }
+
   function sonyLocaleForRegion(regionAlias) {
     return REGION_CONFIG[regionAlias]?.defaultLocale || null;
   }
@@ -787,14 +849,21 @@
     }
 
     const buyBlocks = gameDetail.querySelectorAll('#avatar-buy-block[data-avatar-buy-block]');
-    if (buyBlocks.length !== 1) {
+    if (buyBlocks.length > 1) {
       return { valid: false, reason: 'invalid-buy-block-count', route };
     }
-    const buyBlock = buyBlocks[0];
     const metadata = readProductMetadata();
     if (!metadata.valid) return { ...metadata, route };
 
-    const target = selectPurchaseTarget(gameDetail, buyBlock);
+    let buyBlock = null;
+    let target = null;
+    if (buyBlocks.length === 1) {
+      buyBlock = buyBlocks[0];
+      target = selectPurchaseTarget(gameDetail, buyBlock);
+    } else {
+      target = selectUnavailablePurchaseTarget(gameDetail);
+      buyBlock = target.buyBlock || null;
+    }
     if (target.invalid) return { valid: false, reason: target.reason, route };
     const existingOwner = target.element.getAttribute(OWNER_ATTR);
     if (
@@ -1091,6 +1160,15 @@
         mount.targetElement.parentElement?.matches('div.flex.flex-col') &&
         mount.targetElement.parentElement?.parentElement === mount.buyBlock;
     }
+    if (mount.targetType === 'unavailable') {
+      const gameDetail = mount.targetElement.closest(
+        '#game-detail.game-detail--unlockable[data-game-id]'
+      );
+      return Boolean(
+        mount.targetElement === mount.buyBlock &&
+        gameDetail?.dataset.gameId === mount.routeProductId
+      );
+    }
     return mount.targetElement.matches('div.flex-shrink-0') &&
       mount.targetElement.parentElement === mount.buyBlock;
   }
@@ -1100,10 +1178,13 @@
     const expectedCard = [...mount.targetElement.children].find(
       (child) => child.getAttribute(OWNER_ATTR) === mount.ownerId
     );
-    return Boolean(
-      expectedCard?.dataset.testId === CARD_TEST_ID &&
-      mount.targetElement.childNodes.length === 1
-    );
+    if (expectedCard?.dataset.testId !== CARD_TEST_ID) return false;
+    if (mount.targetType === 'unavailable') {
+      return [...mount.targetElement.children].every(
+        (child) => child === expectedCard || child.id === SKU_SCRIPT_CARD_ID
+      );
+    }
+    return mount.targetElement.childNodes.length === 1;
   }
 
   function restoreSticky(mount) {
