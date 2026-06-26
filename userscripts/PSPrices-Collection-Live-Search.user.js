@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.3
+// @version      1.0.4
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.3';
+  const SCRIPT_VERSION = '1.0.4';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -1662,6 +1662,7 @@
       liveDetailTargetItems: new Set(),
       liveDetailRunId: 0,
       liveDetailSignature: '',
+      liveDetailContextSignature: '',
       autoIndexTimer: 0,
       autoIndexEnabled: Boolean(AUTO_INDEX_ON_LOAD),
       autoIndexReady: background,
@@ -1915,6 +1916,7 @@
       }
       const nextLimit = state.resultLimit + RENDER_STEP;
       state.resultLimit = MAX_RENDER_LIMIT < 0 ? nextLimit : Math.min(MAX_RENDER_LIMIT, nextLimit);
+      cancelLiveDetailHydration(state);
       runSearch(state);
     });
 
@@ -1923,6 +1925,7 @@
     input.addEventListener('input', () => {
       state.query = input.value;
       state.resultLimit = INITIAL_RENDER_LIMIT;
+      cancelLiveDetailHydration(state);
       clearTimeout(state.searchTimer);
       state.searchTimer = setTimeout(() => runSearch(state), INPUT_DEBOUNCE_MS);
     });
@@ -2585,12 +2588,19 @@
     if (!signature) {
       cancelLiveDetailHydration(state);
       state.liveDetailSignature = '';
+      state.liveDetailContextSignature = '';
       refreshResultStatusWorking(state);
       return;
     }
 
-    if (signature !== state.liveDetailSignature) {
-      retargetLiveDetailHydration(state, targetItems, signature);
+    const contextSignature = liveDetailContextSignature(state);
+    if (state.liveDetailFetching && contextSignature === state.liveDetailContextSignature) {
+      refreshResultStatusWorking(state);
+      return;
+    }
+
+    if (signature !== state.liveDetailSignature || contextSignature !== state.liveDetailContextSignature) {
+      retargetLiveDetailHydration(state, targetItems, signature, contextSignature);
     }
 
     if (state.liveDetailItemQueue.length === 0 || state.liveDetailFetching) return;
@@ -2781,6 +2791,16 @@
     ].join('\u001f');
   }
 
+  function liveDetailContextSignature(state) {
+    return [
+      state && state.route && state.route.collection,
+      normalizeQuery(state && state.query),
+      state && state.platformFilter || '',
+      state && state.freeOnly ? 'free' : 'all',
+      state && state.resultLimit,
+    ].join('\u001f');
+  }
+
   async function hydrateLiveDetailQueue(state) {
     if (!state || state.background || state.liveDetailFetching || !isStateActive(state)) return;
     state.liveDetailFetching = true;
@@ -2892,13 +2912,14 @@
     return Boolean(state && isStateActive(state) && state.liveDetailRunId === runId);
   }
 
-  function retargetLiveDetailHydration(state, targetItems, signature) {
+  function retargetLiveDetailHydration(state, targetItems, signature, contextSignature = liveDetailContextSignature(state)) {
     if (!state) return;
 
     const targetKeys = new Set(targetItems.map(itemKey));
     clearTimeout(state.liveDetailHydrationTimer);
     state.liveDetailHydrationTimer = 0;
     state.liveDetailSignature = signature;
+    state.liveDetailContextSignature = contextSignature;
     state.liveDetailTargetItems = targetKeys;
     state.liveDetailItemQueue = [];
     state.liveDetailQueuedItems.clear();
@@ -2932,6 +2953,7 @@
     state.liveDetailFetching = false;
     state.liveDetailTargetItems.clear();
     state.liveDetailSignature = '';
+    state.liveDetailContextSignature = '';
     abortLiveDetailFetches(state);
     refreshResultStatusWorking(state);
   }
