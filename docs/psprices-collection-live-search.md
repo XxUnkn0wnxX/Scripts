@@ -2,7 +2,7 @@
 
 [`userscripts/PSPrices-Collection-Live-Search.user.js`](../userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.1`.
+Current documented release: `1.0.2`.
 
 ## What It Does
 
@@ -88,11 +88,11 @@ Multi-word queries are handled in two passes:
 
 Search runs with a small input debounce so fast typing does not rebuild the result grid on every key event.
 
-The native PSPrices collection grid and native pagination are hidden on the canonical mounted routes. The userscript always renders its own collection grid, even when the search box is empty and no filters are active.
+The native PSPrices collection grid and native pagination are hidden on the canonical mounted routes. The userscript keeps its custom result grid empty while the current region cache is still building.
 
-With an empty query and `All platforms` selected, the first rendered batch is the first `108` indexed items sorted alphabetically. After the current region's avatar and theme caches are both complete, typing in the search box or enabling platform/free filters narrows that same sorted result set.
+After the current region's avatar and theme caches are both complete, an empty query with `All platforms` selected renders the first `108` indexed items sorted alphabetically. Typing in the search box or enabling platform/free filters narrows that same sorted result set.
 
-Search, platform/free filters, `Show more`, and full product-page detail hydration stay locked until the current region's avatar and theme caches are both complete. This lock is still region-scoped: AU unlocks only after AU avatars and AU themes finish, while another region has its own queued or paused cache state. While locked, the default empty-query `All platforms` view can still show and hydrate the first visible indexed batch for the visible collection, but it does not expand beyond that first batch or fetch filter-confirmation candidates.
+Search, platform/free filters, `Show more`, the result grid, and product-page detail hydration stay locked until the current region's avatar and theme caches are both 100% complete. Nothing populates in the custom grid while the user is still waiting on those caches. If the user stays on the page, the grid automatically populates when both caches hit 100%; a refresh is not required. This lock is still region-scoped: AU unlocks only after AU avatars and AU themes finish, while another region has its own queued or paused cache state. Clearing the current region cache also clears the grid until both rebuilt caches finish.
 
 Text-query changes can keep matching partial results on screen briefly while the next live result set hydrates. Platform and `Free only` changes are treated as hard filter changes: the visible grid is rebuilt from scratch, the render limit resets to `108`, and in-flight detail hydration is abandoned for the previous filter state.
 
@@ -285,7 +285,7 @@ When a result set exceeds the hard cap, the UI reports that only part of the mat
 
 ## Live Detail Hydration
 
-The cache keeps the stored index small. During cache builds, the initial locked empty-query batch can hydrate its first visible cards after a refresh or region switch. Full detail hydration for searched, filtered, or expanded result sets waits until the current region's avatar and theme caches are both complete. This avoids stacking broad product-page URL fetches on top of collection-page cache indexing.
+The cache keeps the stored index small. Detail hydration waits until the current region's avatar and theme caches are both 100% complete. During cache builds, the grid stays empty and no product-page URL fetches are started, avoiding extra product requests on top of collection-page cache indexing.
 
 When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
