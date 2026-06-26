@@ -2364,6 +2364,19 @@
     );
   }
 
+  function isBackgroundIndexingRegion(state) {
+    return Boolean(
+      state &&
+        prewarmState &&
+        prewarmState.route &&
+        prewarmState.route.host === state.route.host &&
+        prewarmState.route.region === state.route.region &&
+        prewarmState.route.language === state.route.language &&
+        !prewarmState.indexingDone &&
+        !prewarmState.indexingPaused
+    );
+  }
+
   function maxRenderableResults(total) {
     if (MAX_RENDER_LIMIT < 0) return total;
     return Math.min(MAX_RENDER_LIMIT, total);
@@ -2526,7 +2539,8 @@
           Boolean(state.fetchingPromise && !state.indexingDone && !state.indexingPaused) ||
           (Array.isArray(state.pendingPages) && state.pendingPages.length > 0 && !state.indexingDone && !state.indexingPaused) ||
           (state.queuedPages && state.queuedPages.size > 0 && !state.indexingDone && !state.indexingPaused) ||
-          isBackgroundIndexingScope(state.cacheScope)
+          isBackgroundIndexingScope(state.cacheScope) ||
+          isBackgroundIndexingRegion(state)
         )
     );
   }
