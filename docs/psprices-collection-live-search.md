@@ -319,7 +319,7 @@ The userscript runs at `document-start` so selected native PSPrices controls can
 
 - on canonical `/collection/avatars`, it hides the native tablist block
 - on canonical `/collection/themes`, it hides the native platform stripe
-- native collection grids, native pagination links, and anything marked `data-psprices-live-search-hidden="true"` are hidden with bootstrap CSS
+- native collection grids, native pagination blocks, and anything marked `data-psprices-live-search-hidden="true"` are hidden with bootstrap CSS
 
 The theme platform stripe hide is scoped to the route class for `/collection/themes` only. It does not apply on product pages, avatar pages, or `/collection/themes?platform=...` query-filter URLs.
 
