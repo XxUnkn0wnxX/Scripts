@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.4
-// @description  Replaces PSPrices paywalled avatar/theme purchase panels or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
+// @version      1.0.4.5
+// @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
 // @author       XxUnkn0wnxX
@@ -25,7 +25,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4.4';
+  const SCRIPT_VERSION = '1.0.4.5';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -125,9 +125,21 @@
       html.${BOOTSTRAP_CLASS}
         #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
         .order-last.lg\\:order-1.lg\\:col-span-4 > .alert.alert-warning,
+      html.${BOOTSTRAP_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
+        .order-last.lg\\:order-1.lg\\:col-span-4 > [hx-get*="/game/fragment/availability/"],
+      html.${BOOTSTRAP_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
+        .order-last.lg\\:order-1.lg\\:col-span-4 > [data-hx-get*="/game/fragment/availability/"],
       html.${TRANSITION_SUPPRESS_CLASS}
         #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
-        .order-last.lg\\:order-1.lg\\:col-span-4 > .alert.alert-warning {
+        .order-last.lg\\:order-1.lg\\:col-span-4 > .alert.alert-warning,
+      html.${TRANSITION_SUPPRESS_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
+        .order-last.lg\\:order-1.lg\\:col-span-4 > [hx-get*="/game/fragment/availability/"],
+      html.${TRANSITION_SUPPRESS_CLASS}
+        #game-detail.game-detail--unlockable[data-game-id]:not(:has(#avatar-buy-block[data-avatar-buy-block]))
+        .order-last.lg\\:order-1.lg\\:col-span-4 > [data-hx-get*="/game/fragment/availability/"] {
         opacity: 0 !important;
         pointer-events: none !important;
         transition: none !important;
@@ -627,6 +639,14 @@
     );
   }
 
+  function isAvailabilityPlaceholder(element) {
+    const fragmentUrl =
+      element?.getAttribute?.('hx-get') ||
+      element?.getAttribute?.('data-hx-get') ||
+      '';
+    return fragmentUrl.includes('/game/fragment/availability/');
+  }
+
   function selectUnavailablePurchaseTarget(gameDetail) {
     if (
       activeMount?.targetType === 'unavailable' &&
@@ -640,20 +660,25 @@
       };
     }
 
-    const alerts = [...gameDetail.querySelectorAll('.alert.alert-warning')].filter(
-      isUnavailableStoreAlert
+    const targets = [
+      ...gameDetail.querySelectorAll('.alert.alert-warning'),
+      ...gameDetail.querySelectorAll('[hx-get*="/game/fragment/availability/"]'),
+      ...gameDetail.querySelectorAll('[data-hx-get*="/game/fragment/availability/"]')
+    ].filter((element, index, elements) =>
+      elements.indexOf(element) === index &&
+      (isUnavailableStoreAlert(element) || isAvailabilityPlaceholder(element))
     );
-    if (alerts.length !== 1) {
+    if (targets.length !== 1) {
       return {
         invalid: true,
-        reason: alerts.length ? 'multiple-unavailable-targets' : 'missing-purchase-target'
+        reason: targets.length ? 'multiple-unavailable-targets' : 'missing-purchase-target'
       };
     }
-    const alert = alerts[0];
-    const container = alert.parentElement;
+    const target = targets[0];
+    const container = target.parentElement;
     const unexpectedChildren = container
       ? [...container.children].filter(
-        (child) => child !== alert && child.id !== SKU_SCRIPT_CARD_ID
+        (child) => child !== target && child.id !== SKU_SCRIPT_CARD_ID
       )
       : [];
     if (
