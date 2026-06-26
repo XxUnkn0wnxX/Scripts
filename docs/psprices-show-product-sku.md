@@ -1,8 +1,8 @@
 # PSPrices-Show-Product-SKU.user.js
 
-[`userscripts/PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel only when PSPrices does not already show one.
+[`userscripts/PSPrices-Show-Product-SKU.user.js`](../userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections only when PSPrices does not already show one.
 
-Current documented release: `1.0.1.2`.
+Current documented release: `1.0.1.3`.
 
 ## What It Does
 
@@ -11,6 +11,7 @@ Current documented release: `1.0.1.2`.
 - works with games, DLC, themes, avatars, and other PlayStation products
 - supports product pages from every PSPrices region
 - avoids replacing or duplicating a native SKU block when PSPrices already displays one
+- mounts below the checkout userscript card, or below the PlayStation Store unavailable warning when no native buy block exists
 
 ## Where It Works
 
@@ -54,7 +55,7 @@ That public SKU is then displayed in the injected block.
 
 Some avatar pages already contain a native PSPrices SKU block. When one exists, the userscript leaves it untouched and does not add another.
 
-On pages without that block, the script injects its matching SKU panel into the product detail area. It also watches for dynamic page updates so the panel can be restored when PSPrices changes product content without a full reload.
+On pages without that block, the script injects its matching SKU panel into the product detail area. If the checkout userscript has replaced a PlayStation Store unavailable warning, this script mounts the SKU panel below that checkout card. If the checkout userscript is not running, it mounts below the unavailable warning itself. It also watches for dynamic page updates so the panel can be restored when PSPrices changes product content without a full reload.
 
 ## Good To Know
 

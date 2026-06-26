@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PSPrices Show Product SKU
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1.2
-// @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel only when PSPrices does not already show one. Vibe coded with OpenAI.
+// @version      1.0.1.3
+// @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections only when PSPrices does not already show one. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
 // @author       XxUnkn0wnxX
@@ -20,6 +20,8 @@
   'use strict';
 
   const CARD_ID = 'psprices-product-sku-userscript';
+  const UNAVAILABLE_STORE_TEXT =
+    'This item is no longer available for purchase on the PlayStation Store';
   const PRODUCT_PATH = /^\/region-[a-z0-9-]+\/game\/\d+(?:\/[^/]+)?\/?$/i;
   let mountScheduled = false;
 
@@ -149,10 +151,40 @@
     return card;
   }
 
+  function isUnavailableStoreAlert(element) {
+    return Boolean(
+      element?.matches?.('.alert.alert-warning') &&
+      element.textContent.replace(/\s+/g, ' ').trim().includes(UNAVAILABLE_STORE_TEXT)
+    );
+  }
+
+  function findUnavailableMountTarget(gameDetail) {
+    const checkoutCard = gameDetail.querySelector(
+      '[data-test-id="psprices-checkout-card"][data-psprices-checkout-target="unavailable"]'
+    );
+    if (checkoutCard?.parentElement) {
+      return { element: checkoutCard.parentElement, position: 'append-spaced' };
+    }
+
+    const alert = [...gameDetail.querySelectorAll('.alert.alert-warning')].find(
+      isUnavailableStoreAlert
+    );
+    if (alert?.parentElement) {
+      return { element: alert.parentElement, position: 'append-spaced' };
+    }
+
+    return null;
+  }
+
   function findMountTarget(gameDetail) {
     const avatarBuyBlock = gameDetail.querySelector('[data-avatar-buy-block]');
     if (avatarBuyBlock) {
       return { element: avatarBuyBlock, position: 'append' };
+    }
+
+    const unavailableTarget = findUnavailableMountTarget(gameDetail);
+    if (unavailableTarget) {
+      return unavailableTarget;
     }
 
     const gameActions = gameDetail.querySelector('.game-detail-actions');
@@ -187,11 +219,6 @@
       return;
     }
 
-    if (injectedCard?.dataset.sku === sku) {
-      return;
-    }
-    injectedCard?.remove();
-
     const gameDetail = document.getElementById('game-detail');
     if (!gameDetail) {
       return;
@@ -202,9 +229,20 @@
       return;
     }
 
+    if (injectedCard?.dataset.sku === sku && injectedCard.parentElement === target.element) {
+      if (target.position === 'append-spaced') {
+        injectedCard.style.marginTop = '0.75rem';
+      }
+      return;
+    }
+    injectedCard?.remove();
+
     const card = createSkuCard(sku);
 
     if (target.position === 'append') {
+      target.element.append(card);
+    } else if (target.position === 'append-spaced') {
+      card.style.marginTop = '0.75rem';
       target.element.append(card);
     } else if (target.position === 'prepend-spaced') {
       card.style.marginBottom = '0.75rem';
