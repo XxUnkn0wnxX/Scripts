@@ -1872,14 +1872,12 @@
     platformSelect.addEventListener('change', () => {
       state.platformFilter = platformSelect.value;
       platformSelectText.textContent = platformSelect.options[platformSelect.selectedIndex].textContent || 'All platforms';
-      state.resultLimit = INITIAL_RENDER_LIMIT;
-      runSearch(state);
+      applyFilterChange(state);
     });
 
     freeOnlyCheckbox.addEventListener('change', () => {
       state.freeOnly = freeOnlyCheckbox.checked;
-      state.resultLimit = INITIAL_RENDER_LIMIT;
-      runSearch(state);
+      applyFilterChange(state);
     });
 
     const mountBefore = state.nativeGrid || document.querySelector('main') || document.body.firstElementChild;
@@ -2030,6 +2028,15 @@
     for (const element of state.nativePagination) {
       element.setAttribute(HIDDEN_ATTR, value);
     }
+  }
+
+  function applyFilterChange(state) {
+    if (!state || !state.ui) return;
+
+    state.resultLimit = INITIAL_RENDER_LIMIT;
+    cancelLiveDetailHydration(state);
+    clearRenderedResults(state);
+    runSearch(state);
   }
 
   function runSearch(state, options = {}) {
@@ -2442,6 +2449,7 @@
     state.liveDetailInFlightItems.clear();
     state.liveDetailFetching = false;
     state.liveDetailTargetItems.clear();
+    state.liveDetailSignature = '';
     abortLiveDetailFetches(state);
   }
 
@@ -3308,12 +3316,27 @@
   }
 
   function shouldHonorPrewarmStopSignal(signal) {
-    return Boolean(
+    if (!(
       signal &&
       signal.owner &&
       signal.owner !== TAB_ID &&
       Date.now() - Number(signal.updatedAt || 0) <= PREWARM_STOP_GRACE_MS
-    );
+    )) {
+      return false;
+    }
+
+    if (signal.reason === 'page-unload') {
+      const context = parseRegionContext();
+      const signature = context ? regionSignature(context) : '';
+      const globalLease = readGlobalPrewarmLease();
+      const regionLease = signature ? readPrewarmLease(signature) : null;
+      if (!isFreshForeignPrewarmLease(globalLease) && !isFreshForeignPrewarmLease(regionLease)) {
+        removeStorageKey(PREWARM_STOP_KEY);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   function handlePrewarmStopSignal(signal = readPrewarmStopSignal()) {
