@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.15
+// @version      1.0.16
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.15';
+  const SCRIPT_VERSION = '1.0.16';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -78,7 +78,7 @@
   const INITIAL_RENDER_LIMIT = 108;
   const RENDER_STEP = 54;
   // Set to -1 for no hard render cap. High values can be heavy on low-memory machines.
-  const MAX_RENDER_LIMIT = 1200;
+  const MAX_RENDER_LIMIT = -1;
   // Live detail hydration fills thumbnails, prices, and platform badges for rendered results.
   // Platform/free filters can also hydrate a small batch of unknown candidates so confirmed matches can appear.
   const LIVE_DETAIL_HYDRATION_ENABLED = true;
