@@ -92,6 +92,7 @@
 
   const STYLE_ID = 'psprices-live-search-style';
   const OWNER_ATTR = 'data-psprices-live-search';
+  const RESULTS_ATTR = 'data-psprices-live-search-results';
   const HIDDEN_ATTR = 'data-psprices-live-search-hidden';
   const ROUTE_CLASS_PREFIX = 'pspls-route-';
   const ROUTE_CLASSES = Object.freeze([
@@ -1047,6 +1048,35 @@
     return normalizeText(value).replace(/^\*+|\*+$/g, '').trim();
   }
 
+  function sortableTitle(value) {
+    return normalizeText(value).replace(/^[^a-z0-9]+/i, '');
+  }
+
+  function sortBucketForTitle(value) {
+    const first = sortableTitle(value).charAt(0);
+    if (/^[a-z]$/i.test(first)) return 0;
+    if (/^\d$/.test(first)) return 1;
+    return 2;
+  }
+
+  function compareItemsForDisplay(a, b) {
+    const aTitle = sortableTitle(a && a.title);
+    const bTitle = sortableTitle(b && b.title);
+    const bucketDiff = sortBucketForTitle(aTitle) - sortBucketForTitle(bTitle);
+    if (bucketDiff) return bucketDiff;
+
+    const titleDiff = aTitle.localeCompare(bTitle, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (titleDiff) return titleDiff;
+
+    const pageDiff = (Number(a && a.page) || 0) - (Number(b && b.page) || 0);
+    if (pageDiff) return pageDiff;
+
+    return (Number(a && a.sequence) || 0) - (Number(b && b.sequence) || 0);
+  }
+
   function textContent(node) {
     return String(node && node.textContent ? node.textContent : '').replace(/\s+/g, ' ').trim();
   }
@@ -1255,7 +1285,7 @@
   }
 
   function finalizeIndexMutation(state) {
-    state.items.sort((a, b) => a.page - b.page || a.sequence - b.sequence);
+    state.items.sort(compareItemsForDisplay);
     updateStatus(state);
     runSearch(state);
   }
@@ -1667,7 +1697,11 @@
     style.id = STYLE_ID;
     style.textContent = `
       html.pspls-route-avatars div[role="tablist"].tabs.tabs-box { display: none !important; }
+      html.pspls-route-avatars .avatar-card[hx-swap] { display: none !important; }
+      html.pspls-route-avatars a[href*="/collection/avatars?page="] { display: none !important; }
       html.pspls-route-themes [data-test-id="platforms-stripe"] { display: none !important; }
+      html.pspls-route-themes .listing-card-grid:not([${RESULTS_ATTR}="true"]) { display: none !important; }
+      html.pspls-route-themes a[href*="/collection/themes?page="] { display: none !important; }
       [${OWNER_ATTR}] .pspls-hidden { display: none !important; }
       [${HIDDEN_ATTR}="true"] { display: none !important; }
     `;
@@ -1810,6 +1844,7 @@
     statusRow.append(status, progress);
 
     const resultGrid = document.createElement('div');
+    resultGrid.setAttribute(RESULTS_ATTR, 'true');
     resultGrid.className = resultGridClass(state.route.collection);
 
     const empty = document.createElement('div');
@@ -1855,6 +1890,7 @@
     }
 
     state.nativePagination = findNativePagination(state.nativeGrid);
+    setNativeHidden(true, state);
 
     state.ui = {
       panel,
@@ -2001,19 +2037,7 @@
 
     const query = normalizeQuery(state.query);
     const hasQuery = query.length > 0;
-    const hasPlatformFilter = Boolean(state.platformFilter);
-    const hasFreeFilter = Boolean(state.freeOnly);
-    const hasActiveFilter = hasQuery || hasPlatformFilter || hasFreeFilter;
-    setNativeHidden(hasActiveFilter, state);
-
-    if (!hasActiveFilter) {
-      cancelLiveDetailHydration(state);
-      clearRenderedResults(state);
-      state.ui.empty.classList.add('pspls-hidden');
-      state.ui.showMore.classList.add('pspls-hidden');
-      state.ui.clearButton.classList.add('pspls-hidden');
-      return;
-    }
+    setNativeHidden(true, state);
 
     if (hasQuery) {
       state.ui.clearButton.classList.remove('pspls-hidden');
@@ -2028,7 +2052,7 @@
       if (!hasQuery) return true;
       if (item.searchText.includes(query)) return true;
       return terms.length > 1 && terms.every((term) => item.searchText.includes(term));
-    });
+    }).sort(compareItemsForDisplay);
 
     logger.verbose(
       'Search updated.',
@@ -2108,8 +2132,8 @@
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
       state.ui.empty.textContent = !moreCacheMayArrive
-        ? 'No matching items found.'
-        : 'No matching items found yet. More pages are still indexing.';
+        ? 'No collection items found.'
+        : 'No indexed items found yet. More pages are still indexing.';
       state.ui.empty.classList.remove('pspls-hidden');
     } else {
       const capNote = MAX_RENDER_LIMIT >= 0 && results.length > MAX_RENDER_LIMIT
