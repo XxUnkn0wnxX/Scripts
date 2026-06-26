@@ -2040,8 +2040,10 @@
     }
 
     state.ui.status.textContent = `${stateNote} ${itemCount} item${itemCount === 1 ? '' : 's'} from ${loaded} / ${total}${totalSuffix} page${total === 1 ? '' : 's'}.${failureNote}${cacheNote}`;
-    state.ui.progress.max = total;
-    state.ui.progress.value = Math.min(loaded, total);
+    const regionProgress = readRegionCacheProgress(state);
+    state.ui.progress.max = regionProgress.totalPages;
+    state.ui.progress.value = Math.min(regionProgress.loadedPages, regionProgress.totalPages);
+    state.ui.progress.title = `Region cache progress: ${regionProgress.loadedPages} / ${regionProgress.totalPages}${regionProgress.approximate ? '+' : ''} pages across avatars and themes.`;
     syncInteractionLock(state);
     refreshResultStatusWorking(state);
   }
@@ -2072,6 +2074,93 @@
     state.progressTotalPages = Math.max(1, state.lastPage || state.loadedPages.size || 1);
     state.progressTotalApproximate = state.loadedPages.size < state.progressTotalPages;
     state.indexingDone = state.progressLoadedPages >= state.progressTotalPages;
+  }
+
+  function collectionCacheProgress(state, collection) {
+    const route = makeCollectionRoute({
+      host: state.route.host,
+      origin: state.route.origin,
+      region: state.route.region,
+      language: state.route.language,
+    }, collection);
+    const scope = cacheScope(route);
+    const progress = {
+      loadedPages: 0,
+      totalPages: 1,
+      itemCount: 0,
+      approximate: true,
+      complete: false,
+    };
+
+    const meta = readJsonStorage(cacheMetaKey(scope));
+    if (meta && meta.version === CACHE_VERSION) {
+      updateCacheMetaProgress(meta);
+      progress.loadedPages = Number(meta.completedPageCount || 0);
+      progress.totalPages = Math.max(1, Number(meta.lastPage || 1));
+      progress.itemCount = Number(meta.itemCount || 0);
+      progress.approximate = !Boolean(meta.complete);
+      progress.complete = Boolean(meta.complete);
+    }
+
+    if (prewarmState && prewarmState.cacheScope === scope) {
+      const loaded = Number(prewarmState.progressLoadedPages || prewarmState.loadedPages.size || 0);
+      const total = Math.max(1, Number(prewarmState.progressTotalPages || prewarmState.lastPage || loaded || 1));
+      progress.loadedPages = Math.max(progress.loadedPages, loaded);
+      progress.totalPages = Math.max(progress.totalPages, total);
+      progress.itemCount = Math.max(progress.itemCount, Number(prewarmState.progressItemCount || prewarmState.items.length || 0));
+      progress.approximate = Boolean(prewarmState.progressTotalApproximate || !prewarmState.indexingDone);
+      progress.complete = Boolean(prewarmState.indexingDone && !prewarmState.indexingPaused && progress.loadedPages >= progress.totalPages);
+    } else if (state.cacheScope === scope) {
+      const loaded = Number(state.loadedPages.size || 0);
+      const total = Math.max(1, Number(state.lastPage || loaded || 1));
+      progress.loadedPages = Math.max(progress.loadedPages, loaded);
+      progress.totalPages = Math.max(progress.totalPages, total);
+      progress.itemCount = Math.max(progress.itemCount, Number(state.items.length || 0));
+      if (!progress.complete) {
+        progress.approximate = progress.loadedPages < progress.totalPages;
+        progress.complete = Boolean(state.indexingDone && !state.indexingPaused && progress.loadedPages >= progress.totalPages);
+      }
+    }
+
+    return progress;
+  }
+
+  function readRegionCacheProgress(state) {
+    if (!state) {
+      return {
+        loadedPages: 0,
+        totalPages: 1,
+        itemCount: 0,
+        approximate: true,
+        complete: false,
+      };
+    }
+
+    const combined = PREWARM_COLLECTIONS
+      .map((collection) => collectionCacheProgress(state, collection))
+      .reduce((total, progress) => ({
+        loadedPages: total.loadedPages + progress.loadedPages,
+        totalPages: total.totalPages + progress.totalPages,
+        itemCount: total.itemCount + progress.itemCount,
+        approximate: total.approximate || progress.approximate,
+        complete: total.complete && progress.complete,
+      }), {
+        loadedPages: 0,
+        totalPages: 0,
+        itemCount: 0,
+        approximate: false,
+        complete: true,
+      });
+
+    combined.totalPages = Math.max(1, combined.totalPages);
+    combined.loadedPages = Math.min(combined.loadedPages, combined.totalPages);
+    return combined;
+  }
+
+  function isRegionCacheProgressKey(state, key) {
+    if (!state || !key) return false;
+    return Array.from(protectedCacheScopesForRoute(state.route))
+      .some((scope) => key === cacheMetaKey(scope));
   }
 
   function setNativeHidden(hidden, state) {
@@ -3784,6 +3873,10 @@
   }
 
   function handlePrewarmLeaseStorage(event) {
+    if (appState && appState.ui && isRegionCacheProgressKey(appState, event.key)) {
+      updateStatus(appState);
+    }
+
     if (event.key === PREWARM_STOP_KEY) {
       handlePrewarmStopSignal(readPrewarmStopSignal());
       return;
