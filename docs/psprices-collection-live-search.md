@@ -281,7 +281,7 @@ When a result set exceeds the hard cap, the UI reports that only part of the mat
 
 The cache keeps the stored index small. Detailed visible cards are hydrated for the currently rendered matched results.
 
-When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. This allows the current text query to build a broad candidate pool while the platform and free filters trim confirmed matches from that pool.
+When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
 The main controls are:
 
