@@ -216,11 +216,11 @@ Browser quota is still controlled by the browser and userscript manager environm
 Collection indexing uses these main knobs:
 
 ```js
-const FETCH_CONCURRENCY = 4;
+const FETCH_CONCURRENCY = 5;
 const FETCH_RETRY_COUNT = 1;
 const FETCH_TIMEOUT_MS = 30000;
-const FETCH_DELAY_MS = 1000;
-const FETCH_JITTER_MS = 750;
+const FETCH_DELAY_MS = 800;
+const FETCH_JITTER_MS = 500;
 const MAX_HARD_FAILURES = 2;
 ```
 
@@ -236,8 +236,8 @@ Their purposes are:
 Background prewarm uses:
 
 ```js
-const PREWARM_FETCH_CONCURRENCY = 4;
-const PREWARM_COLLECTION_DELAY_MS = 2000;
+const PREWARM_FETCH_CONCURRENCY = 5;
+const PREWARM_COLLECTION_DELAY_MS = 1500;
 const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
 const PREWARM_LEASE_HEARTBEAT_MS = 5000;
 const PREWARM_LEASE_STALE_MS = 30 * 1000;
