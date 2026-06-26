@@ -82,10 +82,10 @@
   // Platform/free filters can also hydrate a small batch of unknown candidates so confirmed matches can appear.
   const LIVE_DETAIL_HYDRATION_ENABLED = true;
   const LIVE_DETAIL_HYDRATION_DELAY_MS = 0;
-  const LIVE_DETAIL_FETCH_CONCURRENCY = 6;
+  const LIVE_DETAIL_FETCH_CONCURRENCY = 7;
   const LIVE_DETAIL_FETCH_DELAY_MS = 0;
   const LIVE_DETAIL_FETCH_JITTER_MS = 0;
-  const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 25;
+  const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 15;
   // Set to -1 to allow all currently rendered results.
   const LIVE_DETAIL_MAX_ITEMS_PER_RENDER = -1;
   // Set to -1 to check every unknown candidate for platform/free filters at once.
@@ -2272,7 +2272,7 @@
         : !moreCacheMayArrive
         ? 'No collection items found.'
         : 'No indexed items found yet. More pages are still indexing.',
-        hydrationCandidates.length > 0 || isLiveDetailHydrationActive(state)
+        isResultStatusWorking(state, hydrationCandidates)
       );
       state.ui.empty.classList.remove('pspls-hidden');
     } else {
@@ -2285,7 +2285,7 @@
       setResultStatus(
         state,
         `${results.length} ${resultLabel} found.${capNote}`,
-        hydrationCandidates.length > 0 || isLiveDetailHydrationActive(state)
+        isResultStatusWorking(state, hydrationCandidates)
       );
       state.ui.empty.classList.remove('pspls-hidden');
     }
@@ -2334,7 +2334,7 @@
     if (!signature) {
       cancelLiveDetailHydration(state);
       state.liveDetailSignature = '';
-      setResultStatusWorking(state, false);
+      refreshResultStatusWorking(state);
       return;
     }
 
@@ -2356,7 +2356,7 @@
     if (!state || !state.ui || !state.ui.empty) return;
 
     state.ui.empty.replaceChildren(document.createTextNode(text || ''));
-    setResultStatusWorking(state, working);
+    setResultStatusWorking(state, working || isCacheIndexingActive(state));
   }
 
   function setResultStatusWorking(state, working) {
@@ -2386,6 +2386,31 @@
           state.liveDetailInFlightItems.size > 0
         )
     );
+  }
+
+  function isCacheIndexingActive(state) {
+    return Boolean(
+      state &&
+        (
+          (state.fetchingStarted && !state.indexingDone && !state.indexingPaused) ||
+          Boolean(state.fetchingPromise && !state.indexingDone && !state.indexingPaused) ||
+          (Array.isArray(state.pendingPages) && state.pendingPages.length > 0 && !state.indexingDone && !state.indexingPaused) ||
+          (state.queuedPages && state.queuedPages.size > 0 && !state.indexingDone && !state.indexingPaused) ||
+          isBackgroundIndexingScope(state.cacheScope)
+        )
+    );
+  }
+
+  function isResultStatusWorking(state, hydrationCandidates = []) {
+    return Boolean(
+      (Array.isArray(hydrationCandidates) && hydrationCandidates.length > 0) ||
+        isLiveDetailHydrationActive(state) ||
+        isCacheIndexingActive(state)
+    );
+  }
+
+  function refreshResultStatusWorking(state) {
+    setResultStatusWorking(state, isResultStatusWorking(state));
   }
 
   function needsLiveDetailHydration(item) {
@@ -2581,7 +2606,7 @@
         });
       }, LIVE_DETAIL_HYDRATION_DELAY_MS);
     } else if (isStateActive(state) && !isLiveDetailHydrationActive(state)) {
-      setResultStatusWorking(state, false);
+      refreshResultStatusWorking(state);
     }
   }
 
@@ -2655,7 +2680,7 @@
     state.liveDetailTargetItems.clear();
     state.liveDetailSignature = '';
     abortLiveDetailFetches(state);
-    setResultStatusWorking(state, false);
+    refreshResultStatusWorking(state);
   }
 
   function abortLiveDetailFetches(state, keepKeys = new Set()) {
