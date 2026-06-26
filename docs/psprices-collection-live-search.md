@@ -90,7 +90,9 @@ Search runs with a small input debounce so fast typing does not rebuild the resu
 
 The native PSPrices collection grid and native pagination are hidden on the canonical mounted routes. The userscript always renders its own collection grid, even when the search box is empty and no filters are active.
 
-With an empty query and `All platforms` selected, the first rendered batch is the first `108` indexed items sorted alphabetically. Typing in the search box or enabling platform/free filters narrows that same sorted result set.
+With an empty query and `All platforms` selected, the first rendered batch is the first `108` indexed items sorted alphabetically. After the current region's avatar and theme caches are both complete, typing in the search box or enabling platform/free filters narrows that same sorted result set.
+
+Search, platform/free filters, `Show more`, and product-page detail hydration stay locked until the current region's avatar and theme caches are both complete. This lock is still region-scoped: AU unlocks only after AU avatars and AU themes finish, while another region has its own queued or paused cache state. While locked, the default empty-query `All platforms` view can still show the initial indexed batch for the visible collection, but it does not fetch product URLs for thumbnails, prices, or platform confirmation.
 
 Text-query changes can keep matching partial results on screen briefly while the next live result set hydrates. Platform and `Free only` changes are treated as hard filter changes: the visible grid is rebuilt from scratch, the render limit resets to `108`, and in-flight detail hydration is abandoned for the previous filter state.
 
@@ -218,7 +220,7 @@ This userscript can be network-heavy. Cache indexing walks the collection pages 
 Collection indexing uses these main knobs:
 
 ```js
-const FETCH_CONCURRENCY = 5;
+const FETCH_CONCURRENCY = 6;
 const FETCH_RETRY_COUNT = 1;
 const FETCH_TIMEOUT_MS = 30000;
 const FETCH_DELAY_MS = 800;
@@ -238,7 +240,7 @@ Their purposes are:
 Background prewarm uses:
 
 ```js
-const PREWARM_FETCH_CONCURRENCY = 5;
+const PREWARM_FETCH_CONCURRENCY = 6;
 const PREWARM_COLLECTION_DELAY_MS = 1500;
 const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
 const PREWARM_LEASE_HEARTBEAT_MS = 5000;
@@ -281,7 +283,7 @@ When a result set exceeds the hard cap, the UI reports that only part of the mat
 
 ## Live Detail Hydration
 
-The cache keeps the stored index small. Detailed visible cards are hydrated for the currently rendered matched results.
+The cache keeps the stored index small. Detailed visible cards are hydrated for the currently rendered matched results, but only after the current region's avatar and theme caches are both complete. This avoids stacking product-page URL fetches on top of collection-page cache indexing.
 
 When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
