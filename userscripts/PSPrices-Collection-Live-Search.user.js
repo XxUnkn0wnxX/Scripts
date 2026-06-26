@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.16
+// @version      1.0.17
 // @description  Adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current page. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.16';
+  const SCRIPT_VERSION = '1.0.17';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -312,6 +312,21 @@
   function isThemeCollection(collection) {
     const value = String(collection || '').toLowerCase();
     return value === THEME_CANONICAL_COLLECTION || isThemeFilterCollection(value);
+  }
+
+  function oppositeCanonicalCollection(collection) {
+    return isThemeCollection(collection)
+      ? AVATAR_CANONICAL_COLLECTION
+      : THEME_CANONICAL_COLLECTION;
+  }
+
+  function collectionSwitchLabel(collection) {
+    return isThemeCollection(collection) ? 'Go To Avatars' : 'Go To Themes';
+  }
+
+  function collectionSwitchHref(route) {
+    const targetCollection = oppositeCanonicalCollection(route.collection);
+    return `${route.origin}/region-${route.region}/collection/${targetCollection}`;
   }
 
   function isFilteredCollection(collection) {
@@ -1765,6 +1780,11 @@
       @media (prefers-reduced-motion: reduce) {
         [${OWNER_ATTR}] .pspls-status-spinner { animation: none; opacity: 0.75; }
       }
+      [${OWNER_ATTR}="collection-switch"] {
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        vertical-align: middle;
+      }
     `;
     const styleRoot = document.head || document.documentElement || document.body;
     if (styleRoot) {
@@ -1784,6 +1804,7 @@
 
   function buildUi(state) {
     injectStyles();
+    mountCollectionSwitchButton(state.route);
 
     const panel = document.createElement('section');
     panel.setAttribute(OWNER_ATTR, 'panel');
@@ -1972,6 +1993,35 @@
     syncInteractionLock(state);
 
     return state.ui;
+  }
+
+  function findCollectionHeading() {
+    return document.querySelector('main h1') || document.querySelector('h1');
+  }
+
+  function removeCollectionSwitchButton() {
+    document.querySelectorAll(`[${OWNER_ATTR}="collection-switch"]`).forEach((node) => node.remove());
+  }
+
+  function mountCollectionSwitchButton(route) {
+    removeCollectionSwitchButton();
+
+    const heading = findCollectionHeading();
+    if (!heading) {
+      logger.verbose('Collection heading not found; switch button was not mounted.');
+      return;
+    }
+
+    const label = collectionSwitchLabel(route.collection);
+    const link = document.createElement('a');
+    link.setAttribute(OWNER_ATTR, 'collection-switch');
+    link.className = 'btn btn-sm btn-outline ml-3 whitespace-nowrap shadow-sm normal-case';
+    link.href = collectionSwitchHref(route);
+    link.textContent = label;
+    link.title = label;
+    link.setAttribute('aria-label', label);
+
+    heading.append(' ', link);
   }
 
   function iconButton(icon, label) {
@@ -4131,6 +4181,7 @@
     if (appState.ui && appState.ui.panel) {
       appState.ui.panel.remove();
     }
+    removeCollectionSwitchButton();
     setNativeHidden(false, appState);
     appState = null;
   }
