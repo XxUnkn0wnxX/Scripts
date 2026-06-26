@@ -78,8 +78,8 @@
   const RENDER_STEP = 54;
   // Set to -1 for no hard render cap. High values can be heavy on low-memory machines.
   const MAX_RENDER_LIMIT = 1200;
-  // Live detail hydration fills thumbnails, prices, and platform badges for rendered results only.
-  // It fetches each visible matched item's product page so details are targeted surgically per item.
+  // Live detail hydration fills thumbnails, prices, and platform badges for rendered results.
+  // Platform/free filters can also hydrate a small batch of unknown candidates so confirmed matches can appear.
   const LIVE_DETAIL_HYDRATION_ENABLED = true;
   const LIVE_DETAIL_HYDRATION_DELAY_MS = 0;
   const LIVE_DETAIL_FETCH_CONCURRENCY = 6;
@@ -88,6 +88,8 @@
   const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 25;
   // Set to -1 to allow all currently rendered results.
   const LIVE_DETAIL_MAX_ITEMS_PER_RENDER = -1;
+  // Set to -1 to check every unknown candidate for platform/free filters at once.
+  const LIVE_DETAIL_FILTER_CANDIDATE_BATCH = 108;
   const RENDER_STALE_RESULT_GRACE_MS = 2500;
 
   const STYLE_ID = 'psprices-live-search-style';
@@ -322,8 +324,7 @@
 
   function defaultPlatformTextForCollection(collection) {
     const value = String(collection || '').toLowerCase();
-    if (value === 'avatars') return 'PS5 PS4 PS3';
-    if (value === 'themes') return 'PS4 PS3';
+    if (value === 'avatars' || value === 'themes') return '';
     return '';
   }
 
@@ -579,7 +580,7 @@
 
     if (Array.isArray(item)) {
       const url = String(item[1] || '');
-      const filterFlags = parseFilterFlags(item[2]).join(',');
+      const filterFlags = sanitizeCompactFilterFlags(parseFilterFlags(item[2]), collection).join(',');
       return {
         id: extractGameId(url),
         title: String(item[0] || ''),
@@ -609,6 +610,22 @@
       collection: itemCollection,
       region: String(item && item.region || region),
     };
+  }
+
+  function sanitizeCompactFilterFlags(flags, collection) {
+    const values = parseFilterFlags(flags);
+    const platformFlags = values.filter((flag) => /^ps[345]$/.test(flag));
+    const flagSet = new Set(values);
+    const value = String(collection || '').toLowerCase();
+    const looksLikeOldDefault =
+      (value === AVATAR_CANONICAL_COLLECTION && flagSet.has('ps3') && flagSet.has('ps4') && flagSet.has('ps5')) ||
+      (value === THEME_CANONICAL_COLLECTION && flagSet.has('ps3') && flagSet.has('ps4') && !flagSet.has('ps5'));
+
+    if (!looksLikeOldDefault || platformFlags.length === 0) {
+      return values;
+    }
+
+    return values.filter((flag) => !/^ps[345]$/.test(flag));
   }
 
   function titleFromUrl(url) {
@@ -2055,12 +2072,16 @@
     }
 
     const terms = query.split(/\s+/).filter(Boolean);
-    const results = state.items.filter((item) => {
-      if (!itemMatchesUiFilters(item, state)) return false;
+    const queryMatches = state.items.filter((item) => {
       if (!hasQuery) return true;
       if (item.searchText.includes(query)) return true;
       return terms.length > 1 && terms.every((term) => item.searchText.includes(term));
     }).sort(compareItemsForDisplay);
+    const needsConfirmedDetails = filteredResultsNeedConfirmedDetails(state);
+    const results = queryMatches.filter((item) => itemMatchesUiFilters(item, state));
+    const hydrationCandidates = needsConfirmedDetails
+      ? limitLiveDetailFilterCandidates(queryMatches.filter((item) => itemNeedsUiFilterHydration(item, state)))
+      : [];
 
     logger.verbose(
       'Search updated.',
@@ -2072,13 +2093,24 @@
       state.freeOnly,
       'results',
       results.length,
+      'candidateResults',
+      queryMatches.length,
+      'detailCandidates',
+      hydrationCandidates.length,
       'indexedItems',
       state.items.length
     );
-    renderResults(state, results, options);
+    renderResults(state, results, {
+      ...options,
+      hydrationCandidates,
+    });
   }
 
   function itemMatchesUiFilters(item, state) {
+    if (filteredResultsNeedConfirmedDetails(state) && needsLiveDetailHydration(item)) {
+      return false;
+    }
+
     const flags = new Set(itemFilterFlags(item));
     if (state.platformFilter && !flags.has(state.platformFilter)) {
       return false;
@@ -2087,6 +2119,42 @@
       return false;
     }
     return true;
+  }
+
+  function filteredResultsNeedConfirmedDetails(state) {
+    return Boolean(state && (state.platformFilter || state.freeOnly));
+  }
+
+  function hasKnownPlatformFlags(item) {
+    const flags = new Set(itemFilterFlags(item));
+    return flags.has('ps3') || flags.has('ps4') || flags.has('ps5');
+  }
+
+  function hasKnownPriceFlags(item) {
+    return Boolean(String(item && item.priceText || '').trim());
+  }
+
+  function itemNeedsUiFilterHydration(item, state) {
+    if (!item || !item.url || !needsLiveDetailHydration(item)) return false;
+
+    const flags = new Set(itemFilterFlags(item));
+    const hasPlatformFlags = hasKnownPlatformFlags(item);
+    const hasPriceFlags = hasKnownPriceFlags(item);
+
+    if (state.platformFilter) {
+      if (!hasPlatformFlags) return true;
+      if (!flags.has(state.platformFilter)) return false;
+    }
+    if (state.freeOnly) {
+      if (!hasPriceFlags) return true;
+      if (!flags.has('free')) return false;
+    }
+    return true;
+  }
+
+  function limitLiveDetailFilterCandidates(items) {
+    if (LIVE_DETAIL_FILTER_CANDIDATE_BATCH < 0) return items;
+    return items.slice(0, LIVE_DETAIL_FILTER_CANDIDATE_BATCH);
   }
 
   function tryResumePausedIndexing(state, query) {
@@ -2134,6 +2202,9 @@
     const hardLimit = maxRenderableResults(results.length);
     const limit = Math.min(state.resultLimit, hardLimit);
     const visibleResults = results.slice(0, limit);
+    const hydrationCandidates = Array.isArray(options.hydrationCandidates)
+      ? options.hydrationCandidates
+      : [];
 
     reconcileRenderedResults(state, visibleResults, {
       preserveStaleResults: options.preserveStaleResults !== false,
@@ -2141,7 +2212,9 @@
 
     if (results.length === 0) {
       const moreCacheMayArrive = state.loadedPages.size < state.lastPage || isBackgroundIndexingScope(state.cacheScope);
-      state.ui.empty.textContent = !moreCacheMayArrive
+      state.ui.empty.textContent = hydrationCandidates.length > 0
+        ? `Checking ${hydrationCandidates.length} matching item detail${hydrationCandidates.length === 1 ? '' : 's'} for the selected filters...`
+        : !moreCacheMayArrive
         ? 'No collection items found.'
         : 'No indexed items found yet. More pages are still indexing.';
       state.ui.empty.classList.remove('pspls-hidden');
@@ -2149,7 +2222,10 @@
       const capNote = MAX_RENDER_LIMIT >= 0 && results.length > MAX_RENDER_LIMIT
         ? ` Showing ${limit} of ${results.length}; refine search to narrow results.`
         : '';
-      state.ui.empty.textContent = `${results.length} result${results.length === 1 ? '' : 's'} found.${capNote}`;
+      const hydrateNote = hydrationCandidates.length > 0
+        ? ` Checking ${hydrationCandidates.length} more possible match${hydrationCandidates.length === 1 ? '' : 'es'}.`
+        : '';
+      state.ui.empty.textContent = `${results.length} result${results.length === 1 ? '' : 's'} found.${capNote}${hydrateNote}`;
       state.ui.empty.classList.remove('pspls-hidden');
     }
 
@@ -2161,16 +2237,25 @@
     }
 
     if (!options.skipLiveDetailHydration) {
-      scheduleLiveDetailHydration(state, visibleResults);
+      scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates);
     }
   }
 
-  function scheduleLiveDetailHydration(state, visibleResults) {
+  function scheduleLiveDetailHydration(state, visibleResults, hydrationCandidates = []) {
     if (!LIVE_DETAIL_HYDRATION_ENABLED || !state || state.background || !state.ui) return;
 
     const maxItems = LIVE_DETAIL_MAX_ITEMS_PER_RENDER < 0 ? Number.POSITIVE_INFINITY : LIVE_DETAIL_MAX_ITEMS_PER_RENDER;
+    const combinedResults = [];
+    const seenKeys = new Set();
+    for (const item of visibleResults.concat(hydrationCandidates)) {
+      const key = itemKey(item);
+      if (!key || seenKeys.has(key)) continue;
+      seenKeys.add(key);
+      combinedResults.push(item);
+    }
+
     const targetItems = [];
-    for (const item of visibleResults) {
+    for (const item of combinedResults) {
       if (!item || !item.url || !needsLiveDetailHydration(item)) continue;
       const key = itemKey(item);
       if (
@@ -2362,8 +2447,13 @@
             changed = true;
             scheduleLiveDetailRender(state);
           }
-          state.liveDetailFetchedItems.add(key);
-          logger.verbose('Hydrated live result details.', 'item', item.title || item.url);
+          if (needsLiveDetailHydration(item)) {
+            state.liveDetailFetchedItems.delete(key);
+            logger.verbose('Live result detail response incomplete.', 'item', item.title || item.url);
+          } else {
+            state.liveDetailFetchedItems.add(key);
+            logger.verbose('Hydrated live result details.', 'item', item.title || item.url);
+          }
         } catch (error) {
           if (error && error.name === 'AbortError') {
             logger.verbose('Live detail fetch aborted.', 'item', item.title || item.url);
@@ -2382,7 +2472,7 @@
 
     state.liveDetailFetching = false;
     if (changed && isStateActive(state) && !state.liveDetailRenderTimer) {
-      runSearch(state, { skipLiveDetailHydration: true });
+      runSearch(state, { skipLiveDetailHydration: !filteredResultsNeedConfirmedDetails(state) });
     }
 
     if (isStateActive(state) && state.liveDetailItemQueue.length > 0) {
@@ -2412,6 +2502,7 @@
       changed = true;
     }
     if (changed) {
+      item.filterFlags = itemFilterFlags(item).join(',');
       item.liveDetailVersion = (Number(item.liveDetailVersion) || 0) + 1;
       item.searchText = buildSearchText(item);
       state.itemsByKey.set(itemKey(item), item);
@@ -2486,7 +2577,7 @@
     state.liveDetailRenderTimer = setTimeout(() => {
       state.liveDetailRenderTimer = 0;
       if (isStateActive(state)) {
-        runSearch(state, { skipLiveDetailHydration: true });
+        runSearch(state, { skipLiveDetailHydration: !filteredResultsNeedConfirmedDetails(state) });
       }
     }, LIVE_DETAIL_RENDER_DEBOUNCE_MS);
   }

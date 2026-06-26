@@ -112,7 +112,7 @@ The userscript replaces reliance on PSPrices' separate collection filter URLs wi
 
 The platform dropdown and `Free only` checkbox can be combined. For example, selecting `PS4` and enabling `Free only` shows only free PS4 matches from the current collection's cached results.
 
-The filter data is kept small in the stored index. Product page details are still hydrated live only for visible matched results.
+The filter data is kept small in the stored index. Product page details are hydrated live for visible matched results, and platform/free filters can also hydrate unknown matching candidates in small batches so unconfirmed rows are not rendered as final results.
 
 ## Background Indexing
 
@@ -279,7 +279,9 @@ When a result set exceeds the hard cap, the UI reports that only part of the mat
 
 ## Live Detail Hydration
 
-The cache keeps the stored index small. Detailed visible cards are hydrated only for the currently rendered matched results.
+The cache keeps the stored index small. Detailed visible cards are hydrated for the currently rendered matched results.
+
+When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. This allows the current text query to build a broad candidate pool while the platform and free filters trim confirmed matches from that pool.
 
 The main controls are:
 
@@ -290,16 +292,18 @@ const LIVE_DETAIL_FETCH_DELAY_MS = 0;
 const LIVE_DETAIL_FETCH_JITTER_MS = 0;
 const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 25;
 const LIVE_DETAIL_MAX_ITEMS_PER_RENDER = -1;
+const LIVE_DETAIL_FILTER_CANDIDATE_BATCH = 108;
 ```
 
 Their purposes are:
 
-- `LIVE_DETAIL_HYDRATION_ENABLED`: enables product-page detail fetching for rendered results
-- `LIVE_DETAIL_FETCH_CONCURRENCY`: number of visible result product pages fetched in parallel
+- `LIVE_DETAIL_HYDRATION_ENABLED`: enables product-page detail fetching for rendered results and filter candidate checks
+- `LIVE_DETAIL_FETCH_CONCURRENCY`: number of product pages fetched in parallel
 - `LIVE_DETAIL_FETCH_DELAY_MS`: base delay before each live detail fetch
 - `LIVE_DETAIL_FETCH_JITTER_MS`: random extra delay for live detail fetches
 - `LIVE_DETAIL_RENDER_DEBOUNCE_MS`: small delay before applying hydrated card updates
 - `LIVE_DETAIL_MAX_ITEMS_PER_RENDER`: maximum visible rendered cards to hydrate, or `-1` for no cap
+- `LIVE_DETAIL_FILTER_CANDIDATE_BATCH`: maximum unknown platform/free candidate rows checked per filter pass, or `-1` for no cap
 
 Hydration is retargeted as the query changes. Results that still match the new query can remain on screen, while clearly stale result cards are removed after:
 
