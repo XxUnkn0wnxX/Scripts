@@ -2043,6 +2043,7 @@
     state.ui.progress.max = total;
     state.ui.progress.value = Math.min(loaded, total);
     syncInteractionLock(state);
+    refreshResultStatusWorking(state);
   }
 
   function useLocalStatusProgress(state) {
@@ -2545,6 +2546,7 @@
     return Boolean(
       state &&
         (
+          state.waitingForLease ||
           (state.fetchingStarted && !state.indexingDone && !state.indexingPaused) ||
           Boolean(state.fetchingPromise && !state.indexingDone && !state.indexingPaused) ||
           (Array.isArray(state.pendingPages) && state.pendingPages.length > 0 && !state.indexingDone && !state.indexingPaused) ||

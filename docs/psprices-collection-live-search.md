@@ -287,7 +287,7 @@ The cache keeps the stored index small. During cache builds, the initial locked 
 
 When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
-While candidate hydration or same-region collection cache indexing is still running, the UI labels already verified matches as confirmed results and shows a small pulsing indicator beside that status. The indicator is shared by avatar and theme pages, so the avatar page can pulse while the theme cache builds and the theme page can pulse while the avatar cache builds. Remaining undisplayed items are reported through the `Show more` button.
+While candidate hydration, same-region collection cache indexing, or queued same-region lease work is still running, the UI labels already verified matches as confirmed results and shows a small pulsing indicator beside that status. The indicator is refreshed from cache status updates as well as result renders, so the avatar page can pulse while the theme cache builds and the theme page can pulse while the avatar cache builds, including after page reloads or region navigation. Remaining undisplayed items are reported through the `Show more` button.
 
 The main controls are:
 
