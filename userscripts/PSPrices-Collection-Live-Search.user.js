@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.28
+// @version      1.0.29
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.28';
+  const SCRIPT_VERSION = '1.0.29';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -61,6 +61,8 @@
   const CACHE_INDEXEDDB_WARN_BYTES = 2 * 1024 * 1024 * 1024;
   const CACHE_INDEXEDDB_MAX_BYTES = 4 * 1024 * 1024 * 1024;
   const CACHE_INDEXEDDB_TARGET_BYTES = 3.5 * 1024 * 1024 * 1024;
+  const CACHE_INDEXEDDB_WRITE_BATCH_SIZE = 8;
+  const CACHE_INDEXEDDB_WRITE_FLUSH_MS = 250;
   const CACHE_BUDGET_CHECK_INTERVAL_MS = 5 * 1000;
   const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
   const INPUT_DEBOUNCE_MS = 120;
@@ -149,6 +151,8 @@
   };
   let cacheMemory = new Map();
   let cacheWriteQueue = Promise.resolve();
+  let cacheWriteBatch = new Map();
+  let cacheWriteFlushTimer = 0;
   let cacheStorageSizeWarningShown = false;
   let cacheStorageModeLogged = false;
 
@@ -1006,27 +1010,70 @@
     }
   }
 
-  function queueIndexedDbWrite(action, key, value = null) {
+  function clearIndexedDbWriteFlushTimer() {
+    if (!cacheWriteFlushTimer) return;
+    clearTimeout(cacheWriteFlushTimer);
+    cacheWriteFlushTimer = 0;
+  }
+
+  function flushQueuedIndexedDbWrites(reason = 'scheduled') {
+    clearIndexedDbWriteFlushTimer();
+    if (cacheWriteBatch.size === 0) return cacheWriteQueue;
+
+    const entries = Array.from(cacheWriteBatch.values());
+    cacheWriteBatch.clear();
     cacheWriteQueue = cacheWriteQueue
       .catch(() => undefined)
       .then(async () => {
         if (cacheStorage.type !== CACHE_STORAGE_INDEXEDDB || !cacheStorage.db) return;
         await idbTransaction('readwrite', (store) => {
-          if (action === 'delete') {
-            store.delete(key);
-            return;
+          for (const entry of entries) {
+            if (entry.action === 'delete') {
+              store.delete(entry.key);
+              continue;
+            }
+            store.put({
+              key: entry.key,
+              value: cloneStorageValue(entry.value),
+              updatedAt: Date.now(),
+            });
           }
-          store.put({
-            key,
-            value: cloneStorageValue(value),
-            updatedAt: Date.now(),
-          });
         });
-        signalCacheStorageChange(key);
+        for (const entry of entries) {
+          signalCacheStorageChange(entry.key);
+        }
+        logger.verbose('Flushed IndexedDB cache write batch.', 'reason', reason, 'entries', entries.length);
       })
       .catch((error) => {
-        handleCacheStorageFailure(`IndexedDB ${action} failed`, error);
+        handleCacheStorageFailure('IndexedDB write batch failed', error);
       });
+    return cacheWriteQueue;
+  }
+
+  function scheduleIndexedDbWriteFlush() {
+    if (cacheWriteFlushTimer || pageIsUnloading) return;
+    cacheWriteFlushTimer = setTimeout(() => {
+      cacheWriteFlushTimer = 0;
+      flushQueuedIndexedDbWrites('timer');
+    }, CACHE_INDEXEDDB_WRITE_FLUSH_MS);
+  }
+
+  function queueIndexedDbWrite(action, key, value = null) {
+    if (cacheStorage.type !== CACHE_STORAGE_INDEXEDDB || !cacheStorage.db) {
+      return cacheWriteQueue;
+    }
+
+    cacheWriteBatch.set(key, {
+      action,
+      key,
+      value: action === 'delete' ? null : cloneStorageValue(value),
+    });
+
+    if (pageIsUnloading || cacheWriteBatch.size >= CACHE_INDEXEDDB_WRITE_BATCH_SIZE) {
+      return flushQueuedIndexedDbWrites(pageIsUnloading ? 'page-unload' : 'batch-size');
+    }
+
+    scheduleIndexedDbWriteFlush();
     return cacheWriteQueue;
   }
 
@@ -5001,6 +5048,7 @@
   function handlePageUnload() {
     if (pageIsUnloading) return;
     pageIsUnloading = true;
+    flushQueuedIndexedDbWrites('page-unload');
     if (prewarmState || prewarmLeaseSignature) {
       broadcastPrewarmStop('page-unload');
     }
