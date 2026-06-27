@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.24
+// @version      1.0.25
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.24';
+  const SCRIPT_VERSION = '1.0.25';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -210,6 +210,10 @@
     warn: (...parts) => writeLog('warn', ...parts),
     error: (...parts) => writeLog('error', ...parts)
   });
+
+  function logStartup() {
+    logger.info(`has started (v${SCRIPT_VERSION})`);
+  }
 
   function onReady(callback) {
     if (document.readyState === 'loading') {
@@ -5088,13 +5092,13 @@
       installNavigationWatcher();
       startApp(false);
       startRegionPrewarm(false);
-      logger.info(`Loaded v${SCRIPT_VERSION}.`, 'logLevel', effectiveLogLevel);
+      logStartup();
     }).catch((error) => {
       logger.error('Unable to initialize collection-search cache storage.', error);
       installNavigationWatcher();
       startApp(false);
       startRegionPrewarm(false);
-      logger.info(`Loaded v${SCRIPT_VERSION}.`, 'logLevel', effectiveLogLevel);
+      logStartup();
     });
   });
 
