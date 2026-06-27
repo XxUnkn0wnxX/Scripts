@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.23
+// @version      1.0.24
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.23';
+  const SCRIPT_VERSION = '1.0.24';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -40,6 +40,7 @@
   const CACHE_PREFIX = 'psprices-live-search';
   const CACHE_VERSION = 4;
   const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+  const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
   const CACHE_SCOPE_VERSION = 'v4';
   const CACHE_RESET_ON_SCHEMA_CHANGE = true;
   const CACHE_SCHEMA_VERSION = 9;
@@ -432,6 +433,24 @@
 
   function cachePageKey(scope, page) {
     return `${scope}:page:${page}`;
+  }
+
+  function detailCacheScope(route) {
+    const languagePart = route.language ? encodeURIComponent(route.language.toLowerCase()) : 'nolanguage';
+    return [
+      CACHE_PREFIX,
+      CACHE_SCOPE_VERSION,
+      route.host,
+      route.region,
+      'details',
+      languagePart,
+    ].join(':');
+  }
+
+  function detailCacheKey(route, item) {
+    const url = compactUrlForStorage(item && item.url);
+    if (!route || !url) return '';
+    return `${detailCacheScope(route)}:${encodeURIComponent(url)}`;
   }
 
   function isScriptCacheKey(key) {
@@ -1050,6 +1069,106 @@
       signalCacheStorageChange(key);
     } catch (_) {
       // Ignore storage cleanup errors.
+    }
+  }
+
+  function canUseDetailCache() {
+    return cacheStorage.type === CACHE_STORAGE_INDEXEDDB;
+  }
+
+  function detailHasUsefulMetadata(detail) {
+    return Boolean(
+      detail &&
+        (
+          detail.image ||
+          detail.priceText ||
+          detail.platformText ||
+          detail.extraText ||
+          parseFilterFlags(detail.filterFlags).length > 0
+        )
+    );
+  }
+
+  function compactDetailForStorage(item, route) {
+    if (!canUseDetailCache() || !item || !item.url) return null;
+
+    const detail = {
+      version: CACHE_VERSION,
+      fetchedAt: Date.now(),
+      id: String(item.id || extractGameId(item.url) || ''),
+      title: String(item.title || ''),
+      url: compactUrlForStorage(item.url),
+      image: String(item.image || ''),
+      priceText: String(item.priceText || ''),
+      platformText: String(item.platformText || ''),
+      extraText: String(item.extraText || ''),
+      filterFlags: itemFilterFlags(item).join(','),
+      collection: String(item.collection || route.collection || ''),
+      region: String(item.region || route.region || ''),
+    };
+
+    return detailHasUsefulMetadata(detail)
+      ? detail
+      : null;
+  }
+
+  function readDetailCache(route, item) {
+    if (!canUseDetailCache()) return null;
+
+    const key = detailCacheKey(route, item);
+    if (!key) return null;
+
+    const payload = readJsonStorage(key);
+    if (!payload || payload.version !== CACHE_VERSION) {
+      if (payload) removeStorageKey(key);
+      return null;
+    }
+
+    if (Date.now() - Number(payload.fetchedAt || 0) > DETAIL_CACHE_TTL_MS) {
+      removeStorageKey(key);
+      return null;
+    }
+
+    const detail = {
+      id: String(payload.id || item.id || ''),
+      title: String(payload.title || item.title || ''),
+      url: item.url,
+      image: String(payload.image || ''),
+      priceText: String(payload.priceText || ''),
+      platformText: String(payload.platformText || ''),
+      extraText: String(payload.extraText || ''),
+      filterFlags: parseFilterFlags(payload.filterFlags).join(','),
+      collection: String(payload.collection || item.collection || route.collection || ''),
+      region: String(payload.region || item.region || route.region || ''),
+      page: item.page || 0,
+    };
+    return detailHasUsefulMetadata(detail) ? detail : null;
+  }
+
+  function writeDetailCache(route, item, detail) {
+    if (!canUseDetailCache()) return;
+
+    const source = detail ? { ...item, ...detail } : item;
+    const payload = compactDetailForStorage(source, route);
+    const key = detailCacheKey(route, source);
+    if (!key || !payload) return;
+
+    writeJsonStorage(key, payload);
+    logger.verbose('Cached product detail metadata.', 'storage', cacheStorageLabel(), 'item', source.title || source.url);
+  }
+
+  function seedDetailCacheFromItems(route, items) {
+    if (!canUseDetailCache() || !Array.isArray(items)) return;
+
+    let seeded = 0;
+    for (const item of items) {
+      if (!item || !item.url) continue;
+      if (!item.image && !item.priceText && !item.platformText) continue;
+      writeDetailCache(route, item, item);
+      seeded += 1;
+    }
+    if (seeded > 0) {
+      logger.verbose('Seeded detail metadata from collection page.', 'items', seeded, 'collection', route.collection);
     }
   }
 
@@ -3598,6 +3717,17 @@
 
         try {
           const itemUrl = absoluteUrl(item.url, window.location.href);
+          const cachedDetail = readDetailCache(route, item);
+          if (cachedDetail && applyLiveDetailToItem(state, item, cachedDetail)) {
+            changed = true;
+            scheduleLiveDetailRender(state);
+          }
+          if (!needsLiveDetailHydration(item)) {
+            state.liveDetailFetchedItems.add(key);
+            logger.verbose('Hydrated live result details from cache.', 'item', item.title || item.url);
+            continue;
+          }
+
           const html = await fetchPageHtml(state, itemUrl, state.liveDetailAbortControllers, key);
           if (!isLiveDetailRunActive(state, runId)) break;
           if (!state.liveDetailTargetItems.has(key)) {
@@ -3607,6 +3737,7 @@
 
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const detail = parseProductDetailItem(doc, item, route, itemUrl);
+          writeDetailCache(route, item, detail);
           if (
             isLiveDetailRunActive(state, runId) &&
             state.liveDetailTargetItems.has(key) &&
@@ -3661,6 +3792,10 @@
     if (!item || !detail) return false;
 
     let changed = false;
+    if (detail.title && item.title !== detail.title) {
+      item.title = detail.title;
+      changed = true;
+    }
     if (detail.image && item.image !== detail.image) {
       item.image = detail.image;
       changed = true;
@@ -3671,6 +3806,14 @@
     }
     if (detail.platformText && item.platformText !== detail.platformText) {
       item.platformText = detail.platformText;
+      changed = true;
+    }
+    if (detail.extraText && item.extraText !== detail.extraText) {
+      item.extraText = detail.extraText;
+      changed = true;
+    }
+    if (detail.filterFlags && item.filterFlags !== detail.filterFlags) {
+      item.filterFlags = detail.filterFlags;
       changed = true;
     }
     if (changed) {
@@ -3989,6 +4132,7 @@
       'lastPage',
       state.lastPage
     );
+    seedDetailCacheFromItems(state.cacheRoute || state.route, currentPageItems);
     absorbIndexedPage(state, state.route.currentPage, currentPageItems, 'dom');
 
     if (state.cacheEnabled && !state.forceRefresh) {
@@ -4242,12 +4386,13 @@
         if (!isStateActive(state)) return;
 
         const doc = new DOMParser().parseFromString(html, 'text/html');
-        const items = parsePageItems(doc, state.route, page, makePageUrl(state.route, page));
-        removeIndexedPage(state, page);
-        state.loadedPages.add(page);
-        state.queuedPages.delete(page);
-        saveCachePage(state, page, items);
-        addItemsToIndex(state, items, 'network');
+      const items = parsePageItems(doc, state.route, page, makePageUrl(state.route, page));
+      removeIndexedPage(state, page);
+      state.loadedPages.add(page);
+      state.queuedPages.delete(page);
+      seedDetailCacheFromItems(state.cacheRoute || state.route, items);
+      saveCachePage(state, page, items);
+      addItemsToIndex(state, items, 'network');
 
         const detectedLastPage = detectLastPage(doc, state.route);
         const previousLastPage = state.lastPage;

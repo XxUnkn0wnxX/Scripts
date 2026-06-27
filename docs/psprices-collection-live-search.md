@@ -184,14 +184,16 @@ Cache keys and database entries use the script prefix:
 psprices-live-search:
 ```
 
-The stored page data is intentionally compact. It primarily stores:
+The stored collection page data is intentionally compact. It primarily stores:
 
 - item title
 - relative product URL
 - lightweight filter flags where available
 - page-level metadata such as collection, region, completion state, and timestamps
 
-Thumbnails, prices, and detailed platform text are not bulk-cached for every collection item. They are fetched live for visible matched results when needed.
+When IndexedDB is active, the script also keeps a separate product detail metadata cache for visible/hydrated items and metadata already present on collection pages. That detail cache can include image URLs, price text, platform text, extra searchable text, and filter flags. It stores image URLs, not image binary blobs, so browser HTTP cache still owns the actual image files.
+
+When localStorage is forced or used as fallback, the cache stays compact and does not store the heavier detail metadata. In that mode, thumbnails, prices, and detailed platform text are fetched live for visible matched results when needed.
 
 The clear-cache button only clears the current region:
 
@@ -207,6 +209,7 @@ The main cache freshness constants are near the top of the userscript:
 
 ```js
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
 const CACHE_SCHEMA_VERSION = 9;
 const CACHE_RESET_ON_SCHEMA_CHANGE = true;
@@ -215,6 +218,7 @@ const CACHE_RESET_ON_SCHEMA_CHANGE = true;
 Their purposes are:
 
 - `CACHE_TTL_MS`: maximum age of a cached page before it is removed and rebuilt
+- `DETAIL_CACHE_TTL_MS`: maximum age of IndexedDB product detail metadata before it is refetched
 - `CACHE_REVALIDATE_MS`: age after which an otherwise complete collection can be checked again
 - `CACHE_SCHEMA_VERSION`: manual cache migration marker for incompatible cache changes
 - `CACHE_RESET_ON_SCHEMA_CHANGE`: when `true`, changing the schema version purges old script caches on next load
@@ -314,9 +318,9 @@ When a result set exceeds the hard cap, the UI reports that only part of the mat
 
 The cache keeps the stored index small. Detail hydration waits until the current region's avatar and theme caches are both 100% complete. During cache builds, the grid stays empty and no product-page URL fetches are started, avoiding extra product requests on top of collection-page cache indexing.
 
-When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked by fetching their product pages before they are shown as confirmed matches. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
+When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked against IndexedDB detail metadata first. Product pages are fetched only when that detail metadata is missing, stale, or still incomplete. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
-While a visible result batch is hydrating, partial re-renders keep that batch's hydration queue stable. Search text, filter, or `Show more` changes still cancel and retarget hydration so stale result details are not fetched longer than needed. When the active metadata worker batch drains, the grid is forced through one final render so completed theme details cannot stay hidden behind a pending debounce. If compact cached rows are reloaded without metadata, they can be hydrated again even when their key was fetched earlier in the same page session.
+While a visible result batch is hydrating, partial re-renders keep that batch's hydration queue stable. Search text, filter, or `Show more` changes still cancel and retarget hydration so stale result details are not fetched longer than needed. When the active metadata worker batch drains, the grid is forced through one final render so completed theme details cannot stay hidden behind a pending debounce. If compact cached rows are reloaded without metadata, they can be hydrated again even when their key was fetched earlier in the same page session. If IndexedDB has fresh detail metadata, hydration can complete from cache without a product-page request.
 
 Result cards use detail-confirmed rendering, including blank All platforms views, so grids fill progressively with real thumbnails, prices, and platform badges instead of painting a full page of placeholders first. All platforms is treated as a `PS3`/`PS4`/`PS5` union while compact rows are being confirmed. On collection page launch, initial hydration waits for the page `load` event and mounted userscript UI before restarting, and retries if the grid stays empty. Product detail rows that fail hydration are not rendered for avatars or themes; the status line reports how many matching rows failed metadata fetching.
 
