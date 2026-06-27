@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.22
+// @version      1.0.23
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.22';
+  const SCRIPT_VERSION = '1.0.23';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -42,11 +42,24 @@
   const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
   const CACHE_SCOPE_VERSION = 'v4';
   const CACHE_RESET_ON_SCHEMA_CHANGE = true;
-  const CACHE_SCHEMA_VERSION = 8;
+  const CACHE_SCHEMA_VERSION = 9;
   const CACHE_MIGRATION_VERSION = `cache-schema-${CACHE_SCHEMA_VERSION}`;
   const CACHE_MIGRATION_KEY = `${CACHE_PREFIX}:migration-version`;
-  const CACHE_MAX_BYTES = 4.4 * 1024 * 1024;
-  const CACHE_TARGET_BYTES = 3.4 * 1024 * 1024;
+  // Set true to force the legacy page localStorage cache backend.
+  const CACHE_FORCE_LOCAL_STORAGE = false;
+  const CACHE_STORAGE_TYPE_KEY = `${CACHE_PREFIX}:storage-type`;
+  const CACHE_STORAGE_SIGNAL_KEY = `${CACHE_PREFIX}:cache-signal`;
+  const CACHE_STORAGE_INDEXEDDB = 'indexedDB';
+  const CACHE_STORAGE_LOCAL = 'localStorage';
+  const CACHE_STORAGE_MEMORY = 'memory';
+  const CACHE_INDEXEDDB_NAME = `${CACHE_PREFIX}:cache`;
+  const CACHE_INDEXEDDB_VERSION = 1;
+  const CACHE_INDEXEDDB_STORE = 'entries';
+  const CACHE_LOCAL_MAX_BYTES = 4.4 * 1024 * 1024;
+  const CACHE_LOCAL_TARGET_BYTES = 3.4 * 1024 * 1024;
+  const CACHE_INDEXEDDB_WARN_BYTES = 2 * 1024 * 1024 * 1024;
+  const CACHE_INDEXEDDB_MAX_BYTES = 4 * 1024 * 1024 * 1024;
+  const CACHE_INDEXEDDB_TARGET_BYTES = 3.5 * 1024 * 1024 * 1024;
   const CACHE_BUDGET_CHECK_INTERVAL_MS = 5 * 1000;
   const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
   const INPUT_DEBOUNCE_MS = 120;
@@ -127,6 +140,16 @@
   let routeCheckTimer = null;
   let lastCacheBudgetCheckAt = 0;
   let pageIsUnloading = false;
+  let cacheStorage = {
+    type: CACHE_STORAGE_MEMORY,
+    ready: false,
+    db: null,
+    fallbackAttempted: false,
+  };
+  let cacheMemory = new Map();
+  let cacheWriteQueue = Promise.resolve();
+  let cacheStorageSizeWarningShown = false;
+  let cacheStorageModeLogged = false;
 
   function sanitizeLogValue(value) {
     return String(value ?? '')
@@ -415,12 +438,331 @@
     return String(key || '').startsWith(`${CACHE_PREFIX}:`);
   }
 
+  function isCacheDataKey(key) {
+    const value = String(key || '');
+    return (
+      value === CACHE_MIGRATION_KEY ||
+      value.startsWith(`${CACHE_PREFIX}:${CACHE_SCOPE_VERSION}:`)
+    );
+  }
+
+  function cloneStorageValue(value) {
+    if (value === undefined || value === null) return value;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch (_) {
+      return value;
+    }
+  }
+
+  function cacheStorageLabel() {
+    if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) return 'IndexedDB';
+    if (cacheStorage.type === CACHE_STORAGE_LOCAL) return 'localStorage';
+    return 'memory';
+  }
+
+  function logCacheStorageMode(reason = 'active') {
+    if (cacheStorageModeLogged && reason === 'active') return;
+    if (reason === 'active') cacheStorageModeLogged = true;
+    logger.info('Collection-search cache storage backend.', cacheStorageLabel(), reason);
+  }
+
+  function canUseCacheStorage() {
+    return cacheStorage.ready && cacheStorage.type !== CACHE_STORAGE_MEMORY;
+  }
+
+  function openIndexedDbCache() {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) {
+        reject(new Error('IndexedDB is not available.'));
+        return;
+      }
+
+      const request = indexedDB.open(CACHE_INDEXEDDB_NAME, CACHE_INDEXEDDB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(CACHE_INDEXEDDB_STORE)) {
+          db.createObjectStore(CACHE_INDEXEDDB_STORE, { keyPath: 'key' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('Unable to open IndexedDB cache.'));
+      request.onblocked = () => logger.warn('IndexedDB cache open is blocked by another tab; waiting for it to close.');
+    });
+  }
+
+  function idbTransaction(storeMode, callback) {
+    return new Promise((resolve, reject) => {
+      if (!cacheStorage.db) {
+        reject(new Error('IndexedDB cache is not open.'));
+        return;
+      }
+
+      let settled = false;
+      const transaction = cacheStorage.db.transaction(CACHE_INDEXEDDB_STORE, storeMode);
+      const store = transaction.objectStore(CACHE_INDEXEDDB_STORE);
+      transaction.oncomplete = () => {
+        if (!settled) resolve(undefined);
+      };
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB cache transaction failed.'));
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB cache transaction aborted.'));
+
+      try {
+        callback(store, (value) => {
+          settled = true;
+          resolve(value);
+        }, reject);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  }
+
+  async function loadIndexedDbCacheMemory() {
+    const entries = new Map();
+    await idbTransaction('readonly', (store, done, fail) => {
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          done(entries);
+          return;
+        }
+        const entry = cursor.value;
+        if (entry && isCacheDataKey(entry.key)) {
+          entries.set(entry.key, cloneStorageValue(entry.value));
+        }
+        cursor.continue();
+      };
+      request.onerror = () => fail(request.error || new Error('Unable to read IndexedDB cache.'));
+    });
+    cacheMemory = entries;
+  }
+
+  async function purgeIndexedDbCacheData() {
+    if (!('indexedDB' in window)) return 0;
+
+    let db = cacheStorage.type === CACHE_STORAGE_INDEXEDDB ? cacheStorage.db : null;
+    let closeWhenDone = false;
+    if (!db) {
+      db = await openIndexedDbCache();
+      closeWhenDone = true;
+    }
+
+    let removed = 0;
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(CACHE_INDEXEDDB_STORE, 'readwrite');
+      const store = transaction.objectStore(CACHE_INDEXEDDB_STORE);
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) return;
+        if (cursor.value && isCacheDataKey(cursor.value.key)) {
+          cursor.delete();
+          removed += 1;
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error || new Error('Unable to purge IndexedDB cache.'));
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error || new Error('Unable to purge IndexedDB cache.'));
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB cache purge aborted.'));
+    });
+
+    if (closeWhenDone) db.close();
+    return removed;
+  }
+
+  function purgeLocalStorageCacheData() {
+    let removed = 0;
+    if (!canUseLocalStorage()) return removed;
+    try {
+      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+        const key = localStorage.key(index);
+        if (isCacheDataKey(key)) {
+          localStorage.removeItem(key);
+          removed += 1;
+        }
+      }
+    } catch (error) {
+      logger.warn('Unable to purge localStorage collection-search cache data.', error);
+    }
+    return removed;
+  }
+
+  function detectPreviousCacheStorageType() {
+    try {
+      const stored = localStorage.getItem(CACHE_STORAGE_TYPE_KEY) || '';
+      if (stored) return stored;
+      for (let index = 0; index < localStorage.length; index += 1) {
+        if (isCacheDataKey(localStorage.key(index))) return CACHE_STORAGE_LOCAL;
+      }
+    } catch (_) {
+      return '';
+    }
+    return '';
+  }
+
+  function writeCacheStorageTypeMarker(type) {
+    try {
+      localStorage.setItem(CACHE_STORAGE_TYPE_KEY, type);
+    } catch (_) {
+      // The marker is best-effort; the backend itself remains authoritative.
+    }
+  }
+
+  async function initializeCacheStorage() {
+    const previousType = detectPreviousCacheStorageType();
+
+    if (!CACHE_FORCE_LOCAL_STORAGE) {
+      try {
+        const db = await openIndexedDbCache();
+        cacheStorage = {
+          type: CACHE_STORAGE_INDEXEDDB,
+          ready: true,
+          db,
+          fallbackAttempted: false,
+        };
+        if (previousType && previousType !== CACHE_STORAGE_INDEXEDDB) {
+          const removed = purgeLocalStorageCacheData();
+          logger.info('Purged previous localStorage collection-search cache after storage backend switch.', 'removedKeys', removed);
+        }
+        await loadIndexedDbCacheMemory();
+        writeCacheStorageTypeMarker(CACHE_STORAGE_INDEXEDDB);
+        logCacheStorageMode('active');
+        warnIfCacheStorageLarge();
+        return;
+      } catch (error) {
+        logger.warn('IndexedDB cache unavailable; falling back to localStorage.', error);
+      }
+    } else {
+      logger.info('IndexedDB cache disabled by CACHE_FORCE_LOCAL_STORAGE; using localStorage.');
+    }
+
+    if (canUseLocalStorage()) {
+      cacheStorage = {
+        type: CACHE_STORAGE_LOCAL,
+        ready: true,
+        db: null,
+        fallbackAttempted: false,
+      };
+      if (previousType && previousType !== CACHE_STORAGE_LOCAL) {
+        try {
+          const removed = await purgeIndexedDbCacheData();
+          logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
+        } catch (error) {
+          logger.warn('Unable to purge previous IndexedDB collection-search cache.', error);
+        }
+      }
+      writeCacheStorageTypeMarker(CACHE_STORAGE_LOCAL);
+      logCacheStorageMode('active');
+      warnIfCacheStorageLarge();
+      return;
+    }
+
+    cacheStorage = {
+      type: CACHE_STORAGE_MEMORY,
+      ready: false,
+      db: null,
+      fallbackAttempted: true,
+    };
+    logger.warn('No persistent cache storage is available; collection results will use in-memory cache only.');
+  }
+
+  function signalCacheStorageChange(key) {
+    if (!canUseLocalStorage()) return;
+    try {
+      localStorage.setItem(CACHE_STORAGE_SIGNAL_KEY, JSON.stringify({
+        key,
+        owner: TAB_ID,
+        storage: cacheStorage.type,
+        updatedAt: Date.now(),
+      }));
+    } catch (_) {
+      // Cross-tab UI refresh is best-effort only.
+    }
+  }
+
+  function queueIndexedDbWrite(action, key, value = null) {
+    cacheWriteQueue = cacheWriteQueue
+      .catch(() => undefined)
+      .then(async () => {
+        if (cacheStorage.type !== CACHE_STORAGE_INDEXEDDB || !cacheStorage.db) return;
+        await idbTransaction('readwrite', (store) => {
+          if (action === 'delete') {
+            store.delete(key);
+            return;
+          }
+          store.put({
+            key,
+            value: cloneStorageValue(value),
+            updatedAt: Date.now(),
+          });
+        });
+        signalCacheStorageChange(key);
+      })
+      .catch((error) => {
+        handleCacheStorageFailure(`IndexedDB ${action} failed`, error);
+      });
+    return cacheWriteQueue;
+  }
+
+  function handleCacheStorageFailure(message, error) {
+    logger.warn(message, error);
+    if (cacheStorage.type !== CACHE_STORAGE_INDEXEDDB || cacheStorage.fallbackAttempted) {
+      return;
+    }
+
+    cacheStorage.fallbackAttempted = true;
+    if (!canUseLocalStorage()) {
+      cacheStorage = {
+        type: CACHE_STORAGE_MEMORY,
+        ready: false,
+        db: null,
+        fallbackAttempted: true,
+      };
+      logger.warn('localStorage fallback unavailable; collection cache is in-memory only.');
+      return;
+    }
+
+    logger.warn('Switching collection-search cache storage to localStorage fallback.');
+    cacheStorage = {
+      type: CACHE_STORAGE_LOCAL,
+      ready: true,
+      db: null,
+      fallbackAttempted: true,
+    };
+    writeCacheStorageTypeMarker(CACHE_STORAGE_LOCAL);
+    for (const [key, value] of cacheMemory.entries()) {
+      try {
+        localStorage.setItem(key, JSON.stringify(value));
+      } catch (storageError) {
+        logger.warn('Unable to flush IndexedDB cache memory into localStorage fallback; pruning may rebuild cache later.', storageError);
+        break;
+      }
+    }
+    enforceCacheBudget();
+  }
+
   function estimateCacheBytes() {
     let bytes = 0;
+    if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) {
+      for (const [key, value] of cacheMemory.entries()) {
+        let json = '';
+        try {
+          json = JSON.stringify(value);
+        } catch (_) {
+          json = '';
+        }
+        bytes += (key.length + json.length) * 2;
+      }
+      return bytes;
+    }
+
     try {
       for (let index = 0; index < localStorage.length; index += 1) {
         const key = localStorage.key(index);
-        if (!isScriptCacheKey(key)) continue;
+        if (!isCacheDataKey(key)) continue;
         const value = localStorage.getItem(key) || '';
         bytes += (key.length + value.length) * 2;
       }
@@ -442,6 +784,10 @@
   }
 
   function readJsonStorage(key) {
+    if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) {
+      return cacheMemory.has(key) ? cloneStorageValue(cacheMemory.get(key)) : null;
+    }
+
     try {
       const value = localStorage.getItem(key);
       return value ? JSON.parse(value) : null;
@@ -451,6 +797,10 @@
   }
 
   function storageKeyExists(key) {
+    if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) {
+      return cacheMemory.has(key);
+    }
+
     try {
       return localStorage.getItem(key) !== null;
     } catch (_) {
@@ -459,12 +809,26 @@
   }
 
   function writeJsonStorage(key, value) {
+    if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) {
+      cacheMemory.set(key, cloneStorageValue(value));
+      queueIndexedDbWrite('put', key, value);
+      return;
+    }
+
     localStorage.setItem(key, JSON.stringify(value));
+    signalCacheStorageChange(key);
   }
 
   function removeStorageKey(key) {
+    if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) {
+      cacheMemory.delete(key);
+      queueIndexedDbWrite('delete', key);
+      return;
+    }
+
     try {
       localStorage.removeItem(key);
+      signalCacheStorageChange(key);
     } catch (_) {
       // Ignore storage cleanup errors.
     }
@@ -472,11 +836,11 @@
 
   function runCacheMigration() {
     if (!CACHE_RESET_ON_SCHEMA_CHANGE) return;
-    if (!canUseLocalStorage()) return;
+    if (!canUseCacheStorage()) return;
 
     let storedVersion = '';
     try {
-      storedVersion = localStorage.getItem(CACHE_MIGRATION_KEY) || '';
+      storedVersion = readJsonStorage(CACHE_MIGRATION_KEY) || '';
     } catch (_) {
       return;
     }
@@ -485,14 +849,22 @@
 
     let removed = 0;
     try {
-      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-        const key = localStorage.key(index);
-        if (isScriptCacheKey(key)) {
+      if (cacheStorage.type === CACHE_STORAGE_INDEXEDDB) {
+        for (const key of Array.from(cacheMemory.keys())) {
+          if (!isCacheDataKey(key)) continue;
           removeStorageKey(key);
           removed += 1;
         }
+      } else {
+        for (let index = localStorage.length - 1; index >= 0; index -= 1) {
+          const key = localStorage.key(index);
+          if (isCacheDataKey(key)) {
+            removeStorageKey(key);
+            removed += 1;
+          }
+        }
       }
-      localStorage.setItem(CACHE_MIGRATION_KEY, CACHE_MIGRATION_VERSION);
+      writeJsonStorage(CACHE_MIGRATION_KEY, CACHE_MIGRATION_VERSION);
     } catch (error) {
       logger.warn('Unable to complete collection-search cache migration.', error);
       return;
@@ -510,6 +882,7 @@
   }
 
   function readCache(scope) {
+    logger.verbose('Reading collection cache.', 'storage', cacheStorageLabel(), 'scope', scope);
     const meta = readJsonStorage(cacheMetaKey(scope));
     const now = Date.now();
     if (!meta || meta.version !== CACHE_VERSION) {
@@ -689,25 +1062,29 @@
       '',
     ].join(':');
     try {
-      for (let index = localStorage.length - 1; index >= 0; index -= 1) {
-        const key = localStorage.key(index);
+      const keys = cacheStorage.type === CACHE_STORAGE_INDEXEDDB
+        ? Array.from(cacheMemory.keys())
+        : Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
+      for (const key of keys) {
         if (key && key.startsWith(prefix)) {
           removeStorageKey(key);
           removed += 1;
         }
       }
     } catch (error) {
-      logger.warn('Unable to clear local collection-search region cache.', error);
+      logger.warn('Unable to clear collection-search region cache.', error);
     }
-    logger.info('Cleared local collection-search region cache.', 'region', route.region, 'removedKeys', removed);
+    logger.info('Cleared collection-search region cache.', 'region', route.region, 'storage', cacheStorageLabel(), 'removedKeys', removed);
     return removed;
   }
 
   function collectCacheScopes() {
     const scopes = [];
     try {
-      for (let index = 0; index < localStorage.length; index += 1) {
-        const key = localStorage.key(index);
+      const keys = cacheStorage.type === CACHE_STORAGE_INDEXEDDB
+        ? Array.from(cacheMemory.keys())
+        : Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index));
+      for (const key of keys) {
         if (!key || !key.startsWith(`${CACHE_PREFIX}:`) || !key.endsWith(':meta')) continue;
         const scope = key.slice(0, -':meta'.length);
         const meta = readJsonStorage(key);
@@ -756,14 +1133,22 @@
   }
 
   function enforceCacheBudget(activeScope = '', protectedScopes = new Set()) {
-    if (!canUseLocalStorage()) return;
+    if (!canUseCacheStorage()) return;
 
     const now = Date.now();
     if (now - lastCacheBudgetCheckAt < CACHE_BUDGET_CHECK_INTERVAL_MS) return;
     lastCacheBudgetCheckAt = now;
 
     let currentBytes = estimateCacheBytes();
-    if (!currentBytes || currentBytes <= CACHE_MAX_BYTES) return;
+    warnIfCacheStorageLarge(currentBytes);
+    const maxBytes = cacheStorage.type === CACHE_STORAGE_INDEXEDDB
+      ? CACHE_INDEXEDDB_MAX_BYTES
+      : CACHE_LOCAL_MAX_BYTES;
+    const targetBytes = cacheStorage.type === CACHE_STORAGE_INDEXEDDB
+      ? CACHE_INDEXEDDB_TARGET_BYTES
+      : CACHE_LOCAL_TARGET_BYTES;
+
+    if (!currentBytes || currentBytes <= maxBytes) return;
 
     const activeRegionKey = cacheRegionKeyFromScope(activeScope);
     const protectedRegionKeys = new Set(
@@ -782,7 +1167,7 @@
     let removedScopes = 0;
 
     for (const region of regions) {
-      if (currentBytes <= CACHE_TARGET_BYTES) break;
+      if (currentBytes <= targetBytes) break;
       for (const entry of region.scopes) {
         removeCacheScope(entry.scope);
         removedScopes += 1;
@@ -798,16 +1183,39 @@
         removedRegions,
         'removedScopes',
         removedScopes,
+        'storage',
+        cacheStorageLabel(),
         'estimatedBytes',
         currentBytes
       );
-    } else if (currentBytes > CACHE_MAX_BYTES) {
+    } else if (currentBytes > maxBytes) {
       logger.warn(
         'Collection-search cache is over budget, but only the active/protected region remains.',
+        'storage',
+        cacheStorageLabel(),
         'estimatedBytes',
         currentBytes
       );
     }
+  }
+
+  function warnIfCacheStorageLarge(currentBytes = estimateCacheBytes()) {
+    if (cacheStorageSizeWarningShown) return;
+    const warningBytes = cacheStorage.type === CACHE_STORAGE_INDEXEDDB
+      ? CACHE_INDEXEDDB_WARN_BYTES
+      : CACHE_LOCAL_MAX_BYTES;
+    if (!currentBytes || currentBytes <= warningBytes) return;
+
+    cacheStorageSizeWarningShown = true;
+    logger.warn(
+      'Collection-search cache is large.',
+      'storage',
+      cacheStorageLabel(),
+      'estimatedBytes',
+      currentBytes,
+      'softWarningBytes',
+      warningBytes
+    );
   }
 
   function shouldRevalidateCache(meta) {
@@ -1039,6 +1447,8 @@
       enforceCacheBudget(state.cacheScope, protectedCacheScopesForRoute(state.route));
       logger.verbose(
         'Cached page chunk.',
+        'storage',
+        cacheStorageLabel(),
         'page',
         page,
         'items',
@@ -1635,7 +2045,7 @@
       signature: routeSignature(route),
       cacheScope: scope,
       background,
-      cacheEnabled: canUseLocalStorage(),
+      cacheEnabled: canUseCacheStorage(),
       cacheMeta: null,
       cacheError: '',
       forceRefresh,
@@ -4049,6 +4459,11 @@
   }
 
   function handlePrewarmLeaseStorage(event) {
+    if (event.key === CACHE_STORAGE_SIGNAL_KEY) {
+      handleCacheStorageSignal(event.newValue);
+      return;
+    }
+
     if (appState && appState.ui && isRegionCacheProgressKey(appState, event.key)) {
       updateStatus(appState);
     }
@@ -4076,6 +4491,50 @@
 
     logger.warn('Prewarm lease taken by another tab; pausing this worker.', prewarmState.route.region);
     teardownRegionPrewarm();
+  }
+
+  async function handleCacheStorageSignal(rawValue) {
+    if (cacheStorage.type !== CACHE_STORAGE_INDEXEDDB || !rawValue) return;
+
+    let signal = null;
+    try {
+      signal = JSON.parse(rawValue);
+    } catch (_) {
+      return;
+    }
+
+    if (!signal || signal.owner === TAB_ID || signal.storage !== CACHE_STORAGE_INDEXEDDB) return;
+    const key = String(signal.key || '');
+    if (!isCacheDataKey(key)) return;
+
+    try {
+      await refreshIndexedDbMemoryKey(key);
+    } catch (error) {
+      logger.warn('Unable to refresh IndexedDB cache memory from cross-tab signal.', error);
+      return;
+    }
+
+    if (appState && appState.ui && isRegionCacheProgressKey(appState, key)) {
+      updateStatus(appState);
+    }
+  }
+
+  async function refreshIndexedDbMemoryKey(key) {
+    if (cacheStorage.type !== CACHE_STORAGE_INDEXEDDB || !cacheStorage.db) return;
+
+    await idbTransaction('readonly', (store, done, fail) => {
+      const request = store.get(key);
+      request.onsuccess = () => {
+        const entry = request.result;
+        if (entry && isCacheDataKey(entry.key)) {
+          cacheMemory.set(entry.key, cloneStorageValue(entry.value));
+        } else {
+          cacheMemory.delete(key);
+        }
+        done();
+      };
+      request.onerror = () => fail(request.error || new Error('Unable to refresh IndexedDB cache entry.'));
+    });
   }
 
   function handlePageUnload() {
@@ -4260,11 +4719,19 @@
   }
 
   onReady(() => {
-    runCacheMigration();
-    installNavigationWatcher();
-    startApp(false);
-    startRegionPrewarm(false);
-    logger.info(`Loaded v${SCRIPT_VERSION}.`, 'logLevel', effectiveLogLevel);
+    initializeCacheStorage().then(() => {
+      runCacheMigration();
+      installNavigationWatcher();
+      startApp(false);
+      startRegionPrewarm(false);
+      logger.info(`Loaded v${SCRIPT_VERSION}.`, 'logLevel', effectiveLogLevel);
+    }).catch((error) => {
+      logger.error('Unable to initialize collection-search cache storage.', error);
+      installNavigationWatcher();
+      startApp(false);
+      startRegionPrewarm(false);
+      logger.info(`Loaded v${SCRIPT_VERSION}.`, 'logLevel', effectiveLogLevel);
+    });
   });
 
   injectStyles();
