@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.30`.
+Current documented release: `1.0.31`.
 
 ## What It Does
 
@@ -278,6 +278,8 @@ Background prewarm uses:
 
 ```js
 const PREWARM_FETCH_CONCURRENCY = 6;
+const BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = 2;
+const BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES = 2;
 const PREWARM_COLLECTION_DELAY_MS = 1500;
 const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
 const PREWARM_LEASE_HEARTBEAT_MS = 5000;
@@ -287,10 +289,14 @@ const PREWARM_LEASE_STALE_MS = 30 * 1000;
 Their purposes are:
 
 - `PREWARM_FETCH_CONCURRENCY`: page fetch concurrency for background region indexing
+- `BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER`: keeps the unknown-page background queue larger than the worker count so off-page indexing does not crawl one page at a time
+- `BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES`: minimum extra unknown pages kept ahead of the worker count
 - `PREWARM_COLLECTION_DELAY_MS`: pause between avatar and theme collection prewarm passes
 - `PREWARM_CONTEXT_GRACE_MS`: time to wait after losing the regional page context before pausing
 - `PREWARM_LEASE_HEARTBEAT_MS`: how often an indexing tab refreshes its cross-tab lease
 - `PREWARM_LEASE_STALE_MS`: how long before another tab can treat a lease as abandoned
+
+When the total page count is unknown, the background worker speculatively queues pages ahead of the last discovered page. A missing lookahead page such as a 404/410 response is treated as the collection end marker; the previous page remains queued and must be fetched before the cache completes.
 
 If PSPrices returns a rate-limit, bot-protection, or challenge-like page, indexing pauses and writes a console warning. A paused background worker can retry when the user types into the search box, subject to this cooldown:
 
@@ -392,7 +398,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.30)
+PSPrices Collection Live Search: has started (v1.0.31)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
