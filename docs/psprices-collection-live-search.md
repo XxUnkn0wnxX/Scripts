@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.28`.
+Current documented release: `1.0.29`.
 
 ## What It Does
 
@@ -240,11 +240,15 @@ The IndexedDB backend uses larger soft and hard thresholds:
 const CACHE_INDEXEDDB_WARN_BYTES = 2 * 1024 * 1024 * 1024;
 const CACHE_INDEXEDDB_MAX_BYTES = 4 * 1024 * 1024 * 1024;
 const CACHE_INDEXEDDB_TARGET_BYTES = 3.5 * 1024 * 1024 * 1024;
+const CACHE_INDEXEDDB_WRITE_BATCH_SIZE = 8;
+const CACHE_INDEXEDDB_WRITE_FLUSH_MS = 250;
 ```
 
 If the script cache grows too large, it prunes older script-owned region caches first. It tries to avoid purging the active region currently being used.
 
 Browser quota is still controlled by the browser and userscript manager environment. If IndexedDB writes fail, the script switches to localStorage fallback when possible. If persistent storage is unavailable, the UI and console report cache write failures, and already indexed in-memory data can still be used during the current page session.
+
+IndexedDB writes update the in-memory cache immediately, then flush to disk in small batches. The batcher reduces transaction overhead while keeping the unflushed window short. It flushes when the batch reaches `CACHE_INDEXEDDB_WRITE_BATCH_SIZE`, after `CACHE_INDEXEDDB_WRITE_FLUSH_MS`, or best-effort during page unload. If the browser closes the last tab before the unload flush finishes, any unflushed chunks simply rebuild later from the last completed cache page.
 
 ## Fetch and Rate-Limit Controls
 
@@ -388,7 +392,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.28)
+PSPrices Collection Live Search: has started (v1.0.29)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
