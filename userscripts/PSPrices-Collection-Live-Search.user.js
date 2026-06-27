@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.27
+// @version      1.0.28
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.27';
+  const SCRIPT_VERSION = '1.0.28';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -621,6 +621,34 @@
     return entries;
   }
 
+  function readLocalStorageMigrationVersion() {
+    if (!canUseLocalStorage()) return '';
+
+    try {
+      return parseStoredValue(localStorage.getItem(CACHE_MIGRATION_KEY) || '') || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  async function readIndexedDbCacheValue(db, key) {
+    if (!db || !key) return null;
+
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(CACHE_INDEXEDDB_STORE, 'readonly');
+      const store = transaction.objectStore(CACHE_INDEXEDDB_STORE);
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result ? cloneStorageValue(request.result.value) : null);
+      request.onerror = () => reject(request.error || new Error('Unable to read IndexedDB cache entry.'));
+      transaction.onerror = () => reject(transaction.error || new Error('IndexedDB cache entry read failed.'));
+      transaction.onabort = () => reject(transaction.error || new Error('IndexedDB cache entry read aborted.'));
+    });
+  }
+
+  function isCacheSchemaCurrent(version) {
+    return !CACHE_RESET_ON_SCHEMA_CHANGE || version === CACHE_MIGRATION_VERSION;
+  }
+
   function collectLocalStorageCacheEntries(predicate) {
     const entries = [];
     if (!canUseLocalStorage()) return entries;
@@ -860,7 +888,18 @@
           db,
           fallbackAttempted: false,
         };
-        await moveCurrentRegionLocalStorageCacheToIndexedDb(db, 'startup-to-IndexedDB');
+        const localSchemaVersion = readLocalStorageMigrationVersion();
+        if (isCacheSchemaCurrent(localSchemaVersion)) {
+          await moveCurrentRegionLocalStorageCacheToIndexedDb(db, 'startup-to-IndexedDB');
+        } else if (previousType === CACHE_STORAGE_LOCAL || localSchemaVersion) {
+          logger.info(
+            'Skipped localStorage cache move because schema migration requires a rebuild.',
+            'from',
+            localSchemaVersion || 'none',
+            'to',
+            CACHE_MIGRATION_VERSION
+          );
+        }
         const removed = purgeLocalStorageCacheData();
         if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_INDEXEDDB)) {
           logger.info('Purged previous localStorage collection-search cache after storage backend switch.', 'removedKeys', removed);
@@ -896,20 +935,35 @@
         let db = null;
         try {
           db = await openIndexedDbCache();
-          const moveResult = await moveCurrentRegionIndexedDbCacheToLocalStorage(db, 'startup-to-localStorage');
-          if (moveResult.complete) {
+          const indexedDbSchemaVersion = await readIndexedDbCacheValue(db, CACHE_MIGRATION_KEY);
+          if (!isCacheSchemaCurrent(indexedDbSchemaVersion)) {
+            logger.info(
+              'Skipped IndexedDB cache move because schema migration requires a rebuild.',
+              'from',
+              indexedDbSchemaVersion || 'none',
+              'to',
+              CACHE_MIGRATION_VERSION
+            );
             const removed = await purgeIndexedDbCacheData(db);
             if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_LOCAL)) {
               logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
             }
           } else {
-            logger.warn(
-              'Skipped purging previous IndexedDB collection-search cache because localStorage migration was incomplete.',
-              'movedEntries',
-              moveResult.written,
-              'totalEntries',
-              moveResult.total
-            );
+            const moveResult = await moveCurrentRegionIndexedDbCacheToLocalStorage(db, 'startup-to-localStorage');
+            if (moveResult.complete) {
+              const removed = await purgeIndexedDbCacheData(db);
+              if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_LOCAL)) {
+                logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
+              }
+            } else {
+              logger.warn(
+                'Skipped purging previous IndexedDB collection-search cache because localStorage migration was incomplete.',
+                'movedEntries',
+                moveResult.written,
+                'totalEntries',
+                moveResult.total
+              );
+            }
           }
         } catch (error) {
           logger.warn('Unable to purge previous IndexedDB collection-search cache.', error);
