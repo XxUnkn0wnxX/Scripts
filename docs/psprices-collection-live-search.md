@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.29`.
+Current documented release: `1.0.30`.
 
 ## What It Does
 
@@ -211,7 +211,7 @@ The main cache freshness constants are near the top of the userscript:
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
-const CACHE_SCHEMA_VERSION = 9;
+const CACHE_SCHEMA_VERSION = 10;
 const CACHE_RESET_ON_SCHEMA_CHANGE = true;
 ```
 
@@ -392,7 +392,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.29)
+PSPrices Collection Live Search: has started (v1.0.30)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
