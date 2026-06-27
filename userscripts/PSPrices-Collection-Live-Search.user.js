@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.32
+// @version      1.0.33
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.32';
+  const SCRIPT_VERSION = '1.0.33';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -1979,6 +1979,7 @@
     state.queuedPages.delete(page);
     pruneQueuedPagesFrom(state, state.lookaheadEndPage);
     reconcileLastPage(state, state.lookaheadEndPage - 1);
+    queueMissingPages(state, 1, state.lastPage);
     state.lastPageKnown = true;
     state.progressTotalApproximate = false;
     clearCachePageInFlight(state, page);
@@ -4521,7 +4522,7 @@
         state.cacheMeta = readJsonStorage(cacheMetaKey(state.cacheScope));
         applyCacheProgressToState(state, state.cacheMeta);
         state.lastPage = Math.max(1, cached.lastPage || 1);
-        state.lastPageKnown = state.lastPage > 1;
+        state.lastPageKnown = cached.complete && cached.completedPageCount >= state.lastPage && state.lastPage > 1;
         needsRevalidation = shouldRevalidateCache(state.cacheMeta);
         const canonicalAvatarMap = readCanonicalAvatarItemMap(state.route);
         let cachedAdded = 0;
@@ -4742,7 +4743,10 @@
           return;
         }
 
-        if (state.lookaheadPages.has(page) && isMissingPageFetchError(error)) {
+        if (
+          isMissingPageFetchError(error) &&
+          (state.lookaheadPages.has(page) || (state.lookaheadEndPage && page >= state.lookaheadEndPage))
+        ) {
           handleBackgroundLookaheadEnd(state, page, error.message || 'missing page');
           return;
         }
