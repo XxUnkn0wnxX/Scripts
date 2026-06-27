@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.25
+// @version      1.0.27
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.25';
+  const SCRIPT_VERSION = '1.0.27';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -97,7 +97,7 @@
   // Platform/free filters can also hydrate a small batch of unknown candidates so confirmed matches can appear.
   const LIVE_DETAIL_HYDRATION_ENABLED = true;
   const LIVE_DETAIL_HYDRATION_DELAY_MS = 0;
-  const LIVE_DETAIL_FETCH_CONCURRENCY = 7;
+  const LIVE_DETAIL_FETCH_CONCURRENCY = 8;
   const LIVE_DETAIL_FETCH_DELAY_MS = 0;
   const LIVE_DETAIL_FETCH_JITTER_MS = 0;
   const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 15;
@@ -485,6 +485,14 @@
     return key === CACHE_MIGRATION_KEY || isRegionCacheDataKey(key, context);
   }
 
+  function isRegionCompactCacheMoveKey(key, context) {
+    if (key === CACHE_MIGRATION_KEY) return true;
+    if (!isRegionCacheDataKey(key, context)) return false;
+
+    const collection = String(key || '').split(':')[4] || '';
+    return PREWARM_COLLECTIONS.includes(collection);
+  }
+
   function cloneStorageValue(value) {
     if (value === undefined || value === null) return value;
     try {
@@ -657,7 +665,9 @@
 
   function writeLocalStorageCacheEntries(entries) {
     let written = 0;
-    if (!canUseLocalStorage()) return written;
+    let complete = true;
+    const total = entries.length;
+    if (!canUseLocalStorage()) return { written, total, complete: false };
 
     for (const entry of entries) {
       try {
@@ -665,17 +675,18 @@
         written += 1;
       } catch (error) {
         logger.warn('Unable to write migrated cache entry into localStorage.', error);
+        complete = false;
         break;
       }
     }
-    return written;
+    return { written, total, complete };
   }
 
   function currentRegionCacheEntriesFromMemory() {
     const context = parseRegionContext();
     if (!context) return [];
     return Array.from(cacheMemory.entries())
-      .filter(([key]) => isRegionCacheMoveKey(key, context))
+      .filter(([key]) => isRegionCompactCacheMoveKey(key, context))
       .map(([key, value]) => ({
         key,
         value: cloneStorageValue(value),
@@ -704,11 +715,11 @@
 
   async function moveCurrentRegionIndexedDbCacheToLocalStorage(db, reason) {
     const context = parseRegionContext();
-    if (!context) return 0;
+    if (!context) return { written: 0, total: 0, complete: false };
 
-    const entries = await collectIndexedDbCacheEntries(db, (key) => isRegionCacheMoveKey(key, context));
-    const written = writeLocalStorageCacheEntries(entries);
-    if (written > 0) {
+    const entries = await collectIndexedDbCacheEntries(db, (key) => isRegionCompactCacheMoveKey(key, context));
+    const result = writeLocalStorageCacheEntries(entries);
+    if (result.written > 0) {
       logger.info(
         'Moved current region cache into localStorage before storage purge.',
         'reason',
@@ -716,19 +727,23 @@
         'region',
         context.region,
         'entries',
-        written
+        result.written,
+        'totalEntries',
+        result.total,
+        'complete',
+        result.complete
       );
     }
-    return written;
+    return result;
   }
 
   function moveCurrentRegionMemoryCacheToLocalStorage(reason) {
     const context = parseRegionContext();
-    if (!context) return 0;
+    if (!context) return { written: 0, total: 0, complete: false };
 
     const entries = currentRegionCacheEntriesFromMemory();
-    const written = writeLocalStorageCacheEntries(entries);
-    if (written > 0) {
+    const result = writeLocalStorageCacheEntries(entries);
+    if (result.written > 0) {
       logger.info(
         'Moved current region in-memory cache into localStorage before storage purge.',
         'reason',
@@ -736,10 +751,14 @@
         'region',
         context.region,
         'entries',
-        written
+        result.written,
+        'totalEntries',
+        result.total,
+        'complete',
+        result.complete
       );
     }
-    return written;
+    return result;
   }
 
   async function purgeIndexedDbCacheData(dbOverride = null) {
@@ -877,10 +896,20 @@
         let db = null;
         try {
           db = await openIndexedDbCache();
-          await moveCurrentRegionIndexedDbCacheToLocalStorage(db, 'startup-to-localStorage');
-          const removed = await purgeIndexedDbCacheData(db);
-          if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_LOCAL)) {
-            logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
+          const moveResult = await moveCurrentRegionIndexedDbCacheToLocalStorage(db, 'startup-to-localStorage');
+          if (moveResult.complete) {
+            const removed = await purgeIndexedDbCacheData(db);
+            if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_LOCAL)) {
+              logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
+            }
+          } else {
+            logger.warn(
+              'Skipped purging previous IndexedDB collection-search cache because localStorage migration was incomplete.',
+              'movedEntries',
+              moveResult.written,
+              'totalEntries',
+              moveResult.total
+            );
           }
         } catch (error) {
           logger.warn('Unable to purge previous IndexedDB collection-search cache.', error);
@@ -974,7 +1003,7 @@
       fallbackAttempted: true,
     };
     writeCacheStorageTypeMarker(CACHE_STORAGE_LOCAL);
-    moveCurrentRegionMemoryCacheToLocalStorage('runtime-fallback-to-localStorage');
+    const moveResult = moveCurrentRegionMemoryCacheToLocalStorage('runtime-fallback-to-localStorage');
     if (previousDb) {
       try {
         previousDb.close();
@@ -982,7 +1011,17 @@
         // Ignore stale DB handle cleanup errors.
       }
     }
-    purgeIndexedDbCacheDataBestEffort('runtime-fallback-to-localStorage');
+    if (moveResult.complete) {
+      purgeIndexedDbCacheDataBestEffort('runtime-fallback-to-localStorage');
+    } else {
+      logger.warn(
+        'Skipped purging previous IndexedDB collection-search cache because runtime localStorage fallback migration was incomplete.',
+        'movedEntries',
+        moveResult.written,
+        'totalEntries',
+        moveResult.total
+      );
+    }
     enforceCacheBudget();
   }
 

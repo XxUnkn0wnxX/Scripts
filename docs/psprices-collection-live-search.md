@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.25`.
+Current documented release: `1.0.27`.
 
 ## What It Does
 
@@ -174,9 +174,9 @@ To force the legacy backend for testing, set this near the top of the userscript
 const CACHE_FORCE_LOCAL_STORAGE = true;
 ```
 
-The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script first tries to move the current region's compatible cache entries into the new backend, then purges the old backend's collection-search cache data. The old-backend purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage. If the moved cache belongs to an older incompatible schema, the normal schema migration still purges it and rebuilds fresh data.
+The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script first tries to move the current region's compatible cache entries into the new backend, then purges the old backend's collection-search cache data. The old-backend purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage. Moving into localStorage only carries the compact current-region collection cache for avatars and themes; IndexedDB-only product detail metadata is not copied because the localStorage backend does not use it. If the current-region move into localStorage is incomplete because browser quota is already full, the script skips purging the old IndexedDB cache so data that did not fit is not deleted. If the moved cache belongs to an older incompatible schema, the normal schema migration still purges it and rebuilds fresh data.
 
-If IndexedDB opens but later fails a write, the script switches to localStorage fallback for the active session, copies the current region's in-memory cache snapshot into localStorage where possible, then starts a best-effort purge of the stale IndexedDB cache data. If that cleanup fails, the fallback session still continues and logs the cleanup problem.
+If IndexedDB opens but later fails a write, the script switches to localStorage fallback for the active session and copies the current region's in-memory cache snapshot into localStorage where possible. It only starts a best-effort purge of stale IndexedDB cache data if that localStorage copy completes; partial copies keep the old IndexedDB data in place. If cleanup fails, the fallback session still continues and logs the cleanup problem.
 
 Cache keys and database entries use the script prefix:
 
@@ -330,7 +330,7 @@ The main controls are:
 
 ```js
 const LIVE_DETAIL_HYDRATION_ENABLED = true;
-const LIVE_DETAIL_FETCH_CONCURRENCY = 7;
+const LIVE_DETAIL_FETCH_CONCURRENCY = 8;
 const LIVE_DETAIL_FETCH_DELAY_MS = 0;
 const LIVE_DETAIL_FETCH_JITTER_MS = 0;
 const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 15;
@@ -388,7 +388,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.25)
+PSPrices Collection Live Search: has started (v1.0.27)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
