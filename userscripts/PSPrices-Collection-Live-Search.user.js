@@ -442,7 +442,7 @@
     const value = String(key || '');
     return (
       value === CACHE_MIGRATION_KEY ||
-      value.startsWith(`${CACHE_PREFIX}:${CACHE_SCOPE_VERSION}:`)
+      new RegExp(`^${CACHE_PREFIX}:v\\d+:`).test(value)
     );
   }
 
@@ -573,6 +573,18 @@
     return removed;
   }
 
+  function purgeIndexedDbCacheDataBestEffort(reason) {
+    purgeIndexedDbCacheData()
+      .then((removed) => {
+        if (removed > 0) {
+          logger.info('Purged IndexedDB collection-search cache data.', 'reason', reason, 'removedKeys', removed);
+        }
+      })
+      .catch((error) => {
+        logger.warn('Unable to purge IndexedDB collection-search cache data.', 'reason', reason, error);
+      });
+  }
+
   function purgeLocalStorageCacheData() {
     let removed = 0;
     if (!canUseLocalStorage()) return removed;
@@ -613,6 +625,7 @@
 
   async function initializeCacheStorage() {
     const previousType = detectPreviousCacheStorageType();
+    let indexedDbOpenFailed = false;
 
     if (!CACHE_FORCE_LOCAL_STORAGE) {
       try {
@@ -623,8 +636,8 @@
           db,
           fallbackAttempted: false,
         };
-        if (previousType && previousType !== CACHE_STORAGE_INDEXEDDB) {
-          const removed = purgeLocalStorageCacheData();
+        const removed = purgeLocalStorageCacheData();
+        if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_INDEXEDDB)) {
           logger.info('Purged previous localStorage collection-search cache after storage backend switch.', 'removedKeys', removed);
         }
         await loadIndexedDbCacheMemory();
@@ -633,6 +646,7 @@
         warnIfCacheStorageLarge();
         return;
       } catch (error) {
+        indexedDbOpenFailed = true;
         logger.warn('IndexedDB cache unavailable; falling back to localStorage.', error);
       }
     } else {
@@ -646,10 +660,12 @@
         db: null,
         fallbackAttempted: false,
       };
-      if (previousType && previousType !== CACHE_STORAGE_LOCAL) {
+      if (!indexedDbOpenFailed) {
         try {
           const removed = await purgeIndexedDbCacheData();
-          logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
+          if (removed > 0 || (previousType && previousType !== CACHE_STORAGE_LOCAL)) {
+            logger.info('Purged previous IndexedDB collection-search cache after storage backend switch.', 'removedKeys', removed);
+          }
         } catch (error) {
           logger.warn('Unable to purge previous IndexedDB collection-search cache.', error);
         }
@@ -726,6 +742,7 @@
     }
 
     logger.warn('Switching collection-search cache storage to localStorage fallback.');
+    const previousDb = cacheStorage.db;
     cacheStorage = {
       type: CACHE_STORAGE_LOCAL,
       ready: true,
@@ -741,6 +758,14 @@
         break;
       }
     }
+    if (previousDb) {
+      try {
+        previousDb.close();
+      } catch (_) {
+        // Ignore stale DB handle cleanup errors.
+      }
+    }
+    purgeIndexedDbCacheDataBestEffort('runtime-fallback-to-localStorage');
     enforceCacheBudget();
   }
 

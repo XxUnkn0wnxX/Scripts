@@ -130,7 +130,7 @@ For each region, the background worker indexes:
 
 The old filtered endpoints are not separately cached. Platform and free filters are derived from the indexed collection data and live result hydration.
 
-Indexing runs in page chunks. A completed page is written to localStorage immediately, and incomplete or failed pages are retried later instead of being treated as valid cache.
+Indexing runs in page chunks. A completed page is written to persistent browser storage immediately, and incomplete or failed pages are retried later instead of being treated as valid cache.
 
 The UI status line mirrors the background worker when the search UI is visible. Example states include:
 
@@ -141,7 +141,7 @@ Queued Themes (US); Avatars (AU) is indexing. 0 items from 0 / 1 page.
 Paused: PSPrices returned a bot-protection or rate-limit page.
 ```
 
-The progress bar tracks combined current-region cache progress across both canonical collections, so it reaches the end only after both avatars and themes are fully cached. It refreshes from local worker state and cache metadata written by other tabs.
+The progress bar tracks combined current-region cache progress across both canonical collections, so it reaches the end only after both avatars and themes are fully cached. It refreshes from local worker state and cache metadata signalled by other tabs.
 
 If the user navigates away from the mounted collection page but stays on PSPrices, indexing continues in the background. If the regional route disappears, the worker waits for a grace period before pausing.
 
@@ -149,7 +149,7 @@ If the user navigates away from the mounted collection page but stays on PSPrice
 
 Caches are scoped per host, region, and collection. Changing from `region-au` to `region-us` starts or resumes a separate regional cache.
 
-Only one background prewarm worker is intended to run across open PSPrices tabs at a time. The script uses localStorage leases for a best-effort cross-tab lock:
+Only one background prewarm worker is intended to run across open PSPrices tabs at a time. The script still uses small localStorage lease records for a best-effort cross-tab lock, even when the main cache backend is IndexedDB:
 
 - one global site prewarm lease prevents multiple regions from indexing at once
 - one region lease prevents duplicate workers for the same region
@@ -160,7 +160,25 @@ If a tab unloads while indexing, it broadcasts a short stop signal so other acti
 
 ## Cache Storage
 
-The index is stored in browser `localStorage` under keys beginning with:
+The index uses browser `IndexedDB` by default because it has a much larger practical quota than `localStorage`. If IndexedDB cannot open or write, the script falls back to the legacy `localStorage` cache backend.
+
+The active backend is logged in the browser console:
+
+```text
+PSPrices Collection Live Search: Collection-search cache storage backend. IndexedDB active
+```
+
+To force the legacy backend for testing, set this near the top of the userscript:
+
+```js
+const CACHE_FORCE_LOCAL_STORAGE = true;
+```
+
+The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script purges the old backend's collection-search cache data before using the new backend. This purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage.
+
+If IndexedDB opens but later fails a write, the script switches to localStorage fallback for the active session, copies the in-memory cache snapshot into localStorage where possible, then starts a best-effort purge of the stale IndexedDB cache data. If that cleanup fails, the fallback session still continues and logs the cleanup problem.
+
+Cache keys and database entries use the script prefix:
 
 ```text
 psprices-live-search:
@@ -190,7 +208,7 @@ The main cache freshness constants are near the top of the userscript:
 ```js
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
-const CACHE_SCHEMA_VERSION = 8;
+const CACHE_SCHEMA_VERSION = 9;
 const CACHE_RESET_ON_SCHEMA_CHANGE = true;
 ```
 
@@ -201,20 +219,28 @@ Their purposes are:
 - `CACHE_SCHEMA_VERSION`: manual cache migration marker for incompatible cache changes
 - `CACHE_RESET_ON_SCHEMA_CHANGE`: when `true`, changing the schema version purges old script caches on next load
 
-When `CACHE_SCHEMA_VERSION` changes, the script removes previous `psprices-live-search:` localStorage entries and stores the new migration marker. This prevents stale incompatible cache formats from consuming space or causing wrong results.
+When `CACHE_SCHEMA_VERSION` changes, the script removes previous collection-search cache entries from the active backend and stores the new migration marker. This prevents stale incompatible cache formats from consuming space or causing wrong results.
 
-## localStorage Budget
+## Storage Budgets
 
-The script tracks its own approximate localStorage usage:
+The script tracks its own approximate cache usage. The legacy localStorage fallback keeps the older low cap so it stays under common browser quotas:
 
 ```js
-const CACHE_MAX_BYTES = 4.4 * 1024 * 1024;
-const CACHE_TARGET_BYTES = 3.4 * 1024 * 1024;
+const CACHE_LOCAL_MAX_BYTES = 4.4 * 1024 * 1024;
+const CACHE_LOCAL_TARGET_BYTES = 3.4 * 1024 * 1024;
 ```
 
-If the script cache grows too large, it prunes older script-owned caches first. It tries to avoid purging the active region currently being used.
+The IndexedDB backend uses larger soft and hard thresholds:
 
-Browser quota is still controlled by the browser and userscript manager environment. If localStorage writes fail, the UI and console report cache write failures, and already indexed in-memory data can still be used during the current page session.
+```js
+const CACHE_INDEXEDDB_WARN_BYTES = 2 * 1024 * 1024 * 1024;
+const CACHE_INDEXEDDB_MAX_BYTES = 4 * 1024 * 1024 * 1024;
+const CACHE_INDEXEDDB_TARGET_BYTES = 3.5 * 1024 * 1024 * 1024;
+```
+
+If the script cache grows too large, it prunes older script-owned region caches first. It tries to avoid purging the active region currently being used.
+
+Browser quota is still controlled by the browser and userscript manager environment. If IndexedDB writes fail, the script switches to localStorage fallback when possible. If persistent storage is unavailable, the UI and console report cache write failures, and already indexed in-memory data can still be used during the current page session.
 
 ## Fetch and Rate-Limit Controls
 
@@ -346,7 +372,7 @@ const LOG_LEVEL = 'info';
 
 Supported values:
 
-- `'info'`: startup, route changes, cache state, pause reasons, storage failures, and final indexing results
+- `'info'`: startup, route changes, active cache backend, cache state, pause reasons, storage failures, and final indexing results
 - `'verbose'`: detailed route parsing, cache reads and writes, request lifecycle, parser counts, stale checks, and search result counts
 
 Logs are prefixed with:
@@ -355,7 +381,7 @@ Logs are prefixed with:
 PSPrices Collection Live Search:
 ```
 
-Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw localStorage payloads.
+Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
 
 ## Compatibility With Other PSPrices Userscripts
 
@@ -372,7 +398,7 @@ The UI status line reports failed pages, queued indexing, paused indexing, and c
 
 Common failure modes include:
 
-- localStorage quota errors
+- persistent storage quota or access errors
 - expired or incompatible cache pages
 - request timeouts
 - PSPrices challenge or bot-protection pages
