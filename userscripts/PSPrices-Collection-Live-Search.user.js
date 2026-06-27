@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.30
+// @version      1.0.31
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.30';
+  const SCRIPT_VERSION = '1.0.31';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -78,6 +78,8 @@
   const AUTO_INDEX_DELAY_MS = 2500;
   const AUTO_INDEX_ON_SITE_VISIT = true;
   const PREWARM_FETCH_CONCURRENCY = 6;
+  const BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = 2;
+  const BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES = 2;
   const PREWARM_COLLECTION_DELAY_MS = 1500;
   const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
   const PREWARM_LEASE_HEARTBEAT_MS = 5000;
@@ -1785,6 +1787,24 @@
     if (meta) state.cacheMeta = meta;
   }
 
+  function clearCachePageInFlight(state, page) {
+    if (!state.cacheEnabled) return;
+
+    const meta = updateCacheMeta(state.cacheScope, (payload) => {
+      if (payload.inFlightPages) {
+        delete payload.inFlightPages[String(page)];
+        if (Object.keys(payload.inFlightPages).length === 0) {
+          delete payload.inFlightPages;
+        }
+      }
+      if (Number(payload.inFlightPage || 0) === page) {
+        delete payload.inFlightPage;
+      }
+      return payload;
+    });
+    if (meta) state.cacheMeta = meta;
+  }
+
   function pruneCacheAfterLastPage(state, lastPage) {
     const meta = state.cacheMeta || readJsonStorage(cacheMetaKey(state.cacheScope));
     if (!meta || !meta.pages) return;
@@ -1872,6 +1892,105 @@
       state.totalPagesQueued += queued;
       logger.info('Queued newly discovered pages.', 'pages', queued, 'lastPage', state.lastPage);
     }
+  }
+
+  function maxNumberFromIterable(values) {
+    let max = 0;
+    for (const value of values || []) {
+      const number = Number(value);
+      if (Number.isInteger(number) && number > max) max = number;
+    }
+    return max;
+  }
+
+  function backgroundLookaheadQueueTarget(state) {
+    const concurrency = Math.max(1, Number(state.fetchConcurrency || FETCH_CONCURRENCY));
+    return Math.max(
+      concurrency + BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES,
+      concurrency * BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER
+    );
+  }
+
+  function queueBackgroundLookaheadPages(state) {
+    if (!state || !state.background || state.lastPageKnown || state.indexingPaused || state.indexingDone) return;
+    if (!shouldFetchMissingPages(state)) return;
+
+    const targetQueueSize = backgroundLookaheadQueueTarget(state);
+    if (state.queuedPages.size >= targetQueueSize) return;
+
+    const highestKnownPage = Math.max(
+      state.lastPage,
+      maxNumberFromIterable(state.loadedPages),
+      maxNumberFromIterable(state.queuedPages),
+      maxNumberFromIterable(state.pendingPages)
+    );
+    const endPage = highestKnownPage + (targetQueueSize - state.queuedPages.size);
+    let queued = 0;
+
+    for (let page = highestKnownPage + 1; page <= endPage; page += 1) {
+      if (state.lookaheadEndPage && page >= state.lookaheadEndPage) break;
+      if (state.loadedPages.has(page) || state.queuedPages.has(page) || state.pendingPages.includes(page)) continue;
+      state.pendingPages.push(page);
+      state.queuedPages.add(page);
+      state.lookaheadPages.add(page);
+      queued += 1;
+    }
+
+    if (queued > 0) {
+      state.totalPagesQueued += queued;
+      state.progressTotalApproximate = true;
+      logger.info(
+        'Queued background lookahead pages.',
+        'pages',
+        queued,
+        'queuedPages',
+        state.queuedPages.size,
+        'targetQueue',
+        targetQueueSize,
+        'throughPage',
+        highestKnownPage + queued
+      );
+    }
+  }
+
+  function detectLastPageLooksComplete(page, detectedLastPage) {
+    return Number(detectedLastPage || 0) > Number(page || 0) + 1;
+  }
+
+  function pruneQueuedPagesFrom(state, startPage) {
+    const firstPage = Math.max(1, Number(startPage || 1));
+    state.pendingPages = state.pendingPages.filter((page) => page < firstPage);
+    for (const page of Array.from(state.queuedPages)) {
+      if (page >= firstPage) state.queuedPages.delete(page);
+    }
+    for (const page of Array.from(state.lookaheadPages)) {
+      if (page >= firstPage) state.lookaheadPages.delete(page);
+    }
+  }
+
+  function handleBackgroundLookaheadEnd(state, page, reason) {
+    if (!state || !state.background || page <= 1) return false;
+
+    const endPage = Math.max(2, Number(page || 2));
+    state.lookaheadEndPage = state.lookaheadEndPage
+      ? Math.min(state.lookaheadEndPage, endPage)
+      : endPage;
+    state.lookaheadPages.delete(page);
+    state.queuedPages.delete(page);
+    pruneQueuedPagesFrom(state, state.lookaheadEndPage);
+    reconcileLastPage(state, state.lookaheadEndPage - 1);
+    state.lastPageKnown = true;
+    state.progressTotalApproximate = false;
+    clearCachePageInFlight(state, page);
+    syncAppWithBackgroundState(state);
+    updateStatus(state);
+    logger.info('Background lookahead found collection end.', 'lastPage', state.lastPage, 'page', page, 'reason', reason);
+    return true;
+  }
+
+  function isMissingPageFetchError(error) {
+    const status = Number(error && (error.httpStatus || error.status || 0));
+    return status === 404 || status === 410;
   }
 
   function saveCachePage(state, page, items) {
@@ -2637,6 +2756,9 @@
       pauseReason: '',
       pausedAt: 0,
       lastResumeAttemptAt: 0,
+      lastPageKnown: false,
+      lookaheadPages: new Set(),
+      lookaheadEndPage: 0,
       hardFailureCount: 0,
       abortControllers: new Set(),
       fetchConcurrency: options.fetchConcurrency || FETCH_CONCURRENCY,
@@ -4399,6 +4521,7 @@
         state.cacheMeta = readJsonStorage(cacheMetaKey(state.cacheScope));
         applyCacheProgressToState(state, state.cacheMeta);
         state.lastPage = Math.max(1, cached.lastPage || 1);
+        state.lastPageKnown = state.lastPage > 1;
         needsRevalidation = shouldRevalidateCache(state.cacheMeta);
         const canonicalAvatarMap = readCanonicalAvatarItemMap(state.route);
         let cachedAdded = 0;
@@ -4452,13 +4575,14 @@
 
     state.pendingPages = pagesToFetch;
     state.totalPagesQueued = pagesToFetch.length;
-    state.indexingDone = pagesToFetch.length === 0;
+    queueBackgroundLookaheadPages(state);
+    state.indexingDone = state.pendingPages.length === 0;
     logger.info(
       'Background collection queue prepared.',
       state.route.region,
       state.route.collection,
       'pendingPages',
-      pagesToFetch.length,
+      state.pendingPages.length,
       'loadedPages',
       state.loadedPages.size
     );
@@ -4591,6 +4715,9 @@
         const previousLastPage = state.lastPage;
         if (detectedLastPage > previousLastPage) {
           reconcileLastPage(state, detectedLastPage);
+          if (detectLastPageLooksComplete(page, detectedLastPage)) {
+            state.lastPageKnown = true;
+          }
           queueMissingPages(state, previousLastPage + 1, state.lastPage);
         } else if (detectedLastPage < state.lastPage) {
           logger.info(
@@ -4605,6 +4732,8 @@
         } else if (page >= state.lastPage) {
           state.progressTotalApproximate = false;
         }
+        state.lookaheadPages.delete(page);
+        queueBackgroundLookaheadPages(state);
         syncAppWithBackgroundState(state);
 
         updateStatus(state);
@@ -4621,6 +4750,11 @@
           return;
         }
 
+        if (state.lookaheadPages.has(page) && isMissingPageFetchError(error)) {
+          handleBackgroundLookaheadEnd(state, page, error.message || 'missing page');
+          return;
+        }
+
         if (attempt < FETCH_RETRY_COUNT) {
           await sleep(FETCH_DELAY_MS + FETCH_JITTER_MS);
           continue;
@@ -4629,6 +4763,7 @@
         state.hardFailureCount += 1;
         state.failedPages.add(page);
         state.queuedPages.delete(page);
+        state.lookaheadPages.delete(page);
         logger.warn(`Failed to index page ${page}.`, error);
         if (state.hardFailureCount >= MAX_HARD_FAILURES) {
           pauseIndexing(state, 'Too many page fetch failures; refresh later to retry.');
@@ -4661,7 +4796,7 @@
       });
 
       if (!response.ok) {
-        throw makeFetchError(`HTTP ${response.status}`, response.status === 403 || response.status === 429);
+        throw makeFetchError(`HTTP ${response.status}`, response.status === 403 || response.status === 429, response.status);
       }
 
       const contentType = response.headers.get('content-type') || '';
@@ -4699,9 +4834,10 @@
     }
   }
 
-  function makeFetchError(message, hard) {
+  function makeFetchError(message, hard, httpStatus = 0) {
     const error = new Error(message);
     error.pspricesHardFetchError = Boolean(hard);
+    error.httpStatus = Number(httpStatus || 0);
     return error;
   }
 
