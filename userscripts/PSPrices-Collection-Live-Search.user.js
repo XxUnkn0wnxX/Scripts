@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.31
+// @version      1.0.32
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.31';
+  const SCRIPT_VERSION = '1.0.32';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -4566,15 +4566,7 @@
 
     removeIndexedPagesAfter(state, state.lastPage);
 
-    const pagesToFetch = [];
-    for (let page = 1; page <= state.lastPage; page += 1) {
-      if (state.loadedPages.has(page)) continue;
-      pagesToFetch.push(page);
-      state.queuedPages.add(page);
-    }
-
-    state.pendingPages = pagesToFetch;
-    state.totalPagesQueued = pagesToFetch.length;
+    queueMissingPages(state, 1, state.lastPage);
     queueBackgroundLookaheadPages(state);
     state.indexingDone = state.pendingPages.length === 0;
     logger.info(
