@@ -298,6 +298,8 @@ Their purposes are:
 
 When the total page count is unknown, the background worker speculatively queues pages ahead of the last discovered page. A missing lookahead page such as a 404/410 response is treated as the collection end marker; the previous page remains queued and must be fetched before the cache completes.
 
+With the defaults, unknown-page prewarm keeps the queue at `PREWARM_FETCH_CONCURRENCY + BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES`, or `8` pages total: `6` active workers plus `2` pages ahead. Increase `BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES` if workers drain the queue too quickly; lower it if you want fewer speculative requests near the final page.
+
 If PSPrices returns a rate-limit, bot-protection, or challenge-like page, indexing pauses and writes a console warning. A paused background worker can retry when the user types into the search box, subject to this cooldown:
 
 ```js
