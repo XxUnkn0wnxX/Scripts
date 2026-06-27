@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.29
+// @version      1.0.30
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.29';
+  const SCRIPT_VERSION = '1.0.30';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -43,7 +43,7 @@
   const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
   const CACHE_SCOPE_VERSION = 'v4';
   const CACHE_RESET_ON_SCHEMA_CHANGE = true;
-  const CACHE_SCHEMA_VERSION = 9;
+  const CACHE_SCHEMA_VERSION = 10;
   const CACHE_MIGRATION_VERSION = `cache-schema-${CACHE_SCHEMA_VERSION}`;
   const CACHE_MIGRATION_KEY = `${CACHE_PREFIX}:migration-version`;
   // Set true to force the legacy page localStorage cache backend.
@@ -2294,10 +2294,7 @@
       const image = bestImageUrl(visualImage, link, pageUrl);
       const cardText = textContent(root);
       const priceText = extractPriceText(cardText) || defaultPriceTextForCollection(route.collection);
-      const platformText = Array.from(root.querySelectorAll('.deal-strip img[alt], img[alt*="PlayStation"]'))
-        .map((imageNode) => attr(imageNode, 'alt'))
-        .filter(Boolean)
-        .join(' ') || defaultPlatformTextForCollection(route.collection);
+      const platformText = extractThemePlatformText(root, route.collection);
 
       if (!title || !href) continue;
 
@@ -2458,7 +2455,9 @@
 
   function extractProductDetailPlatformText(doc, collection) {
     const root = doc.querySelector('#platform-badges') || doc;
-    return extractAvatarPlatformText(root, collection);
+    return isThemeCollection(collection)
+      ? extractThemePlatformText(root, collection)
+      : extractAvatarPlatformText(root, collection);
   }
 
   function extractGameId(url) {
@@ -2475,12 +2474,62 @@
     return priceMatch ? priceMatch[0].replace(/\s+/g, ' ').trim() : '';
   }
 
+  function platformLabelFormatForCollection(collection) {
+    return isThemeCollection(collection) ? 'long' : 'short';
+  }
+
+  function formatPlatformLabel(value, format) {
+    const platform = String(value || '').toUpperCase().replace(/^PLAYSTATION\s*/i, 'PS');
+    const match = platform.match(/^PS([345])$/);
+    if (!match) return '';
+    return format === 'long' ? `PlayStation ${match[1]}` : `PS${match[1]}`;
+  }
+
+  function platformLabelsFromText(value, format = 'short') {
+    const labels = [];
+    const seen = new Set();
+    const text = String(value || '');
+    const matcher = /\b(?:PS\s*|PlayStation\s*)([345])\b/ig;
+    let match = matcher.exec(text);
+    while (match) {
+      const label = formatPlatformLabel(`PS${match[1]}`, format);
+      if (label && !seen.has(label)) {
+        seen.add(label);
+        labels.push(label);
+      }
+      match = matcher.exec(text);
+    }
+    return labels;
+  }
+
+  function normalizedPlatformText(value, collection) {
+    return platformLabelsFromText(value, platformLabelFormatForCollection(collection)).join(' ');
+  }
+
+  function extractThemePlatformText(root, collection) {
+    // Theme cover image alt text often contains product titles with "PlayStation 4";
+    // prefer the native deal strip and normalize fallback matches to platform labels.
+    const dealStripText = Array.from(root.querySelectorAll('.deal-strip'))
+      .map((node) => [
+        textContent(node),
+        ...Array.from(node.querySelectorAll('img[alt]')).map((imageNode) => attr(imageNode, 'alt')),
+      ].join(' '))
+      .join(' ');
+    const dealStripPlatform = normalizedPlatformText(dealStripText, collection);
+    if (dealStripPlatform) return dealStripPlatform;
+
+    const imageAltPlatform = normalizedPlatformText(
+      Array.from(root.querySelectorAll('img[alt]')).map((imageNode) => attr(imageNode, 'alt')).join(' '),
+      collection
+    );
+    return imageAltPlatform || defaultPlatformTextForCollection(collection);
+  }
+
   function extractAvatarPlatformText(root, collection) {
     const labels = Array.from(root.querySelectorAll('span, img[alt]'))
       .map((node) => node.tagName && node.tagName.toLowerCase() === 'img' ? attr(node, 'alt') : textContent(node))
       .map((text) => String(text || '').trim())
-      .filter((text) => /^PS[345]$|^PlayStation\s+[345]$/i.test(text))
-      .map((text) => text.replace(/^PlayStation\s+/i, 'PS').toUpperCase());
+      .flatMap((text) => platformLabelsFromText(text, platformLabelFormatForCollection(collection)));
 
     return Array.from(new Set(labels)).join(' ') || defaultPlatformTextForCollection(collection);
   }
