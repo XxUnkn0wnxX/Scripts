@@ -174,9 +174,9 @@ To force the legacy backend for testing, set this near the top of the userscript
 const CACHE_FORCE_LOCAL_STORAGE = true;
 ```
 
-The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script purges the old backend's collection-search cache data before using the new backend. This purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage.
+The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script first tries to move the current region's compatible cache entries into the new backend, then purges the old backend's collection-search cache data. The old-backend purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage. If the moved cache belongs to an older incompatible schema, the normal schema migration still purges it and rebuilds fresh data.
 
-If IndexedDB opens but later fails a write, the script switches to localStorage fallback for the active session, copies the in-memory cache snapshot into localStorage where possible, then starts a best-effort purge of the stale IndexedDB cache data. If that cleanup fails, the fallback session still continues and logs the cleanup problem.
+If IndexedDB opens but later fails a write, the script switches to localStorage fallback for the active session, copies the current region's in-memory cache snapshot into localStorage where possible, then starts a best-effort purge of the stale IndexedDB cache data. If that cleanup fails, the fallback session still continues and logs the cleanup problem.
 
 Cache keys and database entries use the script prefix:
 
