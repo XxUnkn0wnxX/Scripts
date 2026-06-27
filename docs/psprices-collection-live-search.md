@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.33`.
+Current documented release: `1.0.34`.
 
 ## What It Does
 
@@ -278,7 +278,7 @@ Background prewarm uses:
 
 ```js
 const PREWARM_FETCH_CONCURRENCY = 6;
-const BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = 2;
+const BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = 1;
 const BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES = 2;
 const PREWARM_COLLECTION_DELAY_MS = 1500;
 const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
@@ -289,7 +289,7 @@ const PREWARM_LEASE_STALE_MS = 30 * 1000;
 Their purposes are:
 
 - `PREWARM_FETCH_CONCURRENCY`: page fetch concurrency for background region indexing
-- `BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER`: keeps the unknown-page background queue larger than the worker count so off-page indexing does not crawl one page at a time
+- `BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER`: scales the unknown-page background queue from the worker count before the extra-page buffer is applied
 - `BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES`: minimum extra unknown pages kept ahead of the worker count
 - `PREWARM_COLLECTION_DELAY_MS`: pause between avatar and theme collection prewarm passes
 - `PREWARM_CONTEXT_GRACE_MS`: time to wait after losing the regional page context before pausing
@@ -398,7 +398,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.33)
+PSPrices Collection Live Search: has started (v1.0.34)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
