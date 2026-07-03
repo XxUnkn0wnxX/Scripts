@@ -406,6 +406,8 @@ clean_channel() {
   local targets
   local existing_targets
   local target
+  local relative_target
+  local -a failed_targets=()
 
   app_name="$(app_name_for_channel "$channel")"
   data_dir="$(data_dir_for_channel "$channel")"
@@ -478,10 +480,69 @@ clean_channel() {
   fi
 
   for target in "${existing_targets[@]}"; do
-    rm -rf -- "$target"
+    relative_target="${target#$data_dir/}"
+    if ! remove_installation_target "$target" "$relative_target"; then
+      failed_targets+=("$relative_target")
+    fi
   done
 
+  if (( ${#failed_targets[@]} > 0 )); then
+    print -u2 "$app_name installation cleanup did not remove every target:"
+    for target in "${failed_targets[@]}"; do
+      print -u2 "  $target"
+    done
+    return 1
+  fi
+
   print "$app_name installation files cleaned successfully."
+}
+
+remove_installation_target() {
+  local target="$1"
+  local relative_target="$2"
+  local attempt
+  local remove_status=1
+
+  for attempt in {1..3}; do
+    if [[ ! -e "$target" ]]; then
+      return 0
+    fi
+
+    chflags -RH nouchg,noschg "$target" >/dev/null 2>&1 || true
+    chmod -RN "$target" >/dev/null 2>&1 || true
+    chmod -R u+rwX "$target" >/dev/null 2>&1 || true
+    xattr -cr "$target" >/dev/null 2>&1 || true
+
+    if rm -rf -- "$target"; then
+      remove_status=0
+    else
+      remove_status=$?
+    fi
+
+    if [[ ! -e "$target" ]]; then
+      return 0
+    fi
+
+    if [[ -d "$target" ]]; then
+      find -x "$target" -depth -mindepth 1 -exec chflags -H nouchg,noschg {} + >/dev/null 2>&1 || true
+      find -x "$target" -depth -mindepth 1 -exec chmod -N {} + >/dev/null 2>&1 || true
+      find -x "$target" -depth -mindepth 1 -exec chmod u+rwX {} + >/dev/null 2>&1 || true
+      find -x "$target" -depth -mindepth 1 -exec rm -rf -- {} + >/dev/null 2>&1 || true
+
+      if rmdir "$target" >/dev/null 2>&1 || [[ ! -e "$target" ]]; then
+        return 0
+      fi
+    fi
+
+    if (( attempt < 3 )); then
+      print "Could not fully delete $relative_target yet. Retrying in 1 second..."
+      sleep 1
+    fi
+  done
+
+  print -u2 "Failed to delete $relative_target:"
+  print -u2 "  $target"
+  return "$remove_status"
 }
 
 guard_update_replacement() {
