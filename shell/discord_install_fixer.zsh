@@ -6,6 +6,7 @@ setopt null_glob
 script_name="${0:t}"
 script_dir="${0:A:h}"
 DEFAULT_OPENASAR_SOURCE="https://github.com/XxUnkn0wnxX/OpenAsar"
+DEFAULT_DOWNLOAD_CONNECTIONS=16
 
 typeset -A channel_app_names=(
   stable "Discord"
@@ -84,6 +85,7 @@ Notes:
   --update with a version, --dl, and --update-select require a single channel, not "all".
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
+  aria2c is used for downloads when available; set DISCORD_DOWNLOAD_CONNECTIONS to tune its split count.
   OpenAsar sources can be GitHub repo URLs, app.asar URLs, or local paths including ~, \$HOME, and file:// paths.
 EOF
 }
@@ -447,6 +449,58 @@ openasar_source_is_remote() {
   esac
 }
 
+download_connection_count() {
+  local connections="${DISCORD_DOWNLOAD_CONNECTIONS:-$DEFAULT_DOWNLOAD_CONNECTIONS}"
+
+  if [[ "$connections" != <-> || "$connections" -lt 1 ]]; then
+    connections="$DEFAULT_DOWNLOAD_CONNECTIONS"
+  elif (( connections > DEFAULT_DOWNLOAD_CONNECTIONS )); then
+    connections="$DEFAULT_DOWNLOAD_CONNECTIONS"
+  fi
+
+  print -- "$connections"
+}
+
+download_file() {
+  local url="$1"
+  local output_path="$2"
+  local output_dir
+  local output_name
+  local aria2_path
+  local connections
+
+  output_dir="${output_path:h}"
+  output_name="${output_path:t}"
+
+  if aria2_path="$(command -v aria2c 2>/dev/null)"; then
+    connections="$(download_connection_count)"
+    print "Using aria2c downloader:"
+    print "  $aria2_path"
+    print "  connections: $connections"
+
+    "$aria2_path" \
+      --allow-overwrite=true \
+      --auto-file-renaming=false \
+      --continue=false \
+      --file-allocation=none \
+      --max-connection-per-server="$connections" \
+      --min-split-size=1M \
+      --split="$connections" \
+      --dir="$output_dir" \
+      --out="$output_name" \
+      "$url"
+  else
+    print "Using curl downloader."
+    curl -L --fail --show-error --output "$output_path" "$url"
+  fi
+}
+
+remove_download_artifacts() {
+  local output_path="$1"
+
+  rm -f -- "$output_path" "$output_path.aria2"
+}
+
 openasar_remote_download_url() {
   local source_url="$openasar_source"
   local github_path
@@ -560,12 +614,13 @@ download_openasar_payload() {
   print "  $download_url"
 
   for attempt in {1..3}; do
-    rm -f -- "$payload_path"
-    if curl -L --fail --show-error --output "$payload_path" "$download_url" && [[ -s "$payload_path" ]]; then
+    remove_download_artifacts "$payload_path"
+    if download_file "$download_url" "$payload_path" && [[ -s "$payload_path" ]]; then
+      rm -f -- "$payload_path.aria2"
       return 0
     fi
 
-    rm -f -- "$payload_path"
+    remove_download_artifacts "$payload_path"
     if (( attempt == 3 )); then
       print -u2 "OpenAsar payload download failed after $attempt attempts:"
       print -u2 "  $payload_path"
@@ -664,7 +719,7 @@ download_installer_dmg() {
   download_url="$(download_url_for_channel "$channel")"
   dmg_path="$(dmg_path_for_channel "$channel")"
 
-  rm -f -- "$dmg_path"
+  remove_download_artifacts "$dmg_path"
 
   print "Downloading $app_name installer to:"
   print "  $dmg_path"
@@ -676,13 +731,15 @@ download_installer_dmg() {
   print "  $download_url"
 
   for attempt in {1..3}; do
-    if curl -L --fail --show-error --output "$dmg_path" "$download_url" && [[ -s "$dmg_path" ]]; then
+    remove_download_artifacts "$dmg_path"
+    if download_file "$download_url" "$dmg_path" && [[ -s "$dmg_path" ]]; then
+      rm -f -- "$dmg_path.aria2"
       print "$app_name installer downloaded successfully:"
       print "  $dmg_path"
       return 0
     fi
 
-    rm -f -- "$dmg_path"
+    remove_download_artifacts "$dmg_path"
     if (( attempt == 3 )); then
       print -u2 "$app_name installer download failed after $attempt attempts."
       return 1
@@ -723,7 +780,7 @@ download_and_replace_app() {
     if [[ "$mount_point_created" == true ]]; then
       rm -rf -- "$mount_point"
     fi
-    rm -f -- "$dmg_path"
+    remove_download_artifacts "$dmg_path"
   }
 
   download_installer_dmg "$channel" || {
@@ -1095,7 +1152,7 @@ if [[ "$openasar_requested" == true ]]; then
 
   cleanup_openasar_payload() {
     if [[ "$openasar_payload_is_temporary" == true && -n "$openasar_payload" ]]; then
-      rm -f -- "$openasar_payload"
+      remove_download_artifacts "$openasar_payload"
     fi
   }
 
