@@ -47,12 +47,15 @@ print_usage() {
   cat <<EOF
 Usage:
   $script_name --channel stable|ptb|canary|all [--update [version]] [--openasar] [--openasar-source url-or-path]
+  $script_name --channel stable|ptb|canary --dl [version]
   $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end]
   $script_name --help
 
 Options:
   --channel             Select the Discord channel to clean. Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
+                        Optionally pass a version such as 0.0.1177 to download that CDN build.
+  --dl                  Download the selected Discord DMG only, then exit.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
   --update-select       Print available CDN DMG versions for one selected channel, then exit.
                         Optionally pass a minimum version such as 900 or a range such as 600-300.
@@ -63,6 +66,7 @@ Options:
 Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
+  $script_name --channel canary --dl 0.0.1177
   $script_name --channel canary --update-select
   $script_name --channel canary --update-select 900
   $script_name --channel canary --update-select 600-300
@@ -75,8 +79,9 @@ Examples:
 Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
+  --dl must be paired with one channel and only downloads the DMG.
   --update without a version still supports --channel all.
-  --update with a version and --update-select require a single channel, not "all".
+  --update with a version, --dl, and --update-select require a single channel, not "all".
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
   OpenAsar sources can be GitHub repo URLs, app.asar URLs, or local paths including ~, \$HOME, and file:// paths.
@@ -92,6 +97,7 @@ fail_usage() {
 
 selected_channel=""
 update_requested=false
+dl_requested=false
 update_select_requested=false
 update_select_min_version=""
 update_version=""
@@ -123,6 +129,20 @@ while (( $# > 0 )); do
     --update=*)
       update_requested=true
       update_version="${1#--update=}"
+      shift
+      ;;
+    --dl)
+      dl_requested=true
+      if (( $# >= 2 )) && [[ "$2" != --* ]]; then
+        update_version="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --dl=*)
+      dl_requested=true
+      update_version="${1#--dl=}"
       shift
       ;;
     --update-select)
@@ -159,6 +179,10 @@ if [[ "$update_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--update requires --channel stable|ptb|canary|all."
 fi
 
+if [[ "$dl_requested" == true && "$explicit_channel" != true ]]; then
+  fail_usage "--dl requires --channel stable|ptb|canary."
+fi
+
 if [[ "$update_select_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--update-select requires --channel stable|ptb|canary."
 fi
@@ -187,12 +211,20 @@ if [[ "$update_select_requested" == true && "$selected_channel" == all ]]; then
   fail_usage "--update-select only supports one channel at a time."
 fi
 
+if [[ "$dl_requested" == true && "$selected_channel" == all ]]; then
+  fail_usage "--dl only supports one channel at a time."
+fi
+
+if [[ "$dl_requested" == true && ( "$update_requested" == true || "$update_select_requested" == true || "$openasar_requested" == true ) ]]; then
+  fail_usage "--dl only downloads a DMG and cannot be combined with --update, --update-select, or --openasar."
+fi
+
 if [[ "$update_select_requested" == true && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
   fail_usage "--update-select only prints versions and cannot be combined with --update or --openasar."
 fi
 
 if [[ -n "$update_version" && "$selected_channel" == all ]]; then
-  fail_usage "--update with a version only supports one channel at a time."
+  fail_usage "--update or --dl with a version only supports one channel at a time."
 fi
 
 typeset -A channel_was_running=()
@@ -380,7 +412,7 @@ print_update_select_versions() {
     last_modified="$(print -r -- "$headers" | /usr/bin/awk 'tolower($0) ~ /^last-modified:/ { sub(/^[Ll]ast-[Mm]odified:[[:space:]]*/, ""); value=$0 } END { gsub(/\r/, "", value); print value }')"
     [[ -n "$last_modified" ]] || last_modified="unknown"
 
-    print "$last_modified  0.0.$suffix  $url"
+    print "$last_modified  0.0.$suffix"
     found_any=true
   done
 
@@ -621,12 +653,51 @@ quit_discord() {
   return 0
 }
 
+download_installer_dmg() {
+  local channel="$1"
+  local app_name
+  local download_url
+  local dmg_path
+  local attempt
+
+  app_name="$(app_name_for_channel "$channel")"
+  download_url="$(download_url_for_channel "$channel")"
+  dmg_path="$(dmg_path_for_channel "$channel")"
+
+  rm -f -- "$dmg_path"
+
+  print "Downloading $app_name installer to:"
+  print "  $dmg_path"
+  if [[ -n "$update_version" ]]; then
+    print "Requested $app_name version:"
+    print "  $update_version"
+  fi
+  print "From:"
+  print "  $download_url"
+
+  for attempt in {1..3}; do
+    if curl -L --fail --show-error --output "$dmg_path" "$download_url" && [[ -s "$dmg_path" ]]; then
+      print "$app_name installer downloaded successfully:"
+      print "  $dmg_path"
+      return 0
+    fi
+
+    rm -f -- "$dmg_path"
+    if (( attempt == 3 )); then
+      print -u2 "$app_name installer download failed after $attempt attempts."
+      return 1
+    fi
+
+    print "$app_name installer download failed. Retrying in 3 seconds..."
+    sleep 3
+  done
+}
+
 download_and_replace_app() {
   local channel="$1"
   local app_name
   local app_path
   local executable_path
-  local download_url
   local dmg_path
   local mount_point
   local mounted=false
@@ -639,11 +710,8 @@ download_and_replace_app() {
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
   executable_path="$(executable_path_for_channel "$channel")"
-  download_url="$(download_url_for_channel "$channel")"
   dmg_path="$(dmg_path_for_channel "$channel")"
   mount_point="$(available_mount_point_for_channel "$channel")"
-
-  rm -f -- "$dmg_path"
 
   mkdir -p "$mount_point"
   mount_point_created=true
@@ -658,30 +726,11 @@ download_and_replace_app() {
     rm -f -- "$dmg_path"
   }
 
-  print "Downloading $app_name installer to:"
-  print "  $dmg_path"
-  if [[ -n "$update_version" ]]; then
-    print "Requested $app_name version:"
-    print "  $update_version"
-  fi
-  print "From:"
-  print "  $download_url"
-  for attempt in {1..3}; do
-    if curl -L --fail --show-error --output "$dmg_path" "$download_url"; then
-      break
-    fi
-
-    rm -f -- "$dmg_path"
-    if (( attempt == 3 )); then
-      print -u2 "$app_name installer download failed after $attempt attempts."
-      print -u2 "$app_name was not replaced."
-      cleanup_mount_and_dmg
-      return 1
-    fi
-
-    print "$app_name installer download failed. Retrying in 3 seconds..."
-    sleep 3
-  done
+  download_installer_dmg "$channel" || {
+    print -u2 "$app_name was not replaced."
+    cleanup_mount_and_dmg
+    return 1
+  }
 
   {
     hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_point" >/dev/null
@@ -1022,6 +1071,11 @@ fi
 
 if [[ "$update_select_requested" == true ]]; then
   print_update_select_versions "$selected_channel" "$update_select_min_version"
+  exit $?
+fi
+
+if [[ "$dl_requested" == true ]]; then
+  download_installer_dmg "$selected_channel"
   exit $?
 fi
 
