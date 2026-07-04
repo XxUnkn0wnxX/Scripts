@@ -120,18 +120,28 @@ It can also be combined with `--update`:
 zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 ```
 
-By default, the script downloads OpenAsar from the fork release URL:
-
-```zsh
-DEFAULT_OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
-```
-
-Set `OPENASAR_RELEASE_URL` when running the script to use a different remote release or a local `app.asar` file:
+Use `--openasar-source` to inject a specific OpenAsar payload from a local file, a GitHub repo URL, or a direct download URL:
 
 ```bash
-OPENASAR_RELEASE_URL="$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar" \
+zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
+```
+
+By default, the script uses the fork repo URL and resolves it to the latest release asset internally:
+
+```zsh
+DEFAULT_OPENASAR_SOURCE="https://github.com/XxUnkn0wnxX/OpenAsar"
+```
+
+For a plain GitHub repo URL such as `https://github.com/XxUnkn0wnxX/OpenAsar`, the script downloads from that repo's `releases/latest/download/app.asar` asset.
+
+Set `OPENASAR_SOURCE` when running the script if you prefer an environment override instead of the CLI option:
+
+```bash
+OPENASAR_SOURCE="$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar" \
   zsh shell/discord_install_fixer.zsh --channel stable --openasar
 ```
+
+Local sources can be absolute paths, relative paths, `~/...`, `$HOME/...`, or `file://...` paths. Remote sources can be plain GitHub repo URLs or direct `http://` / `https://` `app.asar` URLs.
 
 For remote URLs, the downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. Local `app.asar` sources are used in place and are not deleted by the script. It does not keep an archived copy and does not create `.stock` backups.
 
@@ -142,7 +152,7 @@ OpenAsar injection happens before any selected client is relaunched.
 ## Usage
 
 ```text
-discord_install_fixer.zsh --channel stable|ptb|canary|all [--update] [--openasar]
+discord_install_fixer.zsh --channel stable|ptb|canary|all [--update] [--openasar] [--openasar-source url-or-path]
 discord_install_fixer.zsh --help
 ```
 
@@ -177,6 +187,12 @@ discord_install_fixer.zsh --help
       <td>Downloads OpenAsar and overwrites the selected app's <code>Contents/Resources/app.asar</code>. Requires <code>--channel</code>.</td>
     </tr>
     <tr>
+      <td><nobr><code>--openasar-source &lt;url-or-path&gt;</code></nobr></td>
+      <td>Option</td>
+      <td><nobr>URL or path</nobr></td>
+      <td>Injects OpenAsar from a specific GitHub repo URL, direct remote URL, or local <code>app.asar</code> file. Implies <code>--openasar</code> and requires <code>--channel</code>.</td>
+    </tr>
+    <tr>
       <td><nobr><code>--help</code>, <code>-h</code></nobr></td>
       <td>Flag</td>
       <td><nobr>none</nobr></td>
@@ -191,6 +207,7 @@ Notes:
 - `--channel` alone only purges the selected client or clients' App Support updater files.
 - `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
 - `--update` and `--openasar` can be combined.
+- `--openasar-source` implies `--openasar`.
 
 ## Examples
 
@@ -222,6 +239,18 @@ Inject OpenAsar and clean Discord Stable:
 
 ```bash
 zsh shell/discord_install_fixer.zsh --channel stable --openasar
+```
+
+Inject a locally built OpenAsar payload and clean Discord Stable:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
+```
+
+Inject OpenAsar from a specific repo URL:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "https://github.com/XxUnkn0wnxX/OpenAsar"
 ```
 
 Download, replace, and clean Stable, PTB, and Canary:
