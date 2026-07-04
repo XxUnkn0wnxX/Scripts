@@ -679,7 +679,7 @@ wait_for_app_bundle_ready() {
   return 1
 }
 
-refresh_launch_services_registration() {
+refresh_target_launch_services_registration() {
   local channel="$1"
   local app_path
   local lsregister
@@ -717,7 +717,7 @@ relaunch_channel_if_needed() {
     print "Relaunching $app_name because it was running when this script started..."
     for attempt in {1..3}; do
       wait_for_app_bundle_ready "$channel" 10 || return 1
-      refresh_launch_services_registration "$channel"
+      refresh_target_launch_services_registration "$channel"
 
       if open_output="$(open "$app_path" 2>&1)"; then
         return 0
