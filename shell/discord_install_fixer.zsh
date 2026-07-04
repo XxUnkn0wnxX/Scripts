@@ -652,6 +652,54 @@ guard_update_replacement() {
   clean_channel "$channel" true
 }
 
+wait_for_app_bundle_ready() {
+  local channel="$1"
+  local timeout="${2:-10}"
+  local app_name
+  local app_path
+  local executable_path
+  local deadline
+
+  app_name="$(app_name_for_channel "$channel")"
+  app_path="$(app_path_for_channel "$channel")"
+  executable_path="$(executable_path_for_channel "$channel")"
+  deadline=$(( SECONDS + timeout ))
+
+  while (( SECONDS <= deadline )); do
+    if [[ -d "$app_path" && -f "$app_path/Contents/Info.plist" && -x "$executable_path" ]]; then
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  print -u2 "$app_name app bundle is not ready to launch:"
+  print -u2 "  $app_path"
+  print -u2 "  $executable_path"
+  return 1
+}
+
+refresh_launch_services_registration() {
+  local channel="$1"
+  local app_path
+  local lsregister
+
+  app_path="$(app_path_for_channel "$channel")"
+  lsregister="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+
+  [[ -x "$lsregister" ]] || return 0
+  "$lsregister" -f "$app_path" >/dev/null 2>&1 || true
+}
+
+print_indented_output() {
+  local output="$1"
+  local line
+
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && print -u2 "  $line"
+  done <<< "$output"
+}
+
 relaunch_channel_if_needed() {
   local channel="$1"
   local was_running_at_start="${2:-false}"
@@ -659,6 +707,7 @@ relaunch_channel_if_needed() {
   local app_path
   local executable_path
   local attempt
+  local open_output
 
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
@@ -667,10 +716,15 @@ relaunch_channel_if_needed() {
   if [[ "$was_running_at_start" == true ]]; then
     print "Relaunching $app_name because it was running when this script started..."
     for attempt in {1..3}; do
-      if open "$app_path"; then
+      wait_for_app_bundle_ready "$channel" 10 || return 1
+      refresh_launch_services_registration "$channel"
+
+      if open_output="$(open "$app_path" 2>&1)"; then
         return 0
       fi
 
+      print -u2 "$app_name did not relaunch cleanly with open:"
+      print_indented_output "$open_output"
       print "$app_name did not relaunch cleanly with open. Retrying..."
       sleep 1
     done
@@ -678,6 +732,12 @@ relaunch_channel_if_needed() {
     if [[ -x "$executable_path" ]]; then
       print "Falling back to launching $app_name executable directly..."
       "$executable_path" >/dev/null 2>&1 &!
+      for _ in {1..10}; do
+        discord_is_running "$channel" && return 0
+        sleep 1
+      done
+
+      print -u2 "$app_name executable fallback was started, but the running process was not detected."
       return 0
     fi
 
