@@ -39,6 +39,8 @@ Use `--channel all` to apply the selected action to all three channels.
 - relaunches a selected client only when that selected client was running when the script started
 - with `--channel all`, processes Stable, PTB, and Canary sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
+- with `--update <version>`, downloads that channel's direct CDN DMG for a version such as `0.0.1177` instead of the latest API redirect
+- with `--update-select`, prints available direct CDN DMG versions for one selected channel and exits without changing files
 - with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, then overwrites the selected app's `Contents/Resources/app.asar`
 - before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` still fails
 
@@ -81,7 +83,31 @@ Discord stores the local login token in `Local Storage/leveldb/`. Preserving the
 
 ## DMG Downloads
 
-When `--update` is used, the DMG is downloaded beside the script file. In this repository that means:
+When `--update` is used without a version, the DMG is downloaded from Discord's latest macOS download API for the selected channel.
+
+When `--update <version>` is used, the script downloads that channel's direct CDN DMG instead. Versions can be passed as either `0.0.1177` or `1177`. Pinned versions only support a single channel, not `--channel all`.
+
+Use `--update-select` to print known direct CDN DMG versions for one selected channel:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update-select
+```
+
+Pass a minimum version to stop the probe at that version:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update-select 900
+```
+
+Pass a range to start and stop at explicit versions:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update-select 600-300
+```
+
+Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric CDN DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. It prints matching builds as they are discovered with the CDN `Last-Modified` date first, followed by version and URL, and does not clean, update, inject OpenAsar, or relaunch Discord.
+
+The DMG is downloaded beside the script file. In this repository that means:
 
 ```text
 shell/Discord-stable-installer.dmg
@@ -161,7 +187,8 @@ If `open` still fails, the script prints the captured LaunchServices error and r
 ## Usage
 
 ```text
-discord_install_fixer.zsh --channel stable|ptb|canary|all [--update] [--openasar] [--openasar-source url-or-path]
+discord_install_fixer.zsh --channel stable|ptb|canary|all [--update [version]] [--openasar] [--openasar-source url-or-path]
+discord_install_fixer.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end]
 discord_install_fixer.zsh --help
 ```
 
@@ -184,10 +211,16 @@ discord_install_fixer.zsh --help
       <td>Selects the Discord client or clients to purge, update, or inject. <code>all</code> processes Stable, PTB, and Canary sequentially.</td>
     </tr>
     <tr>
-      <td><nobr><code>--update</code></nobr></td>
+      <td><nobr><code>--update [version]</code></nobr></td>
+      <td>Flag / option</td>
+      <td><nobr>optional version</nobr></td>
+      <td>Downloads a fresh Discord DMG for the selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. With a version such as <code>0.0.1177</code> or <code>1177</code>, downloads that direct CDN build. Requires <code>--channel</code>; pinned versions do not support <code>all</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--update-select [minimum-version|start-end]</code></nobr></td>
       <td>Flag</td>
-      <td><nobr>none</nobr></td>
-      <td>Downloads a fresh Discord DMG for the selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. Requires <code>--channel</code>.</td>
+      <td><nobr>optional version</nobr></td>
+      <td>Prints available direct CDN DMG versions for one selected channel from newest to oldest as they are discovered, with CDN <code>Last-Modified</code> date first, then exits without making changes. With a minimum version such as <code>900</code> or <code>0.0.900</code>, stops scanning at that version. With a range such as <code>600-300</code>, starts at <code>0.0.600</code> and stops at <code>0.0.300</code>. Does not support <code>all</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--openasar</code></nobr></td>
@@ -215,6 +248,9 @@ Notes:
 - Running the script with no arguments exits without changing anything and prints the help text.
 - `--channel` alone only purges the selected client or clients' App Support updater files.
 - `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
+- Plain `--update` still supports `--channel all` and downloads the latest API DMG for Stable, PTB, and Canary sequentially.
+- `--update <version>` and `--update-select` only support one selected channel at a time.
+- `--update-select` only prints versions and exits.
 - `--update` and `--openasar` can be combined.
 - `--openasar-source` implies `--openasar`.
 
@@ -242,6 +278,30 @@ Download, replace, and clean Discord Canary:
 
 ```bash
 zsh shell/discord_install_fixer.zsh --channel canary --update
+```
+
+List direct CDN DMG versions for Discord Canary:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update-select
+```
+
+List direct CDN DMG versions for Discord Canary down to `0.0.900`:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update-select 900
+```
+
+List direct CDN DMG versions for Discord Canary from `0.0.600` down to `0.0.300`:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update-select 600-300
+```
+
+Download, replace, and clean Discord Canary with a pinned direct CDN build:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel canary --update 0.0.1177
 ```
 
 Inject OpenAsar and clean Discord Stable:
@@ -281,6 +341,7 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
 - During `--update`, the selected client is checked again before app deletion/copying and after failed replacement attempts.
+- Pinned `--update <version>` downloads only the selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
 - OpenAsar injection only runs after the selected app has been stopped.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - If no updater-managed targets are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully.
