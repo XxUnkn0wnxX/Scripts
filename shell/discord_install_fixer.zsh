@@ -288,6 +288,8 @@ print_update_select_versions() {
   local min_suffix=""
   local range_start=""
   local range_end=""
+  local clamped_start=false
+  local clamped_floor=false
   local scan_limit="${DISCORD_UPDATE_SELECT_SCAN_LIMIT:-0}"
   local suffix
   local url
@@ -313,13 +315,21 @@ print_update_select_versions() {
         print -u2 "Use descending ranges such as 600-300 or 0.0.600-0.0.300."
         return 1
       fi
+
+      if (( first_suffix > latest_suffix )); then
+        first_suffix="$latest_suffix"
+        clamped_start=true
+      fi
+
+      if (( last_suffix > first_suffix )); then
+        last_suffix="$first_suffix"
+        clamped_floor=true
+      fi
     else
       min_suffix="$(discord_version_suffix "$selector")" || return 1
       if (( min_suffix > latest_suffix )); then
-        print -u2 "Minimum version is newer than the latest $app_name version:"
-        print -u2 "  minimum: 0.0.$min_suffix"
-        print -u2 "  latest: $latest_version"
-        return 1
+        min_suffix="$latest_suffix"
+        clamped_floor=true
       fi
       last_suffix="$min_suffix"
     fi
@@ -339,6 +349,12 @@ print_update_select_versions() {
   print "  latest: $latest_version"
   print "  source: Discord CDN direct DMG URLs"
   print "  note: CDN directory listing is denied, so this probes versioned DMG URLs."
+  if [[ "$clamped_start" == true ]]; then
+    print "  requested start was newer than latest; using latest $latest_version"
+  fi
+  if [[ "$clamped_floor" == true ]]; then
+    print "  requested floor was newer than latest; using latest $latest_version"
+  fi
   if [[ -n "$range_start" ]]; then
     print "  scan range: 0.0.$first_suffix down to 0.0.$last_suffix"
   fi
