@@ -126,9 +126,11 @@ shell/Discord-canary-installer.dmg
 
 Any existing DMG at that path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
 
-When `--dl` is used, the downloaded DMG is not deleted by the script.
+When `--dl` is used, the completed downloaded DMG is not deleted by the script.
 
-If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. If all attempts fail, the selected app is not replaced and the script exits with an error.
+If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. Before each new remote download attempt, it removes the target file and any matching aria2 control file such as `Discord-canary-installer.dmg.aria2`. If all attempts fail, the selected app is not replaced and the script exits with an error.
+
+When `aria2c` is available, remote Discord DMG and OpenAsar downloads use it with up to 16 split connections. Set `DISCORD_DOWNLOAD_CONNECTIONS` to a lower value to reduce the split count. If `aria2c` is not available, the script uses `curl`.
 
 After mounting the DMG, the script checks again for a self-restarted Discord client immediately before deleting and copying the app. If detected, it stops that client and repeats the App Support purge. App deletion/copying is attempted up to three times; each failed attempt repeats the running-client guard before retrying.
 
@@ -370,6 +372,7 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 - `--dl` does not inspect or modify Discord App Support data and does not touch the app in `/Applications`.
 - OpenAsar injection only runs after the selected app has been stopped.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
+- Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.
 - If no updater-managed targets are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully.
 - Existing apps in `/Applications` are always replaced during `--update`.
 
