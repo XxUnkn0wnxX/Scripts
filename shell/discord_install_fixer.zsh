@@ -5,8 +5,7 @@ setopt null_glob
 
 script_name="${0:t}"
 script_dir="${0:A:h}"
-DEFAULT_OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
-OPENASAR_RELEASE_URL="${OPENASAR_RELEASE_URL:-$DEFAULT_OPENASAR_RELEASE_URL}"
+DEFAULT_OPENASAR_SOURCE="https://github.com/XxUnkn0wnxX/OpenAsar"
 
 typeset -A channel_app_names=(
   stable "Discord"
@@ -29,19 +28,21 @@ typeset -A channel_download_urls=(
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [--update] [--openasar]
+  $script_name --channel stable|ptb|canary|all [--update] [--openasar] [--openasar-source url-or-path]
   $script_name --help
 
 Options:
   --channel             Select the Discord channel to clean. Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
   --openasar            Download and inject OpenAsar app.asar into the selected Discord app.
+  --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
   --help                Show this help message.
 
 Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
   $script_name --channel canary --openasar
+  $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
   $script_name --channel stable --update --openasar
   $script_name --channel all --update
 
@@ -49,7 +50,7 @@ Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
   --openasar must be paired with --channel so the target app is explicit.
-  OPENASAR_RELEASE_URL can be a download URL or a local app.asar path.
+  OpenAsar sources can be GitHub repo URLs, app.asar URLs, or local paths including ~, \$HOME, and file:// paths.
 EOF
 }
 
@@ -63,6 +64,7 @@ fail_usage() {
 selected_channel=""
 update_requested=false
 openasar_requested=false
+openasar_source="${OPENASAR_SOURCE:-${OPENASAR_RELEASE_URL:-$DEFAULT_OPENASAR_SOURCE}}"
 explicit_channel=false
 
 while (( $# > 0 )); do
@@ -84,6 +86,12 @@ while (( $# > 0 )); do
     --openasar)
       openasar_requested=true
       shift
+      ;;
+    --openasar-source)
+      (( $# >= 2 )) || fail_usage "Missing value for --openasar-source."
+      openasar_requested=true
+      openasar_source="$2"
+      shift 2
       ;;
     *)
       fail_usage "Unknown argument: $1"
@@ -153,7 +161,7 @@ openasar_payload_path() {
 }
 
 openasar_source_is_remote() {
-  case "$OPENASAR_RELEASE_URL" in
+  case "$openasar_source" in
     http://*|https://*)
       return 0
       ;;
@@ -163,8 +171,28 @@ openasar_source_is_remote() {
   esac
 }
 
+openasar_remote_download_url() {
+  local source_url="$openasar_source"
+  local github_path
+
+  case "$source_url" in
+    https://github.com/*/*)
+      source_url="${source_url%/}"
+      source_url="${source_url%.git}"
+      github_path="${source_url#https://github.com/}"
+
+      if [[ "$github_path" != */*/* && "$source_url" != */releases/* ]]; then
+        print -- "$source_url/releases/latest/download/app.asar"
+        return 0
+      fi
+      ;;
+  esac
+
+  print -- "$source_url"
+}
+
 resolve_openasar_local_source() {
-  local source_path="$OPENASAR_RELEASE_URL"
+  local source_path="$openasar_source"
 
   if [[ "$source_path" == file://* ]]; then
     source_path="${source_path#file://}"
@@ -172,6 +200,10 @@ resolve_openasar_local_source() {
 
   if [[ "$source_path" == "~/"* ]]; then
     source_path="$HOME/${source_path#~/}"
+  elif [[ "$source_path" == '$HOME/'* ]]; then
+    source_path="$HOME/${source_path[7,-1]}"
+  elif [[ "$source_path" == '${HOME}/'* ]]; then
+    source_path="$HOME/${source_path[9,-1]}"
   elif [[ "$source_path" != /* ]]; then
     source_path="$PWD/$source_path"
   fi
@@ -229,6 +261,7 @@ discord_is_running() {
 
 download_openasar_payload() {
   local payload_path="$1"
+  local download_url
   local attempt
 
   if ! openasar_source_is_remote; then
@@ -243,12 +276,16 @@ download_openasar_payload() {
     return 1
   fi
 
+  download_url="$(openasar_remote_download_url)"
+
   print "Downloading OpenAsar payload to:"
   print "  $payload_path"
+  print "From:"
+  print "  $download_url"
 
   for attempt in {1..3}; do
     rm -f -- "$payload_path"
-    if curl -L --fail --show-error --output "$payload_path" "$OPENASAR_RELEASE_URL" && [[ -s "$payload_path" ]]; then
+    if curl -L --fail --show-error --output "$payload_path" "$download_url" && [[ -s "$payload_path" ]]; then
       return 0
     fi
 
