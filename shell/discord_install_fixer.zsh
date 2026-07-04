@@ -47,13 +47,13 @@ typeset -A channel_dmg_filenames=(
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [--update [version]] [--openasar] [--openasar-source url-or-path]
+  $script_name --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path]
   $script_name --channel stable|ptb|canary --dl [version]
   $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end]
   $script_name --help
 
 Options:
-  --channel             Select the Discord channel to clean. Use "all" for Stable, PTB, and Canary.
+  --channel             Select Discord channel(s) to clean. Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
   --dl                  Download the selected Discord DMG only, then exit.
@@ -74,6 +74,7 @@ Examples:
   $script_name --channel canary --update 0.0.1177
   $script_name --channel canary --openasar
   $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
+  $script_name --channel stable ptb --update --openasar
   $script_name --channel stable --update --openasar
   $script_name --channel all --update
 
@@ -81,8 +82,8 @@ Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
   --dl must be paired with one channel and only downloads the DMG.
-  --update without a version still supports --channel all.
-  --update with a version, --dl, and --update-select require a single channel, not "all".
+  --update without a version supports multiple channels and --channel all.
+  --update with a version, --dl, and --update-select require a single selected channel.
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
   aria2c is used for downloads when available; set DISCORD_DOWNLOAD_CONNECTIONS to tune its split count.
@@ -97,7 +98,7 @@ fail_usage() {
   exit 2
 }
 
-selected_channel=""
+selected_channels=()
 update_requested=false
 dl_requested=false
 update_select_requested=false
@@ -114,10 +115,13 @@ while (( $# > 0 )); do
       exit 0
       ;;
     --channel)
-      (( $# >= 2 )) || fail_usage "Missing value for --channel."
-      selected_channel="$2"
-      explicit_channel=true
-      shift 2
+      shift
+      (( $# > 0 )) || fail_usage "Missing value for --channel."
+      while (( $# > 0 )) && [[ "$1" != --* ]]; do
+        selected_channels+=("$1")
+        explicit_channel=true
+        shift
+      done
       ;;
     --update)
       update_requested=true
@@ -197,23 +201,42 @@ if [[ "$explicit_channel" != true ]]; then
   fail_usage "No channel specified. Use --channel stable|ptb|canary|all."
 fi
 
-case "$selected_channel" in
-  stable|ptb|canary)
-    selected_channels=("$selected_channel")
-    ;;
-  all)
-    selected_channels=(stable ptb canary)
-    ;;
-  *)
-    fail_usage "Invalid channel: $selected_channel"
-    ;;
-esac
+expanded_channels=()
+typeset -A selected_channel_seen=()
+saw_all_channel=false
 
-if [[ "$update_select_requested" == true && "$selected_channel" == all ]]; then
+for selected_channel in "${selected_channels[@]}"; do
+  case "$selected_channel" in
+    stable|ptb|canary)
+      if [[ -z "${selected_channel_seen[$selected_channel]-}" ]]; then
+        expanded_channels+=("$selected_channel")
+        selected_channel_seen[$selected_channel]=1
+      fi
+      ;;
+    all)
+      saw_all_channel=true
+      ;;
+    *)
+      fail_usage "Invalid channel: $selected_channel"
+      ;;
+  esac
+done
+
+if [[ "$saw_all_channel" == true && "${#selected_channels[@]}" -gt 1 ]]; then
+  fail_usage "--channel all cannot be combined with named channels."
+fi
+
+if [[ "$saw_all_channel" == true ]]; then
+  selected_channels=(stable ptb canary)
+else
+  selected_channels=("${expanded_channels[@]}")
+fi
+
+if [[ "$update_select_requested" == true && "${#selected_channels[@]}" -ne 1 ]]; then
   fail_usage "--update-select only supports one channel at a time."
 fi
 
-if [[ "$dl_requested" == true && "$selected_channel" == all ]]; then
+if [[ "$dl_requested" == true && "${#selected_channels[@]}" -ne 1 ]]; then
   fail_usage "--dl only supports one channel at a time."
 fi
 
@@ -225,7 +248,7 @@ if [[ "$update_select_requested" == true && ( "$update_requested" == true || "$o
   fail_usage "--update-select only prints versions and cannot be combined with --update or --openasar."
 fi
 
-if [[ -n "$update_version" && "$selected_channel" == all ]]; then
+if [[ -n "$update_version" && "${#selected_channels[@]}" -ne 1 ]]; then
   fail_usage "--update or --dl with a version only supports one channel at a time."
 fi
 
