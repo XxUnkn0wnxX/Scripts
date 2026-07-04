@@ -40,6 +40,7 @@ Use `--channel all` to apply the selected action to all three channels.
 - with `--channel all`, processes Stable, PTB, and Canary sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
 - with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, then overwrites the selected app's `Contents/Resources/app.asar`
+- before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` still fails
 
 ## What It Deletes
 
@@ -148,6 +149,14 @@ For remote URLs, the downloaded payload is temporary. The script downloads it be
 OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
 
 OpenAsar injection happens before any selected client is relaunched.
+
+## Relaunch Behavior
+
+If a selected client was running when the script started, the script relaunches it after cleanup, update, and optional OpenAsar injection finish.
+
+Before calling `open`, the script waits for the app bundle to contain both `Contents/Info.plist` and the expected executable under `Contents/MacOS/`. It then refreshes LaunchServices registration for the app bundle so macOS does not reuse stale metadata from the app that was just replaced.
+
+If `open` still fails, the script prints the captured LaunchServices error and retries. After three failed `open` attempts, it launches the app's executable directly and waits briefly for the matching Discord process to appear.
 
 ## Usage
 
