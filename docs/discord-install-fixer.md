@@ -39,7 +39,7 @@ Use `--channel all` to apply the selected action to all three channels.
 - relaunches a selected client only when that selected client was running when the script started
 - with `--channel all`, processes Stable, PTB, and Canary sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
-- with `--openasar`, downloads OpenAsar, overwrites the selected app's `Contents/Resources/app.asar`, and deletes the downloaded payload afterward
+- with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, then overwrites the selected app's `Contents/Resources/app.asar`
 
 ## What It Deletes
 
@@ -47,6 +47,7 @@ The script removes the following paths from the selected channel's `$HOME/Librar
 
 ```text
 installer.db
+ShipIt_request.json
 0.0.*/
 app-*/
 modules/
@@ -119,17 +120,22 @@ It can also be combined with `--update`:
 zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 ```
 
-The OpenAsar download URL is defined inside the script:
+By default, the script downloads OpenAsar from the fork release URL:
 
 ```zsh
-OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
+DEFAULT_OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
 ```
 
-Change `OPENASAR_RELEASE_URL` in the script if you want to use a different OpenAsar fork or the main upstream OpenAsar release channel.
+Set `OPENASAR_RELEASE_URL` when running the script to use a different remote release or a local `app.asar` file:
 
-The downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. It does not keep an archived copy and does not create `.stock` backups.
+```bash
+OPENASAR_RELEASE_URL="$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar" \
+  zsh shell/discord_install_fixer.zsh --channel stable --openasar
+```
 
-OpenAsar downloads are retried up to three times. If the initial download still fails, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries the download and skips only that injection if the payload remains unavailable.
+For remote URLs, the downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. Local `app.asar` sources are used in place and are not deleted by the script. It does not keep an archived copy and does not create `.stock` backups.
+
+OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
 
 OpenAsar injection happens before any selected client is relaunched.
 
