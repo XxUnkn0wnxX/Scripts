@@ -25,19 +25,19 @@ canary:
   https://discord.com/api/download/canary?platform=osx
 ```
 
-Use `--channel all` to apply the selected action to all three channels.
+Use `--channel all` to apply the selected action to all three channels. You can also name multiple channels in one run, for example `--channel stable ptb`.
 
 ## What It Does
 
-- selects Stable, PTB, Canary, or all channels with `--channel`
+- selects Stable, PTB, Canary, multiple named channels, or all channels with `--channel`
 - detects each selected channel's updater-managed installation files
 - snapshots whether each selected Discord client was running when the script starts
 - gracefully quits only the selected Discord client and waits up to 10 seconds
-- with `--channel all`, stops all selected Discord clients before replacement or cleanup starts
+- with multiple selected channels, stops all selected Discord clients before replacement or cleanup starts
 - force-kills only the selected channel's executable if it does not quit cleanly
 - deletes the detected core installation and updater state before app replacement or OpenAsar injection
 - relaunches a selected client only when that selected client was running when the script started
-- with `--channel all`, processes Stable, PTB, and Canary sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
+- with multiple selected channels, processes them sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
 - with `--update <version>`, downloads that channel's direct CDN DMG for a version such as `0.0.1177` instead of the latest API redirect
 - with `--dl [version]`, downloads only the selected channel's DMG, leaves it beside the script, and exits
@@ -86,7 +86,7 @@ Discord stores the local login token in `Local Storage/leveldb/`. Preserving the
 
 When `--update` is used without a version, the DMG is downloaded from Discord's latest macOS download API for the selected channel.
 
-When `--update <version>` is used, the script downloads that channel's direct CDN DMG instead. Versions can be passed as either `0.0.1177` or `1177`. Pinned versions only support a single channel, not `--channel all`.
+When `--update <version>` is used, the script downloads that channel's direct CDN DMG instead. Versions can be passed as either `0.0.1177` or `1177`. Pinned versions only support a single selected channel, not `--channel all` or multiple named channels.
 
 Use `--dl` to download the selected channel's DMG without mounting, replacing, cleaning, injecting OpenAsar, or relaunching:
 
@@ -134,7 +134,7 @@ When `aria2c` is available, remote Discord DMG and OpenAsar downloads use it wit
 
 After mounting the DMG, the script checks again for a self-restarted Discord client immediately before deleting and copying the app. If detected, it stops that client and repeats the App Support purge. App deletion/copying is attempted up to three times; each failed attempt repeats the running-client guard before retrying.
 
-With `--channel all`, each channel's DMG and mountpoint are cleaned up immediately after that channel's app replacement finishes, before the script moves to the next channel.
+With multiple selected channels, each channel's DMG and mountpoint are cleaned up immediately after that channel's app replacement finishes, before the script moves to the next channel.
 
 Temporary mountpoints are created beside the script file and are removed after use. In this repository the preferred paths are:
 
@@ -158,6 +158,12 @@ It can also be combined with `--update`:
 
 ```bash
 zsh shell/discord_install_fixer.zsh --channel all --update --openasar
+```
+
+To update and inject only specific channels in one pass:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel stable ptb --update --openasar
 ```
 
 Use `--openasar-source` to inject a specific OpenAsar payload from a local file, a GitHub repo URL, or a direct download URL:
@@ -200,7 +206,7 @@ If `open` still fails, the script prints the captured LaunchServices error and r
 ## Usage
 
 ```text
-discord_install_fixer.zsh --channel stable|ptb|canary|all [--update [version]] [--openasar] [--openasar-source url-or-path]
+discord_install_fixer.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path]
 discord_install_fixer.zsh --channel stable|ptb|canary --dl [version]
 discord_install_fixer.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end]
 discord_install_fixer.zsh --help
@@ -219,16 +225,16 @@ discord_install_fixer.zsh --help
   </thead>
   <tbody>
     <tr>
-      <td><nobr><code>--channel &lt;channel&gt;</code></nobr></td>
+      <td><nobr><code>--channel &lt;channel&gt; [...]</code></nobr></td>
       <td>Option</td>
       <td><nobr><code>stable</code>, <code>ptb</code>, <code>canary</code>, <code>all</code></nobr></td>
-      <td>Selects the Discord client or clients to purge, update, or inject. <code>all</code> processes Stable, PTB, and Canary sequentially.</td>
+      <td>Selects the Discord client or clients to purge, update, or inject. Multiple named channels can be passed in one run. <code>all</code> processes Stable, PTB, and Canary sequentially and cannot be mixed with named channels.</td>
     </tr>
     <tr>
       <td><nobr><code>--update [version]</code></nobr></td>
       <td>Flag / option</td>
       <td><nobr>optional version</nobr></td>
-      <td>Downloads a fresh Discord DMG for the selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. With a version such as <code>0.0.1177</code> or <code>1177</code>, downloads that direct CDN build. Requires <code>--channel</code>; pinned versions do not support <code>all</code>.</td>
+      <td>Downloads a fresh Discord DMG for each selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. With a version such as <code>0.0.1177</code> or <code>1177</code>, downloads that direct CDN build. Requires <code>--channel</code>; pinned versions only support one selected channel.</td>
     </tr>
     <tr>
       <td><nobr><code>--dl [version]</code></nobr></td>
@@ -269,7 +275,7 @@ Notes:
 - `--channel` alone only purges the selected client or clients' App Support updater files.
 - `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
 - `--dl` must be paired with one selected channel and cannot be combined with `--update`, `--update-select`, or `--openasar`.
-- Plain `--update` still supports `--channel all` and downloads the latest API DMG for Stable, PTB, and Canary sequentially.
+- Plain `--update` supports multiple selected channels and downloads the latest API DMG for each one sequentially.
 - `--update <version>`, `--dl`, and `--update-select` only support one selected channel at a time.
 - `--update-select` only prints versions and exits.
 - `--update` and `--openasar` can be combined.
@@ -299,6 +305,12 @@ Download, replace, and clean Discord Canary:
 
 ```bash
 zsh shell/discord_install_fixer.zsh --channel canary --update
+```
+
+Download, replace, clean, and inject OpenAsar for Stable and PTB:
+
+```bash
+zsh shell/discord_install_fixer.zsh --channel stable ptb --update --openasar
 ```
 
 Download only a pinned Discord Canary DMG:
@@ -363,12 +375,12 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 
 ## Safety Guards
 
-- The target data directory must exist unless `--update` is used or `--channel all` is selected, where missing channel data folders are reported and skipped.
+- The target data directory must exist unless `--update` is used or multiple channels are selected, where missing channel data folders are reported and skipped.
 - Existing data directories must contain `settings.json` or `Local Storage/` so they resemble Discord data directories.
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
 - During `--update`, the selected client is checked again before app deletion/copying and after failed replacement attempts.
-- Pinned `--update <version>` downloads only the selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
+- Pinned `--update <version>` downloads only one selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
 - `--dl` does not inspect or modify Discord App Support data and does not touch the app in `/Applications`.
 - OpenAsar injection only runs after the selected app has been stopped.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
