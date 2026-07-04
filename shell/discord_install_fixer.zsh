@@ -5,7 +5,8 @@ setopt null_glob
 
 script_name="${0:t}"
 script_dir="${0:A:h}"
-OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
+DEFAULT_OPENASAR_RELEASE_URL="https://github.com/XxUnkn0wnxX/OpenAsar/releases/latest/download/app.asar"
+OPENASAR_RELEASE_URL="${OPENASAR_RELEASE_URL:-$DEFAULT_OPENASAR_RELEASE_URL}"
 
 typeset -A channel_app_names=(
   stable "Discord"
@@ -48,6 +49,7 @@ Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
   --openasar must be paired with --channel so the target app is explicit.
+  OPENASAR_RELEASE_URL can be a download URL or a local app.asar path.
 EOF
 }
 
@@ -150,6 +152,47 @@ openasar_payload_path() {
   print -- "$script_dir/openasar-app.asar"
 }
 
+openasar_source_is_remote() {
+  case "$OPENASAR_RELEASE_URL" in
+    http://*|https://*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+resolve_openasar_local_source() {
+  local source_path="$OPENASAR_RELEASE_URL"
+
+  if [[ "$source_path" == file://* ]]; then
+    source_path="${source_path#file://}"
+  fi
+
+  if [[ "$source_path" == "~/"* ]]; then
+    source_path="$HOME/${source_path#~/}"
+  elif [[ "$source_path" != /* ]]; then
+    source_path="$PWD/$source_path"
+  fi
+
+  source_path="${source_path:A}"
+
+  if [[ ! -f "$source_path" ]]; then
+    print -u2 "Local OpenAsar payload was not found:"
+    print -u2 "  $source_path"
+    return 1
+  fi
+
+  if [[ ! -s "$source_path" ]]; then
+    print -u2 "Local OpenAsar payload is empty:"
+    print -u2 "  $source_path"
+    return 1
+  fi
+
+  print -- "$source_path"
+}
+
 available_mount_point_for_channel() {
   local channel="$1"
   local base_mount_point
@@ -187,6 +230,18 @@ discord_is_running() {
 download_openasar_payload() {
   local payload_path="$1"
   local attempt
+
+  if ! openasar_source_is_remote; then
+    if [[ -s "$payload_path" ]]; then
+      print "Using local OpenAsar payload:"
+      print "  $payload_path"
+      return 0
+    fi
+
+    print -u2 "Local OpenAsar payload is missing or empty:"
+    print -u2 "  $payload_path"
+    return 1
+  fi
 
   print "Downloading OpenAsar payload to:"
   print "  $payload_path"
@@ -618,20 +673,27 @@ validate_selected_data_dirs
 
 openasar_payload=""
 openasar_initial_download_succeeded=false
+openasar_payload_is_temporary=false
 
 if [[ "$openasar_requested" == true ]]; then
-  openasar_payload="$(openasar_payload_path)"
+  if openasar_source_is_remote; then
+    openasar_payload="$(openasar_payload_path)"
+    openasar_payload_is_temporary=true
+  elif ! openasar_payload="$(resolve_openasar_local_source)"; then
+    openasar_payload=""
+  fi
+
   cleanup_openasar_payload() {
-    if [[ -n "$openasar_payload" ]]; then
+    if [[ "$openasar_payload_is_temporary" == true && -n "$openasar_payload" ]]; then
       rm -f -- "$openasar_payload"
     fi
   }
 
   trap cleanup_openasar_payload EXIT
-  if download_openasar_payload "$openasar_payload"; then
+  if [[ -n "$openasar_payload" ]] && download_openasar_payload "$openasar_payload"; then
     openasar_initial_download_succeeded=true
   else
-    print -u2 "OpenAsar injection will be skipped because the payload could not be downloaded."
+    print -u2 "OpenAsar injection will be skipped because the payload could not be prepared."
   fi
 fi
 
@@ -679,9 +741,9 @@ for channel in "${selected_channels[@]}"; do
 
   if [[ "$openasar_requested" == true ]]; then
     if [[ "$openasar_initial_download_succeeded" != true ]]; then
-      print -u2 "Skipping OpenAsar injection for $app_name because the initial payload download failed."
+      print -u2 "Skipping OpenAsar injection for $app_name because the initial payload could not be prepared."
     elif [[ ! -s "$openasar_payload" ]]; then
-      print "The initial OpenAsar payload is missing or was deleted before injection. Downloading it again..."
+      print "The initial OpenAsar payload is missing or was deleted before injection. Preparing it again..."
       if ! download_openasar_payload "$openasar_payload"; then
         print -u2 "Skipping OpenAsar injection for $app_name because the payload is unavailable."
       else
