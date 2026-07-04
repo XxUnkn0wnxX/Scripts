@@ -105,7 +105,7 @@ Pass a range to start and stop at explicit versions:
 zsh shell/discord_install_fixer.zsh --channel canary --update-select 600-300
 ```
 
-Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric CDN DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. It prints matching builds as they are discovered with the CDN `Last-Modified` date first, followed by version and URL, and does not clean, update, inject OpenAsar, or relaunch Discord.
+Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric CDN DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. If the requested start or minimum version is newer than the current manifest version, the scan uses the detected latest version instead. It prints matching builds as they are discovered with the CDN `Last-Modified` date first, followed by version and URL, and does not clean, update, inject OpenAsar, or relaunch Discord.
 
 The DMG is downloaded beside the script file. In this repository that means:
 
@@ -220,7 +220,7 @@ discord_install_fixer.zsh --help
       <td><nobr><code>--update-select [minimum-version|start-end]</code></nobr></td>
       <td>Flag</td>
       <td><nobr>optional version</nobr></td>
-      <td>Prints available direct CDN DMG versions for one selected channel from newest to oldest as they are discovered, with CDN <code>Last-Modified</code> date first, then exits without making changes. With a minimum version such as <code>900</code> or <code>0.0.900</code>, stops scanning at that version. With a range such as <code>600-300</code>, starts at <code>0.0.600</code> and stops at <code>0.0.300</code>. Does not support <code>all</code>.</td>
+      <td>Prints available direct CDN DMG versions for one selected channel from newest to oldest as they are discovered, with CDN <code>Last-Modified</code> date first, then exits without making changes. With a minimum version such as <code>900</code> or <code>0.0.900</code>, stops scanning at that version. With a range such as <code>600-300</code>, starts at <code>0.0.600</code> and stops at <code>0.0.300</code>. Requested starts or floors newer than the current manifest version are clamped to the detected latest version. Does not support <code>all</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--openasar</code></nobr></td>
