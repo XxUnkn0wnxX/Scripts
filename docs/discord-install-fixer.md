@@ -154,7 +154,7 @@ OpenAsar injection happens before any selected client is relaunched.
 
 If a selected client was running when the script started, the script relaunches it after cleanup, update, and optional OpenAsar injection finish.
 
-Before calling `open`, the script waits for the app bundle to contain both `Contents/Info.plist` and the expected executable under `Contents/MacOS/`. It then refreshes LaunchServices registration for the app bundle so macOS does not reuse stale metadata from the app that was just replaced.
+Before calling `open`, the script waits for the selected channel's app bundle to contain both `Contents/Info.plist` and the expected executable under `Contents/MacOS/`. It then refreshes LaunchServices registration only for that selected app bundle so macOS does not reuse stale metadata from the app that was just replaced.
 
 If `open` still fails, the script prints the captured LaunchServices error and retries. After three failed `open` attempts, it launches the app's executable directly and waits briefly for the matching Discord process to appear.
 
