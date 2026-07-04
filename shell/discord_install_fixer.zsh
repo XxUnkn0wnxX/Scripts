@@ -25,15 +25,37 @@ typeset -A channel_download_urls=(
   canary "https://discord.com/api/download/canary?platform=osx"
 )
 
+typeset -A channel_update_urls=(
+  stable "https://discord.com/api/updates/stable?platform=osx"
+  ptb "https://discord.com/api/updates/ptb?platform=osx"
+  canary "https://discord.com/api/updates/canary?platform=osx"
+)
+
+typeset -A channel_cdn_hosts=(
+  stable "stable.dl2.discordapp.net"
+  ptb "ptb.dl2.discordapp.net"
+  canary "canary.dl2.discordapp.net"
+)
+
+typeset -A channel_dmg_filenames=(
+  stable "Discord.dmg"
+  ptb "DiscordPTB.dmg"
+  canary "DiscordCanary.dmg"
+)
+
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [--update] [--openasar] [--openasar-source url-or-path]
+  $script_name --channel stable|ptb|canary|all [--update [version]] [--openasar] [--openasar-source url-or-path]
+  $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end]
   $script_name --help
 
 Options:
   --channel             Select the Discord channel to clean. Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
+                        Optionally pass a version such as 0.0.1177 to download that CDN build.
+  --update-select       Print available CDN DMG versions for one selected channel, then exit.
+                        Optionally pass a minimum version such as 900 or a range such as 600-300.
   --openasar            Download and inject OpenAsar app.asar into the selected Discord app.
   --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
   --help                Show this help message.
@@ -41,6 +63,10 @@ Options:
 Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
+  $script_name --channel canary --update-select
+  $script_name --channel canary --update-select 900
+  $script_name --channel canary --update-select 600-300
+  $script_name --channel canary --update 0.0.1177
   $script_name --channel canary --openasar
   $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
   $script_name --channel stable --update --openasar
@@ -49,6 +75,9 @@ Examples:
 Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
+  --update without a version still supports --channel all.
+  --update with a version and --update-select require a single channel, not "all".
+  --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
   OpenAsar sources can be GitHub repo URLs, app.asar URLs, or local paths including ~, \$HOME, and file:// paths.
 EOF
@@ -63,6 +92,9 @@ fail_usage() {
 
 selected_channel=""
 update_requested=false
+update_select_requested=false
+update_select_min_version=""
+update_version=""
 openasar_requested=false
 openasar_source="${OPENASAR_SOURCE:-${OPENASAR_RELEASE_URL:-$DEFAULT_OPENASAR_SOURCE}}"
 explicit_channel=false
@@ -81,6 +113,30 @@ while (( $# > 0 )); do
       ;;
     --update)
       update_requested=true
+      if (( $# >= 2 )) && [[ "$2" != --* ]]; then
+        update_version="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --update=*)
+      update_requested=true
+      update_version="${1#--update=}"
+      shift
+      ;;
+    --update-select)
+      update_select_requested=true
+      if (( $# >= 2 )) && [[ "$2" != --* ]]; then
+        update_select_min_version="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --update-select=*)
+      update_select_requested=true
+      update_select_min_version="${1#--update-select=}"
       shift
       ;;
     --openasar)
@@ -103,6 +159,10 @@ if [[ "$update_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--update requires --channel stable|ptb|canary|all."
 fi
 
+if [[ "$update_select_requested" == true && "$explicit_channel" != true ]]; then
+  fail_usage "--update-select requires --channel stable|ptb|canary."
+fi
+
 if [[ "$openasar_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--openasar requires --channel stable|ptb|canary|all."
 fi
@@ -122,6 +182,18 @@ case "$selected_channel" in
     fail_usage "Invalid channel: $selected_channel"
     ;;
 esac
+
+if [[ "$update_select_requested" == true && "$selected_channel" == all ]]; then
+  fail_usage "--update-select only supports one channel at a time."
+fi
+
+if [[ "$update_select_requested" == true && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
+  fail_usage "--update-select only prints versions and cannot be combined with --update or --openasar."
+fi
+
+if [[ -n "$update_version" && "$selected_channel" == all ]]; then
+  fail_usage "--update with a version only supports one channel at a time."
+fi
 
 typeset -A channel_was_running=()
 
@@ -143,7 +215,163 @@ data_dir_for_channel() {
 }
 
 download_url_for_channel() {
-  print -- "${channel_download_urls[$1]}"
+  local channel="$1"
+
+  if [[ -n "$update_version" ]]; then
+    versioned_download_url_for_channel "$channel" "$update_version"
+  else
+    print -- "${channel_download_urls[$channel]}"
+  fi
+}
+
+normalize_discord_version() {
+  local version="$1"
+  local suffix
+
+  case "$version" in
+    <->)
+      suffix="$version"
+      ;;
+    0.0.<->)
+      suffix="${version##*.}"
+      ;;
+    *)
+      print -u2 "Invalid Discord version: $version"
+      print -u2 "Use a numeric version such as 1177 or 0.0.1177."
+      return 1
+      ;;
+  esac
+
+  print -- "0.0.$suffix"
+}
+
+discord_version_suffix() {
+  local version="$1"
+
+  version="$(normalize_discord_version "$version")" || return 1
+  print -- "${version##*.}"
+}
+
+versioned_download_url_for_channel() {
+  local channel="$1"
+  local version="$2"
+
+  version="$(normalize_discord_version "$version")" || return 1
+  print -- "https://${channel_cdn_hosts[$channel]}/apps/osx/$version/${channel_dmg_filenames[$channel]}"
+}
+
+latest_version_for_channel() {
+  local channel="$1"
+  local manifest
+  local version
+
+  manifest="$(curl -Ls --fail --show-error "${channel_update_urls[$channel]}")" || return 1
+  version="$(print -r -- "$manifest" | /usr/bin/perl -0ne 'print $1 if /"name"\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)"/')"
+
+  if [[ -z "$version" ]]; then
+    print -u2 "Could not read the latest Discord version from:"
+    print -u2 "  ${channel_update_urls[$channel]}"
+    return 1
+  fi
+
+  print -- "$version"
+}
+
+print_update_select_versions() {
+  local channel="$1"
+  local selector="${2:-}"
+  local app_name
+  local latest_version
+  local latest_suffix
+  local first_suffix
+  local last_suffix=1
+  local min_suffix=""
+  local range_start=""
+  local range_end=""
+  local scan_limit="${DISCORD_UPDATE_SELECT_SCAN_LIMIT:-0}"
+  local suffix
+  local url
+  local headers
+  local code
+  local last_modified
+  local found_any=false
+
+  app_name="$(app_name_for_channel "$channel")"
+  latest_version="$(latest_version_for_channel "$channel")" || return 1
+  latest_suffix="$(discord_version_suffix "$latest_version")" || return 1
+  first_suffix="$latest_suffix"
+
+  if [[ -n "$selector" ]]; then
+    if [[ "$selector" == *-* ]]; then
+      range_start="${selector%%-*}"
+      range_end="${selector#*-}"
+      first_suffix="$(discord_version_suffix "$range_start")" || return 1
+      last_suffix="$(discord_version_suffix "$range_end")" || return 1
+
+      if (( first_suffix < last_suffix )); then
+        print -u2 "Invalid update-select range: $selector"
+        print -u2 "Use descending ranges such as 600-300 or 0.0.600-0.0.300."
+        return 1
+      fi
+    else
+      min_suffix="$(discord_version_suffix "$selector")" || return 1
+      if (( min_suffix > latest_suffix )); then
+        print -u2 "Minimum version is newer than the latest $app_name version:"
+        print -u2 "  minimum: 0.0.$min_suffix"
+        print -u2 "  latest: $latest_version"
+        return 1
+      fi
+      last_suffix="$min_suffix"
+    fi
+  fi
+
+  if [[ "$scan_limit" == <-> && "$scan_limit" -gt 0 && "$scan_limit" -lt "$latest_suffix" ]]; then
+    if [[ -z "$selector" ]]; then
+      last_suffix=$(( latest_suffix - scan_limit + 1 ))
+    elif [[ -z "$range_start" ]]; then
+      last_suffix=$(( latest_suffix - scan_limit + 1 > min_suffix ? latest_suffix - scan_limit + 1 : min_suffix ))
+    else
+      last_suffix=$(( first_suffix - scan_limit + 1 > last_suffix ? first_suffix - scan_limit + 1 : last_suffix ))
+    fi
+  fi
+
+  print "Available $app_name macOS DMG versions:"
+  print "  latest: $latest_version"
+  print "  source: Discord CDN direct DMG URLs"
+  print "  note: CDN directory listing is denied, so this probes versioned DMG URLs."
+  if [[ -n "$range_start" ]]; then
+    print "  scan range: 0.0.$first_suffix down to 0.0.$last_suffix"
+  fi
+  if [[ "$last_suffix" -gt 1 ]]; then
+    if [[ -z "$range_start" ]]; then
+      print "  scan floor: 0.0.$last_suffix"
+    fi
+    if [[ "$scan_limit" == <-> && "$scan_limit" -gt 0 ]]; then
+      print "  scan limit: newest $scan_limit builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set"
+    fi
+  fi
+  print
+
+  for (( suffix = first_suffix; suffix >= last_suffix; suffix-- )); do
+    url="https://${channel_cdn_hosts[$channel]}/apps/osx/0.0.$suffix/${channel_dmg_filenames[$channel]}"
+    headers="$(curl -ILs "$url")"
+    code="$(print -r -- "$headers" | /usr/bin/awk 'toupper($0) ~ /^HTTP\// { code=$2 } END { print code }')"
+
+    if [[ "$code" != 200 ]]; then
+      continue
+    fi
+
+    last_modified="$(print -r -- "$headers" | /usr/bin/awk 'tolower($0) ~ /^last-modified:/ { sub(/^[Ll]ast-[Mm]odified:[[:space:]]*/, ""); value=$0 } END { gsub(/\r/, "", value); print value }')"
+    [[ -n "$last_modified" ]] || last_modified="unknown"
+
+    print "$last_modified  0.0.$suffix  $url"
+    found_any=true
+  done
+
+  if [[ "$found_any" != true ]]; then
+    print -u2 "No CDN DMG versions were found for $app_name."
+    return 1
+  fi
 }
 
 dmg_path_for_channel() {
@@ -416,6 +644,12 @@ download_and_replace_app() {
 
   print "Downloading $app_name installer to:"
   print "  $dmg_path"
+  if [[ -n "$update_version" ]]; then
+    print "Requested $app_name version:"
+    print "  $update_version"
+  fi
+  print "From:"
+  print "  $download_url"
   for attempt in {1..3}; do
     if curl -L --fail --show-error --output "$dmg_path" "$download_url"; then
       break
@@ -765,6 +999,15 @@ validate_selected_data_dirs() {
     fi
   done
 }
+
+if [[ -n "$update_version" ]]; then
+  update_version="$(normalize_discord_version "$update_version")" || exit 2
+fi
+
+if [[ "$update_select_requested" == true ]]; then
+  print_update_select_versions "$selected_channel" "$update_select_min_version"
+  exit $?
+fi
 
 validate_selected_data_dirs
 
