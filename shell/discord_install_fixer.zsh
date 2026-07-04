@@ -28,29 +28,26 @@ typeset -A channel_download_urls=(
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [--update] [--openasar] [--openasar-bruteforce]
+  $script_name --channel stable|ptb|canary|all [--update] [--openasar]
   $script_name --help
 
 Options:
   --channel             Select the Discord channel to clean. Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
   --openasar            Download and inject OpenAsar app.asar into the selected Discord app.
-  --openasar-bruteforce Experimental: inject OpenAsar, rewrite app.asar hashes, ad-hoc sign, and
-                        launch/watch the first bootstrap so staged host apps can be patched too.
   --help                Show this help message.
 
 Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
   $script_name --channel canary --openasar
-  $script_name --channel stable --update --openasar-bruteforce
+  $script_name --channel stable --update --openasar
   $script_name --channel all --update
 
 Notes:
   --channel without --update only cleans the selected channel's updater/core files.
   --update must be paired with --channel so the target app is explicit.
   --openasar must be paired with --channel so the target app is explicit.
-  --openasar-bruteforce also implies --openasar and modifies the app's local code signature.
 EOF
 }
 
@@ -64,7 +61,6 @@ fail_usage() {
 selected_channel=""
 update_requested=false
 openasar_requested=false
-openasar_bruteforce_requested=false
 explicit_channel=false
 
 while (( $# > 0 )); do
@@ -85,11 +81,6 @@ while (( $# > 0 )); do
       ;;
     --openasar)
       openasar_requested=true
-      shift
-      ;;
-    --openasar-bruteforce)
-      openasar_requested=true
-      openasar_bruteforce_requested=true
       shift
       ;;
     *)
@@ -261,245 +252,6 @@ inject_openasar() {
   print "OpenAsar injected into $app_name:"
   print "  $target_asar"
   sleep 1
-}
-
-hash_base64_for_file() {
-  local algorithm="$1"
-  local file_path="$2"
-  openssl dgst "-$algorithm" -binary "$file_path" | openssl base64 -A
-}
-
-hash_hex_for_file() {
-  local algorithm="$1"
-  local file_path="$2"
-  openssl dgst "-$algorithm" "$file_path" | sed 's/^.*= //'
-}
-
-patch_code_resources_for_openasar() {
-  local app_path="$1"
-  local asar_path
-  local code_resources
-  local sha1_base64
-  local sha256_base64
-
-  asar_path="$app_path/Contents/Resources/app.asar"
-  code_resources="$app_path/Contents/_CodeSignature/CodeResources"
-
-  if [[ ! -f "$asar_path" ]]; then
-    print -u2 "Cannot patch CodeResources because app.asar is missing:"
-    print -u2 "  $asar_path"
-    return 1
-  fi
-
-  if [[ ! -f "$code_resources" ]]; then
-    print -u2 "Cannot patch CodeResources because the signature resource file is missing:"
-    print -u2 "  $code_resources"
-    return 1
-  fi
-
-  sha1_base64="$(hash_base64_for_file sha1 "$asar_path")"
-  sha256_base64="$(hash_base64_for_file sha256 "$asar_path")"
-
-  if ! plutil -replace 'files.Resources/app\.asar' -data "$sha1_base64" "$code_resources"; then
-    print -u2 "Failed to replace SHA-1 app.asar hash in:"
-    print -u2 "  $code_resources"
-    return 1
-  fi
-
-  if ! plutil -replace 'files2.Resources/app\.asar.hash2' -data "$sha256_base64" "$code_resources"; then
-    print -u2 "Failed to replace SHA-256 app.asar hash in:"
-    print -u2 "  $code_resources"
-    return 1
-  fi
-}
-
-patch_installer_db_for_openasar() {
-  local channel="$1"
-  local payload_path="$2"
-  local app_name
-  local data_dir
-  local installer_db
-  local openasar_sha256
-  local host_key_glob
-  local app_asar_marker
-
-  app_name="$(app_name_for_channel "$channel")"
-  data_dir="$(data_dir_for_channel "$channel")"
-  installer_db="$data_dir/installer.db"
-
-  if [[ ! -f "$installer_db" ]]; then
-    return 0
-  fi
-
-  if ! command -v sqlite3 >/dev/null 2>&1; then
-    print -u2 "sqlite3 was not found; cannot patch $app_name installer.db."
-    return 1
-  fi
-
-  openasar_sha256="$(hash_hex_for_file sha256 "$payload_path")"
-  host_key_glob="host/app/${channel}/osx/*"
-  app_asar_marker='Discord.app/Contents/Resources/app.asar":{"New":{"Sha256":"'
-
-  if ! sqlite3 "$installer_db" <<SQL
-UPDATE key_values
-SET value =
-  substr(value, 1, instr(value, '$app_asar_marker') + length('$app_asar_marker') - 1) ||
-  '$openasar_sha256' ||
-  substr(value, instr(value, '$app_asar_marker') + length('$app_asar_marker') + 64)
-WHERE key GLOB '$host_key_glob'
-  AND instr(value, '$app_asar_marker') > 0;
-SQL
-  then
-    print -u2 "Failed to patch OpenAsar hash in $app_name installer.db:"
-    print -u2 "  $installer_db"
-    return 1
-  fi
-}
-
-bruteforce_openasar_app_bundle() {
-  local app_path="$1"
-  local payload_path="$2"
-  local app_asar
-  local backup_asar
-
-  app_asar="$app_path/Contents/Resources/app.asar"
-  backup_asar="$app_path/Contents/Resources/app.asar.backup"
-
-  if [[ ! -d "$app_path" ]]; then
-    return 0
-  fi
-
-  if [[ ! -d "$app_path/Contents/Resources" ]]; then
-    print -u2 "Skipping brute-force OpenAsar patch because this app bundle has no Resources directory:"
-    print -u2 "  $app_path"
-    return 1
-  fi
-
-  if ! cp "$payload_path" "$app_asar"; then
-    print -u2 "Failed to copy OpenAsar into app bundle:"
-    print -u2 "  $app_asar"
-    return 1
-  fi
-
-  rm -f -- "$backup_asar"
-
-  if ! patch_code_resources_for_openasar "$app_path"; then
-    return 1
-  fi
-
-  print "Ad-hoc signing patched app bundle:"
-  print "  $app_path"
-  if ! codesign --force --deep --sign - "$app_path" >/dev/null; then
-    print -u2 "Failed to ad-hoc sign patched app bundle:"
-    print -u2 "  $app_path"
-    return 1
-  fi
-
-  if ! codesign --verify --deep --strict --verbose=2 "$app_path" >/dev/null 2>&1; then
-    print -u2 "Warning: ad-hoc signature verification still failed for:"
-    print -u2 "  $app_path"
-    return 1
-  fi
-
-  return 0
-}
-
-bruteforce_openasar_signatures() {
-  local channel="$1"
-  local payload_path="$2"
-  local app_name
-  local app_path
-  local data_dir
-  local staged_app
-  local -a staged_apps
-  local -a failed_apps=()
-
-  app_name="$(app_name_for_channel "$channel")"
-  app_path="$(app_path_for_channel "$channel")"
-  data_dir="$(data_dir_for_channel "$channel")"
-
-  print "Applying experimental OpenAsar hash/signature patches for $app_name..."
-
-  if ! bruteforce_openasar_app_bundle "$app_path" "$payload_path"; then
-    failed_apps+=("$app_path")
-  fi
-
-  staged_apps=("$data_dir"/app-*/*.app(N))
-  for staged_app in "${staged_apps[@]}"; do
-    if ! bruteforce_openasar_app_bundle "$staged_app" "$payload_path"; then
-      failed_apps+=("$staged_app")
-    fi
-  done
-
-  if ! patch_installer_db_for_openasar "$channel" "$payload_path"; then
-    failed_apps+=("$data_dir/installer.db")
-  fi
-
-  if (( ${#failed_apps[@]} > 0 )); then
-    print -u2 "$app_name brute-force OpenAsar patch had failures:"
-    for staged_app in "${failed_apps[@]}"; do
-      print -u2 "  $staged_app"
-    done
-    return 1
-  fi
-
-  print "$app_name brute-force OpenAsar patches applied."
-}
-
-watch_first_openasar_bootstrap() {
-  local channel="$1"
-  local payload_path="$2"
-  local app_name
-  local app_path
-  local data_dir
-  local renderer_log
-  local watch_marker
-  local deadline
-  local staged_app
-  local -a staged_apps
-
-  app_name="$(app_name_for_channel "$channel")"
-  app_path="$(app_path_for_channel "$channel")"
-  data_dir="$(data_dir_for_channel "$channel")"
-  renderer_log="$data_dir/logs/renderer_js.log"
-  watch_marker="$script_dir/tmp/openasar-bootstrap-${channel}-$$.marker"
-  deadline=$(( SECONDS + 120 ))
-
-  mkdir -p "$script_dir/tmp"
-  touch "$watch_marker"
-
-  print "Launching $app_name for experimental OpenAsar first-bootstrap patching..."
-  if ! open "$app_path"; then
-    print -u2 "Failed to launch $app_name for brute-force OpenAsar bootstrap:"
-    print -u2 "  $app_path"
-    rm -f -- "$watch_marker"
-    return 1
-  fi
-
-  while (( SECONDS < deadline )); do
-    patch_installer_db_for_openasar "$channel" "$payload_path" || true
-
-    staged_apps=("$data_dir"/app-*/*.app(N))
-    for staged_app in "${staged_apps[@]}"; do
-      print "Detected staged Discord host app. Patching before first bootstrap continues:"
-      print "  $staged_app"
-      bruteforce_openasar_app_bundle "$staged_app" "$payload_path" || true
-    done
-
-    if [[ -f "$renderer_log" && "$renderer_log" -nt "$watch_marker" ]]; then
-      print "$app_name reached renderer startup after brute-force OpenAsar bootstrap."
-      rm -f -- "$watch_marker"
-      return 0
-    fi
-
-    sleep 0.5
-  done
-
-  print -u2 "Timed out waiting for $app_name renderer startup after brute-force OpenAsar bootstrap."
-  print -u2 "Check the Discord updater logs under:"
-  print -u2 "  $data_dir/logs"
-  rm -f -- "$watch_marker"
-  return 1
 }
 
 quit_discord() {
@@ -905,7 +657,6 @@ for channel in "${selected_channels[@]}"; do
   app_name="$(app_name_for_channel "$channel")"
   was_running_at_start="${channel_was_running[$channel]:-false}"
   allow_missing_data_dir=false
-  openasar_injected_for_channel=false
 
   print
   print "== $app_name =="
@@ -935,20 +686,13 @@ for channel in "${selected_channels[@]}"; do
         print -u2 "Skipping OpenAsar injection for $app_name because the payload is unavailable."
       else
         inject_openasar "$channel" "$openasar_payload"
-        openasar_injected_for_channel=true
       fi
     else
       inject_openasar "$channel" "$openasar_payload"
-      openasar_injected_for_channel=true
     fi
   fi
 
-  if [[ "$openasar_bruteforce_requested" == true && "$openasar_injected_for_channel" == true ]]; then
-    bruteforce_openasar_signatures "$channel" "$openasar_payload"
-    watch_first_openasar_bootstrap "$channel" "$openasar_payload"
-  else
-    relaunch_channel_if_needed "$channel" "$was_running_at_start"
-  fi
+  relaunch_channel_if_needed "$channel" "$was_running_at_start"
 done
 
 if [[ "$openasar_requested" == true ]]; then
