@@ -119,16 +119,18 @@ Discord's CDN does not expose a browsable directory index for these builds, so `
 The DMG is downloaded beside the script file. In this repository that means:
 
 ```text
-shell/Discord-stable-installer.dmg
-shell/Discord-ptb-installer.dmg
-shell/Discord-canary-installer.dmg
+shell/Discord-stable-installer (0.0.xxx).dmg
+shell/Discord-ptb-installer (0.0.xxx).dmg
+shell/Discord-canary-installer (0.0.xxx).dmg
 ```
 
-Any existing DMG at that path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
+The version in the filename is resolved before downloading. For `--update <version>` and `--dl <version>`, the requested version is normalized into the filename. For latest downloads, the script reads Discord's channel update manifest first and uses that latest version in the filename.
+
+Any existing DMG at the resolved versioned path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
 
 When `--dl` is used, the completed downloaded DMG is not deleted by the script.
 
-If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. Before each new remote download attempt, it removes the target file and any matching aria2 control file such as `Discord-canary-installer.dmg.aria2`. If all attempts fail, the selected app is not replaced and the script exits with an error.
+If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. Before each new remote download attempt, it removes the target file and any matching aria2 control file such as `Discord-canary-installer (0.0.xxx).dmg.aria2`. If all attempts fail, the selected app is not replaced and the script exits with an error.
 
 When `aria2c` is available, remote Discord DMG and OpenAsar downloads use it with up to 16 split connections. Set `DISCORD_DOWNLOAD_CONNECTIONS` to a lower value to reduce the split count. If `aria2c` is not available, the script uses `curl`.
 
