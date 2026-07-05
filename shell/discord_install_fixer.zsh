@@ -253,6 +253,8 @@ if [[ -n "$update_version" && "${#selected_channels[@]}" -ne 1 ]]; then
 fi
 
 typeset -A channel_was_running=()
+typeset -A channel_download_versions=()
+single_selected_channel="${selected_channels[1]}"
 
 app_name_for_channel() {
   print -- "${channel_app_names[$1]}"
@@ -273,9 +275,11 @@ data_dir_for_channel() {
 
 download_url_for_channel() {
   local channel="$1"
+  local version
 
   if [[ -n "$update_version" ]]; then
-    versioned_download_url_for_channel "$channel" "$update_version"
+    version="$(download_version_for_channel "$channel")" || return 1
+    versioned_download_url_for_channel "$channel" "$version"
   else
     print -- "${channel_download_urls[$channel]}"
   fi
@@ -331,6 +335,25 @@ latest_version_for_channel() {
     return 1
   fi
 
+  print -- "$version"
+}
+
+download_version_for_channel() {
+  local channel="$1"
+  local version
+
+  if [[ -n "${channel_download_versions[$channel]-}" ]]; then
+    print -- "${channel_download_versions[$channel]}"
+    return 0
+  fi
+
+  if [[ -n "$update_version" ]]; then
+    version="$(normalize_discord_version "$update_version")" || return 1
+  else
+    version="$(latest_version_for_channel "$channel")" || return 1
+  fi
+
+  channel_download_versions[$channel]="$version"
   print -- "$version"
 }
 
@@ -449,7 +472,10 @@ print_update_select_versions() {
 
 dmg_path_for_channel() {
   local channel="$1"
-  print -- "$script_dir/Discord-${channel}-installer.dmg"
+  local version
+
+  version="$(download_version_for_channel "$channel")" || return 1
+  print -- "$script_dir/Discord-${channel}-installer (${version}).dmg"
 }
 
 mount_point_for_channel() {
@@ -734,22 +760,22 @@ quit_discord() {
 download_installer_dmg() {
   local channel="$1"
   local app_name
+  local resolved_version
   local download_url
   local dmg_path
   local attempt
 
   app_name="$(app_name_for_channel "$channel")"
-  download_url="$(download_url_for_channel "$channel")"
-  dmg_path="$(dmg_path_for_channel "$channel")"
+  resolved_version="$(download_version_for_channel "$channel")" || return 1
+  download_url="$(download_url_for_channel "$channel")" || return 1
+  dmg_path="$(dmg_path_for_channel "$channel")" || return 1
 
   remove_download_artifacts "$dmg_path"
 
   print "Downloading $app_name installer to:"
   print "  $dmg_path"
-  if [[ -n "$update_version" ]]; then
-    print "Requested $app_name version:"
-    print "  $update_version"
-  fi
+  print "Resolved $app_name version:"
+  print "  $resolved_version"
   print "From:"
   print "  $download_url"
 
@@ -790,7 +816,7 @@ download_and_replace_app() {
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
   executable_path="$(executable_path_for_channel "$channel")"
-  dmg_path="$(dmg_path_for_channel "$channel")"
+  dmg_path="$(dmg_path_for_channel "$channel")" || return 1
   mount_point="$(available_mount_point_for_channel "$channel")"
 
   mkdir -p "$mount_point"
@@ -1150,12 +1176,12 @@ if [[ -n "$update_version" ]]; then
 fi
 
 if [[ "$update_select_requested" == true ]]; then
-  print_update_select_versions "$selected_channel" "$update_select_min_version"
+  print_update_select_versions "$single_selected_channel" "$update_select_min_version"
   exit $?
 fi
 
 if [[ "$dl_requested" == true ]]; then
-  download_installer_dmg "$selected_channel"
+  download_installer_dmg "$single_selected_channel"
   exit $?
 fi
 
