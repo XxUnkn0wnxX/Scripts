@@ -1,8 +1,8 @@
-# discord_install_fixer.zsh
+# discord_install_manager.zsh
 
-[`discord_install_fixer.zsh`](../shell/discord_install_fixer.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
+[`discord_install_manager.zsh`](../shell/discord_install_manager.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
 
-It can also remove a supported BetterDiscord app wrapper, download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the app bundle, and then run the same App Support cleanup.
+It can also remove or preserve a supported BetterDiscord app wrapper, download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the appropriate ASAR payload, and then run the same App Support cleanup.
 
 ## Channels
 
@@ -37,15 +37,16 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - force-kills only processes running from the selected channel's app bundle if its main process or helpers do not quit cleanly
 - deletes the detected core installation and updater state before app replacement or OpenAsar injection
 - validates BetterDiscord's marked app-wrapper layout before cleanup and refuses incomplete or ambiguous layouts
-- removes a valid BetterDiscord wrapper and restores `betterdiscord.app.asar` to `app.asar`, whether the restored payload is stock Discord or OpenAsar
+- normally removes a valid BetterDiscord wrapper and restores `betterdiscord.app.asar` to `app.asar`, whether the restored payload is stock Discord or OpenAsar
+- with `--BD`, preserves a valid BetterDiscord wrapper and targets its nested `betterdiscord.app.asar`; channels without a wrapper use normal standalone `app.asar`
 - relaunches a selected client only when that selected client was running when the script started
 - with multiple selected channels, processes them sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
 - with `--update <version>`, downloads that channel's direct CDN DMG for a version such as `0.0.1177` instead of the latest API redirect
 - with `--dl [version]`, downloads only the selected channel's DMG, leaves it beside the script, and exits
 - with `--update-select`, prints available direct CDN DMG versions for one selected channel and exits without changing files
-- with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, stages and verifies it, then atomically replaces the selected app's `Contents/Resources/app.asar`
-- before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` still fails
+- with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, stages and verifies it, then atomically replaces the selected standalone or BetterDiscord-nested target
+- before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` fails or the main process does not appear
 
 ## What It Deletes
 
@@ -88,19 +89,21 @@ Discord stores the local login token in `Local Storage/leveldb/`. Preserving the
 
 Every cleanup run checks the selected app bundle for BetterDiscord's marked `Contents/Resources/app/` wrapper. A supported wrapper must contain the expected ownership marker, loader, package file, and nested `betterdiscord.app.asar`, with no competing top-level `app.asar`.
 
-When that complete layout is found, the script stops the selected client and performs this exact unwrap:
+Without `--BD`, when that complete layout is found, the script stops the selected client and performs this exact unwrap:
 
 ```text
 remove Contents/Resources/app/
 rename Contents/Resources/betterdiscord.app.asar to Contents/Resources/app.asar
 ```
 
-Before stopping a wrapped client, the fixer disables BetterDiscord's detached
+Before unwrapping a client, the manager disables BetterDiscord's detached
 update-recovery helper so the deliberate unwrap cannot be mistaken for a
 Discord application update. A later BetterDiscord injection re-enables that
 recovery path.
 
 The script does not inspect or classify the restored ASAR. It may be stock Discord or OpenAsar. Without `--openasar`, it is left untouched. With `--openasar`, the restored `app.asar` is then overwritten by the selected OpenAsar payload. With `--update`, the app is subsequently replaced by the fresh Discord bundle, and `--openasar` remains optional.
+
+With `--BD`, a fully validated wrapper is preserved instead. The manager does not disable BetterDiscord recovery or remove `Contents/Resources/app/`; it atomically replaces only `Contents/Resources/betterdiscord.app.asar`. If no wrapper exists for a selected channel, that channel falls back to normal standalone `Contents/Resources/app.asar`. A partial, invalid, or ambiguous wrapper is always refused rather than treated as absent.
 
 Wrapper messages use app-relative paths such as `Discord.app/Contents/Resources/app/`, `Discord PTB.app/...`, or `Discord Canary.app/...`; they do not print the `/Applications` prefix.
 
@@ -113,7 +116,7 @@ When `--update <version>` is used, the script downloads that channel's direct CD
 Use `--dl` to download the selected channel's DMG without mounting, replacing, cleaning, injecting OpenAsar, or relaunching:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --dl 0.0.1177
+zsh shell/discord_install_manager.zsh --channel canary --dl 0.0.1177
 ```
 
 `--dl` only supports one selected channel. It uses the same latest-versus-pinned DMG URL resolution as `--update`; without a version it downloads the latest API DMG, and with a version it downloads that direct CDN build.
@@ -121,19 +124,19 @@ zsh shell/discord_install_fixer.zsh --channel canary --dl 0.0.1177
 Use `--update-select` to print known direct CDN DMG versions for one selected channel:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update-select
+zsh shell/discord_install_manager.zsh --channel canary --update-select
 ```
 
 Pass a minimum version to stop the probe at that version:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update-select 900
+zsh shell/discord_install_manager.zsh --channel canary --update-select 900
 ```
 
 Pass a range to start and stop at explicit versions:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update-select 600-300
+zsh shell/discord_install_manager.zsh --channel canary --update-select 600-300
 ```
 
 Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric CDN DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. If the requested start or minimum version is newer than the current manifest version, the scan uses the detected latest version instead. It prints matching builds as they are discovered with the CDN `Last-Modified` date first, followed by version, and does not clean, update, inject OpenAsar, or relaunch Discord.
@@ -175,25 +178,25 @@ If a preferred mountpoint path already exists as a file or folder, the script ch
 Use `--openasar` with `--channel` to inject OpenAsar into the selected Discord app bundle:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar
+zsh shell/discord_install_manager.zsh --channel stable --openasar
 ```
 
 It can also be combined with `--update`:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel all --update --openasar
+zsh shell/discord_install_manager.zsh --channel all --update --openasar
 ```
 
 To update and inject only specific channels in one pass:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable ptb --update --openasar
+zsh shell/discord_install_manager.zsh --channel stable ptb --update --openasar
 ```
 
 Use `--openasar-source` to inject a specific OpenAsar payload from a local file, a GitHub repo URL, or a direct download URL:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
+zsh shell/discord_install_manager.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
 ```
 
 `--openasar-source` implies `--openasar`; the only difference is that it uses the source you provide.
@@ -210,18 +213,36 @@ Set `OPENASAR_SOURCE` when running the script if you prefer an environment overr
 
 ```bash
 OPENASAR_SOURCE="$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
-  zsh shell/discord_install_fixer.zsh --channel stable --openasar
+  zsh shell/discord_install_manager.zsh --channel stable --openasar
 ```
 
 Local sources can be absolute paths, relative paths, `~/...`, `$HOME/...`, or `file://...` paths. Remote sources can be plain GitHub repo URLs or direct `http://` / `https://` `app.asar` URLs.
 
 For remote URLs, the downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. Local `app.asar` sources are used in place and are not deleted by the script. It does not keep an archived copy and does not create `.stock` backups.
 
-If BetterDiscord's supported wrapper is present, it is unwrapped before OpenAsar injection, so OpenAsar is always written to the normal top-level `Contents/Resources/app.asar`. BetterDiscord can then be injected again afterward and will wrap that payload.
+By default, a supported BetterDiscord wrapper is unwrapped before OpenAsar injection, so OpenAsar is written to the normal top-level `Contents/Resources/app.asar`. BetterDiscord can then be injected again afterward and will wrap that payload.
+
+Use `--BD` when BetterDiscord is already installed and should remain installed:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel stable --openasar --BD
+```
+
+It works with the normal OpenAsar download and with a custom source:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel stable ptb \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+  --BD
+```
+
+For every selected channel, `--BD` preserves and revalidates a supported wrapper before replacing `betterdiscord.app.asar`. If no wrapper was present at preflight, it revalidates that absence and uses top-level `app.asar`. If wrapper presence or validity changes while the manager is running, it stops rather than switching targets.
+
+`--BD` requires `--openasar` or `--openasar-source`. It cannot be combined with `--update`, because replacing the Discord application also replaces the BetterDiscord wrapper. That invalid combination is rejected before downloads, cleanup, or app changes begin.
 
 OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
 
-OpenAsar injection happens before any selected client is relaunched. The installed ASAR is verified immediately before relaunch and monitored for ten seconds afterward. If Discord replaces it during that first startup, the fixer stops only that channel, reinjects once, relaunches it once, and fails clearly if the retry is also replaced.
+OpenAsar injection happens before any selected client is relaunched. The installed ASAR is verified immediately before relaunch and monitored for ten seconds afterward. If Discord replaces it during that first startup, the manager stops only that channel, reinjects once, relaunches it once, and fails clearly if the retry is also replaced.
 
 ## Relaunch Behavior
 
@@ -234,10 +255,10 @@ If `open` fails or its accepted launch request does not produce the matching mai
 ## Usage
 
 ```text
-discord_install_fixer.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path]
-discord_install_fixer.zsh --channel stable|ptb|canary --dl [version]
-discord_install_fixer.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end]
-discord_install_fixer.zsh --help
+discord_install_manager.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--BD]
+discord_install_manager.zsh --channel stable|ptb|canary --dl [version]
+discord_install_manager.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end]
+discord_install_manager.zsh --help
 ```
 
 ## Arguments
@@ -280,13 +301,19 @@ discord_install_fixer.zsh --help
       <td><nobr><code>--openasar</code></nobr></td>
       <td>Flag</td>
       <td><nobr>none</nobr></td>
-      <td>Downloads OpenAsar and overwrites the selected app's <code>Contents/Resources/app.asar</code>. Requires <code>--channel</code>.</td>
+      <td>Downloads OpenAsar and replaces standalone <code>Contents/Resources/app.asar</code> by default, or the validated nested target when combined with <code>--BD</code>. Requires <code>--channel</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--openasar-source &lt;url-or-path&gt;</code></nobr></td>
       <td>Option</td>
       <td><nobr>URL or path</nobr></td>
       <td>Injects OpenAsar from a specific GitHub repo URL, direct remote URL, or local <code>app.asar</code> file. Implies <code>--openasar</code> and requires <code>--channel</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--BD</code></nobr></td>
+      <td>Modifier</td>
+      <td><nobr>none</nobr></td>
+      <td>Preserves a validated BetterDiscord wrapper and injects OpenAsar into <code>Contents/Resources/betterdiscord.app.asar</code>. A channel without a wrapper falls back to standalone <code>app.asar</code>. Requires <code>--openasar</code> or <code>--openasar-source</code> and cannot be combined with <code>--update</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--help</code>, <code>-h</code></nobr></td>
@@ -308,105 +335,121 @@ Notes:
 - `--update-select` only prints versions and exits.
 - `--update` and `--openasar` can be combined.
 - `--openasar-source` implies `--openasar`.
+- `--BD` preserves valid BetterDiscord wrappers, requires OpenAsar input, and is rejected with `--update` before any work starts.
+- With multiple channels, `--BD` independently chooses nested or standalone injection for each channel.
 
 ## Examples
 
 Show help:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --help
+zsh shell/discord_install_manager.zsh --help
 ```
 
 Clean Discord Stable's updater/core files:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable
+zsh shell/discord_install_manager.zsh --channel stable
 ```
 
 Clean Discord PTB's updater/core files:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel ptb
+zsh shell/discord_install_manager.zsh --channel ptb
 ```
 
 Download, replace, and clean Discord Canary:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update
+zsh shell/discord_install_manager.zsh --channel canary --update
 ```
 
 Download, replace, clean, and inject OpenAsar for Stable and PTB:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable ptb --update --openasar
+zsh shell/discord_install_manager.zsh --channel stable ptb --update --openasar
 ```
 
 Download only a pinned Discord Canary DMG:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --dl 0.0.1177
+zsh shell/discord_install_manager.zsh --channel canary --dl 0.0.1177
 ```
 
 List direct CDN DMG versions for Discord Canary:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update-select
+zsh shell/discord_install_manager.zsh --channel canary --update-select
 ```
 
 List direct CDN DMG versions for Discord Canary down to `0.0.900`:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update-select 900
+zsh shell/discord_install_manager.zsh --channel canary --update-select 900
 ```
 
 List direct CDN DMG versions for Discord Canary from `0.0.600` down to `0.0.300`:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update-select 600-300
+zsh shell/discord_install_manager.zsh --channel canary --update-select 600-300
 ```
 
 Download, replace, and clean Discord Canary with a pinned direct CDN build:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel canary --update 0.0.1177
+zsh shell/discord_install_manager.zsh --channel canary --update 0.0.1177
 ```
 
 Inject OpenAsar and clean Discord Stable:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar
+zsh shell/discord_install_manager.zsh --channel stable --openasar
 ```
 
 Inject a locally built OpenAsar payload and clean Discord Stable:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
+zsh shell/discord_install_manager.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
+```
+
+Refresh OpenAsar inside an existing BetterDiscord wrapper:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel stable --openasar --BD
+```
+
+Refresh a local OpenAsar build inside wrappers where present, with standalone fallback per channel:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel stable ptb --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
 ```
 
 Inject OpenAsar from a specific repo URL:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "https://github.com/XxUnkn0wnxX/OpenAsar"
+zsh shell/discord_install_manager.zsh --channel stable --openasar-source "https://github.com/XxUnkn0wnxX/OpenAsar"
 ```
 
 Download, replace, and clean Stable, PTB, and Canary:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel all --update
+zsh shell/discord_install_manager.zsh --channel all --update
 ```
 
 Download, replace, inject OpenAsar, and clean all channels:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel all --update --openasar
+zsh shell/discord_install_manager.zsh --channel all --update --openasar
 ```
 
 ## Safety Guards
 
-- The target data directory must exist unless `--update` is used, multiple channels are selected, or a valid BetterDiscord app wrapper can still be removed; missing channel data folders are then reported and skipped.
+- The target data directory must exist unless `--update` is used, multiple channels are selected, or a valid BetterDiscord app wrapper is present for removal or nested injection; missing channel data folders are then reported and skipped.
 - Existing data directories must contain `settings.json` or `Local Storage/` so they resemble Discord data directories.
-- A BetterDiscord wrapper is removed only when its JSON ownership contract, loader token and target, package entry point, nested ASAR, and surrounding layout all validate.
+- A BetterDiscord wrapper is removed or preserved only when its JSON ownership contract, loader token and target, package entry point, nested ASAR, and surrounding layout all validate.
 - Partial or ambiguous BetterDiscord wrapper layouts are refused before App Support or app-bundle changes begin.
+- `--BD` revalidates its wrapper/absence before every target lookup. It refuses wrappers that disappear or become invalid and refuses a wrapper that appears after an absent preflight.
+- `--BD` with `--update` is rejected during argument validation before downloads or filesystem changes.
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
 - During `--update`, the selected client is checked again before app deletion/copying and after failed replacement attempts.
@@ -416,7 +459,7 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 - OpenAsar is staged beside the target, byte-verified, atomically moved into place, and checked again after relaunch.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.
-- If no updater-managed targets and no valid BetterDiscord wrapper are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully. A valid wrapper is still removed and may require stopping the client.
+- In cleanup-only runs, if no updater-managed targets and no valid BetterDiscord wrapper are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully. A valid wrapper is normally removed; with `--BD`, it is preserved for nested OpenAsar injection.
 - Existing apps in `/Applications` are always replaced during `--update`.
 
 ## Good To Know
