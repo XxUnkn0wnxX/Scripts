@@ -34,7 +34,7 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - snapshots whether each selected Discord client was running when the script starts
 - gracefully quits only the selected Discord client and waits up to 10 seconds
 - with multiple selected channels, stops all selected Discord clients before replacement or cleanup starts
-- force-kills only the selected channel's executable if it does not quit cleanly
+- force-kills only processes running from the selected channel's app bundle if its main process or helpers do not quit cleanly
 - deletes the detected core installation and updater state before app replacement or OpenAsar injection
 - validates BetterDiscord's marked app-wrapper layout before cleanup and refuses incomplete or ambiguous layouts
 - removes a valid BetterDiscord wrapper and restores `betterdiscord.app.asar` to `app.asar`, whether the restored payload is stock Discord or OpenAsar
@@ -44,7 +44,7 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - with `--update <version>`, downloads that channel's direct CDN DMG for a version such as `0.0.1177` instead of the latest API redirect
 - with `--dl [version]`, downloads only the selected channel's DMG, leaves it beside the script, and exits
 - with `--update-select`, prints available direct CDN DMG versions for one selected channel and exits without changing files
-- with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, then overwrites the selected app's `Contents/Resources/app.asar`
+- with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, stages and verifies it, then atomically replaces the selected app's `Contents/Resources/app.asar`
 - before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` still fails
 
 ## What It Deletes
@@ -193,8 +193,10 @@ zsh shell/discord_install_fixer.zsh --channel stable ptb --update --openasar
 Use `--openasar-source` to inject a specific OpenAsar payload from a local file, a GitHub repo URL, or a direct download URL:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
+zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
 ```
+
+`--openasar-source` implies `--openasar`; the only difference is that it uses the source you provide.
 
 By default, the script uses the fork repo URL and resolves it to the latest release asset internally:
 
@@ -207,7 +209,7 @@ For a plain GitHub repo URL such as `https://github.com/XxUnkn0wnxX/OpenAsar`, t
 Set `OPENASAR_SOURCE` when running the script if you prefer an environment override instead of the CLI option:
 
 ```bash
-OPENASAR_SOURCE="$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar" \
+OPENASAR_SOURCE="$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
   zsh shell/discord_install_fixer.zsh --channel stable --openasar
 ```
 
@@ -219,7 +221,7 @@ If BetterDiscord's supported wrapper is present, it is unwrapped before OpenAsar
 
 OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
 
-OpenAsar injection happens before any selected client is relaunched.
+OpenAsar injection happens before any selected client is relaunched. The installed ASAR is verified immediately before relaunch and monitored for ten seconds afterward. If Discord replaces it during that first startup, the fixer stops only that channel, reinjects once, relaunches it once, and fails clearly if the retry is also replaced.
 
 ## Relaunch Behavior
 
@@ -227,7 +229,7 @@ If a selected client was running when the script started, the script relaunches 
 
 Before calling `open`, the script waits for the selected channel's app bundle to contain both `Contents/Info.plist` and the expected executable under `Contents/MacOS/`. It then refreshes LaunchServices registration only for that selected app bundle so macOS does not reuse stale metadata from the app that was just replaced.
 
-If `open` still fails, the script prints the captured LaunchServices error and retries. After three failed `open` attempts, it launches the app's executable directly and waits briefly for the matching Discord process to appear.
+If `open` fails or its accepted launch request does not produce the matching main Discord process, the script retries. After three unsuccessful `open` attempts, it launches the app's executable directly and again requires the matching process to appear.
 
 ## Usage
 
@@ -378,7 +380,7 @@ zsh shell/discord_install_fixer.zsh --channel stable --openasar
 Inject a locally built OpenAsar payload and clean Discord Stable:
 
 ```bash
-zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
+zsh shell/discord_install_fixer.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
 ```
 
 Inject OpenAsar from a specific repo URL:
@@ -411,6 +413,7 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 - Pinned `--update <version>` downloads only one selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
 - `--dl` does not inspect or modify Discord App Support data and does not touch the app in `/Applications`.
 - OpenAsar injection only runs after the selected app has been stopped.
+- OpenAsar is staged beside the target, byte-verified, atomically moved into place, and checked again after relaunch.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.
 - If no updater-managed targets and no valid BetterDiscord wrapper are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully. A valid wrapper is still removed and may require stopping the client.
