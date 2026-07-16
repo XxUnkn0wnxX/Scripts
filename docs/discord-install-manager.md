@@ -101,7 +101,7 @@ update-recovery helper so the deliberate unwrap cannot be mistaken for a
 Discord application update. A later BetterDiscord injection re-enables that
 recovery path.
 
-The script does not inspect or classify the restored ASAR. It may be stock Discord or OpenAsar. Without `--openasar`, it is left untouched. With `--openasar`, the restored `app.asar` is then overwritten by the selected OpenAsar payload. With `--update`, the app is subsequently replaced by the fresh Discord bundle, and `--openasar` remains optional.
+The script does not inspect or classify the restored ASAR. It may be stock Discord or OpenAsar. Without `--openasar`, it is left untouched. With `--openasar`, the restored `app.asar` is then overwritten by the selected OpenAsar payload. With either latest `--update` or pinned `--update <version>`, the manager skips this unwrap because the complete application is replaced by the fresh Discord bundle; `--openasar` remains optional.
 
 With `--BD`, a fully validated wrapper is preserved instead. The manager does not disable BetterDiscord recovery or remove `Contents/Resources/app/`; it atomically replaces only `Contents/Resources/betterdiscord.app.asar`. If no wrapper exists for a selected channel, that channel falls back to normal standalone `Contents/Resources/app.asar`. A partial, invalid, or ambiguous wrapper is always refused rather than treated as absent.
 
@@ -283,7 +283,7 @@ discord_install_manager.zsh --help
       <td><nobr><code>--update [version]</code></nobr></td>
       <td>Flag / option</td>
       <td><nobr>optional version</nobr></td>
-      <td>Downloads a fresh Discord DMG for each selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. With a version such as <code>0.0.1177</code> or <code>1177</code>, downloads that direct CDN build. Requires <code>--channel</code>; pinned versions only support one selected channel.</td>
+      <td>Downloads a fresh Discord DMG for each selected channel, replaces the app in <code>/Applications</code>, then deletes the DMG. Any detected BetterDiscord wrapper is discarded with the old app instead of being unwrapped first. With a version such as <code>0.0.1177</code> or <code>1177</code>, downloads that direct CDN build. Requires <code>--channel</code>; pinned versions only support one selected channel.</td>
     </tr>
     <tr>
       <td><nobr><code>--dl [version]</code></nobr></td>
@@ -456,7 +456,7 @@ zsh shell/discord_install_manager.zsh --channel all --update --openasar
 - Pinned `--update <version>` downloads only one selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
 - `--dl` does not inspect or modify Discord App Support data and does not touch the app in `/Applications`.
 - OpenAsar injection only runs after the selected app has been stopped.
-- Before removing a validated BetterDiscord wrapper, the manager checks for this fork's real, non-symlinked `betterdiscord-update-helper.zsh`. Only that fork-specific recovery setup receives `recovery-disabled`, process-group shutdown, and recovery-state cleanup. Standard BetterDiscord wrappers are still restored normally without creating or changing fork recovery files. For the fork, stale PID files are cleaned, while symlinked, reused, or mismatched PIDs are never signalled.
+- Before deliberately removing or replacing a validated BetterDiscord wrapper, the manager checks for this fork's real, non-symlinked `betterdiscord-update-helper.zsh`. Only that fork-specific recovery setup receives `recovery-disabled`, process-group shutdown, and recovery-state cleanup. Standard BetterDiscord wrappers are restored normally during cleanup, while `--update` discards them with the old application without creating or changing fork recovery files. For the fork, stale PID files are cleaned, while symlinked, reused, or mismatched PIDs are never signalled.
 - OpenAsar is staged beside the target, byte-verified, atomically moved into place, and checked again after relaunch.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.
