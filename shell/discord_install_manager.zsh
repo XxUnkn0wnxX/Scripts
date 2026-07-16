@@ -521,6 +521,13 @@ stop_betterdiscord_recovery_helper() {
   print "Stopped BetterDiscord recovery helper for $app_relative"
 }
 
+has_fork_betterdiscord_recovery() {
+  local bootstrap_dir="$1"
+  local helper_path="$bootstrap_dir/betterdiscord-update-helper.zsh"
+
+  [[ -f "$helper_path" && ! -L "$helper_path" ]]
+}
+
 disable_betterdiscord_recovery_for_unwrap() {
   local channel="$1"
   local app_relative
@@ -535,6 +542,11 @@ disable_betterdiscord_recovery_for_unwrap() {
 
   if [[ ! -d "$data_dir" ]]; then
     print "No BetterDiscord recovery state exists for $app_relative; continuing with wrapper removal"
+    return 0
+  fi
+
+  if ! has_fork_betterdiscord_recovery "$bootstrap_dir"; then
+    print "No fork-specific BetterDiscord recovery helper detected for $app_relative; continuing with wrapper removal"
     return 0
   fi
 
@@ -559,10 +571,6 @@ disable_betterdiscord_recovery_for_unwrap() {
 
   channel_recovery_disabled[$channel]=true
   stop_betterdiscord_recovery_helper "$bootstrap_dir" "$app_relative" || return 1
-  if [[ ! -e "$bootstrap_dir/betterdiscord-update-helper.pid" && -f "$bootstrap_dir/betterdiscord-update-helper.js" ]]; then
-    print "Detected the standard BetterDiscord non-PID bootstrap for $app_relative; waiting for it to observe recovery-disabled"
-    /bin/sleep 0.5
-  fi
   if ! rm -f -- "$bootstrap_dir/update-pending.json" "$bootstrap_dir/wrapper-ready.json" "$bootstrap_dir/active-run"; then
     print -u2 "Cannot clear BetterDiscord recovery state before unwrapping $app_relative."
     return 1
