@@ -47,13 +47,13 @@ typeset -A channel_dmg_filenames=(
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path]
+  $script_name --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--BD]
   $script_name --channel stable|ptb|canary --dl [version]
   $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end]
   $script_name --help
 
 Options:
-  --channel             Select Discord channel(s) to clean. Valid BetterDiscord app wrappers are unwrapped.
+  --channel             Select Discord channel(s) to clean. Valid BetterDiscord app wrappers are normally unwrapped.
                         Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
@@ -61,8 +61,10 @@ Options:
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
   --update-select       Print available CDN DMG versions for one selected channel, then exit.
                         Optionally pass a minimum version such as 900 or a range such as 600-300.
-  --openasar            Download and inject OpenAsar app.asar into the selected Discord app.
+  --openasar            Download and inject OpenAsar into the selected Discord app.
   --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
+  --BD                  Preserve a valid BetterDiscord wrapper and replace its nested betterdiscord.app.asar.
+                        Falls back to normal app.asar when no wrapper exists. Cannot be used with --update.
   --help                Show this help message.
 
 Examples:
@@ -70,10 +72,11 @@ Examples:
   $script_name --channel ptb --update
   $script_name --channel canary --dl 0.0.1177
   $script_name --channel canary --update-select 600-300
-  $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --update
+  $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
   $script_name --channel all --update --openasar
 
 Notes:
+  This Discord install manager supports macOS only.
   --channel without --update cleans updater/core files and unwraps a valid BetterDiscord app wrapper.
   Unwrapping restores betterdiscord.app.asar to app.asar without identifying or replacing its payload.
   --update must be paired with --channel so the target app is explicit.
@@ -82,8 +85,10 @@ Notes:
   --update with a version, --dl, and --update-select require a single selected channel.
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
+  --BD requires --openasar or --openasar-source and cannot be combined with --update.
+  With --BD, a valid BetterDiscord wrapper is preserved; an absent wrapper uses standalone app.asar.
   OpenAsar is installed atomically, verified before relaunch, and checked again after relaunch.
-  If startup replaces it, the fixer stops that channel and retries injection once.
+  If startup replaces it, the manager stops that channel and retries injection once.
   aria2c is used for downloads when available; set DISCORD_DOWNLOAD_CONNECTIONS to tune its split count.
   OpenAsar sources can be GitHub repo URLs, app.asar URLs, or local paths including ~, \$HOME, and file:// paths.
 EOF
@@ -103,6 +108,7 @@ update_select_requested=false
 update_select_min_version=""
 update_version=""
 openasar_requested=false
+openasar_betterdiscord_requested=false
 openasar_source="${OPENASAR_SOURCE:-${OPENASAR_RELEASE_URL:-$DEFAULT_OPENASAR_SOURCE}}"
 explicit_channel=false
 
@@ -168,10 +174,16 @@ while (( $# > 0 )); do
       shift
       ;;
     --openasar-source)
-      (( $# >= 2 )) || fail_usage "Missing value for --openasar-source."
+      if (( $# < 2 )) || [[ -z "$2" || "$2" == --* ]]; then
+        fail_usage "Missing value for --openasar-source."
+      fi
       openasar_requested=true
       openasar_source="$2"
       shift 2
+      ;;
+    --BD)
+      openasar_betterdiscord_requested=true
+      shift
       ;;
     *)
       fail_usage "Unknown argument: $1"
@@ -193,6 +205,14 @@ fi
 
 if [[ "$openasar_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--openasar requires --channel stable|ptb|canary|all."
+fi
+
+if [[ "$openasar_betterdiscord_requested" == true && "$update_requested" == true ]]; then
+  fail_usage "--BD cannot be combined with --update because updating replaces the BetterDiscord wrapper."
+fi
+
+if [[ "$openasar_betterdiscord_requested" == true && "$openasar_requested" != true ]]; then
+  fail_usage "--BD requires --openasar or --openasar-source."
 fi
 
 if [[ "$explicit_channel" != true ]]; then
@@ -950,6 +970,63 @@ download_openasar_payload() {
   done
 }
 
+openasar_target_path_for_channel() {
+  local channel="$1"
+  local app_relative
+  local resources_dir
+  local expected_wrapper
+  local layout_status
+  local issue
+
+  resources_dir="$(app_path_for_channel "$channel")/Contents/Resources"
+
+  if [[ "$openasar_betterdiscord_requested" != true ]]; then
+    print -- "$resources_dir/app.asar"
+    return 0
+  fi
+
+  app_relative="$(app_relative_path_for_channel "$channel")"
+  expected_wrapper="${channel_betterdiscord_wrapper[$channel]:-false}"
+
+  if inspect_betterdiscord_wrapper "$channel"; then
+    layout_status=0
+  else
+    layout_status=$?
+  fi
+
+  if [[ "$expected_wrapper" == true ]]; then
+    if (( layout_status == 0 )); then
+      print -- "$resources_dir/betterdiscord.app.asar"
+      return 0
+    fi
+
+    print -u2 "Refusing OpenAsar injection because the validated BetterDiscord wrapper changed in $app_relative:"
+    if (( layout_status == 2 )); then
+      for issue in "${betterdiscord_wrapper_issues[@]}"; do
+        print -u2 "  $issue"
+      done
+    else
+      print -u2 "  The BetterDiscord wrapper is no longer present."
+    fi
+    return 1
+  fi
+
+  if (( layout_status == 1 )); then
+    print -- "$resources_dir/app.asar"
+    return 0
+  fi
+
+  print -u2 "Refusing standalone OpenAsar injection because the BetterDiscord wrapper layout changed in $app_relative:"
+  if (( layout_status == 0 )); then
+    print -u2 "  A BetterDiscord wrapper appeared after preflight validation."
+  else
+    for issue in "${betterdiscord_wrapper_issues[@]}"; do
+      print -u2 "  $issue"
+    done
+  fi
+  return 1
+}
+
 inject_openasar() {
   local channel="$1"
   local payload_path="$2"
@@ -957,12 +1034,16 @@ inject_openasar() {
   local app_path
   local resources_dir
   local target_asar
+  local target_name
   local staged_asar
 
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
   resources_dir="$app_path/Contents/Resources"
-  target_asar="$resources_dir/app.asar"
+  if ! target_asar="$(openasar_target_path_for_channel "$channel")"; then
+    return 1
+  fi
+  target_name="${target_asar:t}"
   staged_asar="$resources_dir/.openasar-app-$$-$RANDOM.asar"
 
   if [[ ! -d "$app_path" ]]; then
@@ -978,12 +1059,16 @@ inject_openasar() {
   fi
 
   if [[ ! -f "$target_asar" || -L "$target_asar" ]]; then
-    print -u2 "OpenAsar injection refused; the target app.asar is missing or is not a regular file:"
+    print -u2 "OpenAsar injection refused; the target $target_name is missing or is not a regular file:"
     print -u2 "  $target_asar"
     return 1
   fi
 
-  print "Injecting OpenAsar into $app_name..."
+  if [[ "$target_name" == "betterdiscord.app.asar" ]]; then
+    print "Injecting OpenAsar into the BetterDiscord nested payload for $app_name..."
+  else
+    print "Injecting standalone OpenAsar into $app_name..."
+  fi
   {
     rm -f -- "$staged_asar"
 
@@ -1000,13 +1085,13 @@ inject_openasar() {
     fi
 
     if ! mv -f "$staged_asar" "$target_asar"; then
-      print -u2 "OpenAsar injection failed while replacing app.asar:"
+      print -u2 "OpenAsar injection failed while replacing $target_name:"
       print -u2 "  $target_asar"
       return 1
     fi
 
     if ! cmp -s "$payload_path" "$target_asar"; then
-      print -u2 "OpenAsar injection failed; the installed app.asar does not match the source payload:"
+      print -u2 "OpenAsar injection failed; the installed $target_name does not match the source payload:"
       print -u2 "  $target_asar"
       return 1
     fi
@@ -1024,7 +1109,9 @@ openasar_matches_installed_target() {
   local payload_path="$2"
   local target_asar
 
-  target_asar="$(app_path_for_channel "$channel")/Contents/Resources/app.asar"
+  if ! target_asar="$(openasar_target_path_for_channel "$channel")"; then
+    return 1
+  fi
   [[ -f "$target_asar" && ! -L "$target_asar" ]] || return 1
   cmp -s "$payload_path" "$target_asar"
 }
@@ -1035,10 +1122,14 @@ verify_openasar_after_relaunch() {
   local was_running_at_start="${3:-false}"
   local app_name
   local target_asar
+  local target_name
   local replaced=false
 
   app_name="$(app_name_for_channel "$channel")"
-  target_asar="$(app_path_for_channel "$channel")/Contents/Resources/app.asar"
+  if ! target_asar="$(openasar_target_path_for_channel "$channel")"; then
+    return 1
+  fi
+  target_name="${target_asar:t}"
 
   if [[ "$was_running_at_start" != true ]]; then
     if openasar_matches_installed_target "$channel" "$payload_path"; then
@@ -1068,7 +1159,7 @@ verify_openasar_after_relaunch() {
     return 0
   fi
 
-  print "$app_name replaced app.asar during its first relaunch. Stopping it and reinjecting OpenAsar once..."
+  print "$app_name replaced $target_name during its first relaunch. Stopping it and reinjecting OpenAsar once..."
   if discord_is_running "$channel"; then
     quit_discord "$channel"
   fi
@@ -1424,7 +1515,11 @@ clean_channel() {
     print "  Code Cache/"
     print
     if [[ "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]]; then
-      print "No App Support files were changed for $app_name; BetterDiscord app-wrapper cleanup will continue."
+      if [[ "$openasar_betterdiscord_requested" == true ]]; then
+        print "No App Support files were changed for $app_name; its BetterDiscord wrapper will be preserved for nested OpenAsar injection."
+      else
+        print "No App Support files were changed for $app_name; BetterDiscord app-wrapper cleanup will continue."
+      fi
     else
       print "Nothing was changed for $app_name."
     fi
@@ -1743,9 +1838,11 @@ for channel in "${selected_channels[@]}"; do
   fi
 done
 
-for channel in "${selected_channels[@]}"; do
-  disable_betterdiscord_recovery_for_unwrap "$channel"
-done
+if [[ "$openasar_betterdiscord_requested" != true ]]; then
+  for channel in "${selected_channels[@]}"; do
+    disable_betterdiscord_recovery_for_unwrap "$channel"
+  done
+fi
 
 if [[ "$multiple_channels" == true ]]; then
   print
@@ -1766,6 +1863,16 @@ for channel in "${selected_channels[@]}"; do
   print
   print "== $app_name =="
 
+  if [[ "$openasar_betterdiscord_requested" == true ]]; then
+    if [[ "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]]; then
+      print "Preserving the validated BetterDiscord wrapper for $app_name."
+      print "OpenAsar will replace its nested betterdiscord.app.asar payload."
+    else
+      print "No BetterDiscord wrapper was detected for $app_name."
+      print "OpenAsar will use the normal standalone app.asar layout."
+    fi
+  fi
+
   if [[ "$multiple_channels" == false && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
     if discord_is_running "$channel"; then
       quit_discord "$channel"
@@ -1778,7 +1885,9 @@ for channel in "${selected_channels[@]}"; do
 
   clean_channel "$channel" "$allow_missing_data_dir"
 
-  unwrap_betterdiscord_wrapper "$channel"
+  if [[ "$openasar_betterdiscord_requested" != true ]]; then
+    unwrap_betterdiscord_wrapper "$channel"
+  fi
 
   if [[ "$update_requested" == true ]]; then
     download_and_replace_app "$channel"
