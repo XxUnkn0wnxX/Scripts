@@ -456,6 +456,7 @@ zsh shell/discord_install_manager.zsh --channel all --update --openasar
 - Pinned `--update <version>` downloads only one selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
 - `--dl` does not inspect or modify Discord App Support data and does not touch the app in `/Applications`.
 - OpenAsar injection only runs after the selected app has been stopped.
+- Before removing a validated BetterDiscord wrapper, the manager disables recovery and stops the validated `betterdiscord-update-helper.pid` process-group owner. Its helper descendants stop with it; stale PID files are cleaned, while symlinked, reused, or mismatched PIDs are never signalled.
 - OpenAsar is staged beside the target, byte-verified, atomically moved into place, and checked again after relaunch.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.

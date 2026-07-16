@@ -442,6 +442,85 @@ validate_selected_betterdiscord_wrappers() {
   done
 }
 
+stop_betterdiscord_recovery_helper() {
+  local bootstrap_dir="$1"
+  local app_relative="$2"
+  local pid_path="$bootstrap_dir/betterdiscord-update-helper.pid"
+  local helper_path="$bootstrap_dir/betterdiscord-update-helper.zsh"
+  local helper_pid
+  local helper_pgid
+  local helper_command
+  local attempt
+
+  [[ -e "$pid_path" || -L "$pid_path" ]] || return 0
+  if [[ -L "$pid_path" ]]; then
+    print -u2 "Refusing to stop BetterDiscord recovery for $app_relative because betterdiscord-update-helper.pid is a symlink."
+    return 1
+  fi
+
+  helper_pid="$(/bin/cat "$pid_path" 2>/dev/null || true)"
+  helper_pid="${helper_pid//[[:space:]]/}"
+  if [[ "$helper_pid" != <-> || "$helper_pid" -le 0 ]]; then
+    print "Removed an invalid BetterDiscord recovery PID file for $app_relative"
+    rm -f -- "$pid_path"
+    return 0
+  fi
+
+  helper_command="$(/bin/ps -p "$helper_pid" -o command= 2>/dev/null || true)"
+  helper_pgid="$(/bin/ps -p "$helper_pid" -o pgid= 2>/dev/null || true)"
+  helper_pgid="${helper_pgid//[[:space:]]/}"
+  if [[ -z "$helper_command" ]]; then
+    print "Removed a stale BetterDiscord recovery PID file for $app_relative (PID $helper_pid is not running)"
+    rm -f -- "$pid_path"
+    return 0
+  fi
+
+  if [[ "$helper_command" != "zsh -f $helper_path "* \
+      && "$helper_command" != "/bin/zsh -f $helper_path "* \
+      && "$helper_command" != "/usr/bin/zsh -f $helper_path "* \
+      && "$helper_command" != "/usr/bin/env zsh -f $helper_path "* \
+      || "$helper_command" != *"$bootstrap_dir"* \
+      || "$helper_pgid" != "$helper_pid" ]]; then
+    print -u2 "Refusing to signal PID $helper_pid for $app_relative because it is not the validated BetterDiscord recovery process-group owner."
+    return 1
+  fi
+
+  print "Stopping BetterDiscord recovery helper for $app_relative (PID $helper_pid and its helper descendants)"
+  /bin/kill -TERM -- "-$helper_pgid" 2>/dev/null || true
+  for attempt in {1..20}; do
+    /bin/kill -0 "$helper_pid" 2>/dev/null || break
+    /bin/sleep 0.1
+  done
+
+  if /bin/kill -0 "$helper_pid" 2>/dev/null; then
+    helper_command="$(/bin/ps -p "$helper_pid" -o command= 2>/dev/null || true)"
+    helper_pgid="$(/bin/ps -p "$helper_pid" -o pgid= 2>/dev/null || true)"
+    helper_pgid="${helper_pgid//[[:space:]]/}"
+    if [[ "$helper_command" != "zsh -f $helper_path "* \
+        && "$helper_command" != "/bin/zsh -f $helper_path "* \
+        && "$helper_command" != "/usr/bin/zsh -f $helper_path "* \
+        && "$helper_command" != "/usr/bin/env zsh -f $helper_path "* \
+        || "$helper_command" != *"$bootstrap_dir"* \
+        || "$helper_pgid" != "$helper_pid" ]]; then
+      print -u2 "Refusing a forced helper stop for $app_relative because PID $helper_pid no longer matches BetterDiscord recovery."
+      return 1
+    fi
+    print "BetterDiscord recovery helper did not stop cleanly for $app_relative; stopping its validated process group"
+    /bin/kill -KILL -- "-$helper_pgid" 2>/dev/null || true
+    for attempt in {1..10}; do
+      /bin/kill -0 "$helper_pid" 2>/dev/null || break
+      /bin/sleep 0.1
+    done
+    if /bin/kill -0 "$helper_pid" 2>/dev/null; then
+      print -u2 "BetterDiscord recovery helper PID $helper_pid is still present for $app_relative after the validated process-group stop."
+      return 1
+    fi
+  fi
+
+  rm -f -- "$pid_path"
+  print "Stopped BetterDiscord recovery helper for $app_relative"
+}
+
 disable_betterdiscord_recovery_for_unwrap() {
   local channel="$1"
   local app_relative
@@ -466,22 +545,26 @@ disable_betterdiscord_recovery_for_unwrap() {
 
   if [[ -e "$bootstrap_dir/recovery-disabled" ]]; then
     print "BetterDiscord update recovery was already disabled for $app_relative"
-    return 0
-  fi
+  else
+    if ! mkdir -p "$bootstrap_dir"; then
+      print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
+      return 1
+    fi
 
-  if ! mkdir -p "$bootstrap_dir"; then
-    print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
-    return 1
-  fi
-
-  if ! print -- "$(date +%s)" > "$bootstrap_dir/recovery-disabled"; then
-    print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
-    return 1
+    if ! print -- "$(date +%s)" > "$bootstrap_dir/recovery-disabled"; then
+      print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
+      return 1
+    fi
   fi
 
   channel_recovery_disabled[$channel]=true
-  if ! rm -f -- "$bootstrap_dir/update-pending.json" "$bootstrap_dir/wrapper-ready.json"; then
+  stop_betterdiscord_recovery_helper "$bootstrap_dir" "$app_relative" || return 1
+  if ! rm -f -- "$bootstrap_dir/update-pending.json" "$bootstrap_dir/wrapper-ready.json" "$bootstrap_dir/active-run"; then
     print -u2 "Cannot clear BetterDiscord recovery state before unwrapping $app_relative."
+    return 1
+  fi
+  if ! remove_installation_target "$bootstrap_dir/recovery-runs" "$app_relative BetterDiscord recovery runs" false; then
+    print -u2 "Cannot clear BetterDiscord recovery run assets before unwrapping $app_relative."
     return 1
   fi
   print "Disabled BetterDiscord update recovery before unwrapping $app_relative"
