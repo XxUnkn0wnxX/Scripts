@@ -55,7 +55,7 @@ Usage:
 Options:
   --channel             Select Discord channel(s) to clean. Valid BetterDiscord app wrappers are normally unwrapped.
                         Use "all" for Stable, PTB, and Canary.
-  --update              Download and replace the selected Discord app before cleaning updater files.
+  --update              Clean updater files, then download and replace the selected Discord app.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
   --dl                  Download the selected Discord DMG only, then exit.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
@@ -80,6 +80,7 @@ Notes:
   --channel without --update cleans updater/core files and unwraps a valid BetterDiscord app wrapper.
   Unwrapping restores betterdiscord.app.asar to app.asar without identifying or replacing its payload.
   --update must be paired with --channel so the target app is explicit.
+  --update skips BetterDiscord unwrap because the existing app bundle is replaced.
   --dl must be paired with one channel and only downloads the DMG.
   --update without a version supports multiple channels and --channel all.
   --update with a version, --dl, and --update-select require a single selected channel.
@@ -533,20 +534,23 @@ disable_betterdiscord_recovery_for_unwrap() {
   local app_relative
   local data_dir
   local bootstrap_dir
+  local action_description
 
   [[ "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]] || return 0
 
   app_relative="$(app_relative_path_for_channel "$channel")"
   data_dir="$(data_dir_for_channel "$channel")"
   bootstrap_dir="$data_dir/betterdiscord-bootstrap"
+  action_description="BetterDiscord unwrap for $app_relative"
+  [[ "$update_requested" == true ]] && action_description="$app_relative replacement"
 
   if [[ ! -d "$data_dir" ]]; then
-    print "No BetterDiscord recovery state exists for $app_relative; continuing with wrapper removal"
+    print "No BetterDiscord recovery state exists for $app_relative; continuing with $action_description"
     return 0
   fi
 
   if ! has_fork_betterdiscord_recovery "$bootstrap_dir"; then
-    print "No fork-specific BetterDiscord recovery helper detected for $app_relative; continuing with wrapper removal"
+    print "No fork-specific BetterDiscord recovery helper detected for $app_relative; continuing with $action_description"
     return 0
   fi
 
@@ -559,12 +563,12 @@ disable_betterdiscord_recovery_for_unwrap() {
     print "BetterDiscord update recovery was already disabled for $app_relative"
   else
     if ! mkdir -p "$bootstrap_dir"; then
-      print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
+      print -u2 "Cannot disable BetterDiscord update recovery before $action_description."
       return 1
     fi
 
     if ! print -- "$(date +%s)" > "$bootstrap_dir/recovery-disabled"; then
-      print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
+      print -u2 "Cannot disable BetterDiscord update recovery before $action_description."
       return 1
     fi
   fi
@@ -572,14 +576,14 @@ disable_betterdiscord_recovery_for_unwrap() {
   channel_recovery_disabled[$channel]=true
   stop_betterdiscord_recovery_helper "$bootstrap_dir" "$app_relative" || return 1
   if ! rm -f -- "$bootstrap_dir/update-pending.json" "$bootstrap_dir/wrapper-ready.json" "$bootstrap_dir/active-run"; then
-    print -u2 "Cannot clear BetterDiscord recovery state before unwrapping $app_relative."
+    print -u2 "Cannot clear BetterDiscord recovery state before $action_description."
     return 1
   fi
   if ! remove_installation_target "$bootstrap_dir/recovery-runs" "$app_relative BetterDiscord recovery runs" false; then
-    print -u2 "Cannot clear BetterDiscord recovery run assets before unwrapping $app_relative."
+    print -u2 "Cannot clear BetterDiscord recovery run assets before $action_description."
     return 1
   fi
-  print "Disabled BetterDiscord update recovery before unwrapping $app_relative"
+  print "Disabled BetterDiscord update recovery before $action_description"
 }
 
 restore_recovery_for_wrappers_left_installed() {
@@ -1980,7 +1984,7 @@ for channel in "${selected_channels[@]}"; do
 
   clean_channel "$channel" "$allow_missing_data_dir"
 
-  if [[ "$openasar_betterdiscord_requested" != true ]]; then
+  if [[ "$openasar_betterdiscord_requested" != true && "$update_requested" != true ]]; then
     unwrap_betterdiscord_wrapper "$channel"
   fi
 
