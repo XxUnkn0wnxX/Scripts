@@ -69,15 +69,9 @@ Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
   $script_name --channel canary --dl 0.0.1177
-  $script_name --channel canary --update-select
-  $script_name --channel canary --update-select 900
   $script_name --channel canary --update-select 600-300
-  $script_name --channel canary --update 0.0.1177
-  $script_name --channel canary --openasar
-  $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/dist/app.asar"
-  $script_name --channel stable ptb --update --openasar
-  $script_name --channel stable --update --openasar
-  $script_name --channel all --update
+  $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --update
+  $script_name --channel all --update --openasar
 
 Notes:
   --channel without --update cleans updater/core files and unwraps a valid BetterDiscord app wrapper.
@@ -88,6 +82,8 @@ Notes:
   --update with a version, --dl, and --update-select require a single selected channel.
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
+  OpenAsar is installed atomically, verified before relaunch, and checked again after relaunch.
+  If startup replaces it, the fixer stops that channel and retries injection once.
   aria2c is used for downloads when available; set DISCORD_DOWNLOAD_CONNECTIONS to tune its split count.
   OpenAsar sources can be GitHub repo URLs, app.asar URLs, or local paths including ~, \$HOME, and file:// paths.
 EOF
@@ -848,11 +844,67 @@ available_mount_point_for_channel() {
   return 1
 }
 
-discord_is_running() {
+discord_process_pids() {
+  local channel="$1"
+  local app_path
+
+  app_path="$(app_path_for_channel "$channel")"
+
+  /bin/ps ax -o pid= -o command= | /usr/bin/awk -v prefix="$app_path/Contents/" '
+    {
+      pid = $1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", $0)
+      if (pid ~ /^[0-9]+$/ && index($0, prefix) == 1) {
+        print pid
+      }
+    }
+  '
+}
+
+discord_main_process_pids() {
   local channel="$1"
   local executable
+
   executable="$(executable_path_for_channel "$channel")"
-  pgrep -f "^${executable}$" >/dev/null 2>&1
+
+  /bin/ps ax -o pid= -o command= | /usr/bin/awk -v executable="$executable" '
+    {
+      pid = $1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", $0)
+      if (pid ~ /^[0-9]+$/ && ($0 == executable || index($0, executable " ") == 1)) {
+        print pid
+      }
+    }
+  '
+}
+
+discord_pid_belongs_to_bundle() {
+  local channel="$1"
+  local pid="$2"
+  local app_path
+
+  [[ "$pid" == <-> ]] || return 1
+  app_path="$(app_path_for_channel "$channel")"
+
+  /bin/ps -p "$pid" -o command= 2>/dev/null | /usr/bin/awk -v prefix="$app_path/Contents/" '
+    {
+      sub(/^[[:space:]]+/, "", $0)
+      if (index($0, prefix) == 1) {
+        found = 1
+      }
+    }
+    END { exit(found ? 0 : 1) }
+  '
+}
+
+discord_is_running() {
+  local channel="$1"
+  [[ -n "$(discord_process_pids "$channel")" ]]
+}
+
+discord_main_is_running() {
+  local channel="$1"
+  [[ -n "$(discord_main_process_pids "$channel")" ]]
 }
 
 download_openasar_payload() {
@@ -905,11 +957,13 @@ inject_openasar() {
   local app_path
   local resources_dir
   local target_asar
+  local staged_asar
 
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
   resources_dir="$app_path/Contents/Resources"
   target_asar="$resources_dir/app.asar"
+  staged_asar="$resources_dir/.openasar-app-$$-$RANDOM.asar"
 
   if [[ ! -d "$app_path" ]]; then
     print -u2 "$app_name app was not found:"
@@ -923,47 +977,156 @@ inject_openasar() {
     return 1
   fi
 
+  if [[ ! -f "$target_asar" || -L "$target_asar" ]]; then
+    print -u2 "OpenAsar injection refused; the target app.asar is missing or is not a regular file:"
+    print -u2 "  $target_asar"
+    return 1
+  fi
+
   print "Injecting OpenAsar into $app_name..."
-  cp "$payload_path" "$target_asar"
+  {
+    rm -f -- "$staged_asar"
 
-  if [[ ! -f "$target_asar" ]]; then
-    print -u2 "OpenAsar injection failed; app.asar was not found after copy:"
-    print -u2 "  $target_asar"
-    return 1
-  fi
+    if ! cp -f "$payload_path" "$staged_asar"; then
+      print -u2 "OpenAsar injection failed while staging the payload:"
+      print -u2 "  $staged_asar"
+      return 1
+    fi
 
-  if ! cmp -s "$payload_path" "$target_asar"; then
-    print -u2 "OpenAsar injection failed; app.asar does not match the downloaded payload:"
-    print -u2 "  $target_asar"
-    return 1
-  fi
+    if ! cmp -s "$payload_path" "$staged_asar"; then
+      print -u2 "OpenAsar injection failed; the staged ASAR does not match the source payload:"
+      print -u2 "  $staged_asar"
+      return 1
+    fi
+
+    if ! mv -f "$staged_asar" "$target_asar"; then
+      print -u2 "OpenAsar injection failed while replacing app.asar:"
+      print -u2 "  $target_asar"
+      return 1
+    fi
+
+    if ! cmp -s "$payload_path" "$target_asar"; then
+      print -u2 "OpenAsar injection failed; the installed app.asar does not match the source payload:"
+      print -u2 "  $target_asar"
+      return 1
+    fi
+  } always {
+    rm -f -- "$staged_asar"
+  }
 
   print "OpenAsar injected into $app_name:"
   print "  $target_asar"
   sleep 1
 }
 
+openasar_matches_installed_target() {
+  local channel="$1"
+  local payload_path="$2"
+  local target_asar
+
+  target_asar="$(app_path_for_channel "$channel")/Contents/Resources/app.asar"
+  [[ -f "$target_asar" && ! -L "$target_asar" ]] || return 1
+  cmp -s "$payload_path" "$target_asar"
+}
+
+verify_openasar_after_relaunch() {
+  local channel="$1"
+  local payload_path="$2"
+  local was_running_at_start="${3:-false}"
+  local app_name
+  local target_asar
+  local replaced=false
+
+  app_name="$(app_name_for_channel "$channel")"
+  target_asar="$(app_path_for_channel "$channel")/Contents/Resources/app.asar"
+
+  if [[ "$was_running_at_start" != true ]]; then
+    if openasar_matches_installed_target "$channel" "$payload_path"; then
+      print "OpenAsar installation verified for $app_name; the client remains closed."
+      return 0
+    fi
+
+    print -u2 "OpenAsar verification failed for the closed $app_name client:"
+    print -u2 "  $target_asar"
+    return 1
+  fi
+
+  if ! openasar_matches_installed_target "$channel" "$payload_path"; then
+    replaced=true
+  else
+    for _ in {1..10}; do
+      sleep 1
+      if ! openasar_matches_installed_target "$channel" "$payload_path"; then
+        replaced=true
+        break
+      fi
+    done
+  fi
+
+  if [[ "$replaced" != true ]]; then
+    print "OpenAsar remained installed after relaunching $app_name."
+    return 0
+  fi
+
+  print "$app_name replaced app.asar during its first relaunch. Stopping it and reinjecting OpenAsar once..."
+  if discord_is_running "$channel"; then
+    quit_discord "$channel"
+  fi
+
+  inject_openasar "$channel" "$payload_path"
+  relaunch_channel_if_needed "$channel" true
+
+  for _ in {1..10}; do
+    sleep 1
+    if ! openasar_matches_installed_target "$channel" "$payload_path"; then
+      print -u2 "OpenAsar did not survive the retry relaunch for $app_name:"
+      print -u2 "  $target_asar"
+      return 1
+    fi
+  done
+
+  print "OpenAsar reinjection remained installed after relaunching $app_name."
+}
+
 quit_discord() {
   local channel="$1"
   local app_name
-  local executable
+  local pid
+  local main_was_running=false
+  local -a remaining_pids
   app_name="$(app_name_for_channel "$channel")"
-  executable="$(executable_path_for_channel "$channel")"
 
   discord_is_running "$channel" || return 1
 
-  print "$app_name is running. Quitting it before continuing..."
-  osascript -e "tell application \"$app_name\" to quit" >/dev/null 2>&1 || true
+  if discord_main_is_running "$channel"; then
+    main_was_running=true
+    print "$app_name is running. Quitting it before continuing..."
+    osascript -e "tell application \"$app_name\" to quit" >/dev/null 2>&1 || true
 
-  for _ in {1..10}; do
-    discord_is_running "$channel" || break
-    sleep 1
-  done
+    for _ in {1..10}; do
+      discord_is_running "$channel" || break
+      sleep 1
+    done
+  else
+    print "$app_name has remaining helper processes. Stopping them before continuing..."
+  fi
 
   if discord_is_running "$channel"; then
-    print "$app_name did not quit cleanly. Force-killing it..."
-    pkill -9 -f "^${executable}$" || true
-    sleep 1
+    if [[ "$main_was_running" == true ]]; then
+      print "$app_name did not quit cleanly. Force-killing its remaining app processes..."
+    fi
+
+    for _ in {1..3}; do
+      remaining_pids=("${(@f)$(discord_process_pids "$channel")}")
+      (( ${#remaining_pids[@]} > 0 )) || break
+
+      for pid in "${remaining_pids[@]}"; do
+        discord_pid_belongs_to_bundle "$channel" "$pid" || continue
+        kill -KILL "$pid" >/dev/null 2>&1 || true
+      done
+
+      sleep 1
+    done
   fi
 
   if discord_is_running "$channel"; then
@@ -1244,7 +1407,7 @@ clean_channel() {
 
   existing_targets=()
   for target in "${targets[@]}"; do
-    [[ -e "$target" ]] && existing_targets+=("$target")
+    [[ -e "$target" || -L "$target" ]] && existing_targets+=("$target")
   done
 
   if (( ${#existing_targets[@]} == 0 )); then
@@ -1308,11 +1471,32 @@ remove_installation_target() {
   local relative_target="$2"
   local show_raw_target="${3:-true}"
   local attempt
-  local remove_status=1
+  local remove_output=""
+  local last_remove_output=""
 
   for attempt in {1..3}; do
-    if [[ ! -e "$target" ]]; then
+    if [[ ! -e "$target" && ! -L "$target" ]]; then
       return 0
+    fi
+
+    if [[ -L "$target" ]]; then
+      chflags -h nouchg,noschg "$target" >/dev/null 2>&1 || true
+
+      if remove_output="$(rm -f -- "$target" 2>&1)"; then
+        last_remove_output=""
+      else
+        last_remove_output="$remove_output"
+      fi
+
+      if [[ ! -e "$target" && ! -L "$target" ]]; then
+        return 0
+      fi
+
+      if (( attempt < 3 )); then
+        print "Could not delete $relative_target yet. Retrying in 1 second..."
+        sleep 1
+      fi
+      continue
     fi
 
     chflags -RH nouchg,noschg "$target" >/dev/null 2>&1 || true
@@ -1320,13 +1504,13 @@ remove_installation_target() {
     chmod -R u+rwX "$target" >/dev/null 2>&1 || true
     xattr -cr "$target" >/dev/null 2>&1 || true
 
-    if rm -rf -- "$target"; then
-      remove_status=0
+    if remove_output="$(rm -rf -- "$target" 2>&1)"; then
+      last_remove_output=""
     else
-      remove_status=$?
+      last_remove_output="$remove_output"
     fi
 
-    if [[ ! -e "$target" ]]; then
+    if [[ ! -e "$target" && ! -L "$target" ]]; then
       return 0
     fi
 
@@ -1336,7 +1520,7 @@ remove_installation_target() {
       find -x "$target" -depth -mindepth 1 -exec chmod u+rwX {} + >/dev/null 2>&1 || true
       find -x "$target" -depth -mindepth 1 -exec rm -rf -- {} + >/dev/null 2>&1 || true
 
-      if rmdir "$target" >/dev/null 2>&1 || [[ ! -e "$target" ]]; then
+      if rmdir "$target" >/dev/null 2>&1 || [[ ! -e "$target" && ! -L "$target" ]]; then
         return 0
       fi
     fi
@@ -1350,8 +1534,11 @@ remove_installation_target() {
   print -u2 "Failed to delete $relative_target:"
   if [[ "$show_raw_target" == true ]]; then
     print -u2 "  $target"
+    if [[ -n "$last_remove_output" ]]; then
+      print_indented_output "$last_remove_output"
+    fi
   fi
-  return "$remove_status"
+  return 1
 }
 
 guard_update_replacement() {
@@ -1390,6 +1577,20 @@ wait_for_app_bundle_ready() {
   print -u2 "$app_name app bundle is not ready to launch:"
   print -u2 "  $app_path"
   print -u2 "  $executable_path"
+  return 1
+}
+
+wait_for_discord_main_process() {
+  local channel="$1"
+  local timeout="${2:-10}"
+  local deadline
+
+  deadline=$(( SECONDS + timeout ))
+  while (( SECONDS <= deadline )); do
+    discord_main_is_running "$channel" && return 0
+    sleep 1
+  done
+
   return 1
 }
 
@@ -1434,7 +1635,12 @@ relaunch_channel_if_needed() {
       refresh_target_launch_services_registration "$channel"
 
       if open_output="$(open "$app_path" 2>&1)"; then
-        return 0
+        if wait_for_discord_main_process "$channel" 10; then
+          return 0
+        fi
+
+        print -u2 "$app_name launch request succeeded, but its main process was not detected. Retrying..."
+        continue
       fi
 
       print -u2 "$app_name did not relaunch cleanly with open:"
@@ -1446,13 +1652,10 @@ relaunch_channel_if_needed() {
     if [[ -x "$executable_path" ]]; then
       print "Falling back to launching $app_name executable directly..."
       "$executable_path" >/dev/null 2>&1 &!
-      for _ in {1..10}; do
-        discord_is_running "$channel" && return 0
-        sleep 1
-      done
+      wait_for_discord_main_process "$channel" 10 && return 0
 
       print -u2 "$app_name executable fallback was started, but the running process was not detected."
-      return 0
+      return 1
     fi
 
     print -u2 "$app_name could not be relaunched because its executable is missing:"
@@ -1533,7 +1736,7 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT
 
 for channel in "${selected_channels[@]}"; do
-  if discord_is_running "$channel"; then
+  if discord_main_is_running "$channel"; then
     channel_was_running[$channel]=true
   else
     channel_was_running[$channel]=false
@@ -1558,6 +1761,7 @@ for channel in "${selected_channels[@]}"; do
   app_name="$(app_name_for_channel "$channel")"
   was_running_at_start="${channel_was_running[$channel]:-false}"
   allow_missing_data_dir=false
+  openasar_injected=false
 
   print
   print "== $app_name =="
@@ -1589,13 +1793,26 @@ for channel in "${selected_channels[@]}"; do
         print -u2 "Skipping OpenAsar injection for $app_name because the payload is unavailable."
       else
         inject_openasar "$channel" "$openasar_payload"
+        openasar_injected=true
       fi
     else
       inject_openasar "$channel" "$openasar_payload"
+      openasar_injected=true
+    fi
+  fi
+
+  if [[ "$openasar_injected" == true ]]; then
+    if ! openasar_matches_installed_target "$channel" "$openasar_payload"; then
+      print -u2 "OpenAsar verification failed before relaunching $app_name."
+      exit 1
     fi
   fi
 
   relaunch_channel_if_needed "$channel" "$was_running_at_start"
+
+  if [[ "$openasar_injected" == true ]]; then
+    verify_openasar_after_relaunch "$channel" "$openasar_payload" "$was_running_at_start"
+  fi
 done
 
 if [[ "$openasar_requested" == true ]]; then
