@@ -559,6 +559,10 @@ disable_betterdiscord_recovery_for_unwrap() {
 
   channel_recovery_disabled[$channel]=true
   stop_betterdiscord_recovery_helper "$bootstrap_dir" "$app_relative" || return 1
+  if [[ ! -e "$bootstrap_dir/betterdiscord-update-helper.pid" && -f "$bootstrap_dir/betterdiscord-update-helper.js" ]]; then
+    print "Detected the standard BetterDiscord non-PID bootstrap for $app_relative; waiting for it to observe recovery-disabled"
+    /bin/sleep 0.5
+  fi
   if ! rm -f -- "$bootstrap_dir/update-pending.json" "$bootstrap_dir/wrapper-ready.json" "$bootstrap_dir/active-run"; then
     print -u2 "Cannot clear BetterDiscord recovery state before unwrapping $app_relative."
     return 1
