@@ -53,7 +53,8 @@ Usage:
   $script_name --help
 
 Options:
-  --channel             Select Discord channel(s) to clean. Use "all" for Stable, PTB, and Canary.
+  --channel             Select Discord channel(s) to clean. Valid BetterDiscord app wrappers are unwrapped.
+                        Use "all" for Stable, PTB, and Canary.
   --update              Download and replace the selected Discord app before cleaning updater files.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
   --dl                  Download the selected Discord DMG only, then exit.
@@ -79,7 +80,8 @@ Examples:
   $script_name --channel all --update
 
 Notes:
-  --channel without --update only cleans the selected channel's updater/core files.
+  --channel without --update cleans updater/core files and unwraps a valid BetterDiscord app wrapper.
+  Unwrapping restores betterdiscord.app.asar to app.asar without identifying or replacing its payload.
   --update must be paired with --channel so the target app is explicit.
   --dl must be paired with one channel and only downloads the DMG.
   --update without a version supports multiple channels and --channel all.
@@ -254,6 +256,10 @@ fi
 
 typeset -A channel_was_running=()
 typeset -A channel_download_versions=()
+typeset -A channel_betterdiscord_wrapper=()
+typeset -A channel_recovery_disabled=()
+multiple_channels=false
+(( ${#selected_channels[@]} > 1 )) && multiple_channels=true
 single_selected_channel="${selected_channels[1]}"
 
 app_name_for_channel() {
@@ -264,6 +270,10 @@ app_path_for_channel() {
   print -- "/Applications/$(app_name_for_channel "$1").app"
 }
 
+app_relative_path_for_channel() {
+  print -- "$(app_name_for_channel "$1").app"
+}
+
 executable_path_for_channel() {
   local channel="$1"
   print -- "$(app_path_for_channel "$channel")/Contents/MacOS/$(app_name_for_channel "$channel")"
@@ -271,6 +281,213 @@ executable_path_for_channel() {
 
 data_dir_for_channel() {
   print -- "${channel_data_dirs[$1]}"
+}
+
+typeset -a betterdiscord_wrapper_issues=()
+
+inspect_betterdiscord_wrapper() {
+  local channel="$1"
+  local app_relative
+  local app_path
+  local resources_dir
+  local wrapper_dir
+  local marker_path
+  local loader_path
+  local package_path
+  local wrapped_asar
+  local wrapped_app_dir
+  local top_level_asar
+  local entry
+  local entry_name
+  local -a wrapper_entries
+  local -a stale_unwrap_paths
+
+  app_relative="$(app_relative_path_for_channel "$channel")"
+  app_path="$(app_path_for_channel "$channel")"
+  resources_dir="$app_path/Contents/Resources"
+  wrapper_dir="$resources_dir/app"
+  marker_path="$wrapper_dir/.betterdiscord-inject.json"
+  loader_path="$wrapper_dir/index.js"
+  package_path="$wrapper_dir/package.json"
+  wrapped_asar="$resources_dir/betterdiscord.app.asar"
+  wrapped_app_dir="$resources_dir/betterdiscord.app"
+  top_level_asar="$resources_dir/app.asar"
+  betterdiscord_wrapper_issues=()
+
+  if [[ ! -e "$wrapper_dir" && ! -L "$wrapper_dir" && ! -e "$wrapped_asar" && ! -L "$wrapped_asar" && ! -e "$wrapped_app_dir" && ! -L "$wrapped_app_dir" ]]; then
+    return 1
+  fi
+
+  if [[ ! -d "$wrapper_dir" || -L "$wrapper_dir" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/ is missing or is not a real directory")
+  else
+    wrapper_entries=("$wrapper_dir"/*(DN))
+    for entry in "${wrapper_entries[@]}"; do
+      entry_name="${entry:t}"
+      case "$entry_name" in
+        .betterdiscord-inject.json|index.js|package.json)
+          ;;
+        *)
+          betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/$entry_name is not part of the BetterDiscord wrapper contract")
+          ;;
+      esac
+    done
+  fi
+
+  if [[ ! -f "$marker_path" || -L "$marker_path" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/.betterdiscord-inject.json is missing or invalid")
+  elif ! BETTERDISCORD_EXPECTED_CHANNEL="$channel" /usr/bin/perl -MJSON::PP -0777 -e '
+    my $raw = <>;
+    my $data = eval { JSON::PP->new->decode($raw) };
+    my $expected_channel = $ENV{BETTERDISCORD_EXPECTED_CHANNEL};
+    exit 1 unless ref($data) eq "HASH";
+    exit 1 unless defined($data->{schema}) && "$data->{schema}" eq "1";
+    exit 1 unless defined($data->{owner}) && $data->{owner} eq "betterdiscord";
+    exit 1 unless defined($data->{style}) && $data->{style} eq "app-wrapper";
+    exit 1 unless defined($data->{channel}) && $data->{channel} eq $expected_channel;
+    exit 1 unless defined($data->{mode}) && ($data->{mode} eq "release" || $data->{mode} eq "dev");
+    exit 1 unless defined($data->{loader}) && $data->{loader} eq "index.js";
+    exit 1 unless defined($data->{payload}) && $data->{payload} eq "../betterdiscord.app.asar";
+    exit 1 unless defined($data->{bdPath}) && !ref($data->{bdPath}) && length($data->{bdPath});
+    exit 1 unless defined($data->{installationId}) && !ref($data->{installationId}) && length($data->{installationId});
+    exit 1 if exists($data->{helperRuntime}) && (ref($data->{helperRuntime}) || !length($data->{helperRuntime}));
+  ' "$marker_path"; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/.betterdiscord-inject.json does not match the supported BetterDiscord wrapper contract")
+  fi
+
+  if [[ ! -s "$loader_path" || -L "$loader_path" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/index.js is missing or invalid")
+  else
+    if ! /usr/bin/grep -Fq -- '// __betterdiscord_inject_meta__' "$loader_path"; then
+      betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/index.js is missing the BetterDiscord ownership marker")
+    fi
+    if ! /usr/bin/grep -Fq -- 'module.exports = require("../betterdiscord.app.asar");' "$loader_path"; then
+      betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/index.js does not load ../betterdiscord.app.asar")
+    fi
+  fi
+
+  if [[ ! -s "$package_path" || -L "$package_path" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/package.json is missing or invalid")
+  elif ! /usr/bin/perl -MJSON::PP -0777 -e '
+    my $raw = <>;
+    my $data = eval { JSON::PP->new->decode($raw) };
+    exit 1 unless ref($data) eq "HASH";
+    exit 1 unless defined($data->{main}) && ($data->{main} eq "index.js" || $data->{main} eq "./index.js");
+  ' "$package_path"; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app/package.json does not use index.js as its main entry")
+  fi
+
+  if [[ ! -s "$wrapped_asar" || -L "$wrapped_asar" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/betterdiscord.app.asar is missing or invalid")
+  fi
+
+  if [[ -e "$wrapped_app_dir" || -L "$wrapped_app_dir" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/betterdiscord.app is an unsupported wrapped directory")
+  fi
+
+  if [[ -e "$top_level_asar" || -L "$top_level_asar" ]]; then
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/app.asar already exists beside the BetterDiscord wrapper")
+  fi
+
+  stale_unwrap_paths=("$resources_dir"/.betterdiscord-app-unwrapping-*(DN))
+  for entry in "${stale_unwrap_paths[@]}"; do
+    betterdiscord_wrapper_issues+=("$app_relative/Contents/Resources/${entry:t} is a stale BetterDiscord unwrap path")
+  done
+
+  (( ${#betterdiscord_wrapper_issues[@]} == 0 )) || return 2
+  return 0
+}
+
+validate_selected_betterdiscord_wrappers() {
+  local channel
+  local app_relative
+  local layout_status
+  local issue
+
+  for channel in "${selected_channels[@]}"; do
+    if inspect_betterdiscord_wrapper "$channel"; then
+      channel_betterdiscord_wrapper[$channel]=true
+      continue
+    else
+      layout_status=$?
+    fi
+
+    if (( layout_status == 1 )); then
+      channel_betterdiscord_wrapper[$channel]=false
+      continue
+    fi
+
+    app_relative="$(app_relative_path_for_channel "$channel")"
+    print -u2 "Refusing to modify $app_relative because its BetterDiscord wrapper layout is incomplete or ambiguous:"
+    for issue in "${betterdiscord_wrapper_issues[@]}"; do
+      print -u2 "  $issue"
+    done
+    return 1
+  done
+}
+
+disable_betterdiscord_recovery_for_unwrap() {
+  local channel="$1"
+  local app_relative
+  local data_dir
+  local bootstrap_dir
+
+  [[ "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]] || return 0
+
+  app_relative="$(app_relative_path_for_channel "$channel")"
+  data_dir="$(data_dir_for_channel "$channel")"
+  bootstrap_dir="$data_dir/betterdiscord-bootstrap"
+
+  if [[ ! -d "$data_dir" ]]; then
+    print "No BetterDiscord recovery state exists for $app_relative; continuing with wrapper removal"
+    return 0
+  fi
+
+  if [[ -L "$bootstrap_dir/recovery-disabled" ]]; then
+    print -u2 "Refusing to disable BetterDiscord update recovery for $app_relative because recovery-disabled is a symlink."
+    return 1
+  fi
+
+  if [[ -e "$bootstrap_dir/recovery-disabled" ]]; then
+    print "BetterDiscord update recovery was already disabled for $app_relative"
+    return 0
+  fi
+
+  if ! mkdir -p "$bootstrap_dir"; then
+    print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
+    return 1
+  fi
+
+  if ! print -- "$(date +%s)" > "$bootstrap_dir/recovery-disabled"; then
+    print -u2 "Cannot disable BetterDiscord update recovery before unwrapping $app_relative."
+    return 1
+  fi
+
+  channel_recovery_disabled[$channel]=true
+  if ! rm -f -- "$bootstrap_dir/update-pending.json" "$bootstrap_dir/wrapper-ready.json"; then
+    print -u2 "Cannot clear BetterDiscord recovery state before unwrapping $app_relative."
+    return 1
+  fi
+  print "Disabled BetterDiscord update recovery before unwrapping $app_relative"
+}
+
+restore_recovery_for_wrappers_left_installed() {
+  local channel
+  local data_dir
+  local app_relative
+
+  for channel in "${selected_channels[@]}"; do
+    [[ "${channel_recovery_disabled[$channel]:-false}" == true ]] || continue
+    if inspect_betterdiscord_wrapper "$channel"; then
+      data_dir="$(data_dir_for_channel "$channel")"
+      app_relative="$(app_relative_path_for_channel "$channel")"
+      if rm -f -- "$data_dir/betterdiscord-bootstrap/recovery-disabled"; then
+        print "Re-enabled BetterDiscord update recovery because $app_relative remains wrapped"
+      else
+        print -u2 "Could not re-enable BetterDiscord update recovery for $app_relative"
+      fi
+    fi
+  done
 }
 
 download_url_for_channel() {
@@ -757,6 +974,91 @@ quit_discord() {
   return 0
 }
 
+unwrap_betterdiscord_wrapper() {
+  local channel="$1"
+  local app_relative
+  local app_path
+  local resources_dir
+  local wrapper_dir
+  local wrapped_asar
+  local top_level_asar
+  local temporary_wrapper_dir
+  local layout_status
+  local issue
+  local wrapper_cleanup_warning=false
+
+  [[ "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]] || return 0
+
+  app_relative="$(app_relative_path_for_channel "$channel")"
+  app_path="$(app_path_for_channel "$channel")"
+  resources_dir="$app_path/Contents/Resources"
+  wrapper_dir="$resources_dir/app"
+  wrapped_asar="$resources_dir/betterdiscord.app.asar"
+  top_level_asar="$resources_dir/app.asar"
+  temporary_wrapper_dir="$resources_dir/.betterdiscord-app-unwrapping-$$"
+
+  if inspect_betterdiscord_wrapper "$channel"; then
+    layout_status=0
+  else
+    layout_status=$?
+  fi
+
+  if (( layout_status != 0 )); then
+    print -u2 "Refusing to unwrap BetterDiscord from $app_relative because the validated wrapper layout changed:"
+    if (( layout_status == 2 )); then
+      for issue in "${betterdiscord_wrapper_issues[@]}"; do
+        print -u2 "  $issue"
+      done
+    else
+      print -u2 "  The BetterDiscord wrapper is no longer present."
+    fi
+    return 1
+  fi
+
+  if discord_is_running "$channel"; then
+    quit_discord "$channel"
+  fi
+
+  if discord_is_running "$channel"; then
+    print -u2 "$(app_name_for_channel "$channel") is still running. Refusing to unwrap BetterDiscord from $app_relative."
+    return 1
+  fi
+
+  print "Detected BetterDiscord wrapper in $app_relative"
+  print "Unwrapping BetterDiscord from $app_relative"
+  print "Removing $app_relative/Contents/Resources/app/"
+
+  if ! mv -- "$wrapper_dir" "$temporary_wrapper_dir"; then
+    print -u2 "Failed to remove $app_relative/Contents/Resources/app/ from its active location."
+    return 1
+  fi
+
+  print "Restoring $app_relative/Contents/Resources/betterdiscord.app.asar -> $app_relative/Contents/Resources/app.asar"
+  if ! mv -- "$wrapped_asar" "$top_level_asar"; then
+    print -u2 "Failed to restore $app_relative/Contents/Resources/app.asar."
+    if ! mv -- "$temporary_wrapper_dir" "$wrapper_dir"; then
+      print -u2 "Failed to return $app_relative/Contents/Resources/app/ to its original location."
+    fi
+    return 1
+  fi
+
+  if ! remove_installation_target "$temporary_wrapper_dir" "$app_relative/Contents/Resources/app/ staging directory" false; then
+    print -u2 "BetterDiscord was unwrapped, but its inactive staging directory could not be fully removed from $app_relative."
+    wrapper_cleanup_warning=true
+  fi
+
+  if [[ -e "$wrapper_dir" || -L "$wrapper_dir" || -e "$wrapped_asar" || -L "$wrapped_asar" || ! -s "$top_level_asar" || -L "$top_level_asar" ]]; then
+    print -u2 "BetterDiscord unwrap verification failed for $app_relative."
+    return 1
+  fi
+
+  channel_betterdiscord_wrapper[$channel]=false
+  print "BetterDiscord successfully unwrapped from $app_relative"
+  if [[ "$wrapper_cleanup_warning" == true ]]; then
+    print -u2 "Warning: an inactive BetterDiscord staging directory remains in $app_relative/Contents/Resources/."
+  fi
+}
+
 download_installer_dmg() {
   local channel="$1"
   local app_name
@@ -958,7 +1260,11 @@ clean_channel() {
     print "  Cache/"
     print "  Code Cache/"
     print
-    print "Nothing was changed for $app_name."
+    if [[ "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]]; then
+      print "No App Support files were changed for $app_name; BetterDiscord app-wrapper cleanup will continue."
+    else
+      print "Nothing was changed for $app_name."
+    fi
     return 0
   fi
 
@@ -1000,6 +1306,7 @@ clean_channel() {
 remove_installation_target() {
   local target="$1"
   local relative_target="$2"
+  local show_raw_target="${3:-true}"
   local attempt
   local remove_status=1
 
@@ -1041,7 +1348,9 @@ remove_installation_target() {
   done
 
   print -u2 "Failed to delete $relative_target:"
-  print -u2 "  $target"
+  if [[ "$show_raw_target" == true ]]; then
+    print -u2 "  $target"
+  fi
   return "$remove_status"
 }
 
@@ -1186,10 +1495,15 @@ if [[ "$dl_requested" == true ]]; then
 fi
 
 validate_selected_data_dirs
+validate_selected_betterdiscord_wrappers
 
 openasar_payload=""
 openasar_initial_download_succeeded=false
 openasar_payload_is_temporary=false
+
+cleanup_openasar_payload() {
+  return 0
+}
 
 if [[ "$openasar_requested" == true ]]; then
   if openasar_source_is_remote; then
@@ -1199,19 +1513,24 @@ if [[ "$openasar_requested" == true ]]; then
     openasar_payload=""
   fi
 
-  cleanup_openasar_payload() {
+  function cleanup_openasar_payload() {
     if [[ "$openasar_payload_is_temporary" == true && -n "$openasar_payload" ]]; then
       remove_download_artifacts "$openasar_payload"
     fi
   }
 
-  trap cleanup_openasar_payload EXIT
   if [[ -n "$openasar_payload" ]] && download_openasar_payload "$openasar_payload"; then
     openasar_initial_download_succeeded=true
   else
     print -u2 "OpenAsar injection will be skipped because the payload could not be prepared."
   fi
 fi
+
+cleanup_on_exit() {
+  cleanup_openasar_payload
+  restore_recovery_for_wrappers_left_installed
+}
+trap cleanup_on_exit EXIT
 
 for channel in "${selected_channels[@]}"; do
   if discord_is_running "$channel"; then
@@ -1221,7 +1540,11 @@ for channel in "${selected_channels[@]}"; do
   fi
 done
 
-if [[ "$selected_channel" == all ]]; then
+for channel in "${selected_channels[@]}"; do
+  disable_betterdiscord_recovery_for_unwrap "$channel"
+done
+
+if [[ "$multiple_channels" == true ]]; then
   print
   print "Stopping all selected Discord clients before continuing..."
   for channel in "${selected_channels[@]}"; do
@@ -1239,17 +1562,19 @@ for channel in "${selected_channels[@]}"; do
   print
   print "== $app_name =="
 
-  if [[ "$selected_channel" != all && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
+  if [[ "$multiple_channels" == false && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
     if discord_is_running "$channel"; then
       quit_discord "$channel"
     fi
   fi
 
-  if [[ "$selected_channel" == all || "$update_requested" == true ]]; then
+  if [[ "$multiple_channels" == true || "$update_requested" == true || "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]]; then
     allow_missing_data_dir=true
   fi
 
   clean_channel "$channel" "$allow_missing_data_dir"
+
+  unwrap_betterdiscord_wrapper "$channel"
 
   if [[ "$update_requested" == true ]]; then
     download_and_replace_app "$channel"

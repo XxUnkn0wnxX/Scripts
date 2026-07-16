@@ -2,7 +2,7 @@
 
 [`discord_install_fixer.zsh`](../shell/discord_install_fixer.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
 
-It can also download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the app bundle, and then run the same App Support cleanup.
+It can also remove a supported BetterDiscord app wrapper, download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the app bundle, and then run the same App Support cleanup.
 
 ## Channels
 
@@ -36,6 +36,8 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - with multiple selected channels, stops all selected Discord clients before replacement or cleanup starts
 - force-kills only the selected channel's executable if it does not quit cleanly
 - deletes the detected core installation and updater state before app replacement or OpenAsar injection
+- validates BetterDiscord's marked app-wrapper layout before cleanup and refuses incomplete or ambiguous layouts
+- removes a valid BetterDiscord wrapper and restores `betterdiscord.app.asar` to `app.asar`, whether the restored payload is stock Discord or OpenAsar
 - relaunches a selected client only when that selected client was running when the script started
 - with multiple selected channels, processes them sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
@@ -81,6 +83,26 @@ Cookies
 It also does not modify the macOS Keychain item used by Discord's Electron storage.
 
 Discord stores the local login token in `Local Storage/leveldb/`. Preserving the complete `Local Storage/` directory prevents the reset from signing the user out.
+
+## BetterDiscord App Wrapper
+
+Every cleanup run checks the selected app bundle for BetterDiscord's marked `Contents/Resources/app/` wrapper. A supported wrapper must contain the expected ownership marker, loader, package file, and nested `betterdiscord.app.asar`, with no competing top-level `app.asar`.
+
+When that complete layout is found, the script stops the selected client and performs this exact unwrap:
+
+```text
+remove Contents/Resources/app/
+rename Contents/Resources/betterdiscord.app.asar to Contents/Resources/app.asar
+```
+
+Before stopping a wrapped client, the fixer disables BetterDiscord's detached
+update-recovery helper so the deliberate unwrap cannot be mistaken for a
+Discord application update. A later BetterDiscord injection re-enables that
+recovery path.
+
+The script does not inspect or classify the restored ASAR. It may be stock Discord or OpenAsar. Without `--openasar`, it is left untouched. With `--openasar`, the restored `app.asar` is then overwritten by the selected OpenAsar payload. With `--update`, the app is subsequently replaced by the fresh Discord bundle, and `--openasar` remains optional.
+
+Wrapper messages use app-relative paths such as `Discord.app/Contents/Resources/app/`, `Discord PTB.app/...`, or `Discord Canary.app/...`; they do not print the `/Applications` prefix.
 
 ## DMG Downloads
 
@@ -193,6 +215,8 @@ Local sources can be absolute paths, relative paths, `~/...`, `$HOME/...`, or `f
 
 For remote URLs, the downloaded payload is temporary. The script downloads it beside the script file, injects it into each selected Discord app, and deletes it after the selected channel set finishes. Local `app.asar` sources are used in place and are not deleted by the script. It does not keep an archived copy and does not create `.stock` backups.
 
+If BetterDiscord's supported wrapper is present, it is unwrapped before OpenAsar injection, so OpenAsar is always written to the normal top-level `Contents/Resources/app.asar`. BetterDiscord can then be injected again afterward and will wrap that payload.
+
 OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
 
 OpenAsar injection happens before any selected client is relaunched.
@@ -230,7 +254,7 @@ discord_install_fixer.zsh --help
       <td><nobr><code>--channel &lt;channel&gt; [...]</code></nobr></td>
       <td>Option</td>
       <td><nobr><code>stable</code>, <code>ptb</code>, <code>canary</code>, <code>all</code></nobr></td>
-      <td>Selects the Discord client or clients to purge, update, or inject. Multiple named channels can be passed in one run. <code>all</code> processes Stable, PTB, and Canary sequentially and cannot be mixed with named channels.</td>
+      <td>Selects the Discord client or clients to purge, unwrap, update, or inject. Multiple named channels can be passed in one run. <code>all</code> processes Stable, PTB, and Canary sequentially and cannot be mixed with named channels.</td>
     </tr>
     <tr>
       <td><nobr><code>--update [version]</code></nobr></td>
@@ -274,7 +298,7 @@ discord_install_fixer.zsh --help
 Notes:
 
 - Running the script with no arguments exits without changing anything and prints the help text.
-- `--channel` alone only purges the selected client or clients' App Support updater files.
+- `--channel` alone purges the selected client or clients' App Support updater files and unwraps a valid BetterDiscord app wrapper when present.
 - `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
 - `--dl` must be paired with one selected channel and cannot be combined with `--update`, `--update-select`, or `--openasar`.
 - Plain `--update` supports multiple selected channels and downloads the latest API DMG for each one sequentially.
@@ -377,8 +401,10 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 
 ## Safety Guards
 
-- The target data directory must exist unless `--update` is used or multiple channels are selected, where missing channel data folders are reported and skipped.
+- The target data directory must exist unless `--update` is used, multiple channels are selected, or a valid BetterDiscord app wrapper can still be removed; missing channel data folders are then reported and skipped.
 - Existing data directories must contain `settings.json` or `Local Storage/` so they resemble Discord data directories.
+- A BetterDiscord wrapper is removed only when its JSON ownership contract, loader token and target, package entry point, nested ASAR, and surrounding layout all validate.
+- Partial or ambiguous BetterDiscord wrapper layouts are refused before App Support or app-bundle changes begin.
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
 - During `--update`, the selected client is checked again before app deletion/copying and after failed replacement attempts.
@@ -387,7 +413,7 @@ zsh shell/discord_install_fixer.zsh --channel all --update --openasar
 - OpenAsar injection only runs after the selected app has been stopped.
 - A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
 - Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.
-- If no updater-managed targets are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully.
+- If no updater-managed targets and no valid BetterDiscord wrapper are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully. A valid wrapper is still removed and may require stopping the client.
 - Existing apps in `/Applications` are always replaced during `--update`.
 
 ## Good To Know
