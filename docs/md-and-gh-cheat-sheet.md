@@ -16,6 +16,18 @@ This guide separates three related layers:
 
 Feature demonstrations show the literal **Source** followed by their **Rendered on GitHub** result. Features that depend on a repository, account, or conversation context instead show an **Expected on GitHub** description.
 
+> Paths, filenames, IDs, account names, repository names, and domains used in examples are illustrative placeholders unless the text explicitly identifies them as real resources.
+
+Availability labels used throughout this guide:
+
+- **Portable Markdown + GitHub (CommonMark):** works in the portable Markdown core and on GitHub.
+- **GFM + GitHub:** belongs to formal GitHub Flavoured Markdown and works on GitHub.
+- **GitHub-specific extension:** supported by GitHub.com but not by CommonMark or formal GFM; other tools may implement a similar non-portable extension.
+- **GitHub context-dependent:** requires a suitable repository, account, conversation, permission, or GitHub UI context.
+- **HTML-dependent:** uses raw HTML rather than Markdown syntax; GitHub sanitises the permitted elements and attributes.
+
+Nothing in the portable core is “Markdown-only but not GitHub”; GitHub also renders that core syntax.
+
 ---
 
 ## Table of contents
@@ -77,6 +89,8 @@ Feature demonstrations show the literal **Source** followed by their **Rendered 
 
 ### 2.1 Paragraphs
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Separate paragraphs with a blank line.
 
 **Source**
@@ -95,6 +109,8 @@ Second paragraph.
 
 ### 2.2 Soft line breaks
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 In a `.md` file, a single source newline normally becomes a space in the rendered paragraph.
 
 **Source**
@@ -112,6 +128,8 @@ Second source line.
 GitHub issue, pull-request, and discussion fields may preserve ordinary newlines differently from repository Markdown files.
 
 ### 2.3 Hard line breaks
+
+**Availability:** Portable Markdown + GitHub (CommonMark)
 
 Use two trailing spaces, a trailing backslash, or `<br>`.
 
@@ -147,6 +165,8 @@ In the first source example, `␠␠` represents two literal space characters im
 
 ### 3.1 ATX headings
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 CommonMark supports six levels. Include a space after the `#` characters.
 
 **Source**
@@ -174,6 +194,8 @@ Use one level-one heading as the document title, then descend through levels wit
 
 ### 3.2 Setext headings
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Setext syntax supports only levels 1 and 2.
 
 **Source**
@@ -193,7 +215,9 @@ Level 2 example
 
 ### 3.3 Automatic section links
 
-GitHub generates an anchor for each heading. Hover over a rendered heading and use its link icon to copy the exact URL.
+**Availability:** GitHub context-dependent; heading syntax itself is portable Markdown
+
+GitHub generates an anchor for each heading. On GitHub.com with a pointer, hover over a rendered heading and use its link icon to copy the exact URL. On touch interfaces, use the client’s available heading-link controls or copy the rendered anchor URL.
 
 **Source**
 
@@ -211,6 +235,8 @@ Duplicate heading anchors normally receive suffixes such as `-1` and `-2`. Editi
 
 ### 3.4 Custom anchors
 
+**Availability:** HTML-dependent; supported by GitHub.com
+
 **Source**
 
 ```markdown
@@ -227,6 +253,8 @@ Custom anchors work on GitHub but do not appear in the automatic document outlin
 
 ### 4.1 Core styles
 
+**Availability:** Mixed — bold and italic are portable CommonMark; strikethrough is GFM + GitHub
+
 | Style | Source | Rendered on GitHub |
 |---|---|---|
 | Bold | `**bold**` or `__bold__` | **bold** |
@@ -238,6 +266,8 @@ Custom anchors work on GitHub but do not appear in the automatic document outlin
 Use double tildes for strikethrough. A single tilde may work on GitHub.com, but `~~text~~` is the safer GFM form across renderers.
 
 ### 4.2 Subscript, superscript, and underline
+
+**Availability:** HTML-dependent; documented for GitHub.com
 
 These use GitHub-supported HTML rather than portable Markdown syntax.
 
@@ -265,6 +295,8 @@ Markdown has no portable built-in syntax for underline, subscript, superscript, 
 
 ## 5. Horizontal rules
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Use three or more hyphens, asterisks, or underscores on a line by themselves.
 
 **Source**
@@ -289,6 +321,8 @@ Avoid placing `---` directly beneath ordinary text unless you intend to create a
 
 ### 6.1 Basic quote
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ```markdown
@@ -304,6 +338,8 @@ Avoid placing `---` directly beneath ordinary text unless you intend to create a
 > It can contain more than one paragraph.
 
 ### 6.2 Nested quote
+
+**Availability:** Portable Markdown + GitHub (CommonMark)
 
 **Source**
 
@@ -325,6 +361,8 @@ Avoid placing `---` directly beneath ordinary text unless you intend to create a
 
 ### 7.1 Unordered lists
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ```markdown
@@ -344,6 +382,8 @@ Avoid placing `---` directly beneath ordinary text unless you intend to create a
 `*` and `+` are also valid unordered-list markers. Using one marker style consistently keeps source tidy.
 
 ### 7.2 Ordered lists
+
+**Availability:** Portable Markdown + GitHub (CommonMark)
 
 **Source**
 
@@ -379,6 +419,8 @@ Under CommonMark, only an ordered list starting with `1.` can interrupt an exist
 
 ### 7.3 Content inside list items
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Indent continuation text and nested blocks far enough to belong to the item.
 
 **Source**
@@ -406,6 +448,8 @@ Indent continuation text and nested blocks far enough to belong to the item.
 ---
 
 ## 8. Task lists
+
+**Availability:** GFM + GitHub
 
 Use `[ ]` for an open item and `[x]` or `[X]` for a completed item.
 
@@ -437,6 +481,8 @@ If an item begins with parentheses, escape the opening parenthesis:
 
 ### 9.1 Inline code
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ```markdown
@@ -461,6 +507,8 @@ To include a backtick, use a longer backtick delimiter:
 
 ### 9.2 Fenced code blocks
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ````markdown
@@ -481,6 +529,8 @@ Use a lower-case language identifier for the best GitHub Pages compatibility. Gi
 
 ### 9.3 Tilde fences
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 CommonMark also accepts tilde fences.
 
 **Source**
@@ -499,6 +549,8 @@ CommonMark also accepts tilde fences.
 
 ### 9.4 Indented code blocks
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Four leading spaces create a code block, though fenced blocks are usually clearer.
 
 **Source**
@@ -512,6 +564,8 @@ Four leading spaces create a code block, though fenced blocks are usually cleare
     plain indented code
 
 ### 9.5 Showing code fences literally
+
+**Availability:** Portable Markdown + GitHub (CommonMark)
 
 Wrap a triple-backtick example in four backticks or a longer tilde fence.
 
@@ -531,6 +585,8 @@ literal fenced block
 
 ### 10.1 Inline links and titles
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ```markdown
@@ -549,6 +605,8 @@ Keep link text on one source line. GitHub does not reliably parse a link label s
 
 ### 10.2 Reference-style links
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ```markdown
@@ -566,6 +624,8 @@ Read the [formatting guide][formatting-guide].
 Collapsed reference links (`[label][]`) and shortcut references (`[label]`) also work when a matching definition exists.
 
 ### 10.3 Automatic links
+
+**Availability:** Mixed — angle-bracket autolinks are CommonMark; bare-URL autolinks are GFM + GitHub
 
 **Source**
 
@@ -589,20 +649,26 @@ Angle-bracket autolinks are part of CommonMark. Automatic linking of a bare URL 
 
 ### 10.4 Relative repository links
 
-**Source from a root README**
+**Availability:** Portable link syntax; repository-relative resolution is GitHub context-dependent
+
+**Example context: assume this source appears in a hypothetical repository-root `README.md`**
 
 ```markdown
 [Contributing guide](docs/CONTRIBUTING.md)
 [Licence](/LICENSE)
 ```
 
-Relative links follow the branch or commit currently being viewed and also work in local clones. A leading `/` is relative to the repository root on GitHub.
+`docs/CONTRIBUTING.md` and `/LICENSE` are illustrative paths, not files promised to exist in this repository.
+
+Relative links follow the branch or commit currently being viewed. They remain relative in local clones and can resolve in Markdown viewers that support repository-relative links. A leading `/` is relative to the repository root on GitHub.
 
 ---
 
 ## 11. Images
 
 ### 11.1 Basic image
+
+**Availability:** Portable Markdown + GitHub (CommonMark)
 
 **Source**
 
@@ -618,6 +684,8 @@ Always provide meaningful alt text. For a purely decorative image, use empty alt
 
 ### 11.2 Linked image
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 **Source**
 
 ```markdown
@@ -630,15 +698,19 @@ Always provide meaningful alt text. For a purely decorative image, use empty alt
 
 ### 11.3 Relative images
 
-**Source from `docs/guide.md`**
+**Availability:** Portable image syntax; repository-relative resolution is GitHub context-dependent
+
+**Example context: assume this source appears in a hypothetical `docs/guide.md` file**
 
 ```markdown
 ![Architecture](../assets/architecture.png)
 ```
 
-GitHub resolves the path relative to the current Markdown file. Relative paths are preferable for repository-owned assets.
+GitHub resolves the path relative to the current Markdown file. In this example, `docs/guide.md` and `assets/architecture.png` are illustrative paths rather than files in this repository. Relative paths are preferable for repository-owned assets.
 
 ### 11.4 Theme-aware images
+
+**Availability:** HTML-dependent; documented for GitHub.com
 
 GitHub documents the HTML `<picture>` element for selecting light- and dark-theme images.
 
@@ -652,7 +724,67 @@ GitHub documents the HTML `<picture>` element for selecting light- and dark-them
 </picture>
 ```
 
+**Expected on GitHub**
+
+GitHub retains the supported markup; the browser selects the first matching `<source>` for the viewer's colour scheme and falls back to the `<img>` element when no source matches. Section 14.9 includes a rendered `<picture>` example using real image URLs.
+
 This is GitHub-supported HTML, not portable Markdown.
+
+`dark.png` and `light.png` are illustrative filenames; replace them with paths to actual images.
+
+### 11.5 Image sizing: small, medium, and large
+
+**Availability:** HTML-dependent; supported by GitHub.com
+
+Plain Markdown image syntax does not define width or height controls. Use a GitHub-supported HTML `<img>` element when an explicit rendered size is required.
+
+**Raw source**
+
+```html
+<img src="https://github.githubassets.com/images/icons/emoji/octocat.png" alt="Small GitHub Octocat" width="32">
+
+<img src="https://github.githubassets.com/images/icons/emoji/octocat.png" alt="Medium GitHub Octocat" width="64">
+
+<img src="https://github.githubassets.com/images/icons/emoji/octocat.png" alt="Large GitHub Octocat" width="128">
+```
+
+**Rendered on GitHub**
+
+<img src="https://github.githubassets.com/images/icons/emoji/octocat.png" alt="Small GitHub Octocat" width="32">
+
+<img src="https://github.githubassets.com/images/icons/emoji/octocat.png" alt="Medium GitHub Octocat" width="64">
+
+<img src="https://github.githubassets.com/images/icons/emoji/octocat.png" alt="Large GitHub Octocat" width="128">
+
+Use one dimension to preserve the intrinsic aspect ratio. If both `width` and `height` are supplied, keep their ratio consistent with the source image to avoid distortion.
+
+### 11.6 Image file formats on GitHub
+
+**Availability:** Portable image syntax; GitHub upload and display support is context-dependent
+
+GitHub officially accepts these image formats for attachments in all writing contexts:
+
+| Format | Extension | Typical use |
+|---|---|---|
+| PNG | `.png` | Screenshots, diagrams, and lossless graphics |
+| JPEG | `.jpg`, `.jpeg` | Photographs and other continuous-tone images |
+| GIF | `.gif` | Simple animation or indexed-colour graphics |
+| SVG | `.svg` | Scalable vector diagrams and icons |
+
+The Markdown source has the same shape for each format.
+
+**Raw source**
+
+```markdown
+![PNG example](images/example.png)
+![JPEG example](images/example.jpg)
+![GIF example](images/example.gif)
+![SVG example](images/example.svg)
+```
+
+**Expected on GitHub**
+
+Each valid accessible image renders inline at its intrinsic dimensions unless HTML sizing is used. The paths above are illustrative and therefore are not rendered here. GitHub's repository file viewer can display some additional image types, including PSD, but that does not make them portable inline Markdown images.
 
 ---
 
@@ -661,6 +793,8 @@ This is GitHub-supported HTML, not portable Markdown.
 Include a blank line before a table. GitHub's documented style uses at least three hyphens per delimiter cell; the formal GFM grammar and current GitHub parser accept one or more. Three is the clearest and most portable choice.
 
 ### 12.1 Basic table
+
+**Availability:** GFM + GitHub
 
 **Source**
 
@@ -682,6 +816,8 @@ Outer pipes are optional, but using them often makes the source easier to scan.
 
 ### 12.2 Column alignment
 
+**Availability:** GFM + GitHub
+
 **Source**
 
 ```markdown
@@ -699,6 +835,8 @@ Outer pipes are optional, but using them often makes the source easier to scan.
 | C | D | 200 |
 
 ### 12.3 Literal pipes
+
+**Availability:** GFM + GitHub
 
 Escape a pipe inside a table cell.
 
@@ -724,6 +862,8 @@ Tables do not support multi-line or block-level content reliably. Use HTML or re
 
 ### 13.1 Backslash escapes
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Place a backslash before an ASCII punctuation character that would otherwise trigger Markdown.
 
 **Source**
@@ -746,6 +886,8 @@ Place a backslash before an ASCII punctuation character that would otherwise tri
 
 ### 13.2 Character entities
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 HTML character references are another way to show reserved characters.
 
 **Source**
@@ -760,6 +902,8 @@ HTML character references are another way to show reserved characters.
 
 ### 13.3 Safest literal display
 
+**Availability:** Portable Markdown + GitHub (CommonMark)
+
 Use inline code or a fenced code block for complex source that must remain unchanged.
 
 ---
@@ -767,6 +911,8 @@ Use inline code or a fenced code block for complex source that must remain uncha
 ## 14. HTML and hidden comments
 
 ### 14.1 Hidden comments
+
+**Availability:** HTML-dependent; raw HTML comments work in CommonMark/GFM and GitHub sanitises the output
 
 **Source**
 
@@ -790,6 +936,8 @@ Do not place secrets in comments. Hidden comments remain visible in the raw file
 
 ### 14.2 Raw HTML limits
 
+**Availability:** HTML-dependent; the compatibility details here are GitHub.com-specific
+
 GitHub parses raw HTML and then sanitises it. This is **not** unrestricted browser HTML: unsupported elements are removed, unsafe URL schemes are rejected, and attributes such as `style`, `class`, and `onclick` are stripped.
 
 The examples below were checked with GitHub's current Markdown renderer on 19 July 2026. GitHub documents several useful elements, but does not publish a permanent exhaustive GitHub.com allowlist. Treat the inventory in section 14.10 as a current compatibility reference, not a web-platform guarantee.
@@ -797,6 +945,8 @@ The examples below were checked with GitHub's current Markdown renderer on 19 Ju
 Raw HTML is not portable and may behave differently in local previewers, documentation generators, and other Git forges.
 
 ### 14.3 Inline text formatting
+
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
 
 Use Markdown for ordinary emphasis when possible. HTML is useful for underline, subscript, superscript, highlighting, or more explicit semantics.
 
@@ -834,6 +984,8 @@ Prefer `<strong>` and `<em>` when the emphasis has meaning, `<del>` for a deleti
 
 ### 14.4 Code, keyboard input, output, and variables
 
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
+
 **Raw source**
 
 ```html
@@ -861,6 +1013,8 @@ line two</code></pre>
 Prefer backticks and fenced code blocks for normal Markdown. `<tt>` is obsolete HTML; use `<code>` instead.
 
 ### 14.5 Links, custom anchors, and quotations
+
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
 
 **Raw source**
 
@@ -892,6 +1046,8 @@ GitHub prefixes a custom anchor's final HTML `name` value internally, but links 
 
 ### 14.6 Structure, line breaks, and simple alignment
 
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
+
 **Raw source**
 
 ```html
@@ -921,6 +1077,8 @@ GitHub prefixes a custom anchor's final HTML `name` value internally, but links 
 `<h1>` through `<h6>`, `<p>`, `<div>`, `<span>`, `<br>`, and `<hr>` currently survive GitHub sanitisation. A `<span>` or `<div>` does not add custom styling by itself. The `align` attribute is legacy HTML and less portable than normal Markdown layout, even though GitHub currently retains it.
 
 ### 14.7 HTML lists and definition lists
+
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
 
 HTML lists are useful when Markdown list syntax cannot express the required start value or definition-style structure.
 
@@ -967,6 +1125,8 @@ HTML lists are useful when Markdown list syntax cannot express the required star
 GitHub currently accepts `<ul>`, `<ol>`, `<li>`, `<dl>`, `<dt>`, and `<dd>`. Definition lists are HTML-dependent and are not part of CommonMark or formal GFM.
 
 ### 14.8 HTML tables, spanning, and alignment
+
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
 
 Use an HTML table when cells must span rows or columns. Pipe-table syntax cannot express `rowspan` or `colspan`.
 
@@ -1032,7 +1192,11 @@ The current renderer retains `<table>`, `<thead>`, `<tbody>`, `<tfoot>`, `<tr>`,
 
 ### 14.9 Responsive images and ruby annotations
 
+**Availability:** HTML-dependent; examples reflect GitHub.com sanitisation
+
 The `<picture>` and `<source>` elements can select an image for the viewer's colour scheme. Always include a fallback `<img>` with useful alternative text.
+
+The raw source below uses illustrative `dark.png` and `light.png` paths. The rendered example uses an existing public GitHub image so that its output can be previewed.
 
 **Raw source**
 
@@ -1060,6 +1224,8 @@ GitHub currently retains `<picture>`, `<source>`, `<img>`, `<ruby>`, `<rt>`, and
 
 ### 14.10 Current GitHub HTML tag inventory
 
+**Availability:** HTML-dependent; current GitHub.com compatibility reference
+
 The following elements survived a live render through GitHub's Markdown API on 19 July 2026. The examples above and the collapsible-section example in section 17 show both raw input and rendered output for their practical uses.
 
 | Purpose | Currently retained tags | Preferred guidance |
@@ -1069,7 +1235,7 @@ The following elements survived a live render through GitHub's Markdown API on 1
 | Text styles | `<b>`, `<strong>`, `<i>`, `<em>`, `<ins>`, `<del>`, `<s>`, `<strike>`, `<sub>`, `<sup>`, `<mark>` | Prefer semantic tags and Markdown where equivalent. |
 | Code and technical text | `<pre>`, `<code>`, `<kbd>`, `<samp>`, `<var>`, `<tt>` | `<tt>` is obsolete; prefer `<code>`. |
 | Links and quotations | `<a>`, `<q>`, `<blockquote>` | Use safe `http`, `https`, or relative destinations. |
-| Lists | `<ul>`, `<ol>`, `<li>`, `<dl>`, `<dt>`, `<dd>` | HTML definition lists are GitHub-specific in Markdown documents. |
+| Lists | `<ul>`, `<ol>`, `<li>`, `<dl>`, `<dt>`, `<dd>` | Definition lists are HTML-dependent; renderer support varies. |
 | Tables | `<table>`, `<thead>`, `<tbody>`, `<tfoot>`, `<tr>`, `<th>`, `<td>` | Use HTML when spanning is required. |
 | Images | `<img>`, `<picture>`, `<source>` | Always include useful `alt` text on `<img>`. |
 | Annotations | `<ruby>`, `<rt>`, `<rp>` | Useful for pronunciation annotations. |
@@ -1078,6 +1244,8 @@ The following elements survived a live render through GitHub's Markdown API on 1
 Common useful retained attributes include `href`, `name`, `title`, `hreflang`, `src`, `srcset`, `media`, `alt`, `width`, `height`, `align`, `valign`, `colspan`, `rowspan`, `start`, `open`, `lang`, `dir`, and `cite`. GitHub may rewrite attribute values or add its own wrappers and attributes to the rendered HTML.
 
 ### 14.11 Unsupported or stripped HTML
+
+**Availability:** GitHub.com sanitisation limits
 
 Do not rely on these in GitHub Markdown:
 
@@ -1093,6 +1261,8 @@ Do not rely on these in GitHub Markdown:
 | `class`, `style`, `onclick`, and other event attributes | Stripped. Custom CSS classes and scripts cannot be attached. |
 
 ### 14.12 Mixing Markdown inside HTML blocks
+
+**Availability:** HTML-dependent; exact behaviour varies by renderer and the example reflects GitHub.com
 
 Markdown inside an ordinary block-level HTML element may remain literal. GitHub specifically supports Markdown content inside `<details>` when blank lines separate it from the HTML tags.
 
@@ -1128,6 +1298,8 @@ Markdown inside an ordinary block-level HTML element may remain literal. GitHub 
 
 ## 15. Footnotes
 
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
+
 **Source**
 
 ```markdown
@@ -1147,6 +1319,8 @@ Footnotes render at the bottom of the document regardless of where their definit
 ---
 
 ## 16. GitHub alerts
+
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
 GitHub supports exactly five alert types: `NOTE`, `TIP`, `IMPORTANT`, `WARNING`, and `CAUTION`.
 
@@ -1192,6 +1366,8 @@ Alerts cannot be nested inside other elements. GitHub recommends using them spar
 
 ## 17. Collapsible sections
 
+**Availability:** HTML-dependent; documented for GitHub.com
+
 Use GitHub-supported HTML. Leave blank lines around Markdown inside the block.
 
 **Source**
@@ -1234,6 +1410,8 @@ These are GitHub.com features, not portable GFM syntax.
 
 ### 18.1 People and teams
 
+**Availability:** GitHub context-dependent; not portable Markdown or formal GFM
+
 **Source**
 
 ```text
@@ -1246,6 +1424,8 @@ These are GitHub.com features, not portable GFM syntax.
 A valid mention becomes a profile or team link and may notify the target. Team mentions require suitable organisation membership and access.
 
 ### 18.2 Issues and pull requests
+
+**Availability:** GitHub context-dependent; not portable Markdown or formal GFM
 
 **Source**
 
@@ -1260,6 +1440,8 @@ In GitHub conversations these can become shortened links. Short issue and pull-r
 
 ### 18.3 Commit references
 
+**Availability:** GitHub context-dependent; not portable Markdown or formal GFM
+
 **Source**
 
 ```text
@@ -1270,6 +1452,8 @@ owner/repository@a5c3785ed8d6a35868bc169f07e40e889087fd2e
 Valid accessible commits become shortened links.
 
 ### 18.4 Closing keywords
+
+**Availability:** GitHub context-dependent; not portable Markdown or formal GFM
 
 In a pull-request description or commit message on the repository's default branch, use a supported keyword followed by an issue reference.
 
@@ -1289,11 +1473,15 @@ Duplicate of #123
 
 ### 18.5 Labels and custom autolinks
 
+**Availability:** GitHub context-dependent; not portable Markdown or formal GFM
+
 A same-repository label URL can render as a label. Repository administrators can also configure custom autolink patterns for external systems such as ticket trackers.
 
 ---
 
 ## 19. Emoji
+
+**Availability:** Mixed — Unicode emoji are portable text; `:shortcode:` names are GitHub-specific
 
 GitHub supports Unicode emoji and `:shortcode:` names.
 
@@ -1312,6 +1500,8 @@ Emoji shortcode support is a GitHub feature rather than portable CommonMark.
 ---
 
 ## 20. Colour previews
+
+**Availability:** GitHub context-dependent; issues, pull requests, and discussions only
 
 In issues, pull requests, and discussions, an exact supported colour value inside backticks displays a colour swatch.
 
@@ -1335,6 +1525,8 @@ GitHub uses MathJax to render LaTeX-style mathematics in issues, discussions, pu
 
 ### 21.1 Inline math
 
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
+
 **Source**
 
 ```markdown
@@ -1350,6 +1542,8 @@ The area is $A = \pi r^2$.
 Use backtick delimiters when Markdown characters overlap: $`\sqrt{3x-1}`$.
 
 ### 21.2 Block math
+
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
 **Source**
 
@@ -1372,6 +1566,8 @@ $$
 $$
 
 ### 21.3 Fenced math
+
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
 **Source**
 
@@ -1397,6 +1593,8 @@ GitHub renders special fenced blocks in issues, discussions, pull requests, wiki
 
 ### 22.1 Mermaid
 
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
+
 **Source**
 
 ````markdown
@@ -1419,6 +1617,8 @@ GitHub's deployed Mermaid version determines which Mermaid syntax works. Use a M
 
 ### 22.2 GeoJSON map
 
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
+
 **Source**
 
 ````markdown
@@ -1440,6 +1640,8 @@ GitHub's deployed Mermaid version determines which Mermaid syntax works. Use a M
 ```
 
 ### 22.3 TopoJSON map
+
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
 **Source**
 
@@ -1474,6 +1676,8 @@ GitHub's deployed Mermaid version determines which Mermaid syntax works. Use a M
 ```
 
 ### 22.4 ASCII STL model
+
+**Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
 **Source**
 
@@ -1579,6 +1783,8 @@ The formal GFM specification and GitHub.com's current feature set are related bu
 ---
 
 ## Compact copy/paste reference
+
+**Availability:** Mixed — consult the per-section labels above for each feature
 
 ````markdown
 # Heading 1
