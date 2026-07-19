@@ -14,6 +14,7 @@ Repo layout:
 
 - [Discord Markdown & Message Formatting Cheat Sheet](docs/discord-markdown-cheat-sheet.md) - Discord text formatting, mentions, timestamps, emoji markup, message tokens, and client-specific caveats.
 - [Markdown & GitHub Flavored Markdown Cheat Sheet](docs/md-and-gh-cheat-sheet.md) - Portable Markdown, GFM extensions, and GitHub-specific formatting with source and rendered examples.
+- [GitHub Badges & README UI Cheat Sheet](docs/github-badges-and-readme-ui.md) - Build, release, download, coverage, and custom badges plus GitHub-safe README layout elements.
 
 ## [Python Utilities](python/)
 
