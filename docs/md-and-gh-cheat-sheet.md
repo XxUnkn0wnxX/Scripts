@@ -14,6 +14,8 @@ This guide separates three related layers:
 > [!IMPORTANT]
 > Not every feature rendered by GitHub.com belongs to the formal GFM specification. GitHub-only features may appear as plain text on other Markdown platforms.
 
+> **Companion guide:** [GitHub Badges & README UI Cheat Sheet](github-badges-and-readme-ui.md) covers build-status badges, releases, downloads, coverage, licences, Shields.io customisation, linked badge-buttons, profile cards, and GitHub-safe UI-like layout patterns.
+
 Feature demonstrations show the literal **Source** followed by their **Rendered on GitHub** result. Features that depend on a repository, account, or conversation context instead show an **Expected on GitHub** description.
 
 > Paths, filenames, IDs, account names, repository names, and domains used in examples are illustrative placeholders unless the text explicitly identifies them as real resources.
