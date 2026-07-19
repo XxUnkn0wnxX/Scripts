@@ -8,7 +8,18 @@ Discord uses a **subset of Markdown**, then adds several Discord-only features s
 This reference deliberately shows most features in two forms:
 
 1. **Source** — the literal characters to type or copy.
-2. **Applied example** — the formatting as it should appear in Discord.
+2. **Applied example** — a representative rendering; exact appearance and interaction can vary by Discord client.
+
+> IDs, filenames, command names, paths, domains, and timestamps used in examples are illustrative placeholders unless the text explicitly identifies them as real resources. Replace them before sending or implementing the example.
+
+Availability labels used throughout this guide:
+
+- **Portable Markdown + Discord:** works as ordinary Markdown syntax and in Discord messages, subject to the stated Discord subset and client caveats.
+- **Markdown extension + Discord:** works in Discord and in Markdown renderers that support the named extension, but is not portable CommonMark.
+- **Discord-only syntax or token:** a Discord extension rather than portable Markdown.
+- **Discord client-dependent:** observed rendering or interaction can vary across desktop, web, iOS, and Android.
+- **Discord API-only:** configured through an app, bot, or webhook message payload—such as embed/message flags, `allowed_mentions`, or attachment/component fields—rather than literal user-facing Markdown.
+- **Markdown feature not reliable in Discord:** valid elsewhere, but unsupported, undocumented, or unsuitable to depend on in Discord messages.
 
 > [!IMPORTANT]
 > A normal Markdown viewer, GitHub, or text editor may not preview Discord-only features correctly. Test Discord-only syntax in a private Discord channel or DM.
@@ -55,45 +66,49 @@ No document can honestly guarantee undocumented client behaviour forever. Anythi
 
 # 1. Quick-reference table
 
-| Feature | Source syntax | Discord-specific? |
-|---|---|---:|
-| Italic | `*text*` or `_text_` | No |
-| Bold | `**text**` | No |
-| Bold italic | `***text***` | No |
-| Underline | `__text__` | **Yes / non-standard behaviour** |
-| Underline italic | `__*text*__` | **Yes** |
-| Underline bold | `__**text**__` | **Yes** |
-| Underline bold italic | `__***text***__` | **Yes** |
-| Strikethrough | `~~text~~` | Common extension |
-| Spoiler | `\|\|text\|\|` | **Yes** |
-| Spoiler command | `/spoiler Message` | **Discord client shortcut** |
-| Large header | `# Text` | Discord supports levels 1–3 |
-| Medium header | `## Text` | Discord supports levels 1–3 |
-| Small header | `### Text` | Discord supports levels 1–3 |
-| Subtext | `-# Text` | **Yes** |
-| Bullet list | `- Item` or `* Item` | No |
-| Numbered list | `1. Item` | No |
-| Single-line quote | `> Text` | No |
-| Multi-line quote | `>>> Text` | Discord-specific variation |
-| Inline code | `` `code` `` | No |
-| Code block | Triple backticks | No |
-| Masked link | `[label](https://example.com)` | Common extension |
-| Suppress one link embed | `<https://example.com>` | **Discord behaviour** |
-| User mention | `<@USER_ID>` | **Yes** |
-| Channel mention | `<#CHANNEL_ID>` | **Yes** |
-| Role mention | `<@&ROLE_ID>` | **Yes** |
-| Timestamp | `<t:UNIX_TIMESTAMP:STYLE>` | **Yes** |
-| Custom emoji | `<:NAME:EMOJI_ID>` | **Yes** |
-| Animated emoji | `<a:NAME:EMOJI_ID>` | **Yes** |
-| Slash-command mention | `</name:COMMAND_ID>` | **Yes** |
-| Guild navigation | `<id:TYPE>` | **Yes** |
-| Silent message | `@silent Message` | **Yes** |
+| Feature | Source syntax | Availability |
+|---|---|---|
+| Italic | `*text*` or `_text_` | Markdown + Discord |
+| Bold | `**text**` | Markdown + Discord |
+| Bold italic | `***text***` | Markdown + Discord |
+| Underline | `__text__` | Discord-only |
+| Underline italic | `__*text*__` | Discord-only |
+| Underline bold | `__**text**__` | Discord-only |
+| Underline bold italic | `__***text***__` | Discord-only |
+| Strikethrough | `~~text~~` | Markdown extension + Discord |
+| Spoiler | `\|\|text\|\|` | Discord-only |
+| Spoiler command | `/spoiler Message` | Discord client shortcut |
+| Large header | `# Text` | Markdown + Discord; levels 1–3 only |
+| Medium header | `## Text` | Markdown + Discord; levels 1–3 only |
+| Small header | `### Text` | Markdown + Discord; levels 1–3 only |
+| Subtext | `-# Text` | Discord-only |
+| Bullet list | `- Item` or `* Item` | Markdown + Discord |
+| Numbered list | `1. Item` | Markdown + Discord |
+| Single-line quote | `> Text` | Markdown + Discord |
+| Multi-line quote | `>>> Text` | Discord-only variation |
+| Inline code | `` `code` `` | Markdown + Discord |
+| Code block | Triple backticks | Markdown + Discord |
+| Masked link | `[label](https://example.com)` | Markdown + Discord |
+| Suppress one link embed | `<https://example.com>` | Discord-specific behaviour |
+| User mention | `<@USER_ID>` | Discord-only token |
+| Channel mention | `<#CHANNEL_ID>` | Discord-only token |
+| Role mention | `<@&ROLE_ID>` | Discord-only token |
+| Timestamp | `<t:UNIX_TIMESTAMP:STYLE>` | Discord-only token |
+| Custom emoji | `<:NAME:EMOJI_ID>` | Discord-only token |
+| Animated emoji | `<a:NAME:EMOJI_ID>` | Discord-only token |
+| Slash-command mention | `</name:COMMAND_ID>` | Discord-only token |
+| Guild navigation | `<id:TYPE>` | Discord-only token |
+| Silent message | `@silent Message` | Discord client-dependent |
+
+> The backslashes in the spoiler cell (`\|\|text\|\|`) only escape the pipe characters so this Markdown table is not split into extra columns. The rendered cell shows `||text||`; type the Discord spoiler itself **without** backslashes.
 
 ---
 
 # 2. Basic text styles
 
 ## 2.1 Italic with asterisks
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -108,6 +123,8 @@ No document can honestly guarantee undocumented client behaviour forever. Anythi
 ---
 
 ## 2.2 Italic with underscores
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -125,6 +142,8 @@ _This text is also italic._
 
 ## 2.3 Bold
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -141,6 +160,8 @@ _This text is also italic._
 
 ## 2.4 Bold italic
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -154,6 +175,8 @@ _This text is also italic._
 ---
 
 ## 2.5 Underline — Discord behaviour
+
+**Availability:** Discord-only syntax
 
 **Source**
 
@@ -172,6 +195,8 @@ __This text is underlined.__
 
 ## 2.6 Strikethrough
 
+**Availability:** Markdown extension + Discord (GFM-style strikethrough; not CommonMark)
+
 **Source**
 
 ```text
@@ -186,15 +211,17 @@ __This text is underlined.__
 
 ## 2.7 Spoiler — Discord-only
 
+**Availability:** Discord-only syntax
+
 **Source**
 
 ```text
-||This text is hidden until clicked.||
+||This text is hidden until revealed.||
 ```
 
 **Expected in Discord**
 
-The text appears behind a clickable spoiler cover until revealed.
+The text appears behind an interactive spoiler cover until the viewer reveals it. The exact interaction can vary by client and input method.
 
 > A normal Markdown viewer may display the `||` characters literally.
 
@@ -205,6 +232,8 @@ The text appears behind a clickable spoiler cover until revealed.
 Discord lets you nest compatible markers. Keep the opening and closing markers properly balanced.
 
 ## 3.1 Underline italic
+
+**Availability:** Discord-only combined syntax
 
 **Source**
 
@@ -220,6 +249,8 @@ Underlined italic text.
 
 ## 3.2 Underline bold
 
+**Availability:** Discord-only combined syntax
+
 **Source**
 
 ```text
@@ -234,6 +265,8 @@ Underlined bold text.
 
 ## 3.3 Underline bold italic
 
+**Availability:** Discord-only combined syntax
+
 **Source**
 
 ```text
@@ -247,6 +280,8 @@ Underlined bold-italic text.
 ---
 
 ## 3.4 Bold strikethrough
+
+**Availability:** Markdown extension + Discord; this combined rendering is client-dependent
 
 > **Client-observed combination:** Discord officially documents bold and strikethrough separately, but not every possible nesting combination. Test combinations when cross-client consistency matters.
 
@@ -264,6 +299,8 @@ Underlined bold-italic text.
 
 ## 3.5 Italic strikethrough
 
+**Availability:** Markdown extension + Discord; this combined rendering is client-dependent
+
 **Source**
 
 ```text
@@ -277,6 +314,8 @@ Underlined bold-italic text.
 ---
 
 ## 3.6 Underline strikethrough
+
+**Availability:** Discord-only combined syntax
 
 **Source**
 
@@ -292,6 +331,8 @@ Underlined strikethrough text.
 
 ## 3.7 Bold italic strikethrough
 
+**Availability:** Markdown extension + Discord; this combined rendering is client-dependent
+
 **Source**
 
 ```text
@@ -306,6 +347,8 @@ Underlined strikethrough text.
 
 ## 3.8 Styled spoiler
 
+**Availability:** Discord-only combined syntax
+
 Formatting can be placed inside spoiler markers.
 
 **Source**
@@ -316,11 +359,13 @@ Formatting can be placed inside spoiler markers.
 
 **Expected in Discord**
 
-A hidden spoiler that reveals bold and italic text when clicked.
+A hidden spoiler that reveals bold and italic text when the viewer activates it. The exact interaction depends on the client and input method.
 
 ---
 
 ## 3.9 Inline code does not process inner Markdown
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -342,6 +387,8 @@ The hash characters must be at the **beginning of a new line**, followed by a sp
 
 ## 4.1 Level-one header
 
+**Availability:** Portable Markdown + Discord; Discord supports only heading levels 1–3
+
 **Source**
 
 ```text
@@ -355,6 +402,8 @@ The hash characters must be at the **beginning of a new line**, followed by a sp
 ---
 
 ## 4.2 Level-two header
+
+**Availability:** Portable Markdown + Discord; Discord supports only heading levels 1–3
 
 **Source**
 
@@ -370,6 +419,8 @@ The hash characters must be at the **beginning of a new line**, followed by a sp
 
 ## 4.3 Level-three header
 
+**Availability:** Portable Markdown + Discord; Discord supports only heading levels 1–3
+
 **Source**
 
 ```text
@@ -383,6 +434,8 @@ The hash characters must be at the **beginning of a new line**, followed by a sp
 ---
 
 ## 4.4 Formatting inside headers
+
+**Availability:** Portable Markdown; nested formatting in Discord headers is client-dependent
 
 > **Client-observed behaviour:** Discord officially documents the three header levels, but does not publish a compatibility matrix for formatting nested inside a header.
 
@@ -401,6 +454,8 @@ The hash characters must be at the **beginning of a new line**, followed by a sp
 ---
 
 ## 4.5 Header requirements
+
+**Availability:** Portable Markdown + Discord; Discord supports only heading levels 1–3
 
 Works:
 
@@ -427,6 +482,8 @@ It must begin a new line with `-#` followed by a space.
 
 ## 5.1 Basic subtext
 
+**Availability:** Discord-only syntax
+
 **Source**
 
 ```text
@@ -440,6 +497,8 @@ A small grey/dim line of text.
 ---
 
 ## 5.2 Subtext with inline code
+
+**Availability:** Discord-only syntax
 
 **Source**
 
@@ -455,6 +514,8 @@ Small dim text, with the numeric ID displayed as inline code.
 
 ## 5.3 Subtext with styling
 
+**Availability:** Discord-only syntax
+
 **Source**
 
 ```text
@@ -468,6 +529,8 @@ Small secondary text containing bold and inline-code formatting.
 ---
 
 ## 5.4 Subtext requirements
+
+**Availability:** Discord-only syntax
 
 Works:
 
@@ -494,6 +557,8 @@ Discord does not rely on normal Markdown “hard line break” syntax. Use the D
 - A blank line separates sections visually.
 
 ## 6.1 New lines
+
+**Availability:** Portable text layout + Discord
 
 **Source**
 
@@ -523,6 +588,8 @@ Put a space after the marker.
 
 ## 7.1 Hyphen bullet list
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -540,6 +607,8 @@ Put a space after the marker.
 ---
 
 ## 7.2 Asterisk bullet list
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -559,6 +628,8 @@ Put a space after the marker.
 
 ## 7.3 Numbered list
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -576,6 +647,8 @@ Put a space after the marker.
 ---
 
 ## 7.4 Automatic numbering
+
+**Availability:** Discord client-dependent numbering behaviour
 
 > **Client-observed behaviour:** Discord does not document ordered-list normalisation. Current clients may number repeated `1.` markers sequentially, but do not rely on this without testing the target client.
 
@@ -595,6 +668,8 @@ A sequential numbered list.
 
 ## 7.5 Starting at another number
 
+**Availability:** Discord client-dependent numbering behaviour
+
 > **Client-observed behaviour:** Discord does not document whether an ordered list must begin with `1.` or preserve another starting number.
 
 **Source**
@@ -612,6 +687,8 @@ An ordered list beginning at or displaying the detected starting number, dependi
 ---
 
 ## 7.6 Nested unordered list
+
+**Availability:** Portable Markdown + Discord
 
 Discord’s official guide demonstrates **two spaces** before the nested marker.
 
@@ -635,6 +712,8 @@ Discord’s official guide demonstrates **two spaces** before the nested marker.
 
 ## 7.7 Mixed nested list
 
+**Availability:** Portable Markdown; mixed nested-list rendering in Discord is client-dependent
+
 Discord's official guide demonstrates two-space indentation for nested `-` and `*` bullets. Mixed ordered/unordered nesting is client-observed and should be tested.
 
 **Source**
@@ -656,6 +735,8 @@ A numbered parent list with nested bullet and numbered entries.
 
 ## 7.8 Formatting inside list items
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -676,6 +757,8 @@ A numbered parent list with nested bullet and numbered entries.
 
 ## 7.9 Prevent accidental list formatting
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -694,6 +777,8 @@ A numbered parent list with nested bullet and numbered entries.
 
 ## 8.1 Single quoted line
 
+**Availability:** Portable Markdown + Discord
+
 Use `>` followed by a space.
 
 **Source**
@@ -709,6 +794,8 @@ Use `>` followed by a space.
 ---
 
 ## 8.2 Several separately marked quoted lines
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -727,6 +814,8 @@ Use `>` followed by a space.
 ---
 
 ## 8.3 Quote the rest of the message with `>>>`
+
+**Availability:** Discord-only multiline quote syntax
 
 Discord officially supports `>>>` in **ordinary message content**. It is not limited to embeds.
 
@@ -751,6 +840,8 @@ Every remaining line in that Discord message appears inside the quote.
 
 ## 8.4 Styling inside a quote
 
+**Availability:** Portable Markdown + Discord
+
 Basic inline formatting normally works inside a quoted line.
 
 **Source**
@@ -766,6 +857,8 @@ Basic inline formatting normally works inside a quoted line.
 ---
 
 ## 8.5 Prevent quote formatting
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -785,6 +878,8 @@ Inline code uses one backtick on each side.
 
 ## 9.1 Basic inline code
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -798,6 +893,8 @@ Run the `example-action` command.
 ---
 
 ## 9.2 Inline paths, commands, and IDs
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -813,6 +910,8 @@ Edit `config.toml`, run `pnpm install`, and copy user ID `123456789012345678`.
 
 ## 9.3 Markdown is disabled inside inline code
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -826,6 +925,8 @@ Edit `config.toml`, run `pnpm install`, and copy user ID `123456789012345678`.
 ---
 
 ## 9.4 Put a backtick inside inline code
+
+**Availability:** Portable CommonMark code-span syntax; test this delimiter in the target Discord client
 
 > **Client-observed behaviour:** Discord's public guide documents ordinary backtick code spans, not the CommonMark-style two-backtick delimiter. It works in some current clients but should be tested before relying on it.
 
@@ -849,6 +950,8 @@ Use three backticks on their own opening and closing lines.
 
 ## 10.1 Plain multiline block
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ~~~~text
@@ -870,6 +973,8 @@ Line three
 ---
 
 ## 10.2 Code block with language tag
+
+**Availability:** Discord client-dependent syntax highlighting layered on a portable fenced code block
 
 Put the language identifier immediately after the opening backticks.
 
@@ -897,6 +1002,8 @@ Put the language identifier immediately after the opening backticks.
 
 ## 10.3 Markdown is disabled inside code blocks
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ~~~~text
@@ -920,6 +1027,8 @@ Put the language identifier immediately after the opening backticks.
 ---
 
 ## 10.4 Showing triple backticks inside a Markdown document
+
+**Availability:** Portable Markdown documentation technique; the inner triple fence is Discord syntax
 
 When writing a `.md` guide such as this one, use a longer outer fence such as four tildes or four backticks.
 
@@ -963,6 +1072,8 @@ For a dated implementation snapshot, Discord's public `@discord/arborium-rt` WAS
 
 ## 11.1 Common client candidates
 
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
+
 | Purpose | Canonical ID in public Arborium 0.1.8 snapshot |
 |---|---|
 | No highlighting | Omit the tag |
@@ -985,6 +1096,8 @@ For a dated implementation snapshot, Discord's public `@discord/arborium-rt` WAS
 ---
 
 ## 11.2 Web and data identifier candidates
+
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
 
 | Language/format | Candidate identifier(s) — not guaranteed |
 |---|---|
@@ -1011,6 +1124,8 @@ For a dated implementation snapshot, Discord's public `@discord/arborium-rt` WAS
 
 ### HTML example
 
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
+
 **Source**
 
 ~~~~text
@@ -1030,6 +1145,8 @@ For a dated implementation snapshot, Discord's public `@discord/arborium-rt` WAS
 ```
 
 ### CSS example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1053,6 +1170,8 @@ For a dated implementation snapshot, Discord's public `@discord/arborium-rt` WAS
 
 ### JavaScript example
 
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
+
 **Source**
 
 ~~~~text
@@ -1070,6 +1189,8 @@ console.log(`Status: ${status}`);
 ```
 
 ### TypeScript example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1089,6 +1210,8 @@ const status: "ready" | "pending" = "ready";
 
 ## 11.3 Configuration and documentation identifier candidates
 
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
+
 | Language/format | Candidate identifier(s) — not guaranteed |
 |---|---|
 | Plain text | `text`, `txt`, `plaintext` |
@@ -1107,6 +1230,8 @@ const status: "ready" | "pending" = "ready";
 | LaTeX/TeX | `latex`, `tex` |
 
 ### Markdown example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1132,6 +1257,8 @@ The task is **complete**.
 
 ### YAML example
 
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
+
 **Source**
 
 ~~~~text
@@ -1152,6 +1279,8 @@ example_feature:
 
 ### TOML example
 
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
+
 **Source**
 
 ~~~~text
@@ -1171,6 +1300,8 @@ status = "ready"
 ```
 
 ### INI example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1194,6 +1325,8 @@ status=ready
 
 ## 11.4 Shell and command-line identifier candidates
 
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
+
 | Language | Candidate identifier(s) — not guaranteed |
 |---|---|
 | POSIX shell | `sh`, `shell` |
@@ -1205,6 +1338,8 @@ status=ready
 | Nushell | `nu`, `nushell` |
 
 ### Bash example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1223,6 +1358,8 @@ systemctl restart example-service
 ```
 
 ### PowerShell example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1243,6 +1380,8 @@ Write-Host "Status: $Status"
 ---
 
 ## 11.5 Programming-language identifier candidates
+
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
 
 | Language | Candidate identifier(s) — not guaranteed |
 |---|---|
@@ -1291,6 +1430,8 @@ Write-Host "Status: $Status"
 
 ### Python example
 
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
+
 **Source**
 
 ~~~~text
@@ -1308,6 +1449,8 @@ def update_status(item_id: int, status: str = "ready") -> None:
 ```
 
 ### Rust example
+
+**Availability:** Discord client-dependent syntax highlighting; the fenced code block itself is portable Markdown
 
 **Source**
 
@@ -1333,6 +1476,8 @@ fn main() {
 
 ## 11.6 Build, automation, and infrastructure identifier candidates
 
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
+
 | Language/format | Candidate identifier(s) — not guaranteed |
 |---|---|
 | Dockerfile | `dockerfile`, `docker` |
@@ -1355,6 +1500,8 @@ fn main() {
 ---
 
 ## 11.7 Other specialised identifier candidates
+
+**Availability:** Discord client-dependent syntax highlighting; language identifiers are not Markdown semantics
 
 These may work on some current or legacy Discord clients but should be tested:
 
@@ -1398,6 +1545,8 @@ These may work on some current or legacy Discord clients but should be tested:
 
 ## 12.1 Diff block
 
+**Availability:** Discord client-dependent rendering; not portable Markdown colour semantics
+
 A `diff` block highlights added and removed lines.
 
 **Source**
@@ -1423,6 +1572,8 @@ A `diff` block highlights added and removed lines.
 ---
 
 ## 12.2 ANSI coloured text — advanced Discord behaviour
+
+**Availability:** Discord client-dependent rendering; not portable Markdown colour semantics
 
 > **Client-observed and unsupported:** Discord's public Markdown and Developer documentation does not document ANSI code blocks, and `ansi` is not a canonical grammar in the public Arborium 0.1.8 bundle. Some desktop/web clients can interpret a limited set of ANSI escape sequences inside an `ansi` code block. Test before use; mobile and accessibility behaviour can differ.
 
@@ -1487,6 +1638,8 @@ ESC[1;32mBold green success textESC[0m
 
 ## 13.1 Raw URL
 
+**Availability:** Portable URL text + Discord link handling
+
 **Source**
 
 ```text
@@ -1500,6 +1653,8 @@ A clickable URL, potentially with a generated preview/embed.
 ---
 
 ## 13.2 Masked link
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -1517,6 +1672,8 @@ A clickable URL, potentially with a generated preview/embed.
 
 ## 13.3 Formatting in link labels
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -1530,6 +1687,8 @@ A clickable URL, potentially with a generated preview/embed.
 ---
 
 ## 13.4 Suppress a single automatic link preview
+
+**Availability:** Discord-specific link-preview behaviour
 
 Wrap the URL in angle brackets.
 
@@ -1547,6 +1706,8 @@ A clickable URL without the normal rich preview/embed.
 
 ## 13.5 Spoilered link
 
+**Availability:** Discord-only spoiler syntax applied to a URL
+
 **Source**
 
 ```text
@@ -1555,13 +1716,15 @@ A clickable URL without the normal rich preview/embed.
 
 **Expected in Discord**
 
-The URL is covered by a spoiler until clicked.
+The URL is covered by a spoiler until the viewer activates it. The exact interaction depends on the client and input method.
 
 > Discord server-invite embeds may not be hidden the same way as ordinary links.
 
 ---
 
 ## 13.6 Links inside inline code are not clickable
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -1577,6 +1740,8 @@ The URL is covered by a spoiler until clicked.
 
 ## 13.7 Markdown image syntax is not supported as an inline image
 
+**Availability:** Markdown image syntax; not rendered as an inline image in Discord
+
 **Source**
 
 ```text
@@ -1591,7 +1756,9 @@ Do not rely on this rendering an inline Markdown image. Paste the raw image URL 
 
 ## 13.8 Suppress embeds from an app, bot, or webhook
 
-Angle brackets suppress the preview for one URL in message text. Apps can instead set the API message flag `SUPPRESS_EMBEDS` to suppress embeds on the message.
+**Availability:** Discord API-only — message embed-suppression flag; not literal Markdown
+
+For the user-facing text-syntax option, see section 13.4. Apps, bots, and webhooks can instead set the API message flag `SUPPRESS_EMBEDS` to suppress embeds on the message.
 
 This is an API control, not text Markdown. Whether a sender can set or later change the flag depends on the endpoint and permissions.
 
@@ -1600,6 +1767,8 @@ This is an API control, not text Markdown. Whether a sender can set or later cha
 # 14. Spoilers
 
 ## 14.1 Text spoiler
+
+**Availability:** Discord-only spoiler syntax
 
 **Source**
 
@@ -1614,6 +1783,8 @@ The hidden value is ||example text||.
 ---
 
 ## 14.2 Whole-message text spoiler
+
+**Availability:** Discord-only spoiler syntax
 
 **Source**
 
@@ -1637,6 +1808,8 @@ The client applies spoiler formatting to the message. Treat `/spoiler` as a user
 
 ## 14.3 Styled spoiler
 
+**Availability:** Discord-only spoiler syntax
+
 **Source**
 
 ```text
@@ -1650,6 +1823,8 @@ The `##` remains at the beginning of the line so Discord can recognise the heade
 ---
 
 ## 14.4 Spoilers do not work inside code
+
+**Availability:** Discord-only spoiler syntax
 
 **Source**
 
@@ -1665,9 +1840,13 @@ The `##` remains at the beginning of the line so Discord can recognise the heade
 
 ## 14.5 Attachment spoilers
 
+**Availability:** Mixed Discord client + API — user upload controls and attachment/component spoiler fields
+
 For uploaded images, videos, and files, use Discord’s **Mark as Spoiler** control before sending. This is a Discord UI feature, not ordinary text Markdown.
 
 For bots and apps, the current Attachment object reports spoiler state through the `IS_SPOILER` flag:
+
+**Attachment-object response excerpt**
 
 ```json
 {
@@ -1678,6 +1857,8 @@ For bots and apps, the current Attachment object reports spoiler state through t
 `8` is `1 << 3`. Treat this as returned attachment state; the current Create Message documentation does not promise that clients can set an arbitrary attachment `flags` value in an upload request.
 
 For Components V2, a File component has a documented boolean field:
+
+**File-component field excerpt**
 
 ```json
 {
@@ -1707,6 +1888,8 @@ A backslash before a formatting character tells Discord to display that characte
 
 ## 15.1 Escape italics
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -1720,6 +1903,8 @@ A backslash before a formatting character tells Discord to display that characte
 ---
 
 ## 15.2 Escape underline/underscores
+
+**Availability:** Discord-only escaping for Discord underline or spoiler markers
 
 **Source**
 
@@ -1735,6 +1920,8 @@ A backslash before a formatting character tells Discord to display that characte
 
 ## 15.3 Escape strikethrough
 
+**Availability:** Markdown extension + Discord (GFM-style strikethrough; not CommonMark)
+
 **Source**
 
 ```text
@@ -1748,6 +1935,8 @@ A backslash before a formatting character tells Discord to display that characte
 ---
 
 ## 15.4 Escape spoiler bars
+
+**Availability:** Discord-only escaping for Discord underline or spoiler markers
 
 **Source**
 
@@ -1763,6 +1952,8 @@ A backslash before a formatting character tells Discord to display that characte
 
 ## 15.5 Escape a header
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -1776,6 +1967,8 @@ A backslash before a formatting character tells Discord to display that characte
 ---
 
 ## 15.6 Escape a list marker
+
+**Availability:** Portable Markdown + Discord
 
 **Source**
 
@@ -1793,6 +1986,8 @@ A backslash before a formatting character tells Discord to display that characte
 
 ## 15.7 Escape a quote marker
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -1807,6 +2002,8 @@ A backslash before a formatting character tells Discord to display that characte
 
 ## 15.8 Escape a backslash
 
+**Availability:** Portable Markdown + Discord
+
 **Source**
 
 ```text
@@ -1820,6 +2017,8 @@ A single visible backslash.
 ---
 
 ## 15.9 Prevent `@everyone` or `@here` from pinging
+
+**Availability:** Discord-specific mention escaping and API caveat
 
 **Source**
 
@@ -1837,6 +2036,8 @@ The text appears literally without triggering the special mention.
 ---
 
 ## 15.10 Safest way to show complex literal Markdown
+
+**Availability:** Portable Markdown + Discord
 
 Use inline code or a code block.
 
@@ -1864,6 +2065,8 @@ Enable **Developer Mode** in Discord when you need to copy IDs.
 
 ## 16.1 User mention
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -1878,11 +2081,13 @@ Enable **Developer Mode** in Discord when you need to copy IDs.
 
 **Expected in Discord**
 
-A clickable user mention.
+With a valid user ID that Discord can resolve in the current context, a clickable user mention. Otherwise, Discord may leave the token unresolved or display it as plain text.
 
 ---
 
 ## 16.2 Deprecated user-mention form
+
+**Availability:** Discord-only message token
 
 **Source**
 
@@ -1900,6 +2105,8 @@ Discord documents the exclamation-point form as deprecated. Prefer:
 
 ## 16.3 Channel mention
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -1914,11 +2121,13 @@ Discord documents the exclamation-point form as deprecated. Prefer:
 
 **Expected in Discord**
 
-A clickable channel reference, normally displayed as the channel name.
+With a valid channel ID accessible in the current context, a clickable channel reference normally displayed as the channel name. Otherwise, Discord may leave the token unresolved or display it as plain text.
 
 ---
 
 ## 16.4 Role mention
+
+**Availability:** Discord-only message token
 
 **Source**
 
@@ -1940,6 +2149,8 @@ A role mention. Whether it actually notifies members depends on permissions, rol
 
 ## 16.5 Special mentions
 
+**Availability:** Discord-only message token
+
 ```text
 @everyone
 @here
@@ -1958,6 +2169,8 @@ Escape them when discussing the syntax literally:
 
 ## 16.6 Bot and webhook mention controls
 
+**Availability:** Discord API-only — `allowed_mentions` message control; not literal Markdown
+
 For API-created messages, visible mention text and notification parsing are separate concerns controlled by `allowed_mentions`.
 
 Current documented defaults are:
@@ -1965,10 +2178,11 @@ Current documented defaults are:
 - Regular messages parse user, role, `@everyone`, and `@here` mentions.
 - Interaction responses and webhooks parse user mentions only.
 
-To suppress every mention notification while preserving the text, send:
+To suppress every mention notification while preserving visible mention text, include `allowed_mentions` in the message payload:
 
 ```json
 {
+  "content": "@everyone Example announcement",
   "allowed_mentions": {
     "parse": []
   }
@@ -1984,6 +2198,8 @@ You can also allow specific user or role IDs. Follow the current API schema: `pa
 Discord timestamps use Unix time in **whole seconds** and display in each viewer’s local timezone and locale.
 
 ## 17.1 Basic timestamp
+
+**Availability:** Discord-only message token
 
 **Source**
 
@@ -2003,6 +2219,8 @@ With no style, Discord uses the default date/time presentation.
 
 ## 17.2 Styled timestamp
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -2018,6 +2236,8 @@ With no style, Discord uses the default date/time presentation.
 ---
 
 ## 17.3 All documented timestamp styles
+
+**Availability:** Discord-only message token
 
 | Style | Source example | Meaning |
 |:---:|---|---|
@@ -2037,6 +2257,8 @@ With no style, Discord uses the default date/time presentation.
 
 ## 17.4 Useful timestamp message
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -2050,6 +2272,8 @@ A full locally converted date/time followed by a relative value.
 ---
 
 ## 17.5 Unix seconds, not milliseconds
+
+**Availability:** Discord-only message token
 
 Correct conceptual value:
 
@@ -2073,6 +2297,8 @@ These are Discord-specific tokens.
 
 ## 18.1 Static custom emoji
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -2095,6 +2321,8 @@ For users, Nitro and the channel's **Use External Emoji** permission affect whet
 
 ## 18.2 Animated custom emoji
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -2109,11 +2337,13 @@ For users, Nitro and the channel's **Use External Emoji** permission affect whet
 
 **Expected in Discord**
 
-The matching animated custom emoji.
+The matching animated custom emoji if the ID is valid and the emoji remains available to Discord.
 
 ---
 
 ## 18.3 Unicode emoji
+
+**Availability:** Portable Unicode text + Discord
 
 Standard Unicode emoji require no markup:
 
@@ -2127,11 +2357,13 @@ Discord's current Developer reference says Desktop and Android use Twemoji, whil
 
 # 19. Slash-command mentions
 
-Slash-command mentions create a clickable command reference that can populate the command in a user’s message box.
+A valid, accessible slash-command mention can render as a clickable command reference that populates the command in a user’s message box. Invalid or inaccessible IDs may remain unresolved.
 
 These generally require the command’s actual application-command ID.
 
 ## 19.1 Top-level command
+
+**Availability:** Discord-only message token
 
 **Source**
 
@@ -2149,6 +2381,8 @@ These generally require the command’s actual application-command ID.
 
 ## 19.2 Command with subcommand
 
+**Availability:** Discord-only message token
+
 **Source**
 
 ```text
@@ -2164,6 +2398,8 @@ These generally require the command’s actual application-command ID.
 ---
 
 ## 19.3 Command with subcommand group
+
+**Availability:** Discord-only message token
 
 **Source**
 
@@ -2187,6 +2423,8 @@ Discord documents special guild-navigation tokens that link to areas of the **cu
 
 ## 20.1 Channels & Roles / onboarding customisation
 
+**Availability:** Discord-only message token
+
 ```text
 <id:customize>
 ```
@@ -2194,6 +2432,8 @@ Discord documents special guild-navigation tokens that link to areas of the **cu
 ---
 
 ## 20.2 Browse Channels
+
+**Availability:** Discord-only message token
 
 ```text
 <id:browse>
@@ -2203,6 +2443,8 @@ Discord documents special guild-navigation tokens that link to areas of the **cu
 
 ## 20.3 Server Guide
 
+**Availability:** Discord-only message token
+
 ```text
 <id:guide>
 ```
@@ -2211,6 +2453,8 @@ Discord documents special guild-navigation tokens that link to areas of the **cu
 
 ## 20.4 Linked Roles
 
+**Availability:** Discord-only message token
+
 ```text
 <id:linked-roles>
 ```
@@ -2218,6 +2462,8 @@ Discord documents special guild-navigation tokens that link to areas of the **cu
 ---
 
 ## 20.5 Specific linked role
+
+**Availability:** Discord-only message token
 
 ```text
 <id:linked-roles:ROLE_ID>
@@ -2235,9 +2481,11 @@ Example:
 
 # 21. Silent messages
 
-> **Client feature, not Markdown:** Starting a user-composed message with `@silent` sends it with suppressed notification behaviour and shows a small bell indicator on the sent message. Discord does not list `@silent` in the Developer reference's message-formatting token table.
+> **Client-observed feature, not Markdown:** In current Discord clients, starting a user-composed message with `@silent` normally sends it with suppressed notification behaviour and may show a small bell indicator. Exact UI behaviour can vary by client. Discord does not list `@silent` in the Developer reference's message-formatting token table.
 
 ## 21.1 Basic silent message
+
+**Availability:** Discord client-dependent feature; apps should use the documented API flag
 
 **Source**
 
@@ -2251,6 +2499,8 @@ Example:
 
 ## 21.2 Silent mention
 
+**Availability:** Discord client-dependent feature; apps should use the documented API flag
+
 **Source**
 
 ```text
@@ -2259,7 +2509,7 @@ Example:
 
 **Expected in Discord**
 
-The mention remains visible, but push and desktop notifications are suppressed. A notification badge can still appear.
+In clients that support literal `@silent`, the mention remains visible while push and desktop notifications are normally suppressed. A notification badge can still appear.
 
 > Bots and apps should use Discord's `SUPPRESS_NOTIFICATIONS` message flag rather than depending on literal `@silent` text. The current API documentation says the flag suppresses push and desktop notifications while leaving a notification badge.
 
@@ -2290,6 +2540,8 @@ Discord is **not** a full CommonMark or GitHub Flavoured Markdown renderer. Disc
 
 ## 22.1 Table syntax remains plain text
 
+**Availability:** Markdown feature not reliable in Discord
+
 **Source**
 
 ```text
@@ -2312,6 +2564,8 @@ Server      Pending
 
 ## 22.2 Task lists are not interactive
 
+**Availability:** Markdown feature not reliable in Discord
+
 **Source**
 
 ```text
@@ -2324,6 +2578,8 @@ Discord may show this as ordinary list text, not clickable checkboxes.
 ---
 
 ## 22.3 Fourth-level headings are unsupported
+
+**Availability:** Markdown feature not reliable in Discord
 
 **Source**
 
@@ -2342,6 +2598,8 @@ Use bold instead:
 # 23. Common formatting mistakes
 
 ## 23.1 Missing required space
+
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
 
 Wrong:
 
@@ -2367,6 +2625,8 @@ Correct:
 
 ## 23.2 Not beginning at the start of a line
 
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
+
 Headers, subtext, lists, and block quotes are line-oriented.
 
 Wrong:
@@ -2386,6 +2646,8 @@ Correct:
 ---
 
 ## 23.3 Unbalanced formatting markers
+
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
 
 Wrong:
 
@@ -2407,6 +2669,8 @@ __Underline__
 
 ## 23.4 Using an apostrophe instead of a backtick
 
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
+
 Wrong character:
 
 ```text
@@ -2422,6 +2686,8 @@ Correct backtick:
 ---
 
 ## 23.5 Language tag placed on the wrong line
+
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
 
 Wrong:
 
@@ -2444,6 +2710,8 @@ Correct:
 
 ## 23.6 Forgetting the closing code fence
 
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
+
 Wrong:
 
 ~~~~text
@@ -2463,6 +2731,8 @@ Correct:
 
 ## 23.7 Expecting Markdown inside code blocks
 
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
+
 This stays literal:
 
 ~~~~text
@@ -2475,6 +2745,8 @@ This stays literal:
 ---
 
 ## 23.8 Expecting Discord-only syntax to preview in GitHub
+
+**Availability:** Discord formatting guidance; availability depends on the syntax discussed
 
 These may appear literal outside Discord:
 
@@ -2490,7 +2762,9 @@ These may appear literal outside Discord:
 
 # 24. Full demonstration message
 
-## 24.1 Literal source to paste into Discord
+## 24.1 Template source — replace placeholders before pasting
+
+**Availability:** Mixed portable Markdown and Discord-only tokens
 
 ~~~~text
 ## 📌 Project Update
@@ -2516,8 +2790,10 @@ Review the [project guide](https://example.com/guide) for more information.
 
 ## 24.2 Expected Discord structure
 
+**Availability:** Mixed portable Markdown and Discord-only tokens
+
 - A medium `##` header.
-- A clickable user mention and channel mention.
+- A user mention and channel mention that become clickable when their IDs are valid and accessible in the current context.
 - Bold status text.
 - A block-quoted summary.
 - A small `###` section header.
@@ -2562,6 +2838,8 @@ When maintaining this document:
 ---
 
 # Compact copy/paste reference
+
+**Availability:** Mixed — consult the per-section labels above for each feature
 
 ```text
 *italic*
