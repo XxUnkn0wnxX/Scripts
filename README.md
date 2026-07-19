@@ -10,6 +10,11 @@ Repo layout:
 - Audio shell helpers live under [`shell/audio/`](shell/audio/)
 - Downloadable tools live under [`tools/`](tools/)
 
+## Markdown Cheat Sheets
+
+- [Discord Markdown & Message Formatting Cheat Sheet](docs/discord-markdown-cheat-sheet.md) - Discord text formatting, mentions, timestamps, emoji markup, message tokens, and client-specific caveats.
+- [Markdown & GitHub Flavored Markdown Cheat Sheet](docs/md-and-gh-cheat-sheet.md) - Portable Markdown, GFM extensions, and GitHub-specific formatting with source and rendered examples.
+
 ## [Python Utilities](python/)
 
 - [`yt-transcribe.py`](python/yt-transcribe.py) - Download YouTube captions and export them as text or DOCX. [Docs](docs/yt-transcribe.md)
