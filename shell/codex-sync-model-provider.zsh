@@ -3181,7 +3181,7 @@ SQL
 
 if [[ -d "$sessions_dir" ]]; then
   echo
-  echo "New session_meta model_provider counts:"
+  echo "New session files by model provider:"
   for session_file in "$sessions_dir"/**/*.jsonl(N); do
     IFS= read -r first_line < "$session_file" || first_line=""
     jq -r '
