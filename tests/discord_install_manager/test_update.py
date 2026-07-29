@@ -309,11 +309,11 @@ def test_update_with_os_filter_resolves_version_without_pin(
         env,
         "stable",
         "0.0.402",
-        "12.0",
+        "10.13",
         zipfile.ZIP_DEFLATED,
     )
 
-    args = ["--channel", "stable", "--update", "--OS", "12"]
+    args = ["--channel", "stable", "--update", "--OS", "10"]
     if openasar_mode == "default":
         args.append("--openasar")
     elif openasar_mode == "local":
@@ -333,7 +333,7 @@ def test_update_with_os_filter_resolves_version_without_pin(
     )
 
     assert result.returncode == 0, result.stderr
-    assert "Resolved Discord: 0.0.402 - [12.0]" in result.stdout
+    assert "Resolved Discord: 0.0.402 - [10.13]" in result.stdout
     command_log = _read_command_log(env)
     assert _command_log_contains(command_log, "aria2c", _expected_installer_url("stable", "0.0.402"))
     assert not _command_log_contains(command_log, "aria2c", _DOWNLOAD_URLS["stable"])
@@ -479,7 +479,7 @@ def test_update_with_os_filter_failure_precedes_all_mutation(
 
     assert result.returncode == 1
     combined_output = result.stdout + result.stderr
-    assert "No direct-CDN builds for Discord Canary matched exact LSMinimumSystemVersion 11.0" in combined_output
+    assert "No direct-CDN builds for Discord Canary matched LSMinimumSystemVersion major family 11 (11 or 11.x)" in combined_output
     assert "No changes were made" in combined_output
     assert all(path.read_text(encoding="utf-8") in APP_NAMES for path in preserved_paths)
 

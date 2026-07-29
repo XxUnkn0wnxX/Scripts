@@ -83,7 +83,8 @@ Options:
                         Use "all" for Stable, PTB, and Canary.
   --update              Clean updater files, then download and replace the selected Discord app.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
-  --OS                  Require an exact minimum macOS match such as 11 (normalized to 11.0) or 12.0.
+  --OS                  Filter by minimum macOS requirement.
+                        A single major like 10 matches 10 and any 10.x; 10.13 and 10.15.7 are exact.
                         Valid only with --update-select or unpinned --update.
   --lock                Lock the selected channel to a specific version. Requires --update with an explicit version
                         and either --openasar or --openasar-source.
@@ -94,7 +95,7 @@ Options:
                         Optionally pass a minimum version such as 900 or a range such as 500-400.
                         Bare --update-select finds and prints the highest CDN artifact in a bounded window.
                         Bare --update-select with --OS discovers the highest artifact, then scans downward
-                        and prints the first exact minimum macOS match.
+                        and prints the first matching minimum macOS build.
   --openasar            Download and inject OpenAsar into the selected Discord app.
   --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
   --BD                  Preserve a valid BetterDiscord wrapper and replace its nested betterdiscord.app.asar.
@@ -125,7 +126,7 @@ Notes:
   --update-select ranges are limited to 100 version steps (101 inclusive builds), for example 500-400.
   update-select uses bounded parallel probing and reads minimal ZIP metadata only for versions it reports.
   DMG HEAD is the availability and Last-Modified source for update-select output.
-  --OS filters update-select output by minimum macOS and requires exact matches.
+  --OS filters update-select output by minimum macOS using the same major-family/exact rules.
   Bare --OS searches 100 builds downward by default; DISCORD_UPDATE_OS_SCAN_LIMIT accepts 1 to 1000.
   --update --OS resolves every selected channel before any Discord or OpenAsar files are changed.
   --OS requires --update-select or unpinned --update; it cannot be used with --dl, --lock, or a pinned version.
@@ -311,7 +312,6 @@ fi
 if [[ -n "$update_select_macos_filter" ]]; then
   case "$update_select_macos_filter" in
     <->)
-      update_select_macos_filter="${update_select_macos_filter}.0"
       ;;
     <->.<->|<->.<->.<->)
       ;;
@@ -1057,6 +1057,43 @@ normalize_discord_version() {
   print -- "0.0.$suffix"
 }
 
+macos_version_filter_description() {
+  local filter="$1"
+
+  case "$filter" in
+    <->)
+      print -- "LSMinimumSystemVersion major family ${filter} (${filter} or ${filter}.x)"
+      ;;
+    *)
+      print -- "exact LSMinimumSystemVersion ${filter}"
+      ;;
+  esac
+}
+
+minimum_macos_version_matches_filter() {
+  local minimum="$1"
+  local filter="$2"
+  local major
+
+  case "$minimum" in
+    <->|<->.<->|<->.<->.<->)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+
+  case "$filter" in
+    <->)
+      major="${minimum%%.*}"
+      [[ "$major" == "$filter" ]]
+      ;;
+    *)
+      [[ "$minimum" == "$filter" ]]
+      ;;
+  esac
+}
+
 discord_version_suffix() {
   local version="$1"
 
@@ -1737,7 +1774,7 @@ minimum_macos_for_update_select_version() (
   minimum_version="${minimum_version%\+}"
 
   case "$minimum_version" in
-    <->.<->|<->.<->.<->)
+    <->|<->.<->|<->.<->.<->)
       ;;
     *)
       minimum_macos_for_update_select_fail
@@ -1866,6 +1903,7 @@ resolve_update_version_for_macos_filter() {
   local selected_version
   local candidate_version
   local candidate_minimum
+  local selected_minimum
   local old_sig_int
   local old_sig_term
   local old_sig_hup
@@ -1898,7 +1936,7 @@ resolve_update_version_for_macos_filter() {
   }
 
   app_name="$(app_name_for_channel "$channel")"
-  print "Resolving the newest $app_name direct-CDN build with exact LSMinimumSystemVersion $update_select_macos_filter..."
+  print "Resolving the newest $app_name direct-CDN build with $(macos_version_filter_description "$update_select_macos_filter")..."
 
   resolver_dir=""
   old_sig_int="$(trap -p INT)"
@@ -1932,8 +1970,9 @@ resolve_update_version_for_macos_filter() {
   selected_version=""
   while IFS=$'\t' read -r candidate_version candidate_minimum _; do
     [[ -z "$candidate_version" ]] && continue
-    if [[ "$candidate_minimum" == "$update_select_macos_filter" ]]; then
+    if minimum_macos_version_matches_filter "$candidate_minimum" "$update_select_macos_filter"; then
       selected_version="$candidate_version"
+      selected_minimum="$candidate_minimum"
       break
     fi
   done < "$machine_output"
@@ -1941,13 +1980,13 @@ resolve_update_version_for_macos_filter() {
   resolve_update_version_for_macos_filter_restore_traps
 
   if [[ -z "$selected_version" ]]; then
-    print -u2 "No direct-CDN build for $app_name matched exact LSMinimumSystemVersion $update_select_macos_filter."
+    print -u2 "No direct-CDN build for $app_name matched $(macos_version_filter_description "$update_select_macos_filter")."
     print -u2 "No changes were made."
     return 1
   fi
 
   channel_download_versions[$channel]="$selected_version"
-  print "Resolved $app_name: $selected_version - [$update_select_macos_filter]"
+  print "Resolved $app_name: $selected_version - [$selected_minimum]"
   return 0
 }
 
@@ -2202,7 +2241,7 @@ print_update_select_versions() {
   fi
 
   if [[ -n "$minimum_system_filter" ]]; then
-    print "  OS filter: exact LSMinimumSystemVersion $minimum_system_filter"
+    print "  OS filter: $(macos_version_filter_description "$minimum_system_filter")"
     print "  OS scan range: 0.0.$first_suffix down to 0.0.$last_suffix"
   fi
   print
@@ -2288,7 +2327,8 @@ print_update_select_versions() {
             >> "$machine_output_file"
         fi
 
-        if [[ -z "$minimum_system_filter" || "$selected_minimum" == "$minimum_system_filter" ]]; then
+        if [[ -z "$minimum_system_filter" ]] ||
+           minimum_macos_version_matches_filter "$selected_minimum" "$minimum_system_filter"; then
           found_any=true
           /bin/cat "$output_file"
           output_rows_printed=$(( output_rows_printed + 1 ))
@@ -2329,7 +2369,7 @@ print_update_select_versions() {
 
   if [[ "$found_any" != true ]]; then
     if [[ -n "$minimum_system_filter" ]]; then
-      print -u2 "No direct-CDN builds for $app_name matched exact LSMinimumSystemVersion $minimum_system_filter"
+      print -u2 "No direct-CDN builds for $app_name matched $(macos_version_filter_description "$minimum_system_filter")."
       print -u2 "within 0.0.$first_suffix down to 0.0.$last_suffix."
     else
       print -u2 "No CDN DMG versions were found for $app_name."
