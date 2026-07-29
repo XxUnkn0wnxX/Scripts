@@ -144,7 +144,7 @@ Discord's CDN does not expose a browsable directory index for these builds. Bare
 
 For each reported version, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. Bare discovery candidates use only the DMG `HEAD` probe until the highest artifact is selected. No full ZIP download is used.
 
-For selectors, the scan buffers matching builds and prints them newest-to-oldest as a completed list. Bare mode prints only its highest discovered artifact. It then exits without changing the installed apps or Discord data:
+For selectors, each build is printed as soon as its full metadata worker finishes, so rows appear in worker-completion order (not guaranteed newest-to-oldest). Bare mode prints only its highest discovered artifact. It then exits without changing the installed apps or Discord data:
 
 ```text
 Last-Modified  Version - [Minimum macOS]
@@ -157,21 +157,21 @@ Rows are always printed as `Last-Modified  Version - [minimum]`. The minimum val
 Defaults and limits appear in the scan header:
 
 ```text
-scan workers: 4
-manifest: 0.0.402
-upward discovery: 10 versions above the manifest
-highest CDN artifact: 0.0.403
-scan floor: 0.0.400
-scan range: 0.0.500 down to 0.0.400
-scan limit: newest 4 builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set
+  scan workers: 8
+  manifest: 0.0.402
+  upward discovery: 10 versions above the manifest
+  highest CDN artifact: 0.0.403
+  scan floor: 0.0.400
+  scan range: 0.0.500 down to 0.0.400
+  scan limit: newest 4 builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set
 ```
 
-`scan workers` defaults to 4. A positive `DISCORD_UPDATE_SELECT_JOBS` value selects the worker count up to a maximum of 8; zero or an invalid value falls back to 4.
+`scan workers` defaults to 8. A positive `DISCORD_UPDATE_SELECT_JOBS` value selects the worker count up to a maximum of 8; zero or an invalid value falls back to 8.
 
-To use eight workers for update-select scans in the current shell:
+To lower update-select scans to four workers in the current shell:
 
 ```bash
-export DISCORD_UPDATE_SELECT_JOBS=8
+export DISCORD_UPDATE_SELECT_JOBS=4
 zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
 ```
 
@@ -293,7 +293,7 @@ OpenAsar injection happens before any selected client is relaunched. The install
 
 ## OpenAsar Version Lock
 
-Use `--lock` to update one Discord channel to an explicit build, inject OpenAsar, and set that channel's `openasar.VersionLock` before the client can relaunch:
+Use `--lock` to update one Discord channel to an explicit build, inject OpenAsar, and set that channel's `openasar.VersionLock` before the client can relaunch. `--lock` requires the custom OpenAsar build from [XxUnkn0wnxX/OpenAsar](https://github.com/XxUnkn0wnxX/OpenAsar). Plain `--openasar` already downloads this fork by default; a custom `--openasar-source` must point to a compatible build:
 
 ```bash
 zsh shell/discord_install_manager.zsh \
@@ -410,7 +410,7 @@ discord_install_manager.zsh --help
       <td><nobr><code>--lock</code></nobr></td>
       <td>Modifier</td>
       <td><nobr>none</nobr></td>
-      <td>After a successful pinned Discord update and verified OpenAsar injection, sets the selected channel's <code>openasar.VersionLock</code> to the numeric version suffix. Requires exactly one channel, <code>--update &lt;version&gt;</code>, and <code>--openasar</code> or <code>--openasar-source</code>. Cannot be combined with <code>--BD</code> or <code>--update-select</code>.</td>
+      <td>After a successful pinned Discord update and verified OpenAsar injection, sets the selected channel's <code>openasar.VersionLock</code> to the numeric version suffix. Requires exactly one channel, <code>--update &lt;version&gt;</code>, and the custom OpenAsar build from <a href="https://github.com/XxUnkn0wnxX/OpenAsar">XxUnkn0wnxX/OpenAsar</a>. Plain <code>--openasar</code> downloads that fork by default; a custom <code>--openasar-source</code> must provide a compatible build. Cannot be combined with <code>--BD</code> or <code>--update-select</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--BD</code></nobr></td>
