@@ -62,6 +62,8 @@ DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS=8
 DISCORD_UPDATE_SELECT_MAX_JOBS=8
 DISCORD_UPDATE_SELECT_DEFAULT_UPWARD_LIMIT=10
 DISCORD_UPDATE_SELECT_MAX_UPWARD_LIMIT=100
+DISCORD_UPDATE_OS_DEFAULT_SCAN_LIMIT=100
+DISCORD_UPDATE_OS_MAX_SCAN_LIMIT=1000
 ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT=65557
 ZIP_UPDATE_SELECT_CENTRAL_DIR_BYTES_LIMIT=4194304
 ZIP_UPDATE_SELECT_COMPRESSED_PLIST_BYTES_LIMIT=1048576
@@ -72,7 +74,8 @@ print_usage() {
 Usage:
   $script_name --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--lock] [--BD]
   $script_name --channel stable|ptb|canary --dl [version]
-  $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end]
+  $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end] [--OS macos-version]
+  $script_name --channel stable|ptb|canary|all [...] --update --OS macos-version [--openasar] [--openasar-source url-or-path]
   $script_name --help
 
 Options:
@@ -80,6 +83,8 @@ Options:
                         Use "all" for Stable, PTB, and Canary.
   --update              Clean updater files, then download and replace the selected Discord app.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
+  --OS                  Require an exact minimum macOS match such as 11 (normalized to 11.0) or 12.0.
+                        Valid only with --update-select or unpinned --update.
   --lock                Lock the selected channel to a specific version. Requires --update with an explicit version
                         and either --openasar or --openasar-source.
   --dl                  Download the selected Discord DMG only, then exit.
@@ -88,6 +93,8 @@ Options:
                         Uses bounded range probes (no full ZIP downloads) and supports 101-build ranges.
                         Optionally pass a minimum version such as 900 or a range such as 500-400.
                         Bare --update-select finds and prints the highest CDN artifact in a bounded window.
+                        Bare --update-select with --OS discovers the highest artifact, then scans downward
+                        and prints the first exact minimum macOS match.
   --openasar            Download and inject OpenAsar into the selected Discord app.
   --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
   --BD                  Preserve a valid BetterDiscord wrapper and replace its nested betterdiscord.app.asar.
@@ -99,6 +106,8 @@ Examples:
   $script_name --channel ptb --update
   $script_name --channel canary --dl 0.0.1177
   $script_name --channel canary --update-select 500-400
+  $script_name --channel canary --update-select --OS 11
+  $script_name --channel all --update --OS 11
   $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
   $script_name --channel all --update --openasar
   $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --update 401 --lock
@@ -116,6 +125,11 @@ Notes:
   --update-select ranges are limited to 100 version steps (101 inclusive builds), for example 500-400.
   update-select uses bounded parallel probing and reads minimal ZIP metadata only for versions it reports.
   DMG HEAD is the availability and Last-Modified source for update-select output.
+  --OS filters update-select output by minimum macOS and requires exact matches.
+  Bare --OS searches 100 builds downward by default; DISCORD_UPDATE_OS_SCAN_LIMIT accepts 1 to 1000.
+  --update --OS resolves every selected channel before any Discord or OpenAsar files are changed.
+  --OS requires --update-select or unpinned --update; it cannot be used with --dl, --lock, or a pinned version.
+  --update --OS can be combined with --openasar or --openasar-source.
   Range rows stream in deterministic newest-to-oldest order through a bounded reorder window.
   --update-select defaults to 8 workers and reads DISCORD_UPDATE_SELECT_JOBS (maximum 8).
   Bare --update-select probes 10 versions above the manifest by default.
@@ -144,6 +158,7 @@ update_requested=false
 dl_requested=false
 update_select_requested=false
 update_select_min_version=""
+update_select_macos_filter=""
 update_version=""
 lock_version=""
 lock_requested=false
@@ -207,6 +222,20 @@ while (( $# > 0 )); do
     --update-select=*)
       update_select_requested=true
       update_select_min_version="${1#--update-select=}"
+      shift
+      ;;
+    --OS)
+      if (( $# < 2 )) || [[ "$2" == --* ]]; then
+        fail_usage "Missing value for --OS."
+      fi
+      update_select_macos_filter="$2"
+      shift 2
+      ;;
+    --OS=*)
+      if [[ -z "${1#--OS=}" ]]; then
+        fail_usage "Missing value for --OS."
+      fi
+      update_select_macos_filter="${1#--OS=}"
       shift
       ;;
     --openasar)
@@ -277,6 +306,35 @@ fi
 
 if [[ "$openasar_betterdiscord_requested" == true && "$update_requested" == true ]]; then
   fail_usage "--BD cannot be combined with --update because updating replaces the BetterDiscord wrapper."
+fi
+
+if [[ -n "$update_select_macos_filter" ]]; then
+  case "$update_select_macos_filter" in
+    <->)
+      update_select_macos_filter="${update_select_macos_filter}.0"
+      ;;
+    <->.<->|<->.<->.<->)
+      ;;
+    *)
+      fail_usage "Invalid macOS version: $update_select_macos_filter"
+      ;;
+  esac
+fi
+
+if [[ "$dl_requested" == true && -n "$update_select_macos_filter" ]]; then
+  fail_usage "--OS cannot be combined with --dl."
+fi
+
+if [[ -n "$update_select_macos_filter" && ( "$update_select_requested" != true && "$update_requested" != true ) ]]; then
+  fail_usage "--OS requires --update-select or --update."
+fi
+
+if [[ "$lock_requested" == true && -n "$update_select_macos_filter" ]]; then
+  fail_usage "--OS cannot be combined with --lock."
+fi
+
+if [[ "$update_requested" == true && -n "$update_version" && -n "$update_select_macos_filter" ]]; then
+  fail_usage "--OS cannot be combined with a pinned --update version."
 fi
 
 if [[ "$explicit_channel" != true ]]; then
@@ -970,7 +1028,7 @@ download_url_for_channel() {
   local channel="$1"
   local version
 
-  if [[ -n "$update_version" ]]; then
+  if [[ -n "$update_version" || -n "$update_select_macos_filter" ]]; then
     version="$(download_version_for_channel "$channel")" || return 1
     versioned_download_url_for_channel "$channel" "$version"
   else
@@ -1059,6 +1117,55 @@ update_select_upward_limit() {
   fi
 
   print -- "$requested_limit"
+}
+
+update_select_macos_scan_limit() {
+  local requested_limit
+
+  requested_limit="${DISCORD_UPDATE_OS_SCAN_LIMIT:-$DISCORD_UPDATE_OS_DEFAULT_SCAN_LIMIT}"
+  if [[ "$requested_limit" == <-> ]]; then
+    if (( requested_limit < 1 )); then
+      requested_limit="$DISCORD_UPDATE_OS_DEFAULT_SCAN_LIMIT"
+    elif (( requested_limit > DISCORD_UPDATE_OS_MAX_SCAN_LIMIT )); then
+      requested_limit="$DISCORD_UPDATE_OS_MAX_SCAN_LIMIT"
+    fi
+  else
+    requested_limit="$DISCORD_UPDATE_OS_DEFAULT_SCAN_LIMIT"
+  fi
+
+  print -- "$requested_limit"
+}
+
+terminate_update_select_worker_tree() {
+  local root_pid="$1"
+  local current_pid
+  local child_pid
+  local child_output
+  local index
+  local -a pending_pids
+  local -a descendant_pids
+
+  [[ "$root_pid" == <-> ]] || return 0
+
+  pending_pids=( "$root_pid" )
+  descendant_pids=()
+  while (( ${#pending_pids} > 0 )); do
+    current_pid="${pending_pids[1]}"
+    pending_pids[1]=()
+    child_output="$(/usr/bin/pgrep -P "$current_pid" 2>/dev/null || true)"
+    [[ -n "$child_output" ]] || continue
+
+    for child_pid in ${(f)child_output}; do
+      [[ "$child_pid" == <-> ]] || continue
+      descendant_pids+=( "$child_pid" )
+      pending_pids+=( "$child_pid" )
+    done
+  done
+
+  /bin/kill -TERM "$root_pid" 2>/dev/null || true
+  for (( index = ${#descendant_pids}; index >= 1; index-- )); do
+    /bin/kill -TERM "${descendant_pids[$index]}" 2>/dev/null || true
+  done
 }
 
 http_code_from_headers() {
@@ -1637,6 +1744,7 @@ run_update_select_worker() {
   local last_modified="unknown"
   local version
   local minimum="unknown"
+  local metadata_file="${5:-}"
   local head_headers
 
   version="0.0.$version_suffix"
@@ -1658,6 +1766,11 @@ run_update_select_worker() {
 
       /bin/mkdir -p "$(/usr/bin/dirname "$result_file")"
       /usr/bin/printf '%-29s  %s - [%s]\n' "$last_modified" "$version" "$minimum" > "$result_file"
+
+      if [[ -n "$metadata_file" ]]; then
+        /bin/mkdir -p "$(/usr/bin/dirname "$metadata_file")"
+        /usr/bin/printf '%s\t%s\t%s\n' "$version" "$minimum" "$last_modified" > "$metadata_file"
+      fi
     fi
   fi
 
@@ -1703,9 +1816,61 @@ download_version_for_channel() {
   print -- "$version"
 }
 
+resolve_update_version_for_macos_filter() {
+  local channel="$1"
+  local app_name
+  local machine_output
+  local tmp_output
+  local selected_version
+  local candidate_version
+  local candidate_minimum
+
+  app_name="$(app_name_for_channel "$channel")"
+  print "Resolving the newest $app_name direct-CDN build with exact LSMinimumSystemVersion $update_select_macos_filter..."
+
+  tmp_output="$(
+    /usr/bin/mktemp "${TMPDIR:-/tmp}/discord-update-select-resolved.XXXXXX"
+  )" || return 1
+  machine_output="$(
+    /usr/bin/mktemp "${TMPDIR:-/tmp}/discord-update-select-machined.XXXXXX"
+  )" || {
+    /bin/rm -f -- "$tmp_output"
+    return 1
+  }
+
+  if ! print_update_select_versions "$channel" "" "$update_select_macos_filter" "$machine_output" > "$tmp_output" 2>&1; then
+    /bin/cat "$tmp_output" >&2
+    /bin/rm -f -- "$tmp_output" "$machine_output"
+    print -u2 "No changes were made because $app_name OS-version resolution failed."
+    return 1
+  fi
+
+  selected_version=""
+  while IFS=$'\t' read -r candidate_version candidate_minimum _; do
+    [[ -z "$candidate_version" ]] && continue
+    if [[ "$candidate_minimum" == "$update_select_macos_filter" ]]; then
+      selected_version="$candidate_version"
+      break
+    fi
+  done < "$machine_output"
+  /bin/rm -f -- "$tmp_output" "$machine_output"
+
+  if [[ -z "$selected_version" ]]; then
+    print -u2 "No direct-CDN build for $app_name matched exact LSMinimumSystemVersion $update_select_macos_filter."
+    print -u2 "No changes were made."
+    return 1
+  fi
+
+  channel_download_versions[$channel]="$selected_version"
+  print "Resolved $app_name: $selected_version - [$update_select_macos_filter]"
+  return 0
+}
+
 print_update_select_versions() {
   local channel="$1"
   local selector="${2:-}"
+  local minimum_system_filter="${3:-}"
+  local machine_output_file="${4:-}"
   local app_name
   local latest_version
   local latest_suffix
@@ -1719,11 +1884,15 @@ print_update_select_versions() {
   local range_requested=false
   local upward_discovery=false
   local upward_limit=0
+  local os_scan_limit=0
   local discovery_ceiling
   local discovered_suffix
   local discovery_file
   local scan_jobs
   local scan_limit="${DISCORD_UPDATE_SELECT_SCAN_LIMIT:-0}"
+  local output_rows_target=0
+  local output_rows_printed=0
+  local output_limit_reached=false
   local suffix
   local found_any=false
   local result_dir
@@ -1737,11 +1906,19 @@ print_update_select_versions() {
   local completion_file
   local completion_pid
   local output_file
+  local selected_minimum
+  local selected_version
+  local selected_last_modified
+  local metadata_file
   local -a next_active_pids
   local next_launch_suffix
   local next_output_suffix
   local worker_pid
   typeset -A worker_done_files=()
+
+  if [[ -z "$selector" && -n "$minimum_system_filter" ]]; then
+    output_rows_target=1
+  fi
 
   app_name="$(app_name_for_channel "$channel")"
 
@@ -1787,6 +1964,10 @@ print_update_select_versions() {
     last_suffix="$latest_suffix"
     upward_discovery=true
     upward_limit="$(update_select_upward_limit)"
+    if (( output_rows_target > 0 )); then
+      os_scan_limit="$(update_select_macos_scan_limit)"
+      scan_limit="$os_scan_limit"
+    fi
   fi
 
   if [[ "$scan_limit" == <-> && "$scan_limit" -gt 0 ]]; then
@@ -1829,6 +2010,9 @@ print_update_select_versions() {
       print "  scan limit: newest $scan_limit builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set"
     fi
   fi
+  if (( output_rows_target > 0 )) && [[ "$scan_limit" == <-> ]] && (( scan_limit > 0 )); then
+    print "  OS scan limit: newest $scan_limit candidate builds"
+  fi
 
   scan_jobs="$(update_select_worker_count)"
   print "  scan workers: $scan_jobs"
@@ -1855,7 +2039,7 @@ print_update_select_versions() {
     local child_pid
 
     for child_pid in "${pids[@]}"; do
-      kill -TERM "$child_pid" 2>/dev/null || true
+      terminate_update_select_worker_tree "$child_pid"
     done
     for child_pid in "${pids[@]}"; do
       wait "$child_pid" 2>/dev/null || true
@@ -1902,12 +2086,26 @@ print_update_select_versions() {
     done
 
     first_suffix="$discovered_suffix"
-    last_suffix="$discovered_suffix"
+    if (( output_rows_target > 0 )); then
+      last_suffix=$(( discovered_suffix - os_scan_limit + 1 ))
+      if (( last_suffix < 1 )); then
+        last_suffix=1
+      fi
+    else
+      last_suffix="$discovered_suffix"
+    fi
     print "  highest CDN artifact: 0.0.$discovered_suffix"
   fi
 
+  if [[ -n "$minimum_system_filter" ]]; then
+    print "  OS filter: exact LSMinimumSystemVersion $minimum_system_filter"
+    print "  OS scan range: 0.0.$first_suffix down to 0.0.$last_suffix"
+  fi
   print
   print "Last-Modified  Version - [Minimum macOS]"
+  if [[ -n "$machine_output_file" ]]; then
+    : > "$machine_output_file"
+  fi
 
   pids=()
   next_launch_suffix="$first_suffix"
@@ -1920,7 +2118,8 @@ print_update_select_versions() {
       ordinal=$(( first_suffix - next_launch_suffix ))
       version_file="${result_dir}/${ordinal}.txt"
       completion_file="${result_dir}/${ordinal}.done"
-      run_update_select_worker "$channel" "$next_launch_suffix" "$version_file" "$completion_file" &
+      metadata_file="${result_dir}/${ordinal}.meta"
+      run_update_select_worker "$channel" "$next_launch_suffix" "$version_file" "$completion_file" "$metadata_file" &
       pid="$!"
       worker_done_files[$pid]="$completion_file"
       pids+=( "$pid" )
@@ -1928,7 +2127,7 @@ print_update_select_versions() {
     done
 
     completion_pid=""
-    while [[ "$completion_pid" != <-> ]]; do
+    while [[ "$completion_pid" == "" && ${#pids[@]} -gt 0 ]]; do
       for worker_pid in "$pids[@]"; do
         [[ "$worker_pid" == <-> ]] || continue
         completion_file="${worker_done_files[$worker_pid]-}"
@@ -1942,10 +2141,14 @@ print_update_select_versions() {
         fi
       done
 
-      if [[ "$completion_pid" != <-> ]]; then
+      if [[ "$completion_pid" == "" ]]; then
         /bin/sleep 0.01
       fi
     done
+
+    if [[ "$completion_pid" == "" ]]; then
+      break
+    fi
 
     wait "$completion_pid" || true
     completion_file="${worker_done_files[$completion_pid]-}"
@@ -1958,13 +2161,38 @@ print_update_select_versions() {
       ordinal=$(( first_suffix - next_output_suffix ))
       completion_file="${result_dir}/${ordinal}.done"
       output_file="${result_dir}/${ordinal}.txt"
+      metadata_file="${result_dir}/${ordinal}.meta"
       if [[ ! -f "$completion_file" ]]; then
         break
       fi
 
       if [[ -f "$output_file" ]]; then
-        found_any=true
-        /bin/cat "$output_file"
+        selected_version=""
+        selected_minimum="unknown"
+        selected_last_modified=""
+        if [[ -f "$metadata_file" ]]; then
+          IFS=$'\t' read -r selected_version selected_minimum selected_last_modified < "$metadata_file" || true
+        fi
+        selected_last_modified="${selected_last_modified:-unknown}"
+        selected_minimum="${selected_minimum:-unknown}"
+
+        if [[ -n "$machine_output_file" ]]; then
+          /usr/bin/printf '%s\t%s\t%s\n' \
+            "$selected_version" \
+            "$selected_minimum" \
+            "$selected_last_modified" \
+            >> "$machine_output_file"
+        fi
+
+        if [[ -z "$minimum_system_filter" || "$selected_minimum" == "$minimum_system_filter" ]]; then
+          found_any=true
+          /bin/cat "$output_file"
+          output_rows_printed=$(( output_rows_printed + 1 ))
+          if (( output_rows_target > 0 && output_rows_printed >= output_rows_target )); then
+            output_limit_reached=true
+            next_launch_suffix="$(( last_suffix - 1 ))"
+          fi
+        fi
       fi
 
       next_output_suffix=$(( next_output_suffix - 1 ))
@@ -1979,13 +2207,29 @@ print_update_select_versions() {
     if [[ -n "${worker_done_files[$completion_pid]+x}" ]]; then
       unset "worker_done_files[$completion_pid]"
     fi
+
+    if [[ "$output_limit_reached" == true ]]; then
+      for worker_pid in "${pids[@]}"; do
+        terminate_update_select_worker_tree "$worker_pid"
+      done
+      for worker_pid in "${pids[@]}"; do
+        wait "$worker_pid" 2>/dev/null || true
+      done
+      pids=()
+      break
+    fi
   done
 
   print_update_select_versions_cleanup
   print_update_select_versions_restore_traps
 
   if [[ "$found_any" != true ]]; then
-    print -u2 "No CDN DMG versions were found for $app_name."
+    if [[ -n "$minimum_system_filter" ]]; then
+      print -u2 "No direct-CDN builds for $app_name matched exact LSMinimumSystemVersion $minimum_system_filter"
+      print -u2 "within 0.0.$first_suffix down to 0.0.$last_suffix."
+    else
+      print -u2 "No CDN DMG versions were found for $app_name."
+    fi
     return 1
   fi
 
@@ -3101,7 +3345,7 @@ if [[ "$lock_requested" == true && "$lock_version" != "0" && "$lock_version" == 
 fi
 
 if [[ "$update_select_requested" == true ]]; then
-  print_update_select_versions "$single_selected_channel" "$update_select_min_version"
+  print_update_select_versions "$single_selected_channel" "$update_select_min_version" "$update_select_macos_filter"
   exit $?
 fi
 
@@ -3112,6 +3356,12 @@ fi
 
 validate_selected_data_dirs
 validate_selected_betterdiscord_wrappers
+
+if [[ "$update_requested" == true && -z "$update_version" && -n "$update_select_macos_filter" ]]; then
+  for channel in "${selected_channels[@]}"; do
+    resolve_update_version_for_macos_filter "$channel" || exit 1
+  done
+fi
 
 if [[ "$lock_requested" == true ]]; then
   for channel in "${selected_channels[@]}"; do

@@ -43,8 +43,9 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - with multiple selected channels, processes them sequentially after the initial stop-all pass and relaunches each previously running client as soon as that client's work finishes
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
 - with `--update <version>`, downloads that channel's direct CDN DMG for a version such as `0.0.1177` instead of the latest API redirect
+- with unpinned `--update --OS <version>`, resolves and downloads the newest direct CDN build whose validated `LSMinimumSystemVersion` exactly matches that macOS version
 - with `--dl [version]`, downloads only the selected channel's DMG, leaves it beside the script, and exits
-- with `--update-select`, prints available direct CDN DMG builds for one selected channel and exits without changing files
+- with `--update-select`, prints available direct CDN DMG builds for one selected channel; `--OS` can limit the output to an exact minimum macOS version
 - with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, stages and verifies it, then atomically replaces the selected standalone or BetterDiscord-nested target
 - with `--lock`, writes the pinned `--update <version>` suffix to the selected channel's `openasar.VersionLock` only after the app replacement and OpenAsar injection both succeed
 - before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` fails or the main process does not appear
@@ -110,9 +111,22 @@ Wrapper messages use app-relative paths such as `Discord.app/Contents/Resources/
 
 ## DMG Downloads
 
-When `--update` is used without a version, the DMG is downloaded from Discord's latest macOS download API for the selected channel.
+When `--update` is used without a version or `--OS`, the DMG is downloaded from Discord's latest macOS download API for the selected channel.
 
 When `--update <version>` is used, the script downloads that channel's direct CDN DMG instead. Versions can be passed as either `0.0.1177` or `1177`. Pinned versions only support a single selected channel, not `--channel all` or multiple named channels.
+
+Use `--update --OS <macos-version>` to select the newest recent direct CDN build whose validated `LSMinimumSystemVersion` exactly matches the requested value:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel canary --update --OS 11
+zsh shell/discord_install_manager.zsh --channel all --update --OS 12
+```
+
+`--OS 11` normalizes to `11.0`; canonical values such as `11.0` are accepted too. This is an exact package-metadata filter, not a claim that every build which requires an older macOS version will run on the requested system. The manifest supplies only a discovery seed. The selected version must exist as a direct CDN DMG and its matching ZIP metadata must validate before that exact versioned DMG URL is used.
+
+Every selected channel is resolved before the manager prepares OpenAsar, changes BetterDiscord recovery state, stops Discord, removes updater files, downloads a DMG, or replaces an app. Multiple named channels and `--channel all` are supported. If any channel has no match, the run fails before changing any channel.
+
+`--OS` can be combined with unpinned `--update`, `--openasar`, and `--openasar-source`. It cannot be used alone, with `--dl`, with pinned `--update <version>`, or with `--lock`. It is also accepted by `--update-select` as described below.
 
 Use `--dl` to download the selected channel's DMG without mounting, replacing, cleaning, injecting OpenAsar, or relaunching:
 
@@ -140,7 +154,16 @@ Pass a range to start and stop at explicit versions:
 zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
 ```
 
+Add `--OS` to filter selector output by exact minimum macOS metadata:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel canary --update-select --OS 11
+zsh shell/discord_install_manager.zsh --channel canary --update-select 1215-1201 --OS 11
+```
+
 Discord's CDN does not expose a browsable directory index for these builds. Bare `--update-select` reads the channel's current update manifest, probes a bounded window above it, and prints only the highest DMG artifact found. This catches newer CDN builds that Discord has uploaded without advertising through the manifest. If a minimum version is provided, the scan starts from the manifest version and stops at the requested floor; a floor newer than the manifest is clamped to the manifest version. If an explicit range is provided, both endpoints are honored exactly—even when the range is newer than the manifest—and the scan stops at the second version inclusively whether or not that lower bound exists on the CDN.
+
+Bare `--update-select --OS <version>` starts at that highest direct CDN artifact, scans downward in version order, and prints only the first exact `LSMinimumSystemVersion` match. With a floor or explicit range, it prints every exact match in that requested interval, still newest to oldest. Builds with missing or invalid metadata appear as `[unknown]` during an ordinary selector scan but never qualify for an OS-filtered result.
 
 For each reported version, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. Bare discovery candidates use only the DMG `HEAD` probe until the highest artifact is selected. No full ZIP download is used.
 
@@ -161,6 +184,8 @@ Defaults and limits appear in the scan header:
   manifest: 0.0.402
   upward discovery: 10 versions above the manifest
   highest CDN artifact: 0.0.403
+  OS filter: exact LSMinimumSystemVersion 11.0
+  OS scan range: 0.0.403 down to 0.0.304
   scan floor: 0.0.400
   scan range: 0.0.500 down to 0.0.400
   scan limit: newest 4 builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set
@@ -182,6 +207,15 @@ export DISCORD_UPDATE_SELECT_UPWARD_LIMIT=20
 zsh shell/discord_install_manager.zsh --channel stable --update-select
 ```
 
+Bare OS selection checks 100 candidate suffixes downward from the highest discovered artifact by default. `DISCORD_UPDATE_OS_SCAN_LIMIT` can change that window from 1 to 1000 candidates; zero or an invalid value falls back to 100, and larger values are capped at 1000:
+
+```bash
+export DISCORD_UPDATE_OS_SCAN_LIMIT=250
+zsh shell/discord_install_manager.zsh --channel canary --update-select --OS 11
+```
+
+Because Discord exposes no CDN directory index or dependable historical manifest lookup, this is a bounded latest-first search. The command reports its exact scan interval and fails rather than choosing an unverified or mismatched build when no match is found. Increase the OS scan limit when a compatible build may be further behind the current artifact.
+
 Range scanning is limited to 100 version steps (101 inclusive builds), accepts floor-only or explicit descending ranges, and prints a usage error when the span is exceeded.
 
 It does not clean, update, inject OpenAsar, or relaunch Discord.
@@ -194,7 +228,7 @@ shell/Discord-ptb-installer (0.0.xxx).dmg
 shell/Discord-canary-installer (0.0.xxx).dmg
 ```
 
-The version in the filename is resolved before downloading. For `--update <version>` and `--dl <version>`, the requested version is normalized into the filename. For latest downloads, the script reads Discord's channel update manifest first and uses that latest version in the filename.
+The version in the filename is resolved before downloading. For `--update <version>` and `--dl <version>`, the requested version is normalized into the filename. For ordinary latest downloads, the script reads Discord's channel update manifest first and uses that latest version in the filename. For `--update --OS`, the filename and direct CDN URL both use the exact OS-matched version resolved during preflight.
 
 Any existing DMG at the resolved versioned path is replaced before downloading. After the app bundle is copied into `/Applications` and the installer volume is unmounted, the downloaded DMG is deleted.
 
@@ -352,9 +386,9 @@ If `open` fails or its accepted launch request does not produce the matching mai
 ## Usage
 
 ```text
-discord_install_manager.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--lock] [--BD]
+discord_install_manager.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--OS macos-version] [--openasar] [--openasar-source url-or-path] [--lock] [--BD]
 discord_install_manager.zsh --channel stable|ptb|canary --dl [version]
-discord_install_manager.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end]
+discord_install_manager.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end] [--OS macos-version]
 discord_install_manager.zsh --help
 ```
 
@@ -392,7 +426,13 @@ discord_install_manager.zsh --help
       <td><nobr><code>--update-select [minimum-version|start-end]</code></nobr></td>
       <td>Flag</td>
       <td><nobr>optional version</nobr></td>
-      <td>Prints available direct CDN DMG builds (with <code>Last-Modified</code> and <code>LSMinimumSystemVersion</code>) for one selected channel, then exits without making changes. Without a selector, it probes a bounded window above the manifest and prints only the highest discovered artifact. With a minimum version such as <code>900</code> or <code>0.0.900</code>, it scans from the manifest version down to that floor; a newer floor is clamped to the manifest. With a range such as <code>500-400</code>, it scans exactly from <code>0.0.500</code> down to <code>0.0.400</code>, including ranges newer than the manifest. A range is capped at 100 steps (101 inclusive builds). It does not support <code>all</code>.</td>
+      <td>Prints available direct CDN DMG builds (with <code>Last-Modified</code> and <code>LSMinimumSystemVersion</code>) for one selected channel, then exits without making changes. Without a selector, it probes a bounded window above the manifest and prints only the highest discovered artifact. With a minimum version such as <code>900</code> or <code>0.0.900</code>, it scans from the manifest version down to that floor; a newer floor is clamped to the manifest. With a range such as <code>500-400</code>, it scans exactly from <code>0.0.500</code> down to <code>0.0.400</code>, including ranges newer than the manifest. A range is capped at 100 steps (101 inclusive builds). <code>--OS</code> optionally limits rows to exact minimum-macOS matches. It does not support <code>all</code>.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--OS &lt;macos-version&gt;</code></nobr></td>
+      <td>Modifier</td>
+      <td><nobr><code>11</code>, <code>11.0</code>, or another numeric macOS version</nobr></td>
+      <td>Normalizes a major value such as <code>11</code> to <code>11.0</code> and requires an exact validated <code>LSMinimumSystemVersion</code> match. With bare <code>--update-select</code>, prints the newest match in the bounded OS scan; with a selector or range, prints only matching rows in descending order. With unpinned <code>--update</code>, resolves every selected channel first and downloads each exact versioned direct CDN DMG. Requires <code>--update</code> or <code>--update-select</code>; cannot be combined with <code>--dl</code>, pinned <code>--update &lt;version&gt;</code>, or <code>--lock</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--openasar</code></nobr></td>
@@ -433,11 +473,13 @@ Notes:
 - `--channel` alone purges the selected client or clients' App Support updater files and unwraps a valid BetterDiscord app wrapper when present.
 - `--update` and `--openasar` must be paired with `--channel` so the app bundle target is explicit.
 - `--dl` must be paired with one selected channel and cannot be combined with `--update`, `--update-select`, or `--openasar`.
-- Plain `--update` supports multiple selected channels and downloads the latest API DMG for each one sequentially.
+- Plain `--update` supports multiple selected channels and downloads the latest API DMG for each one sequentially. Adding `--OS` instead resolves and downloads each channel's newest exact match from a bounded direct CDN search.
 - `--update <version>`, `--dl`, and `--update-select` only support one selected channel at a time.
 - `--update-select` only prints versions and exits.
 - `--update` and `--openasar` can be combined.
 - `--openasar-source` implies `--openasar`.
+- `--OS` requires unpinned `--update` or `--update-select`. With unpinned `--update`, it remains compatible with `--openasar` and `--openasar-source`, including multiple named channels and `all`.
+- `--OS` uses exact normalized minimum-version metadata: `--OS 11` matches `[11.0]`, but it does not include `[12.0]` or `[unknown]`.
 - `--lock` requires one named channel, a pinned `--update <version>`, and OpenAsar input; it is rejected with `--BD`, `--update-select`, multiple channels, and `all`.
 - `--lock` writes the numeric suffix as a string, so both `--update 401` and `--update 0.0.401` produce `"VersionLock": "401"`.
 - `--BD` preserves valid BetterDiscord wrappers, requires OpenAsar input, and is rejected with `--update` before any work starts.
@@ -497,6 +539,34 @@ List direct CDN DMG builds for Discord Canary from `0.0.500` down to `0.0.400`:
 
 ```bash
 zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
+```
+
+Show only the newest recent Canary build whose minimum macOS metadata is exactly `11.0`:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel canary --update-select --OS 11
+```
+
+Filter a Canary version range to exact macOS `11.0` builds:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel canary --update-select 1215-1201 --OS 11
+```
+
+Resolve and install the newest recent macOS `11.0` build for every channel:
+
+```bash
+zsh shell/discord_install_manager.zsh --channel all --update --OS 11
+```
+
+Resolve an exact macOS `11.0` build, replace Discord Stable, and inject a local OpenAsar payload:
+
+```bash
+zsh shell/discord_install_manager.zsh \
+  --channel stable \
+  --update \
+  --OS 11 \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
 ```
 
 Download, replace, and clean Discord Canary with a pinned direct CDN build:
@@ -599,6 +669,8 @@ export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 - Partial or ambiguous BetterDiscord wrapper layouts are refused before App Support or app-bundle changes begin.
 - `--BD` revalidates its wrapper/absence before every target lookup. It refuses wrappers that disappear or become invalid and refuses a wrapper that appears after an absent preflight.
 - `--BD` with `--update` is rejected during argument validation before downloads or filesystem changes.
+- `--OS` is rejected with usage unless unpinned `--update` or `--update-select` is present. It is also rejected with `--dl`, pinned `--update <version>`, and `--lock`.
+- Before an OS-selected update changes any channel, the manager resolves an exact validated direct CDN match for every selected channel. A missing match or metadata failure stops the whole run before OpenAsar preparation, BetterDiscord recovery changes, client shutdown, cleanup, DMG download, mounting, or app replacement.
 - `--lock` is rejected unless one named channel, a pinned update version, and OpenAsar input are all present; `--BD`, `--update-select`, multiple channels, and `all` are rejected before downloads or filesystem changes.
 - Before OpenAsar or Discord is downloaded for a locked update, the manager validates any existing `settings.json` root and `openasar` object and refuses malformed, non-object, non-regular, symlinked, or unsafe-number targets.
 - At least one updater-managed target must exist before any App Support files are deleted.

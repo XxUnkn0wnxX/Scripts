@@ -241,6 +241,286 @@ def test_update_select_without_selector_prints_highest_discovered_artifact_only(
     _assert_no_download_artifacts(env)
 
 
+def test_update_select_without_selector_and_os_filter_finds_hidden_canary_match(
+    env: dict[str, Path],
+):
+    versions = list(range(1215, 1204, -1))
+    map_path = _write_fake_curl_header_map(
+        env,
+        [(f"*0.0.{suffix}*", "200") for suffix in versions],
+    )
+    zip_entries: list[tuple[str, Path]] = []
+    for suffix in versions:
+        version = f"0.0.{suffix}"
+        zip_path = _write_update_select_zip(
+            env,
+            "canary",
+            version,
+            "11.0" if suffix == 1205 else "12.0",
+            zipfile.ZIP_STORED,
+        )
+        zip_entries.append((_versioned_zip_url("canary", version), zip_path))
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "canary",
+        "--update-select",
+        "--OS",
+        "11",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, zip_entries)
+            ),
+            "TEST_FAKE_CURL_UPDATE_MANIFEST": '{"name":"0.0.1213"}',
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "2",
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "11",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _extract_update_select_rows(result.stdout) == ["0.0.1205"]
+    assert "upward discovery: 2 versions above the manifest" in result.stdout
+    assert "highest CDN artifact: 0.0.1215" in result.stdout
+    assert "OS scan limit: newest 11 candidate builds" in result.stdout
+    assert "OS filter: exact LSMinimumSystemVersion 11.0" in result.stdout
+    assert "OS scan range: 0.0.1215 down to 0.0.1205" in result.stdout
+    assert "0.0.1214 - [" not in result.stdout
+
+
+def test_update_select_selector_and_os_filter_keeps_matching_rows(
+    env: dict[str, Path],
+):
+    minimum_by_version = {
+        "0.0.5": "11.0",
+        "0.0.4": "12.0",
+        "0.0.3": "11.0",
+        "0.0.2": "12.0",
+    }
+    map_path = _write_fake_curl_header_map(
+        env,
+        [(f"*{version}*", "200") for version in minimum_by_version],
+    )
+    zip_entries: list[tuple[str, Path]] = []
+    for version, minimum in minimum_by_version.items():
+        zip_path = _write_update_select_zip(
+            env,
+            "stable",
+            version,
+            minimum,
+            zipfile.ZIP_STORED,
+        )
+        zip_entries.append((_versioned_zip_url("stable", version), zip_path))
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "5-2",
+        "--OS",
+        "11",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, zip_entries)
+            ),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _extract_update_select_rows(result.stdout) == ["0.0.5", "0.0.3"]
+
+
+def test_update_select_without_selector_and_os_filter_without_matches_fails(
+    env: dict[str, Path],
+):
+    map_path = _write_fake_curl_header_map(
+        env,
+        [
+            ("*0.0.5*", "200"),
+        ],
+    )
+    zip_path = _write_update_select_zip(
+        env,
+        "stable",
+        "0.0.5",
+        "11.0",
+        zipfile.ZIP_STORED,
+    )
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "--OS",
+        "12.0",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, [("*0.0.5*", zip_path)])
+            ),
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "1",
+        },
+    )
+
+    assert result.returncode != 0
+    combined_output = result.stdout + result.stderr
+    assert "No direct-CDN builds for Discord matched exact LSMinimumSystemVersion 12.0" in combined_output
+    assert "within 0.0.5 down to 0.0.5." in combined_output
+
+
+def test_update_select_os_filter_excludes_unknown_metadata(
+    env: dict[str, Path],
+):
+    map_path = _write_fake_curl_header_map(
+        env,
+        [
+            ("*0.0.5*", "200"),
+            ("*0.0.4*", "200"),
+        ],
+    )
+    matching_zip = _write_update_select_zip(
+        env,
+        "stable",
+        "0.0.4",
+        "11.0",
+        zipfile.ZIP_STORED,
+    )
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "5-4",
+        "--OS=11",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(
+                    env,
+                    [(_versioned_zip_url("stable", "0.0.4"), matching_zip)],
+                )
+            ),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _extract_update_select_rows(result.stdout) == ["0.0.4"]
+    assert "0.0.5 - [unknown]" not in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("configured_limit", "expected_limit"),
+    [
+        (None, 100),
+        ("0", 100),
+        ("invalid", 100),
+        ("1001", 1000),
+    ],
+)
+def test_update_select_os_scan_limit_bounds(
+    env: dict[str, Path],
+    configured_limit: str | None,
+    expected_limit: int,
+):
+    map_path = _write_fake_curl_header_map(env, [("*0.0.5*", "200")])
+    zip_path = _write_update_select_zip(
+        env,
+        "stable",
+        "0.0.5",
+        "11.0+",
+        zipfile.ZIP_STORED,
+    )
+    extra_env = {
+        "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+        "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+            _write_fake_curl_zip_source_map(
+                env,
+                [(_versioned_zip_url("stable", "0.0.5"), zip_path)],
+            )
+        ),
+        "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+    }
+    if configured_limit is not None:
+        extra_env["DISCORD_UPDATE_OS_SCAN_LIMIT"] = configured_limit
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "--OS",
+        "11",
+        extra_env=extra_env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"OS scan limit: newest {expected_limit} candidate builds" in result.stdout
+    assert _extract_update_select_rows(result.stdout) == ["0.0.5"]
+
+
+def test_update_select_bare_os_match_cancels_slower_lower_worker(
+    env: dict[str, Path],
+):
+    map_path = _write_fake_curl_header_map(
+        env,
+        [
+            ("*0.0.5*", "200"),
+            ("*0.0.4*", "200"),
+        ],
+    )
+    zip_path = _write_update_select_zip(
+        env,
+        "stable",
+        "0.0.5",
+        "11.0",
+        zipfile.ZIP_STORED,
+    )
+    sleep_map_path = _write_fake_curl_sleep_map(
+        env,
+        [("*0.0.4/Discord.dmg", "4")],
+    )
+    process = _start_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "--OS",
+        "11",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(
+                    env,
+                    [(_versioned_zip_url("stable", "0.0.5"), zip_path)],
+                )
+            ),
+            "TEST_FAKE_CURL_SLEEP_MAP_FILE": str(sleep_map_path),
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "2",
+            "DISCORD_UPDATE_SELECT_JOBS": "2",
+        },
+    )
+
+    try:
+        stdout, stderr = process.communicate(timeout=2.5)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+
+    assert process.returncode == 0, stderr
+    assert _extract_update_select_rows(stdout) == ["0.0.5"]
+
+
 def test_update_select_scan_limit_applies_with_selector(env: dict[str, Path]):
     map_path = _write_fake_curl_header_map(
         env,

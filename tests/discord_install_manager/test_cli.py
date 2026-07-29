@@ -83,6 +83,111 @@ def test_missing_value_for_openasar_source_guard(env: dict[str, Path]):
     _assert_no_download_artifacts(env)
 
 
+def test_missing_os_version_guard(env: dict[str, Path]):
+    result = _run_manager(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "--OS",
+    )
+
+    assert result.returncode == 2
+    assert "Missing value for --OS." in (result.stdout + result.stderr)
+    _assert_no_download_artifacts(env)
+
+
+def test_missing_os_equals_version_guard(env: dict[str, Path]):
+    result = _run_manager(env, "--channel", "stable", "--update-select", "--OS=")
+
+    assert result.returncode == 2
+    assert "Missing value for --OS." in (result.stdout + result.stderr)
+    _assert_no_download_artifacts(env)
+
+
+def test_invalid_os_version_guard(env: dict[str, Path]):
+    result = _run_manager(env, "--channel", "stable", "--update-select", "--OS", "abc")
+
+    assert result.returncode == 2
+    assert "Invalid macOS version: abc" in (result.stdout + result.stderr)
+    _assert_no_download_artifacts(env)
+
+
+def test_os_version_with_plus_is_rejected(env: dict[str, Path]):
+    result = _run_manager(env, "--channel", "stable", "--update-select", "--OS", "11.0+")
+
+    assert result.returncode == 2
+    assert "Invalid macOS version: 11.0+" in (result.stdout + result.stderr)
+    _assert_no_download_artifacts(env)
+
+
+def test_os_requires_update_or_update_select(env: dict[str, Path]):
+    result = _run_manager(env, "--channel", "stable", "--OS", "12.0")
+
+    assert result.returncode == 2
+    combined_output = result.stdout + result.stderr
+    assert "--OS requires --update-select or --update." in combined_output
+    assert "Usage:" in combined_output
+    _assert_no_download_artifacts(env)
+
+
+def test_os_with_openasar_source_still_requires_update(
+    env: dict[str, Path],
+):
+    result = _run_manager(
+        env,
+        "--channel",
+        "stable",
+        "--OS",
+        "11",
+        "--openasar-source",
+        str(env["openasar_source"]),
+    )
+
+    assert result.returncode == 2
+    combined_output = result.stdout + result.stderr
+    assert "--OS requires --update-select or --update." in combined_output
+    assert "Usage:" in combined_output
+    _assert_no_download_artifacts(env)
+
+
+def test_os_cannot_combine_with_pinned_update(env: dict[str, Path]):
+    result = _run_manager(env, "--channel", "stable", "--update", "401", "--OS", "11")
+
+    assert result.returncode == 2
+    assert "--OS cannot be combined with a pinned --update version." in (
+        result.stdout + result.stderr
+    )
+    _assert_no_download_artifacts(env)
+
+
+def test_os_cannot_combine_with_lock(env: dict[str, Path]):
+    result = _run_manager(
+        env,
+        "--channel",
+        "stable",
+        "--update",
+        "401",
+        "--OS",
+        "11",
+        "--openasar-source",
+        str(env["openasar_source"]),
+        "--lock",
+    )
+
+    assert result.returncode == 2
+    assert "--OS cannot be combined with --lock." in (result.stdout + result.stderr)
+    _assert_no_download_artifacts(env)
+
+
+def test_os_cannot_combine_with_dl(env: dict[str, Path]):
+    result = _run_manager(env, "--channel", "stable", "--dl", "--OS", "11")
+
+    assert result.returncode == 2
+    assert "--OS cannot be combined with --dl." in (result.stdout + result.stderr)
+    _assert_no_download_artifacts(env)
+
+
 def test_update_requires_channel(env: dict[str, Path]):
     result = _run_manager(env, "--update", "401")
 

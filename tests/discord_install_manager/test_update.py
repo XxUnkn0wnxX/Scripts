@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import plistlib
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -9,6 +11,8 @@ from _helpers import (
     APP_NAMES,
     _assert_no_download_artifacts,
     _application_path,
+    _write_fake_curl_header_map,
+    _write_fake_curl_zip_source_map,
     _read_command_log,
     _read_settings,
     _run_manager,
@@ -28,6 +32,18 @@ _DMG_FILENAMES = {
     "canary": "DiscordCanary.dmg",
 }
 
+_ZIP_PLIST_PATHS = {
+    "stable": "Discord.app/Contents/Info.plist",
+    "ptb": "Discord PTB.app/Contents/Info.plist",
+    "canary": "Discord Canary.app/Contents/Info.plist",
+}
+
+_ZIP_FILENAMES = {
+    "stable": "Discord.zip",
+    "ptb": "DiscordPTB.zip",
+    "canary": "DiscordCanary.zip",
+}
+
 _DOWNLOAD_URLS = {
     "stable": "https://discord.com/api/download/stable?platform=osx",
     "ptb": "https://discord.com/api/download/ptb?platform=osx",
@@ -43,6 +59,35 @@ _MANIFEST_URLS = {
 
 def _expected_installer_url(channel: str, version: str = "0.0.401") -> str:
     return f"https://{_CDN_HOSTS[channel]}/apps/osx/{version}/{_DMG_FILENAMES[channel]}"
+
+
+def _expected_zip_url(channel: str, version: str) -> str:
+    return f"https://{_CDN_HOSTS[channel]}/apps/osx/{version}/{_ZIP_FILENAMES[channel]}"
+
+
+def _write_fake_update_select_zip(
+    env: dict[str, Path],
+    channel: str,
+    version: str,
+    minimum_system_version: str,
+    compression: int,
+) -> Path:
+    normalized_version = version if version.startswith("0.0.") else f"0.0.{version}"
+    zip_path = (
+        env["script"].parent
+        / f"Discord-update-filter-{channel}-{normalized_version}.zip"
+    )
+    payload = {
+        "CFBundleShortVersionString": normalized_version,
+        "CFBundleVersion": normalized_version,
+        "LSMinimumSystemVersion": minimum_system_version,
+    }
+    plist_payload = plistlib.dumps(payload, fmt=plistlib.FMT_XML)
+
+    with zipfile.ZipFile(zip_path, "w", compression=compression) as zip_file:
+        zip_file.writestr(_ZIP_PLIST_PATHS[channel], plist_payload)
+
+    return zip_path
 
 
 def _write_executable(path: Path, content: str) -> None:
@@ -245,6 +290,205 @@ def test_update_replaces_single_channel_with_latest_manifest(env: dict[str, Path
     assert _command_log_contains(command_log, "curl", _MANIFEST_URLS[channel])
     assert _command_log_contains(command_log, "aria2c", _DOWNLOAD_URLS[channel])
     assert _command_log_contains(command_log, "hdiutil", "attach")
+    _assert_no_download_artifacts(env)
+
+
+@pytest.mark.parametrize("openasar_mode", ["none", "default", "local"])
+def test_update_with_os_filter_resolves_version_without_pin(
+    env: dict[str, Path],
+    openasar_mode: str,
+):
+    header_map_path = _write_fake_curl_header_map(
+        env,
+        [
+            ("*0.0.402*", "200"),
+            ("*0.0.401*", "200"),
+        ],
+    )
+    zip_path = _write_fake_update_select_zip(
+        env,
+        "stable",
+        "0.0.402",
+        "12.0",
+        zipfile.ZIP_DEFLATED,
+    )
+
+    args = ["--channel", "stable", "--update", "--OS", "12"]
+    if openasar_mode == "default":
+        args.append("--openasar")
+    elif openasar_mode == "local":
+        args.extend(("--openasar-source", str(env["openasar_source"])))
+
+    result = _run_manager(
+        env,
+        *args,
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(header_map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, [("*0.0.402*", zip_path)])
+            ),
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "1",
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Resolved Discord: 0.0.402 - [12.0]" in result.stdout
+    command_log = _read_command_log(env)
+    assert _command_log_contains(command_log, "aria2c", _expected_installer_url("stable", "0.0.402"))
+    assert not _command_log_contains(command_log, "aria2c", _DOWNLOAD_URLS["stable"])
+    assert _command_log_contains(command_log, "hdiutil", "attach")
+    if openasar_mode == "local":
+        installed_asar = (
+            _application_path(env["applications_root"], "stable")
+            / "Contents"
+            / "Resources"
+            / "app.asar"
+        )
+        assert installed_asar.read_bytes() == env["openasar_source"].read_bytes()
+    _assert_no_download_artifacts(env)
+
+
+def test_update_with_os_filter_resolves_distinct_versions_for_all_channels(
+    env: dict[str, Path],
+):
+    matching_versions = {
+        "stable": "0.0.5",
+        "ptb": "0.0.4",
+        "canary": "0.0.3",
+    }
+    zip_entries: list[tuple[str, Path]] = []
+    header_entries: list[tuple[str, str]] = []
+
+    for channel in APP_NAMES:
+        for suffix in range(5, 2, -1):
+            version = f"0.0.{suffix}"
+            minimum = "11.0" if version == matching_versions[channel] else "12.0"
+            zip_path = _write_fake_update_select_zip(
+                env,
+                channel,
+                version,
+                minimum,
+                zipfile.ZIP_STORED,
+            )
+            header_entries.append(
+                (f"*{_CDN_HOSTS[channel]}/apps/osx/{version}/{_DMG_FILENAMES[channel]}", "200")
+            )
+            zip_entries.append((_expected_zip_url(channel, version), zip_path))
+
+    result = _run_manager(
+        env,
+        "--channel",
+        "all",
+        "--update",
+        "--OS=11",
+        extra_env={
+            "TEST_FAKE_CURL_UPDATE_MANIFEST": '{"name":"0.0.5"}',
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(
+                _write_fake_curl_header_map(env, header_entries)
+            ),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, zip_entries)
+            ),
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "3",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    command_log = _read_command_log(env)
+    for channel, version in matching_versions.items():
+        assert f"Resolved {APP_NAMES[channel]}: {version} - [11.0]" in result.stdout
+        assert _command_log_contains(
+            command_log,
+            "aria2c",
+            _expected_installer_url(channel, version),
+        )
+        assert not _command_log_contains(command_log, "aria2c", _DOWNLOAD_URLS[channel])
+        assert _application_path(env["applications_root"], channel).exists()
+
+    _assert_no_download_artifacts(env)
+
+
+def test_update_with_os_filter_failure_precedes_all_mutation(
+    env: dict[str, Path],
+):
+    zip_entries: list[tuple[str, Path]] = []
+    header_entries: list[tuple[str, str]] = []
+    matching_versions = {
+        "stable": "0.0.5",
+        "ptb": "0.0.4",
+    }
+
+    for channel in APP_NAMES:
+        for suffix in range(5, 2, -1):
+            version = f"0.0.{suffix}"
+            minimum = (
+                "11.0"
+                if matching_versions.get(channel) == version
+                else "12.0"
+            )
+            zip_path = _write_fake_update_select_zip(
+                env,
+                channel,
+                version,
+                minimum,
+                zipfile.ZIP_STORED,
+            )
+            header_entries.append(
+                (f"*{_CDN_HOSTS[channel]}/apps/osx/{version}/{_DMG_FILENAMES[channel]}", "200")
+            )
+            zip_entries.append((_expected_zip_url(channel, version), zip_path))
+
+    preserved_paths: list[Path] = []
+    for channel in APP_NAMES:
+        app_path = _application_path(env["applications_root"], channel)
+        app_path.mkdir(parents=True)
+        app_marker = app_path / "preserve-app.txt"
+        app_marker.write_text(channel, encoding="utf-8")
+        preserved_paths.append(app_marker)
+
+        data_dir = _settings_path(env["home"], channel).parent
+        data_dir.mkdir(parents=True)
+        (data_dir / "settings.json").write_text("{}", encoding="utf-8")
+        cleanup_marker = data_dir / "installer.db"
+        cleanup_marker.write_text(channel, encoding="utf-8")
+        preserved_paths.append(cleanup_marker)
+
+    result = _run_manager(
+        env,
+        "--channel",
+        "all",
+        "--update",
+        "--OS",
+        "11",
+        "--openasar-source",
+        str(env["openasar_source"]),
+        extra_env={
+            "TEST_FAKE_CURL_UPDATE_MANIFEST": '{"name":"0.0.5"}',
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(
+                _write_fake_curl_header_map(env, header_entries)
+            ),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, zip_entries)
+            ),
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "3",
+        },
+    )
+
+    assert result.returncode == 1
+    combined_output = result.stdout + result.stderr
+    assert "No direct-CDN builds for Discord Canary matched exact LSMinimumSystemVersion 11.0" in combined_output
+    assert "No changes were made" in combined_output
+    assert all(path.read_text(encoding="utf-8") in APP_NAMES for path in preserved_paths)
+
+    command_log = _read_command_log(env)
+    assert not any(
+        entry.startswith(("aria2c\t", "hdiutil\t", "ditto\t", "osascript\t", "cp\t", "mv\t", "rm\t"))
+        for entry in command_log
+    )
+    assert "Stopping all selected Discord clients before continuing..." not in result.stdout
     _assert_no_download_artifacts(env)
 
 
