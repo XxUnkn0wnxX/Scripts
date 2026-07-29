@@ -2,7 +2,7 @@
 
 [`discord_install_manager.zsh`](../shell/discord_install_manager.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
 
-It can also remove or preserve a supported BetterDiscord app wrapper, download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the appropriate ASAR payload, and then run the same App Support cleanup.
+It can also remove or preserve a supported BetterDiscord app wrapper, download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the appropriate ASAR payload, optionally lock OpenAsar to that pinned Discord version, and then run the same App Support cleanup.
 
 ## Channels
 
@@ -46,6 +46,7 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - with `--dl [version]`, downloads only the selected channel's DMG, leaves it beside the script, and exits
 - with `--update-select`, prints available direct CDN DMG versions for one selected channel and exits without changing files
 - with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, stages and verifies it, then atomically replaces the selected standalone or BetterDiscord-nested target
+- with `--lock`, writes the pinned `--update <version>` suffix to the selected channel's `openasar.VersionLock` only after the app replacement and OpenAsar injection both succeed
 - before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` fails or the main process does not appear
 
 ## What It Deletes
@@ -70,7 +71,7 @@ These paths contain Discord's updater database, downloaded packages, core host i
 
 ## What It Preserves
 
-The script does not delete Discord's login session or local settings.
+The script does not delete Discord's login session or local settings. Normal runs leave `settings.json` unchanged. A requested `--lock` changes only `openasar.VersionLock`, preserving the rest of the file.
 
 Important preserved paths include:
 
@@ -240,9 +241,59 @@ For every selected channel, `--BD` preserves and revalidates a supported wrapper
 
 `--BD` requires `--openasar` or `--openasar-source`. It cannot be combined with `--update`, because replacing the Discord application also replaces the BetterDiscord wrapper. That invalid combination is rejected before downloads, cleanup, or app changes begin.
 
-OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is skipped without stopping the channel cleanup/update flow. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
+OpenAsar downloads are retried up to three times. Local OpenAsar sources must already exist and be non-empty. If the initial payload cannot be prepared, OpenAsar injection is normally skipped without stopping the channel cleanup/update flow. With `--lock`, the manager instead stops before cleanup or app replacement because it must not install a pinned Discord build without the requested OpenAsar payload. Before each injection, the script checks that the payload still exists; if it is missing, the script retries remote downloads or revalidates local sources and skips only that injection if the payload remains unavailable.
 
 OpenAsar injection happens before any selected client is relaunched. The installed ASAR is verified immediately before relaunch and monitored for ten seconds afterward. If Discord replaces it during that first startup, the manager stops only that channel, reinjects once, relaunches it once, and fails clearly if the retry is also replaced.
+
+## OpenAsar Version Lock
+
+Use `--lock` to update one Discord channel to an explicit build, inject OpenAsar, and set that channel's `openasar.VersionLock` before the client can relaunch:
+
+```bash
+zsh shell/discord_install_manager.zsh \
+  --channel stable \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+  --update 401 \
+  --lock
+```
+
+The argument order does not matter. For example, `--update 401` can appear before or after `--lock`, `--channel`, or the OpenAsar option.
+
+`--lock` requires all of the following:
+
+- exactly one channel: `stable`, `ptb`, or `canary`
+- a pinned `--update <version>`, not plain `--update`
+- either `--openasar` or `--openasar-source <url-or-path>`
+
+It cannot be combined with `--BD` or `--update-select`. It also cannot be used with `--channel all` or multiple named channels. `--dl` remains a download-only mode and cannot be combined with the required update and OpenAsar actions.
+
+The manager accepts the same pinned version forms as `--update`. Both `--update 401` and `--update 0.0.401` write the shorthand JSON string:
+
+```json
+{
+  "openasar": {
+    "VersionLock": "401"
+  }
+}
+```
+
+For a lock, the numeric suffix must not contain leading zeroes. Use `401` or `0.0.401`, not `0401`.
+
+The selected channel controls the settings path:
+
+```text
+stable: $HOME/Library/Application Support/discord/settings.json
+ptb:    $HOME/Library/Application Support/discordptb/settings.json
+canary: $HOME/Library/Application Support/discordcanary/settings.json
+```
+
+If `VersionLock` already exists, only its value changes. If `openasar` is missing, the manager adds an `openasar` object containing only `VersionLock`; OpenAsar adds its other defaults when it starts. If the selected channel has no settings file or data directory yet, the manager creates the known channel path and the same minimal JSON object.
+
+Existing root and `openasar` values are preserved. The manager refuses malformed JSON, non-object roots, non-object `openasar` values, symlinked settings targets, and numeric values that JavaScript cannot round-trip safely. It stages and validates two-space JSON beside `settings.json`, preserves existing file metadata where possible, compares a content-and-metadata snapshot immediately before commit, atomically renames the staged file, and verifies the final value. Immediately before the write, the manager verifies that Discord is still stopped and revalidates the target; a relaunched client or detected external settings change is refused without changing `settings.json`.
+
+The endpoint and snapshot checks protect normal concurrent edits and reject symlinked settings or data-directory targets. The final atomic rename is still path-based, so it does not claim protection against a malicious same-user process replacing a parent directory in the final check-to-rename interval.
+
+The lock is committed only after the pinned Discord app replacement and verified OpenAsar injection succeed, immediately before any relaunch. If payload preparation or injection fails, the settings file is not locked. A custom `--openasar-source` must contain an OpenAsar build that supports `VersionLock`; the manager can safely write the setting but cannot add that capability to an older payload.
 
 ## Relaunch Behavior
 
@@ -255,7 +306,7 @@ If `open` fails or its accepted launch request does not produce the matching mai
 ## Usage
 
 ```text
-discord_install_manager.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--BD]
+discord_install_manager.zsh --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--lock] [--BD]
 discord_install_manager.zsh --channel stable|ptb|canary --dl [version]
 discord_install_manager.zsh --channel stable|ptb|canary --update-select [minimum-version|start-end]
 discord_install_manager.zsh --help
@@ -310,6 +361,12 @@ discord_install_manager.zsh --help
       <td>Injects OpenAsar from a specific GitHub repo URL, direct remote URL, or local <code>app.asar</code> file. Implies <code>--openasar</code> and requires <code>--channel</code>.</td>
     </tr>
     <tr>
+      <td><nobr><code>--lock</code></nobr></td>
+      <td>Modifier</td>
+      <td><nobr>none</nobr></td>
+      <td>After a successful pinned Discord update and verified OpenAsar injection, sets the selected channel's <code>openasar.VersionLock</code> to the numeric version suffix. Requires exactly one channel, <code>--update &lt;version&gt;</code>, and <code>--openasar</code> or <code>--openasar-source</code>. Cannot be combined with <code>--BD</code> or <code>--update-select</code>.</td>
+    </tr>
+    <tr>
       <td><nobr><code>--BD</code></nobr></td>
       <td>Modifier</td>
       <td><nobr>none</nobr></td>
@@ -335,6 +392,8 @@ Notes:
 - `--update-select` only prints versions and exits.
 - `--update` and `--openasar` can be combined.
 - `--openasar-source` implies `--openasar`.
+- `--lock` requires one named channel, a pinned `--update <version>`, and OpenAsar input; it is rejected with `--BD`, `--update-select`, multiple channels, and `all`.
+- `--lock` writes the numeric suffix as a string, so both `--update 401` and `--update 0.0.401` produce `"VersionLock": "401"`.
 - `--BD` preserves valid BetterDiscord wrappers, requires OpenAsar input, and is rejected with `--update` before any work starts.
 - With multiple channels, `--BD` independently chooses nested or standalone injection for each channel.
 
@@ -400,6 +459,16 @@ Download, replace, and clean Discord Canary with a pinned direct CDN build:
 zsh shell/discord_install_manager.zsh --channel canary --update 0.0.1177
 ```
 
+Download Discord Stable `0.0.401`, inject a local OpenAsar build, and lock OpenAsar to that version:
+
+```bash
+zsh shell/discord_install_manager.zsh \
+  --channel stable \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+  --update 401 \
+  --lock
+```
+
 Inject OpenAsar and clean Discord Stable:
 
 ```bash
@@ -442,6 +511,30 @@ Download, replace, inject OpenAsar, and clean all channels:
 zsh shell/discord_install_manager.zsh --channel all --update --openasar
 ```
 
+## Testing Notes
+
+Run the Python test matrix for this script with:
+
+```bash
+python -m pytest tests/discord_install_manager
+```
+
+Compile-check the test sources with:
+
+```bash
+python -m compileall tests/discord_install_manager
+```
+
+Run the complete repository test suite with:
+
+```bash
+python -m pytest
+```
+
+The suite is split by behavior so CLI parsing, cleanup, downloads, version selection, application replacement, OpenAsar, BetterDiscord wrappers, relaunch/recovery guards, and `--lock` are tested independently. Each test exercises one contract; parameterized cases are used only for equivalent variants of that same contract.
+
+Every test copies the script into a temporary fixture, replaces only that copy's fixed Applications root, and uses a temporary Home. Network, disk-image, application-copy, relaunch, wait, and normal quit commands resolve to controllable fakes, while filesystem changes stay inside the fixture. The lock settings mutation deliberately still runs through the real macOS `/usr/bin/osascript` JavaScript bridge. The suite does not modify live Discord settings, live Discord processes, or `/Applications`.
+
 ## Safety Guards
 
 - The target data directory must exist unless `--update` is used, multiple channels are selected, or a valid BetterDiscord app wrapper is present for removal or nested injection; missing channel data folders are then reported and skipped.
@@ -450,15 +543,19 @@ zsh shell/discord_install_manager.zsh --channel all --update --openasar
 - Partial or ambiguous BetterDiscord wrapper layouts are refused before App Support or app-bundle changes begin.
 - `--BD` revalidates its wrapper/absence before every target lookup. It refuses wrappers that disappear or become invalid and refuses a wrapper that appears after an absent preflight.
 - `--BD` with `--update` is rejected during argument validation before downloads or filesystem changes.
+- `--lock` is rejected unless one named channel, a pinned update version, and OpenAsar input are all present; `--BD`, `--update-select`, multiple channels, and `all` are rejected before downloads or filesystem changes.
+- Before OpenAsar or Discord is downloaded for a locked update, the manager validates any existing `settings.json` root and `openasar` object and refuses malformed, non-object, non-regular, symlinked, or unsafe-number targets.
 - At least one updater-managed target must exist before any App Support files are deleted.
 - The selected Discord client must be fully stopped before replacement or deletion begins.
 - During `--update`, the selected client is checked again before app deletion/copying and after failed replacement attempts.
+- Immediately before a requested VersionLock is committed, the selected client is checked again. If it has reappeared, the manager leaves `settings.json` unchanged and does not stop that newly launched process.
 - Pinned `--update <version>` downloads only one selected channel's matching CDN DMG filename, for example Canary uses `DiscordCanary.dmg`.
 - `--dl` does not inspect or modify Discord App Support data and does not touch the app in `/Applications`.
 - OpenAsar injection only runs after the selected app has been stopped.
 - Before deliberately removing or replacing a validated BetterDiscord wrapper, the manager checks for this fork's real, non-symlinked `betterdiscord-update-helper.zsh`. Only that fork-specific recovery setup receives `recovery-disabled`, process-group shutdown, and recovery-state cleanup. Standard BetterDiscord wrappers are restored normally during cleanup, while `--update` discards them with the old application without creating or changing fork recovery files. For the fork, stale PID files are cleaned, while symlinked, reused, or mismatched PIDs are never signalled.
 - OpenAsar is staged beside the target, byte-verified, atomically moved into place, and checked again after relaunch.
-- A failed OpenAsar download skips injection instead of aborting the selected channel's purge/update flow.
+- A failed OpenAsar download normally skips injection instead of aborting the selected channel's purge/update flow. With `--lock`, payload preparation must succeed before the pinned update starts.
+- A requested lock is staged beside `settings.json`, compared against a strong content-and-metadata snapshot, atomically committed only after verified OpenAsar injection, and verified again before relaunch. This path-based commit rejects symlinked endpoints but cannot eliminate a malicious same-user parent-directory swap during the final check-to-rename interval.
 - Remote downloads use `aria2c` when available and fall back to `curl`; `DISCORD_DOWNLOAD_CONNECTIONS` can lower the aria2c split count from the default 16.
 - In cleanup-only runs, if no updater-managed targets and no valid BetterDiscord wrapper are detected, the script prints a warning, leaves the client running, changes nothing, and exits successfully. A valid wrapper is normally removed; with `--BD`, it is preserved for nested OpenAsar injection.
 - Existing apps in `/Applications` are always replaced during `--update`.

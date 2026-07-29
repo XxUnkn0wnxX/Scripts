@@ -27,5 +27,7 @@ nord_ovpn_auth.yml
 # Satisfactory Modeler launcher files
 shell/modeler/
 
-# Local-only test work
-tests/
+# Keep other new local test work ignored; this manager suite is versioned.
+tests/*
+!tests/discord_install_manager/
+!tests/discord_install_manager/*.py

@@ -7,6 +7,7 @@ script_name="${0:t}"
 script_dir="${0:A:h}"
 DEFAULT_OPENASAR_SOURCE="https://github.com/XxUnkn0wnxX/OpenAsar"
 DEFAULT_DOWNLOAD_CONNECTIONS=16
+DEFAULT_APPLICATIONS_ROOT="/Applications"
 
 typeset -A channel_app_names=(
   stable "Discord"
@@ -47,7 +48,7 @@ typeset -A channel_dmg_filenames=(
 print_usage() {
   cat <<EOF
 Usage:
-  $script_name --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--BD]
+  $script_name --channel stable|ptb|canary|all [...] [--update [version]] [--openasar] [--openasar-source url-or-path] [--lock] [--BD]
   $script_name --channel stable|ptb|canary --dl [version]
   $script_name --channel stable|ptb|canary --update-select [minimum-version|start-end]
   $script_name --help
@@ -57,6 +58,8 @@ Options:
                         Use "all" for Stable, PTB, and Canary.
   --update              Clean updater files, then download and replace the selected Discord app.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
+  --lock                Lock the selected channel to a specific version. Requires --update with an explicit version
+                        and either --openasar or --openasar-source.
   --dl                  Download the selected Discord DMG only, then exit.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
   --update-select       Print available CDN DMG versions for one selected channel, then exit.
@@ -74,6 +77,7 @@ Examples:
   $script_name --channel canary --update-select 600-300
   $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
   $script_name --channel all --update --openasar
+  $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --update 401 --lock
 
 Notes:
   This Discord install manager supports macOS only.
@@ -86,6 +90,8 @@ Notes:
   --update with a version, --dl, and --update-select require a single selected channel.
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --openasar must be paired with --channel so the target app is explicit.
+  --lock requires --update with an explicit version and either --openasar or --openasar-source.
+  --lock supports exactly one named channel and cannot be combined with --BD or --update-select.
   --BD requires --openasar or --openasar-source and cannot be combined with --update.
   With --BD, a valid BetterDiscord wrapper is preserved; an absent wrapper uses standalone app.asar.
   OpenAsar is installed atomically, verified before relaunch, and checked again after relaunch.
@@ -108,6 +114,8 @@ dl_requested=false
 update_select_requested=false
 update_select_min_version=""
 update_version=""
+lock_version=""
+lock_requested=false
 openasar_requested=false
 openasar_betterdiscord_requested=false
 openasar_source="${OPENASAR_SOURCE:-${OPENASAR_RELEASE_URL:-$DEFAULT_OPENASAR_SOURCE}}"
@@ -174,6 +182,10 @@ while (( $# > 0 )); do
       openasar_requested=true
       shift
       ;;
+    --lock)
+      lock_requested=true
+      shift
+      ;;
     --openasar-source)
       if (( $# < 2 )) || [[ -z "$2" || "$2" == --* ]]; then
         fail_usage "Missing value for --openasar-source."
@@ -208,12 +220,32 @@ if [[ "$openasar_requested" == true && "$explicit_channel" != true ]]; then
   fail_usage "--openasar requires --channel stable|ptb|canary|all."
 fi
 
-if [[ "$openasar_betterdiscord_requested" == true && "$update_requested" == true ]]; then
-  fail_usage "--BD cannot be combined with --update because updating replaces the BetterDiscord wrapper."
-fi
-
 if [[ "$openasar_betterdiscord_requested" == true && "$openasar_requested" != true ]]; then
   fail_usage "--BD requires --openasar or --openasar-source."
+fi
+
+if [[ "$lock_requested" == true && "$update_requested" != true ]]; then
+  fail_usage "--lock requires --update."
+fi
+
+if [[ "$lock_requested" == true && -z "$update_version" ]]; then
+  fail_usage "--lock requires --update with an explicit version such as 401 or 0.0.401."
+fi
+
+if [[ "$lock_requested" == true && "$openasar_requested" != true ]]; then
+  fail_usage "--lock requires --openasar or --openasar-source."
+fi
+
+if [[ "$lock_requested" == true && "$update_select_requested" == true ]]; then
+  fail_usage "--lock cannot be combined with --update-select."
+fi
+
+if [[ "$lock_requested" == true && "$openasar_betterdiscord_requested" == true ]]; then
+  fail_usage "--lock cannot be combined with --BD."
+fi
+
+if [[ "$openasar_betterdiscord_requested" == true && "$update_requested" == true ]]; then
+  fail_usage "--BD cannot be combined with --update because updating replaces the BetterDiscord wrapper."
 fi
 
 if [[ "$explicit_channel" != true ]]; then
@@ -251,6 +283,10 @@ else
   selected_channels=("${expanded_channels[@]}")
 fi
 
+if [[ "$lock_requested" == true && "${#selected_channels[@]}" -ne 1 ]]; then
+  fail_usage "--lock requires exactly one channel: stable, ptb, or canary."
+fi
+
 if [[ "$update_select_requested" == true && "${#selected_channels[@]}" -ne 1 ]]; then
   fail_usage "--update-select only supports one channel at a time."
 fi
@@ -284,7 +320,7 @@ app_name_for_channel() {
 }
 
 app_path_for_channel() {
-  print -- "/Applications/$(app_name_for_channel "$1").app"
+  print -- "$DEFAULT_APPLICATIONS_ROOT/$(app_name_for_channel "$1").app"
 }
 
 app_relative_path_for_channel() {
@@ -298,6 +334,300 @@ executable_path_for_channel() {
 
 data_dir_for_channel() {
   print -- "${channel_data_dirs[$1]}"
+}
+
+settings_path_for_channel() {
+  print -- "$(data_dir_for_channel "$1")/settings.json"
+}
+
+settings_file_signature() {
+  local target="$1"
+  local metadata_before
+  local metadata_after
+  local digest
+
+  [[ -f "$target" && ! -L "$target" ]] || return 1
+  metadata_before="$(/usr/bin/stat -f '%d:%i:%z:%m:%c' "$target" 2>/dev/null)" || return 1
+  digest="$(/usr/bin/shasum -a 256 < "$target" 2>/dev/null)" || return 1
+  metadata_after="$(/usr/bin/stat -f '%d:%i:%z:%m:%c' "$target" 2>/dev/null)" || return 1
+  [[ "$metadata_before" == "$metadata_after" ]] || return 1
+
+  print -r -- "$metadata_after:$digest"
+}
+
+lock_settings_payload_from_file() {
+  local settings_path="$1"
+  local lock_suffix="$2"
+
+/usr/bin/osascript -l JavaScript - "$settings_path" "$lock_suffix" <<'JXA'
+ObjC.import("Foundation");
+
+function isObject(value) {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function assertSafeNumbers(value) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || (Number.isInteger(value) && !Number.isSafeInteger(value))) {
+      throw new Error("The settings file contains a number that cannot be preserved safely.");
+    }
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach(assertSafeNumbers);
+    return;
+  }
+
+  if (isObject(value)) {
+    Object.keys(value).forEach(function (key) {
+      assertSafeNumbers(value[key]);
+    });
+  }
+}
+
+function run(argv) {
+  var settingsPath = String(argv[0]);
+  var lockSuffix = String(argv[1]);
+  var fileManager = $.NSFileManager.defaultManager;
+  var fileData;
+  var rawJSON;
+  var settingsObject = {};
+
+  if (fileManager.fileExistsAtPath(settingsPath)) {
+    fileData = fileManager.contentsAtPath(settingsPath);
+    if (fileData === null) {
+      throw new Error("The settings file cannot be read.");
+    }
+
+    rawJSON = $.NSString.alloc.initWithDataEncoding(fileData, $.NSUTF8StringEncoding).js;
+    if (rawJSON === null) {
+      throw new Error("The settings file cannot be decoded.");
+    }
+
+    try {
+      settingsObject = JSON.parse(rawJSON);
+    } catch (_error) {
+      throw new Error("The settings file contains malformed JSON.");
+    }
+
+    if (!isObject(settingsObject)) {
+      throw new Error("The settings file root is not an object.");
+    }
+
+    assertSafeNumbers(settingsObject);
+
+    if (settingsObject.openasar !== undefined && !isObject(settingsObject.openasar)) {
+      throw new Error("The settings.openasar value is not an object.");
+    }
+  }
+
+  settingsObject.openasar = settingsObject.openasar || {};
+  settingsObject.openasar.VersionLock = String(lockSuffix);
+  return JSON.stringify(settingsObject, null, 2);
+}
+JXA
+}
+
+verify_lock_settings_payload() {
+  local settings_path="$1"
+  local expected_lock="$2"
+
+/usr/bin/osascript -l JavaScript - "$settings_path" "$expected_lock" <<'JXA' || return 1
+ObjC.import("Foundation");
+
+function isObject(value) {
+  return Object.prototype.toString.call(value) === "[object Object]";
+}
+
+function run(argv) {
+  var settingsPath = String(argv[0]);
+  var expectedLock = String(argv[1]);
+  var fileManager = $.NSFileManager.defaultManager;
+  var fileData = fileManager.contentsAtPath(settingsPath);
+  var rawJSON;
+  var settingsObject;
+
+  if (fileData === null) {
+    throw new Error("The settings file cannot be read.");
+  }
+
+  rawJSON = $.NSString.alloc.initWithDataEncoding(fileData, $.NSUTF8StringEncoding).js;
+  if (rawJSON === null) {
+    throw new Error("The settings file cannot be decoded.");
+  }
+
+  try {
+    settingsObject = JSON.parse(rawJSON);
+  } catch (_error) {
+    throw new Error("The settings file contains malformed JSON.");
+  }
+
+  if (!isObject(settingsObject)) {
+    throw new Error("The settings file root is not an object.");
+  }
+
+  if (settingsObject.openasar === undefined || settingsObject.openasar === null) {
+    throw new Error("The settings file is missing an openasar object.");
+  }
+
+  if (!isObject(settingsObject.openasar)) {
+    throw new Error("The settings.openasar value is not an object.");
+  }
+
+  if (settingsObject.openasar.VersionLock !== expectedLock) {
+    throw new Error("The settings.openasar.VersionLock value did not match.");
+  }
+
+  return "";
+}
+JXA
+  return 0
+}
+
+preflight_lock_settings_target() {
+  local channel="$1"
+  local app_name
+  local data_dir
+  local settings_path
+
+  app_name="$(app_name_for_channel "$channel")"
+  data_dir="$(data_dir_for_channel "$channel")"
+  settings_path="$(settings_path_for_channel "$channel")"
+
+  if [[ -L "$data_dir" ]]; then
+    print -u2 "Refusing to write --lock because $app_name data directory is a symlink:"
+    print -u2 "  $data_dir"
+    return 1
+  fi
+
+  if [[ -e "$data_dir" && ! -d "$data_dir" ]]; then
+    print -u2 "Refusing to write --lock because $app_name data directory is not a directory:"
+    print -u2 "  $data_dir"
+    return 1
+  fi
+
+  if [[ -L "$settings_path" ]]; then
+    print -u2 "Refusing to write --lock because settings.json is a symlink:"
+    print -u2 "  $settings_path"
+    return 1
+  fi
+
+  if [[ -e "$settings_path" && ! -f "$settings_path" ]]; then
+    print -u2 "Refusing to write --lock because settings.json is not a regular file:"
+    print -u2 "  $settings_path"
+    return 1
+  fi
+
+  if [[ -e "$settings_path" ]]; then
+    if ! lock_settings_payload_from_file "$settings_path" "0" >/dev/null; then
+      print -u2 "Cannot write --lock because settings.json is invalid:"
+      print -u2 "  $settings_path"
+      return 1
+    fi
+  fi
+}
+
+write_lock_settings() {
+  local channel="$1"
+  local lock_suffix="$2"
+  local app_name
+  local data_dir
+  local settings_path
+  local staging_path=""
+  local before_signature=""
+  local current_signature
+  local payload
+  local settings_existed=false
+
+  app_name="$(app_name_for_channel "$channel")"
+  data_dir="$(data_dir_for_channel "$channel")"
+  settings_path="$(settings_path_for_channel "$channel")"
+
+  preflight_lock_settings_target "$channel" || return 1
+
+  if ! /bin/mkdir -p "$data_dir"; then
+    print -u2 "Failed to create settings directory for $app_name:"
+    print -u2 "  $data_dir"
+    return 1
+  fi
+
+  preflight_lock_settings_target "$channel" || return 1
+
+  if [[ -f "$settings_path" ]]; then
+    settings_existed=true
+    before_signature="$(settings_file_signature "$settings_path")"
+    if [[ -z "$before_signature" ]]; then
+      print -u2 "Failed to capture a stable settings snapshot for $app_name:"
+      print -u2 "  $settings_path"
+      return 1
+    fi
+  fi
+
+  if ! staging_path="$(/usr/bin/mktemp "${settings_path}.discord-install-manager-XXXXXX")" ||
+     [[ -z "$staging_path" ]]; then
+    print -u2 "Failed to create temporary settings staging path for $app_name:"
+    print -u2 "  $settings_path"
+    return 1
+  fi
+
+  {
+    if [[ "$settings_existed" == true ]]; then
+      current_signature="$(settings_file_signature "$settings_path")"
+      if [[ "$before_signature" != "$current_signature" ]]; then
+        print -u2 "Refusing to write --lock because settings.json changed during update:"
+        print -u2 "  $settings_path"
+        return 1
+      fi
+      /bin/cp -p -- "$settings_path" "$staging_path" || return 1
+    else
+      if ! /bin/chmod 600 "$staging_path"; then
+        print -u2 "Failed to secure temporary settings for $app_name:"
+        print -u2 "  $staging_path"
+        return 1
+      fi
+    fi
+
+    payload="$(lock_settings_payload_from_file "$settings_path" "$lock_suffix")" || return 1
+    printf "%s" "$payload" > "$staging_path" || return 1
+
+    if ! verify_lock_settings_payload "$staging_path" "$lock_suffix"; then
+      print -u2 "Failed to verify prepared settings for $app_name:"
+      print -u2 "  $settings_path"
+      return 1
+    fi
+
+    if [[ -L "$data_dir" || ! -d "$data_dir" ]]; then
+      print -u2 "Refusing to write --lock because the $app_name data directory changed during update:"
+      print -u2 "  $data_dir"
+      return 1
+    fi
+
+    if [[ "$settings_existed" == true ]]; then
+      current_signature="$(settings_file_signature "$settings_path")"
+      if [[ "$before_signature" != "$current_signature" ]]; then
+        print -u2 "Refusing to write --lock because settings.json changed during update:"
+        print -u2 "  $settings_path"
+        return 1
+      fi
+    elif [[ -e "$settings_path" || -L "$settings_path" ]]; then
+      print -u2 "Refusing to write --lock because settings.json appeared during update:"
+      print -u2 "  $settings_path"
+      return 1
+    fi
+
+    /bin/mv -f -- "$staging_path" "$settings_path" || return 1
+    if ! verify_lock_settings_payload "$settings_path" "$lock_suffix"; then
+      print -u2 "Failed to verify committed settings for $app_name:"
+      print -u2 "  $settings_path"
+      return 1
+    fi
+
+    print "OpenAsar VersionLock set for $app_name:"
+    print "  $lock_suffix"
+  } always {
+    [[ -f "$staging_path" ]] && /bin/rm -f -- "$staging_path"
+  }
 }
 
 typeset -a betterdiscord_wrapper_issues=()
@@ -910,7 +1240,7 @@ resolve_openasar_local_source() {
   fi
 
   if [[ "$source_path" == "~/"* ]]; then
-    source_path="$HOME/${source_path#~/}"
+    source_path="$HOME/${source_path[3,-1]}"
   elif [[ "$source_path" == '$HOME/'* ]]; then
     source_path="$HOME/${source_path[7,-1]}"
   elif [[ "$source_path" == '${HOME}/'* ]]; then
@@ -1135,6 +1465,7 @@ inject_openasar() {
   local target_asar
   local target_name
   local staged_asar
+  local injection_failed=false
 
   app_name="$(app_name_for_channel "$channel")"
   app_path="$(app_path_for_channel "$channel")"
@@ -1168,35 +1499,29 @@ inject_openasar() {
   else
     print "Injecting standalone OpenAsar into $app_name..."
   fi
-  {
-    rm -f -- "$staged_asar"
 
-    if ! cp -f "$payload_path" "$staged_asar"; then
-      print -u2 "OpenAsar injection failed while staging the payload:"
-      print -u2 "  $staged_asar"
-      return 1
-    fi
+  rm -f -- "$staged_asar"
 
-    if ! cmp -s "$payload_path" "$staged_asar"; then
-      print -u2 "OpenAsar injection failed; the staged ASAR does not match the source payload:"
-      print -u2 "  $staged_asar"
-      return 1
-    fi
+  if ! cp -f "$payload_path" "$staged_asar"; then
+    print -u2 "OpenAsar injection failed while staging the payload:"
+    print -u2 "  $staged_asar"
+    injection_failed=true
+  elif ! cmp -s "$payload_path" "$staged_asar"; then
+    print -u2 "OpenAsar injection failed; the staged ASAR does not match the source payload:"
+    print -u2 "  $staged_asar"
+    injection_failed=true
+  elif ! mv -f "$staged_asar" "$target_asar"; then
+    print -u2 "OpenAsar injection failed while replacing $target_name:"
+    print -u2 "  $target_asar"
+    injection_failed=true
+  elif ! cmp -s "$payload_path" "$target_asar"; then
+    print -u2 "OpenAsar injection failed; the installed $target_name does not match the source payload:"
+    print -u2 "  $target_asar"
+    injection_failed=true
+  fi
 
-    if ! mv -f "$staged_asar" "$target_asar"; then
-      print -u2 "OpenAsar injection failed while replacing $target_name:"
-      print -u2 "  $target_asar"
-      return 1
-    fi
-
-    if ! cmp -s "$payload_path" "$target_asar"; then
-      print -u2 "OpenAsar injection failed; the installed $target_name does not match the source payload:"
-      print -u2 "  $target_asar"
-      return 1
-    fi
-  } always {
-    rm -f -- "$staged_asar"
-  }
+  rm -f -- "$staged_asar" || true
+  [[ "$injection_failed" != true ]] || return 1
 
   print "OpenAsar injected into $app_name:"
   print "  $target_asar"
@@ -1260,7 +1585,7 @@ verify_openasar_after_relaunch() {
 
   print "$app_name replaced $target_name during its first relaunch. Stopping it and reinjecting OpenAsar once..."
   if discord_is_running "$channel"; then
-    quit_discord "$channel"
+    quit_discord "$channel" || return 1
   fi
 
   inject_openasar "$channel" "$payload_path"
@@ -1321,7 +1646,7 @@ quit_discord() {
 
   if discord_is_running "$channel"; then
     print -u2 "$app_name is still running. Refusing to continue."
-    exit 1
+    return 1
   fi
 
   return 0
@@ -1369,7 +1694,7 @@ unwrap_betterdiscord_wrapper() {
   fi
 
   if discord_is_running "$channel"; then
-    quit_discord "$channel"
+    quit_discord "$channel" || return 1
   fi
 
   if discord_is_running "$channel"; then
@@ -1464,6 +1789,7 @@ download_and_replace_app() {
   local mounted=false
   local mount_point_created=false
   local replacement_succeeded=false
+  local replacement_failed=false
   local source_app=""
   local attempt
   local -a found_apps
@@ -1482,9 +1808,21 @@ download_and_replace_app() {
       hdiutil detach "$mount_point" -quiet >/dev/null 2>&1 || hdiutil detach "$mount_point" -force -quiet >/dev/null 2>&1 || true
     fi
     if [[ "$mount_point_created" == true ]]; then
-      rm -rf -- "$mount_point"
+      rm -rf -- "$mount_point" || true
     fi
-    remove_download_artifacts "$dmg_path"
+    remove_download_artifacts "$dmg_path" || true
+  }
+
+  guard_update_replacement_checked() {
+    local guard_status=0
+
+    guard_update_replacement "$1" || guard_status=$?
+    if [[ "$guard_status" != 0 ]]; then
+      cleanup_mount_and_dmg
+      return "$guard_status"
+    fi
+
+    return 0
   }
 
   download_installer_dmg "$channel" || {
@@ -1493,8 +1831,11 @@ download_and_replace_app() {
     return 1
   }
 
-  {
-    hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_point" >/dev/null
+  if ! hdiutil attach "$dmg_path" -nobrowse -readonly -mountpoint "$mount_point" >/dev/null; then
+    print -u2 "Failed to attach the $app_name installer:"
+    print -u2 "  $dmg_path"
+    replacement_failed=true
+  else
     mounted=true
 
     source_app="$mount_point/$app_name.app"
@@ -1506,46 +1847,47 @@ download_and_replace_app() {
     if [[ -z "$source_app" || ! -d "$source_app" ]]; then
       print -u2 "Could not find a Discord app inside the mounted installer:"
       print -u2 "  $mount_point"
-      return 1
-    fi
+      replacement_failed=true
+    else
+      for attempt in {1..3}; do
+        guard_update_replacement_checked "$channel" || return 1
+        print "Replacing $app_name in $app_path (attempt $attempt of 3)..."
 
-    for attempt in {1..3}; do
-      guard_update_replacement "$channel"
-      print "Replacing $app_name in /Applications (attempt $attempt of 3)..."
+        if ! rm -rf -- "$app_path" || [[ -e "$app_path" ]]; then
+          print -u2 "Failed to remove the existing $app_name app."
+        else
+          guard_update_replacement_checked "$channel" || return 1
 
-      if ! rm -rf -- "$app_path" || [[ -e "$app_path" ]]; then
-        print -u2 "Failed to remove the existing $app_name app."
-      else
-        guard_update_replacement "$channel"
+          if ditto "$source_app" "$app_path" &&
+             [[ -d "$app_path" ]] &&
+             [[ -x "$executable_path" ]] &&
+             ! discord_is_running "$channel"; then
+            replacement_succeeded=true
+            break
+          fi
 
-        if ditto "$source_app" "$app_path" &&
-           [[ -d "$app_path" ]] &&
-           [[ -x "$executable_path" ]] &&
-           ! discord_is_running "$channel"; then
-          replacement_succeeded=true
-          break
+          print -u2 "Failed to copy or verify the replacement $app_name app."
         fi
 
-        print -u2 "Failed to copy or verify the replacement $app_name app."
+        guard_update_replacement_checked "$channel" || return 1
+        rm -rf -- "$app_path" || true
+
+        if (( attempt < 3 )); then
+          print "Retrying $app_name replacement in 2 seconds..."
+          sleep 2
+        fi
+      done
+
+      if [[ "$replacement_succeeded" != true ]]; then
+        print -u2 "$app_name replacement failed after 3 attempts."
+        print -u2 "$app_name was not successfully replaced."
+        replacement_failed=true
       fi
-
-      guard_update_replacement "$channel"
-      rm -rf -- "$app_path" || true
-
-      if (( attempt < 3 )); then
-        print "Retrying $app_name replacement in 2 seconds..."
-        sleep 2
-      fi
-    done
-
-    if [[ "$replacement_succeeded" != true ]]; then
-      print -u2 "$app_name replacement failed after 3 attempts."
-      print -u2 "$app_name was not successfully replaced."
-      return 1
     fi
-  } always {
-    cleanup_mount_and_dmg
-  }
+  fi
+
+  cleanup_mount_and_dmg
+  [[ "$replacement_failed" != true ]] || return 1
 
   print "$app_name app replaced successfully."
   sleep 2
@@ -1565,6 +1907,12 @@ clean_channel() {
   app_name="$(app_name_for_channel "$channel")"
   data_dir="$(data_dir_for_channel "$channel")"
 
+  if [[ "$lock_requested" == true && -L "$data_dir" ]]; then
+    print -u2 "Refusing locked cleanup because $app_name data directory is a symlink:"
+    print -u2 "  $data_dir"
+    return 1
+  fi
+
   if [[ ! -d "$data_dir" ]]; then
     if [[ "$allow_missing_data_dir" == true ]]; then
       print "$app_name data directory not found, so there is no App Support cleanup to run:"
@@ -1578,9 +1926,14 @@ clean_channel() {
   fi
 
   if [[ ! -f "$data_dir/settings.json" && ! -d "$data_dir/Local Storage" ]]; then
-    print -u2 "Refusing to clean because the target does not look like $app_name's data directory:"
-    print -u2 "  $data_dir"
-    return 1
+    if [[ "$lock_requested" == true && "$allow_missing_data_dir" == true ]]; then
+      print "$app_name has no settings.json or Local Storage directory yet."
+      print "Only detected updater-managed targets will be cleaned before the locked update."
+    else
+      print -u2 "Refusing to clean because the target does not look like $app_name's data directory:"
+      print -u2 "  $data_dir"
+      return 1
+    fi
   fi
 
   targets=(
@@ -1634,7 +1987,7 @@ clean_channel() {
   print "Login and settings data will be preserved."
 
   if discord_is_running "$channel"; then
-    quit_discord "$channel"
+    quit_discord "$channel" || return 1
   fi
 
   if discord_is_running "$channel"; then
@@ -1743,7 +2096,7 @@ guard_update_replacement() {
 
   app_name="$(app_name_for_channel "$channel")"
   print "$app_name restarted during update replacement. Stopping it and purging App Support again..."
-  quit_discord "$channel"
+  quit_discord "$channel" || return 1
   clean_channel "$channel" true
 }
 
@@ -1869,7 +2222,8 @@ validate_selected_data_dirs() {
     app_name="$(app_name_for_channel "$channel")"
     data_dir="$(data_dir_for_channel "$channel")"
 
-    if [[ -d "$data_dir" && ! -f "$data_dir/settings.json" && ! -d "$data_dir/Local Storage" ]]; then
+    if [[ -d "$data_dir" && ! -f "$data_dir/settings.json" && ! -d "$data_dir/Local Storage" &&
+          "$lock_requested" != true ]]; then
       print -u2 "Refusing to continue because the target does not look like $app_name's data directory:"
       print -u2 "  $data_dir"
       exit 1
@@ -1879,6 +2233,11 @@ validate_selected_data_dirs() {
 
 if [[ -n "$update_version" ]]; then
   update_version="$(normalize_discord_version "$update_version")" || exit 2
+  lock_version="${update_version##*.}"
+fi
+
+if [[ "$lock_requested" == true && "$lock_version" != "0" && "$lock_version" == 0* ]]; then
+  fail_usage "--lock versions cannot contain leading zeroes. Use a value such as 401 or 0.0.401."
 fi
 
 if [[ "$update_select_requested" == true ]]; then
@@ -1893,6 +2252,12 @@ fi
 
 validate_selected_data_dirs
 validate_selected_betterdiscord_wrappers
+
+if [[ "$lock_requested" == true ]]; then
+  for channel in "${selected_channels[@]}"; do
+    preflight_lock_settings_target "$channel" || exit 1
+  done
+fi
 
 openasar_payload=""
 openasar_initial_download_succeeded=false
@@ -1923,11 +2288,28 @@ if [[ "$openasar_requested" == true ]]; then
   fi
 fi
 
+if [[ "$lock_requested" == true && "$openasar_initial_download_succeeded" != true ]]; then
+  cleanup_openasar_payload
+  print -u2 "Cannot proceed with --lock because the OpenAsar payload could not be prepared."
+  exit 1
+fi
+
+cleanup_started=false
 cleanup_on_exit() {
+  local exit_status=$?
+
+  if [[ "$cleanup_started" == true ]]; then
+    return "$exit_status"
+  fi
+
+  cleanup_started=true
+  set +e
   cleanup_openasar_payload
   restore_recovery_for_wrappers_left_installed
+  set -e
+  return "$exit_status"
 }
-trap cleanup_on_exit EXIT
+trap cleanup_on_exit ZERR EXIT
 
 for channel in "${selected_channels[@]}"; do
   if discord_main_is_running "$channel"; then
@@ -1948,7 +2330,7 @@ if [[ "$multiple_channels" == true ]]; then
   print "Stopping all selected Discord clients before continuing..."
   for channel in "${selected_channels[@]}"; do
     if discord_is_running "$channel"; then
-      quit_discord "$channel"
+      quit_discord "$channel" || exit 1
     fi
   done
 fi
@@ -1974,8 +2356,12 @@ for channel in "${selected_channels[@]}"; do
 
   if [[ "$multiple_channels" == false && ( "$update_requested" == true || "$openasar_requested" == true ) ]]; then
     if discord_is_running "$channel"; then
-      quit_discord "$channel"
+      quit_discord "$channel" || exit 1
     fi
+  fi
+
+  if [[ "$lock_requested" == true ]]; then
+    preflight_lock_settings_target "$channel" || exit 1
   fi
 
   if [[ "$multiple_channels" == true || "$update_requested" == true || "${channel_betterdiscord_wrapper[$channel]:-false}" == true ]]; then
@@ -2012,6 +2398,23 @@ for channel in "${selected_channels[@]}"; do
   if [[ "$openasar_injected" == true ]]; then
     if ! openasar_matches_installed_target "$channel" "$openasar_payload"; then
       print -u2 "OpenAsar verification failed before relaunching $app_name."
+      exit 1
+    fi
+  fi
+
+  if [[ "$lock_requested" == true ]]; then
+    if [[ "$openasar_injected" != true ]]; then
+      print -u2 "Cannot write --lock for $app_name because OpenAsar injection was not completed."
+      exit 1
+    fi
+    if discord_is_running "$channel"; then
+      print -u2 "Cannot write --lock for $app_name because the client reappeared during update:"
+      print -u2 "  $app_name is still running."
+      exit 1
+    fi
+
+    if ! write_lock_settings "$channel" "$lock_version"; then
+      print -u2 "Failed to write VersionLock for $app_name."
       exit 1
     fi
   fi
