@@ -50,6 +50,10 @@ Repo layout:
 
 - [`GPC Builder by Jimmy CrakCrn.zip`](tools/GPC%20Builder%20by%20Jimmy%20CrakCrn.zip) - Portable Cronus Zen GPC scripting IDE by Jimmy CrakCrn with a code editor, validator, component builder, OLED layout designer, embedded references, and Anthropic API-powered assistance.
 
+## 📝 TODO
+
+- [Cross-platform Discord bundle downloader](TODO.md) - Planned download-only Python CLI for discovering and fetching Stable, PTB, or Canary client bundles for macOS, Linux, and Windows.
+
 ## [Userscripts (Tampermonkey)](userscripts/)
 
 - [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) - Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. [Docs](docs/psprices-playstation-checkout-link.md)
