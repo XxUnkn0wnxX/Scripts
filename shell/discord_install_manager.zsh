@@ -45,6 +45,26 @@ typeset -A channel_dmg_filenames=(
   canary "DiscordCanary.dmg"
 )
 
+typeset -A channel_update_select_archive_filenames=(
+  stable "Discord.zip"
+  ptb "DiscordPTB.zip"
+  canary "DiscordCanary.zip"
+)
+
+typeset -A channel_update_select_plist_paths=(
+  stable "Discord.app/Contents/Info.plist"
+  ptb "Discord PTB.app/Contents/Info.plist"
+  canary "Discord Canary.app/Contents/Info.plist"
+)
+
+DISCORD_UPDATE_SELECT_MAX_SCAN_SPAN=100
+DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS=4
+DISCORD_UPDATE_SELECT_MAX_JOBS=8
+ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT=65557
+ZIP_UPDATE_SELECT_CENTRAL_DIR_BYTES_LIMIT=4194304
+ZIP_UPDATE_SELECT_COMPRESSED_PLIST_BYTES_LIMIT=1048576
+ZIP_UPDATE_SELECT_UNCOMPRESSED_PLIST_BYTES_LIMIT=8388608
+
 print_usage() {
   cat <<EOF
 Usage:
@@ -62,8 +82,10 @@ Options:
                         and either --openasar or --openasar-source.
   --dl                  Download the selected Discord DMG only, then exit.
                         Optionally pass a version such as 0.0.1177 to download that CDN build.
-  --update-select       Print available CDN DMG versions for one selected channel, then exit.
-                        Optionally pass a minimum version such as 900 or a range such as 600-300.
+  --update-select       Print available DMG versions for one selected channel, then exit.
+                        Uses bounded range probes (no full ZIP downloads) and supports 101-build ranges.
+                        Optionally pass a minimum version such as 900 or a range such as 500-400.
+                        Bare --update-select probes only the latest version.
   --openasar            Download and inject OpenAsar into the selected Discord app.
   --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
   --BD                  Preserve a valid BetterDiscord wrapper and replace its nested betterdiscord.app.asar.
@@ -74,7 +96,7 @@ Examples:
   $script_name --channel stable
   $script_name --channel ptb --update
   $script_name --channel canary --dl 0.0.1177
-  $script_name --channel canary --update-select 600-300
+  $script_name --channel canary --update-select 500-400
   $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
   $script_name --channel all --update --openasar
   $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --update 401 --lock
@@ -89,6 +111,10 @@ Notes:
   --update without a version supports multiple channels and --channel all.
   --update with a version, --dl, and --update-select require a single selected channel.
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
+  --update-select ranges are limited to 100 version steps (101 inclusive builds), for example 500-400.
+  update-select uses bounded parallel range probing to read only minimal ZIP metadata from each candidate version.
+  DMG HEAD is the availability and Last-Modified source for update-select output.
+  --update-select defaults to 4 workers and reads DISCORD_UPDATE_SELECT_JOBS (maximum 8).
   --openasar must be paired with --channel so the target app is explicit.
   --lock requires --update with an explicit version and either --openasar or --openasar-source.
   --lock supports exactly one named channel and cannot be combined with --BD or --update-select.
@@ -983,6 +1009,616 @@ versioned_download_url_for_channel() {
   print -- "https://${channel_cdn_hosts[$channel]}/apps/osx/$version/${channel_dmg_filenames[$channel]}"
 }
 
+versioned_update_select_archive_for_channel() {
+  local channel="$1"
+  local version="$2"
+
+  version="$(normalize_discord_version "$version")" || return 1
+  print -- "https://${channel_cdn_hosts[$channel]}/apps/osx/$version/${channel_update_select_archive_filenames[$channel]}"
+}
+
+versioned_update_select_plist_path_for_channel() {
+  local channel="$1"
+  print -- "${channel_update_select_plist_paths[$channel]}"
+}
+
+update_select_worker_count() {
+  local requested_jobs
+
+  requested_jobs="${DISCORD_UPDATE_SELECT_JOBS:-$DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS}"
+  if [[ "$requested_jobs" == <-> ]]; then
+    if (( requested_jobs < 1 )); then
+      requested_jobs="$DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS"
+    elif (( requested_jobs > DISCORD_UPDATE_SELECT_MAX_JOBS )); then
+      requested_jobs="$DISCORD_UPDATE_SELECT_MAX_JOBS"
+    fi
+  else
+    requested_jobs="$DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS"
+  fi
+
+  print -- "$requested_jobs"
+}
+
+http_code_from_headers() {
+  local header_path="$1"
+  /usr/bin/perl -ne '
+    if (/^HTTP\//) {
+      if (/^HTTP\/\S+\s+([0-9]{3})/) {
+        $http_code = $1;
+      }
+    }
+    END {
+      print $http_code || "";
+    }
+  ' "$header_path"
+}
+
+content_range_from_headers() {
+  local header_path="$1"
+  /usr/bin/perl -ne '
+    if (/^HTTP\//) {
+      if (/^HTTP\/\S+\s+([0-9]{3})/) {
+        $http_code = $1;
+      }
+      $content_start = "";
+      $content_end = "";
+      $content_total = "";
+      next;
+    }
+
+    if (/^Content-Range:\s*bytes\s+(\d+)-(\d+)\/(\d+)/i) {
+      $content_start = $1;
+      $content_end = $2;
+      $content_total = $3;
+    }
+
+    END {
+      print(
+        ($http_code || "") . " " .
+        ($content_start // "") . " " .
+        ($content_end // "") . " " .
+        ($content_total // "")
+      );
+    }
+  ' "$header_path"
+}
+
+last_modified_from_headers() {
+  local header_path="$1"
+  /usr/bin/perl -ne '
+    s/\r?\n\z//;
+    if (/^HTTP\//) {
+      $last_modified = "";
+    }
+    if (/^Last-Modified:\s*(.+)$/i) {
+      $last_modified = $1;
+    }
+    END {
+      print $last_modified || "";
+    }
+  ' "$header_path"
+}
+
+plist_string_from_info_plist() {
+  local plist_path="$1"
+  local key="$2"
+
+  /usr/bin/plutil -extract "$key" xml1 -o - "$plist_path" 2>/dev/null | \
+    /usr/bin/perl -ne 'if (/\<string\>([^<]+)\<\/string\>/) { print $1; exit } '
+}
+
+download_update_select_range() {
+  local url="$1"
+  local start="$2"
+  local end="$3"
+  local output="$4"
+  local headers="$5"
+  local expected_size="$6"
+  local expected_total="${7:-}"
+  local code
+  local range_start
+  local range_end
+  local range_total
+  local bytes_written
+
+  /bin/mkdir -p -- "$(/usr/bin/dirname "$output")" || return 1
+
+  if ! curl --location --fail --silent \
+      --dump-header "$headers" \
+      --max-filesize "$expected_size" \
+      --range "${start}-${end}" \
+      --output "$output" \
+      "$url"; then
+    return 1
+  fi
+
+  read -r code range_start range_end range_total <<<"$(content_range_from_headers "$headers")"
+  if [[ "$code" != 206 ]]; then
+    return 1
+  fi
+
+  if [[ -z "$range_start" || -z "$range_end" || -z "$range_total" ]]; then
+    return 1
+  fi
+
+  if (( range_total <= range_end )); then
+    return 1
+  fi
+
+  if (( range_start != start || range_end != end )); then
+    return 1
+  fi
+
+  if [[ -n "$expected_total" ]] && (( range_total != expected_total )); then
+    return 1
+  fi
+
+  bytes_written="$(/usr/bin/wc -c < "$output" | /usr/bin/awk '{ print $1 }')"
+  if (( bytes_written != expected_size )); then
+    return 1
+  fi
+
+  return 0
+}
+
+inflate_update_select_plist() {
+  local compressed_path="$1"
+  local plist_path="$2"
+  local expected_size="$3"
+  local expected_crc="$4"
+  local output_limit="$5"
+
+  /usr/bin/perl -Mbytes -e '
+    use strict;
+    use warnings;
+    use Compress::Raw::Zlib ();
+    use IO::Uncompress::RawInflate ();
+
+    my ($compressed_path, $plist_path, $expected_size, $expected_crc, $output_limit) = @ARGV;
+    my $written = 0;
+    my $crc = 0;
+
+    $expected_size = int($expected_size);
+    $expected_crc = int($expected_crc);
+    $output_limit = int($output_limit);
+
+    my $inflater = IO::Uncompress::RawInflate->new(
+      $compressed_path,
+      Strict => 1,
+    );
+    exit 1 if !$inflater;
+
+    open my $out_fh, ">:raw", $plist_path or exit 1;
+
+    while (1) {
+      my $output = "";
+      my $bytes_read = $inflater->read($output, 65536);
+      exit 1 if !defined($bytes_read) || $bytes_read < 0;
+      last if $bytes_read == 0;
+
+      $written += $bytes_read;
+      exit 1 if $written > $output_limit;
+
+      $crc = Compress::Raw::Zlib::crc32($output, $crc);
+      print {$out_fh} $output;
+    }
+
+    exit 1 if !$inflater->eof();
+    exit 1 if !$inflater->close();
+    close $out_fh or exit 1;
+    exit 1 if $written != $expected_size;
+    exit 1 if ($crc & 0xffffffff) != ($expected_crc & 0xffffffff);
+  ' "$compressed_path" "$plist_path" "$expected_size" "$expected_crc" "$output_limit"
+}
+
+minimum_macos_for_update_select_version() (
+  local channel="$1"
+  local version="$2"
+  local zip_url="$3"
+
+  local zip_size
+  local tail_offset
+  local tail_end
+  local tail_size
+  local temp_dir
+  local central_info
+  local central_offset
+  local central_size
+  local central_end
+  local central_path
+  local central_entry
+  local method
+  local comp_size
+  local uncompressed_size
+  local central_crc
+  local central_fname_len
+  local local_offset
+  local local_flags
+  local local_crc
+  local local_comp_size
+  local local_uncompressed_size
+  local local_fname_len
+  local local_extra_len
+  local local_data_descriptor
+  local data_start
+  local data_end
+  local compressed_path
+  local plist_path
+  local bundle_version
+  local minimum_version
+  local plist_crc
+  local plist_size
+  local normalized_bundle_version
+  local filename_extra_size
+  local local_entry
+  local local_name_entry
+  local range_code
+  local range_start
+  local range_end
+  local range_total
+  temp_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/discord-update-select-range.XXXXXX")"
+  [[ -n "$temp_dir" ]] || return 1
+
+  minimum_macos_for_update_select_cleanup() {
+    [[ -n "$temp_dir" ]] && [[ -d "$temp_dir" ]] && /bin/rm -rf -- "$temp_dir"
+    return 0
+  }
+
+  minimum_macos_for_update_select_fail() {
+    minimum_macos_for_update_select_cleanup
+    exit 1
+  }
+
+  trap 'minimum_macos_for_update_select_cleanup; exit 130' INT TERM HUP
+
+  download_update_select_range "$zip_url" 0 0 "$temp_dir/bytes-0-0" "$temp_dir/headers-0-0" 1 || minimum_macos_for_update_select_fail
+  read -r range_code range_start range_end range_total <<<"$(content_range_from_headers "$temp_dir/headers-0-0")"
+  if [[ "$range_code" != 206 ]] || (( range_start != 0 || range_end != 0 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  zip_size="$range_total"
+  if (( zip_size <= 0 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  if (( zip_size <= ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT )); then
+    tail_offset=0
+    tail_size="$zip_size"
+  else
+    tail_offset=$(( zip_size - ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT ))
+    tail_size=$ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT
+  fi
+
+  tail_end=$(( zip_size - 1 ))
+  download_update_select_range "$zip_url" "$tail_offset" "$tail_end" "$temp_dir/central-tail" "$temp_dir/headers-central-tail" "$tail_size" "$zip_size" || minimum_macos_for_update_select_fail
+
+  central_info="$(/usr/bin/perl -e '
+    use strict;
+    use warnings;
+
+    my ($tail_path, $zip_size, $tail_offset, $limit) = @ARGV;
+    open my $tail_handle, "<:raw", $tail_path or die;
+    local $/;
+    my $tail_data = <$tail_handle>;
+    close $tail_handle;
+
+    my $sig = "PK\x05\x06";
+    my $len = length($tail_data);
+    for (my $i = $len - 22; $i >= 0; $i--) {
+      next unless substr($tail_data, $i, 4) eq $sig;
+
+      my ($disk_no, $cd_start_disk, $entries_this_disk, $entries_total, $cd_size, $cd_offset, $comment_len) = unpack(
+        "v v v v V V v",
+        substr($tail_data, $i + 4, 18),
+      );
+
+      next if $disk_no != 0;
+      next if $cd_start_disk != 0;
+      next if $entries_this_disk != $entries_total;
+      next if $entries_total == 0;
+      next if ($entries_total == 0xFFFF || $entries_this_disk == 0xFFFF);
+      next if $cd_size == 0xFFFFFFFF;
+      next if $cd_offset == 0xFFFFFFFF;
+      next if $cd_size > $limit;
+      next if $cd_size < 1;
+      next if $i + 22 + $comment_len != $len;
+
+      my $eocd_offset = $tail_offset + $i;
+      my $central_end = $cd_offset + $cd_size;
+      next if $cd_offset >= $zip_size;
+      next if $central_end > $zip_size;
+      next if $central_end > $eocd_offset;
+
+      print "${cd_offset} ${cd_size}\n";
+      exit 0;
+    }
+
+    exit 1;
+  ' "$temp_dir/central-tail" "$zip_size" "$tail_offset" "$ZIP_UPDATE_SELECT_CENTRAL_DIR_BYTES_LIMIT")"
+
+  if [[ -z "$central_info" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  read -r central_offset central_size <<<"$central_info"
+  central_path="$temp_dir/central-directory"
+  central_end=$(( central_offset + central_size - 1 ))
+  if (( central_offset < 0 || central_size < 1 || central_end >= zip_size )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  download_update_select_range "$zip_url" "$central_offset" "$central_end" "$central_path" "$temp_dir/headers-central" "$central_size" "$zip_size" || minimum_macos_for_update_select_fail
+
+  central_entry="$(/usr/bin/perl -e '
+    use strict;
+    use warnings;
+
+    my ($central_path, $target_path, $max_compressed_size, $max_uncompressed_size) = @ARGV;
+    open my $central_handle, "<:raw", $central_path or die;
+    local $/;
+    my $data = <$central_handle>;
+    close $central_handle;
+
+    my $offset = 0;
+    my $len = length($data);
+    while ($offset + 46 <= $len) {
+      my $sig = substr($data, $offset, 4);
+      if ($sig ne "PK\x01\x02") {
+        $offset++;
+        next;
+      }
+
+      my $comp = unpack("v", substr($data, $offset + 10, 2));
+      my $flags = unpack("v", substr($data, $offset + 8, 2));
+      my $crc32 = unpack("V", substr($data, $offset + 16, 4));
+      my $csize = unpack("V", substr($data, $offset + 20, 4));
+      my $ucsize = unpack("V", substr($data, $offset + 24, 4));
+      my $fname_len = unpack("v", substr($data, $offset + 28, 2));
+      my $extra_len = unpack("v", substr($data, $offset + 30, 2));
+      my $comment_len = unpack("v", substr($data, $offset + 32, 2));
+      my $disk_start = unpack("v", substr($data, $offset + 34, 2));
+      my $local_offset = unpack("V", substr($data, $offset + 42, 4));
+      my $required = $offset + 46 + $fname_len + $extra_len + $comment_len;
+
+      if ($required > $len) {
+        exit 1;
+      }
+
+      my $name = substr($data, $offset + 46, $fname_len);
+
+      if (($flags & 0x1) == 0x1 || ($flags & 0x40) == 0x40) {
+        $offset = $required;
+        next;
+      }
+
+      if ($disk_start != 0 || $comp != 0 && $comp != 8 || $csize > $max_compressed_size || $csize < 1 || $ucsize < 1 || $ucsize > $max_uncompressed_size || $local_offset == 0xFFFFFFFF) {
+        $offset = $required;
+        next;
+      }
+
+      if ($name eq $target_path) {
+        print "${comp} ${crc32} ${csize} ${ucsize} ${flags} ${fname_len} ${local_offset}\n";
+        exit 0;
+      }
+
+      $offset = $required;
+    }
+
+    exit 1;
+  ' "$central_path" "$(versioned_update_select_plist_path_for_channel "$channel")" "$ZIP_UPDATE_SELECT_COMPRESSED_PLIST_BYTES_LIMIT" "$ZIP_UPDATE_SELECT_UNCOMPRESSED_PLIST_BYTES_LIMIT")"
+
+  if [[ -z "$central_entry" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  read -r method central_crc comp_size uncompressed_size local_flags central_fname_len local_offset <<<"$central_entry"
+
+  if (( method != 0 && method != 8 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  if (( uncompressed_size <= 0 || uncompressed_size > ZIP_UPDATE_SELECT_UNCOMPRESSED_PLIST_BYTES_LIMIT )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  download_update_select_range "$zip_url" "$local_offset" "$(( local_offset + 29 ))" "$temp_dir/local-header" "$temp_dir/headers-local" 30 "$zip_size" || minimum_macos_for_update_select_fail
+
+  local_entry="$(/usr/bin/perl -e '
+    use strict;
+    use warnings;
+
+    my ($local_path, $expected_method, $expected_flags, $target_fname_len) = @ARGV;
+    open my $local_handle, "<:raw", $local_path or die;
+    local $/;
+    my $data = <$local_handle>;
+    close $local_handle;
+
+    if (length($data) < 30) {
+      exit 1;
+    }
+
+    if (substr($data, 0, 4) ne "PK\x03\x04") {
+      exit 1;
+    }
+
+    my $flags = unpack("v", substr($data, 6, 2));
+    my $method = unpack("v", substr($data, 8, 2));
+    my $crc = unpack("V", substr($data, 14, 4));
+    my $csize = unpack("V", substr($data, 18, 4));
+    my $usize = unpack("V", substr($data, 22, 4));
+    my $fname_len = unpack("v", substr($data, 26, 2));
+    my $extra_len = unpack("v", substr($data, 28, 2));
+    my $data_descriptor = ($flags & 0x08) == 0x08 ? 1 : 0;
+
+    if (($flags & 0x1) == 0x1 || ($flags & 0x40) == 0x40) {
+      exit 1;
+    }
+
+    if ($method != $expected_method || $flags != $expected_flags || $fname_len != $target_fname_len) {
+      exit 1;
+    }
+
+    print "${crc} ${csize} ${usize} ${fname_len} ${extra_len} ${data_descriptor}\n";
+  ' "$temp_dir/local-header" "$method" "$local_flags" "$central_fname_len")"
+
+  if [[ -z "$local_entry" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  read -r local_crc local_comp_size local_uncompressed_size local_fname_len local_extra_len local_data_descriptor <<<"$local_entry"
+  if (( local_comp_size == 0 && local_data_descriptor == 0 )) || (( local_uncompressed_size == 0 && local_data_descriptor == 0 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  if (( local_data_descriptor == 0 )); then
+    if (( local_comp_size != comp_size || local_uncompressed_size != uncompressed_size || local_crc != central_crc )); then
+      minimum_macos_for_update_select_fail
+    fi
+  else
+    if (( local_comp_size != 0 && local_comp_size != comp_size )) || (( local_uncompressed_size != 0 && local_uncompressed_size != uncompressed_size )) || (( local_crc != 0 && local_crc != central_crc )); then
+      minimum_macos_for_update_select_fail
+    fi
+  fi
+
+  if (( local_fname_len < 0 || local_extra_len < 0 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  filename_extra_size=$(( 30 + local_fname_len + local_extra_len ))
+  if (( filename_extra_size < 30 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  download_update_select_range "$zip_url" "$(( local_offset + 30 ))" "$(( local_offset + filename_extra_size - 1 ))" "$temp_dir/local-name-extra" "$temp_dir/headers-name-extra" "$(( filename_extra_size - 30 ))" "$zip_size" || minimum_macos_for_update_select_fail
+
+  local_name_entry="$(/usr/bin/perl -e '
+    use strict;
+    use warnings;
+
+    my ($name_extra_path, $target_path) = @ARGV;
+    my $expected_len = length($target_path);
+    open my $name_handle, "<:raw", $name_extra_path or die;
+    local $/;
+    my $name_data = <$name_handle>;
+    close $name_handle;
+
+    if (length($name_data) < $expected_len) {
+      exit 1;
+    }
+
+    my $name = substr($name_data, 0, $expected_len);
+    if ($name ne $target_path) {
+      exit 1;
+    }
+
+    print "1\n";
+  ' "$temp_dir/local-name-extra" "$(versioned_update_select_plist_path_for_channel "$channel")")"
+
+  if [[ -z "$local_name_entry" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  data_start=$(( local_offset + filename_extra_size ))
+  data_end=$(( data_start + comp_size - 1 ))
+
+  if (( data_start < 0 || data_start >= zip_size || data_end < data_start || data_end >= zip_size || comp_size < 1 )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  compressed_path="$temp_dir/compressed-plist"
+  download_update_select_range "$zip_url" "$data_start" "$data_end" "$compressed_path" "$temp_dir/headers-plist" "$comp_size" "$zip_size" || minimum_macos_for_update_select_fail
+
+  plist_path="$temp_dir/plist"
+  if (( method == 8 )); then
+    if (( comp_size > ZIP_UPDATE_SELECT_COMPRESSED_PLIST_BYTES_LIMIT )); then
+      minimum_macos_for_update_select_fail
+    fi
+    if ! inflate_update_select_plist "$compressed_path" "$plist_path" "$uncompressed_size" "$central_crc" "$ZIP_UPDATE_SELECT_UNCOMPRESSED_PLIST_BYTES_LIMIT"; then
+      minimum_macos_for_update_select_fail
+    fi
+  elif (( comp_size > ZIP_UPDATE_SELECT_COMPRESSED_PLIST_BYTES_LIMIT )); then
+    minimum_macos_for_update_select_fail
+  else
+    /bin/cp "$compressed_path" "$plist_path"
+  fi
+
+  plist_size="$(/usr/bin/wc -c < "$plist_path" | /usr/bin/awk '{ print $1 }')"
+  if (( plist_size > ZIP_UPDATE_SELECT_UNCOMPRESSED_PLIST_BYTES_LIMIT || plist_size != uncompressed_size )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  bundle_version="$(plist_string_from_info_plist "$plist_path" CFBundleVersion)"
+  if [[ -z "$bundle_version" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+  if ! normalized_bundle_version="$(normalize_discord_version "$bundle_version" 2>/dev/null)"; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  if [[ "$normalized_bundle_version" != "$version" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  plist_crc="$(/usr/bin/cksum -o 3 "$plist_path" | /usr/bin/awk '{ print $1 }')"
+  if (( plist_crc != central_crc )); then
+    minimum_macos_for_update_select_fail
+  fi
+
+  minimum_version="$(plist_string_from_info_plist "$plist_path" LSMinimumSystemVersion)"
+  if [[ -z "$minimum_version" ]]; then
+    minimum_macos_for_update_select_fail
+  fi
+
+  minimum_version="${minimum_version%\+}"
+
+  case "$minimum_version" in
+    <->.<->|<->.<->.<->)
+      ;;
+    *)
+      minimum_macos_for_update_select_fail
+      ;;
+  esac
+
+  minimum_macos_for_update_select_cleanup
+  print -- "$minimum_version"
+)
+run_update_select_worker() {
+  local channel="$1"
+  local version_suffix="$2"
+  local result_file="$3"
+  local dmg_url
+  local zip_url
+  local code
+  local last_modified="unknown"
+  local version
+  local minimum="unknown"
+  local head_headers
+
+  version="0.0.$version_suffix"
+  dmg_url="$(versioned_download_url_for_channel "$channel" "$version")"
+  zip_url="$(versioned_update_select_archive_for_channel "$channel" "$version")"
+  head_headers="$result_file.headers"
+
+  curl --location --fail --silent -I -D "$head_headers" "$dmg_url" >/dev/null || return 0
+  code="$(http_code_from_headers "$head_headers")"
+  if [[ "$code" != 200 ]]; then
+    return 0
+  fi
+
+  last_modified="$(last_modified_from_headers "$head_headers")"
+  [[ -n "$last_modified" ]] || last_modified="unknown"
+
+  if ! minimum="$(minimum_macos_for_update_select_version "$channel" "$version" "$zip_url")"; then
+    minimum="unknown"
+  elif [[ -z "$minimum" ]]; then
+    minimum="unknown"
+  fi
+
+  /bin/mkdir -p "$(/usr/bin/dirname "$result_file")"
+  /usr/bin/printf '%-29s  %s - [%s]\n' "$last_modified" "$version" "$minimum" > "$result_file"
+}
+
 latest_version_for_channel() {
   local channel="$1"
   local manifest
@@ -1025,72 +1661,103 @@ print_update_select_versions() {
   local app_name
   local latest_version
   local latest_suffix
+  local requested_start_suffix=""
+  local requested_floor_suffix=""
   local first_suffix
   local last_suffix=1
-  local min_suffix=""
   local range_start=""
   local range_end=""
   local clamped_start=false
   local clamped_floor=false
+  local range_requested=false
+  local scan_jobs
   local scan_limit="${DISCORD_UPDATE_SELECT_SCAN_LIMIT:-0}"
   local suffix
-  local url
-  local headers
-  local code
-  local last_modified
   local found_any=false
+  local result_dir
+  local pids
+  local version_file
+  local ordinal
+  local old_sig_int
+  local old_sig_term
+  local old_sig_hup
+  local pid
 
   app_name="$(app_name_for_channel "$channel")"
-  latest_version="$(latest_version_for_channel "$channel")" || return 1
-  latest_suffix="$(discord_version_suffix "$latest_version")" || return 1
-  first_suffix="$latest_suffix"
 
   if [[ -n "$selector" ]]; then
     if [[ "$selector" == *-* ]]; then
       range_start="${selector%%-*}"
       range_end="${selector#*-}"
-      first_suffix="$(discord_version_suffix "$range_start")" || return 1
-      last_suffix="$(discord_version_suffix "$range_end")" || return 1
+      requested_start_suffix="$(discord_version_suffix "$range_start")" || return 1
+      requested_floor_suffix="$(discord_version_suffix "$range_end")" || return 1
+      range_requested=true
 
-      if (( first_suffix < last_suffix )); then
+      if (( requested_start_suffix < requested_floor_suffix )); then
         print -u2 "Invalid update-select range: $selector"
-        print -u2 "Use descending ranges such as 600-300 or 0.0.600-0.0.300."
+        print -u2 "Use descending ranges such as 500-400 or 0.0.500-0.0.400."
         return 1
       fi
 
+      if (( requested_start_suffix - requested_floor_suffix > DISCORD_UPDATE_SELECT_MAX_SCAN_SPAN )); then
+        fail_usage "--update-select ranges may span at most ${DISCORD_UPDATE_SELECT_MAX_SCAN_SPAN} version steps (101 inclusive builds), for example 500-400."
+      fi
+    else
+      requested_floor_suffix="$(discord_version_suffix "$selector")" || return 1
+      range_requested=true
+    fi
+  fi
+
+  latest_version="$(latest_version_for_channel "$channel")" || return 1
+  latest_suffix="$(discord_version_suffix "$latest_version")" || return 1
+  first_suffix="$latest_suffix"
+
+  if [[ -n "$selector" ]]; then
+    if [[ "$requested_start_suffix" != "" ]]; then
+      first_suffix="$requested_start_suffix"
+      last_suffix="$requested_floor_suffix"
       if (( first_suffix > latest_suffix )); then
         first_suffix="$latest_suffix"
         clamped_start=true
       fi
-
-      if (( last_suffix > first_suffix )); then
+      if (( last_suffix > first_suffix || requested_floor_suffix > first_suffix )); then
         last_suffix="$first_suffix"
         clamped_floor=true
       fi
     else
-      min_suffix="$(discord_version_suffix "$selector")" || return 1
-      if (( min_suffix > latest_suffix )); then
-        min_suffix="$latest_suffix"
+      last_suffix="$requested_floor_suffix"
+      if (( requested_floor_suffix > first_suffix )); then
+        last_suffix="$first_suffix"
         clamped_floor=true
       fi
-      last_suffix="$min_suffix"
+    fi
+  else
+    last_suffix="$latest_suffix"
+  fi
+
+  if [[ "$scan_limit" == <-> && "$scan_limit" -gt 0 ]]; then
+    if [[ -n "$selector" ]]; then
+      last_suffix=$(( first_suffix - scan_limit + 1 > last_suffix ? first_suffix - scan_limit + 1 : last_suffix ))
+      if (( last_suffix < 1 )); then
+        last_suffix=1
+      fi
     fi
   fi
 
-  if [[ "$scan_limit" == <-> && "$scan_limit" -gt 0 && "$scan_limit" -lt "$latest_suffix" ]]; then
-    if [[ -z "$selector" ]]; then
-      last_suffix=$(( latest_suffix - scan_limit + 1 ))
-    elif [[ -z "$range_start" ]]; then
-      last_suffix=$(( latest_suffix - scan_limit + 1 > min_suffix ? latest_suffix - scan_limit + 1 : min_suffix ))
-    else
-      last_suffix=$(( first_suffix - scan_limit + 1 > last_suffix ? first_suffix - scan_limit + 1 : last_suffix ))
-    fi
+  if (( last_suffix < 1 )); then
+    last_suffix=1
+  fi
+  if (( last_suffix > first_suffix )); then
+    last_suffix="$first_suffix"
   fi
 
   print "Available $app_name macOS DMG versions:"
   print "  latest: $latest_version"
-  print "  source: Discord CDN direct DMG URLs"
-  print "  note: CDN directory listing is denied, so this probes versioned DMG URLs."
+  print "  source: Discord DMG URLs (ZIP archive is metadata-only)"
+  print "  note: CDN directory listing is denied, so this probes versioned URLs."
+  if [[ "$range_requested" == true && -n "$requested_start_suffix" ]]; then
+    print "  scan range requested: 0.0.$requested_start_suffix down to 0.0.$requested_floor_suffix"
+  fi
   if [[ "$clamped_start" == true ]]; then
     print "  requested start was newer than latest; using latest $latest_version"
   fi
@@ -1100,7 +1767,7 @@ print_update_select_versions() {
   if [[ -n "$range_start" ]]; then
     print "  scan range: 0.0.$first_suffix down to 0.0.$last_suffix"
   fi
-  if [[ "$last_suffix" -gt 1 ]]; then
+  if [[ "$last_suffix" -gt 1 ]] && [[ -n "$selector" ]]; then
     if [[ -z "$range_start" ]]; then
       print "  scan floor: 0.0.$last_suffix"
     fi
@@ -1108,28 +1775,87 @@ print_update_select_versions() {
       print "  scan limit: newest $scan_limit builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set"
     fi
   fi
+
+  scan_jobs="$(update_select_worker_count)"
+  print "  scan workers: $scan_jobs"
+  if (( scan_jobs == 0 )); then
+    scan_jobs="$DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS"
+  fi
+
   print
+  print "Last-Modified  Version - [Minimum macOS]"
+
+  if ! result_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/discord-update-select.XXXXXX")" || [[ -z "$result_dir" ]]; then
+    print -u2 "Could not create temporary storage for the update-select scan."
+    return 1
+  fi
+  print_update_select_versions_cleanup() {
+    [[ -n "$result_dir" ]] && [[ -d "$result_dir" ]] && /bin/rm -rf -- "$result_dir"
+    return 0
+  }
+  print_update_select_versions_restore_traps() {
+    trap - INT TERM HUP
+    [[ -n "$old_sig_int" ]] && eval "$old_sig_int"
+    [[ -n "$old_sig_term" ]] && eval "$old_sig_term"
+    [[ -n "$old_sig_hup" ]] && eval "$old_sig_hup"
+    return 0
+  }
+  print_update_select_versions_abort() {
+    local child_pid
+
+    for child_pid in "${pids[@]}"; do
+      kill -TERM "$child_pid" 2>/dev/null || true
+    done
+    for child_pid in "${pids[@]}"; do
+      wait "$child_pid" 2>/dev/null || true
+    done
+
+    print_update_select_versions_cleanup
+    print_update_select_versions_restore_traps
+    exit 130
+  }
+  old_sig_int="$(trap -p INT)"
+  old_sig_term="$(trap -p TERM)"
+  old_sig_hup="$(trap -p HUP)"
+  trap 'print_update_select_versions_abort' INT TERM HUP
+
+  pids=()
+  for (( suffix = first_suffix; suffix >= last_suffix; suffix-- )); do
+    ordinal=$(( first_suffix - suffix ))
+    version_file="${result_dir}/${ordinal}.txt"
+    run_update_select_worker "$channel" "$suffix" "$version_file" &
+    pids+=("$!")
+
+    if (( ${#pids} >= scan_jobs )); then
+      for pid in "$pids[@]"; do
+        wait "$pid" || true
+      done
+      pids=()
+    fi
+  done
+
+  for pid in "$pids[@]"; do
+    wait "$pid" || true
+  done
 
   for (( suffix = first_suffix; suffix >= last_suffix; suffix-- )); do
-    url="https://${channel_cdn_hosts[$channel]}/apps/osx/0.0.$suffix/${channel_dmg_filenames[$channel]}"
-    headers="$(curl -ILs "$url")"
-    code="$(print -r -- "$headers" | /usr/bin/awk 'toupper($0) ~ /^HTTP\// { code=$2 } END { print code }')"
-
-    if [[ "$code" != 200 ]]; then
-      continue
+    ordinal=$(( first_suffix - suffix ))
+    version_file="${result_dir}/${ordinal}.txt"
+    if [[ -f "$version_file" ]]; then
+      found_any=true
+      /bin/cat "$version_file"
     fi
-
-    last_modified="$(print -r -- "$headers" | /usr/bin/awk 'tolower($0) ~ /^last-modified:/ { sub(/^[Ll]ast-[Mm]odified:[[:space:]]*/, ""); value=$0 } END { gsub(/\r/, "", value); print value }')"
-    [[ -n "$last_modified" ]] || last_modified="unknown"
-
-    print "$last_modified  0.0.$suffix"
-    found_any=true
   done
+
+  print_update_select_versions_cleanup
+  print_update_select_versions_restore_traps
 
   if [[ "$found_any" != true ]]; then
     print -u2 "No CDN DMG versions were found for $app_name."
     return 1
   fi
+
+  return 0
 }
 
 dmg_path_for_channel() {

@@ -44,7 +44,7 @@ Use `--channel all` to apply the selected action to all three channels. You can 
 - with `--update`, downloads a fresh DMG, mounts it, replaces the matching app in `/Applications`, unmounts the DMG, and deletes the downloaded DMG
 - with `--update <version>`, downloads that channel's direct CDN DMG for a version such as `0.0.1177` instead of the latest API redirect
 - with `--dl [version]`, downloads only the selected channel's DMG, leaves it beside the script, and exits
-- with `--update-select`, prints available direct CDN DMG versions for one selected channel and exits without changing files
+- with `--update-select`, prints available direct CDN DMG builds for one selected channel and exits without changing files
 - with `--openasar`, downloads OpenAsar or uses a local OpenAsar `app.asar`, stages and verifies it, then atomically replaces the selected standalone or BetterDiscord-nested target
 - with `--lock`, writes the pinned `--update <version>` suffix to the selected channel's `openasar.VersionLock` only after the app replacement and OpenAsar injection both succeed
 - before relaunching a client after replacement, waits for the app bundle executable, refreshes LaunchServices registration, and falls back to launching the executable directly if `open` fails or the main process does not appear
@@ -122,7 +122,7 @@ zsh shell/discord_install_manager.zsh --channel canary --dl 0.0.1177
 
 `--dl` only supports one selected channel. It uses the same latest-versus-pinned DMG URL resolution as `--update`; without a version it downloads the latest API DMG, and with a version it downloads that direct CDN build.
 
-Use `--update-select` to print known direct CDN DMG versions for one selected channel:
+Use `--update-select` to print known direct CDN DMG builds for one selected channel without modifying local files:
 
 ```bash
 zsh shell/discord_install_manager.zsh --channel canary --update-select
@@ -137,12 +137,46 @@ zsh shell/discord_install_manager.zsh --channel canary --update-select 900
 Pass a range to start and stop at explicit versions:
 
 ```bash
-zsh shell/discord_install_manager.zsh --channel canary --update-select 600-300
+zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
 ```
 
-Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric CDN DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. If the requested start or minimum version is newer than the current manifest version, the scan uses the detected latest version instead. It prints matching builds as they are discovered with the CDN `Last-Modified` date first, followed by version, and does not clean, update, inject OpenAsar, or relaunch Discord.
+Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. If the requested start or minimum version is newer than the current manifest version, the scan uses the detected latest version instead. If no selector is provided, only the manifest version is probed.
 
-The DMG is downloaded beside the script file. In this repository that means:
+For each candidate, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. No full ZIP download is used.
+
+The scan buffers matching builds and prints them newest-to-oldest as a completed list, then exits without changing the installed apps or Discord data:
+
+```text
+Last-Modified  Version - [Minimum macOS]
+Mon, 01 Jan 2024 00:00:00 GMT  0.0.401 - [12.0]
+unknown  0.0.401 - [unknown]
+```
+
+Rows are always printed as `Last-Modified  Version - [minimum]`. The minimum value comes from the ZIP metadata and is `unknown` when metadata is missing or invalid.
+
+Defaults and limits appear in the scan header:
+
+```text
+scan workers: 4
+scan floor: 0.0.400
+scan range: 0.0.500 down to 0.0.400
+scan limit: newest 4 builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set
+```
+
+`scan workers` defaults to 4. A positive `DISCORD_UPDATE_SELECT_JOBS` value selects the worker count up to a maximum of 8; zero or an invalid value falls back to 4.
+
+To use eight workers for update-select scans in the current shell:
+
+```bash
+export DISCORD_UPDATE_SELECT_JOBS=8
+zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
+```
+
+Range scanning is limited to 100 version steps (101 inclusive builds), accepts floor-only or explicit descending ranges, and prints a usage error when the span is exceeded.
+
+It does not clean, update, inject OpenAsar, or relaunch Discord.
+
+The `--update` and `--dl` DMG files are downloaded beside the script file. In this repository that means:
 
 ```text
 shell/Discord-stable-installer (0.0.xxx).dmg
@@ -157,6 +191,8 @@ Any existing DMG at the resolved versioned path is replaced before downloading. 
 When `--dl` is used, the completed downloaded DMG is not deleted by the script.
 
 If the DMG download fails, the script deletes the partial DMG, waits briefly, and retries up to three total attempts. Before each new remote download attempt, it removes the target file and any matching aria2 control file such as `Discord-canary-installer (0.0.xxx).dmg.aria2`. If all attempts fail, the selected app is not replaced and the script exits with an error.
+
+For `--update-select`, a failed DMG `HEAD` probe omits that candidate. If the DMG exists but its ZIP metadata is unavailable, malformed, or rejects byte ranges, the DMG row remains visible with `[unknown]`; the script never falls back to downloading the full ZIP.
 
 When `aria2c` is available, remote Discord DMG and OpenAsar downloads use it with up to 16 split connections. Set `DISCORD_DOWNLOAD_CONNECTIONS` to a lower value to reduce the split count. If `aria2c` is not available, the script uses `curl`.
 
@@ -346,7 +382,7 @@ discord_install_manager.zsh --help
       <td><nobr><code>--update-select [minimum-version|start-end]</code></nobr></td>
       <td>Flag</td>
       <td><nobr>optional version</nobr></td>
-      <td>Prints available direct CDN DMG versions for one selected channel from newest to oldest as they are discovered, with CDN <code>Last-Modified</code> date first and version second, then exits without making changes. With a minimum version such as <code>900</code> or <code>0.0.900</code>, stops scanning at that version. With a range such as <code>600-300</code>, starts at <code>0.0.600</code> and stops at <code>0.0.300</code>. Requested starts or floors newer than the current manifest version are clamped to the detected latest version. Does not support <code>all</code>.</td>
+      <td>Prints available direct CDN DMG builds (with <code>Last-Modified</code> and <code>LSMinimumSystemVersion</code>) for one selected channel, then exits without making changes. Without a selector, it prints only the manifest version. With a minimum version such as <code>900</code> or <code>0.0.900</code>, it scans down to that floor. With a range such as <code>500-400</code>, it scans from <code>0.0.500</code> down to <code>0.0.400</code>. Requested starts or floors newer than the current manifest version are clamped to the detected latest version. A range is capped at 100 steps (101 inclusive builds). It does not support <code>all</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--openasar</code></nobr></td>
@@ -435,22 +471,22 @@ Download only a pinned Discord Canary DMG:
 zsh shell/discord_install_manager.zsh --channel canary --dl 0.0.1177
 ```
 
-List direct CDN DMG versions for Discord Canary:
+List direct CDN DMG builds for Discord Canary:
 
 ```bash
 zsh shell/discord_install_manager.zsh --channel canary --update-select
 ```
 
-List direct CDN DMG versions for Discord Canary down to `0.0.900`:
+List direct CDN DMG builds for Discord Canary down to `0.0.900`:
 
 ```bash
 zsh shell/discord_install_manager.zsh --channel canary --update-select 900
 ```
 
-List direct CDN DMG versions for Discord Canary from `0.0.600` down to `0.0.300`:
+List direct CDN DMG builds for Discord Canary from `0.0.500` down to `0.0.400`:
 
 ```bash
-zsh shell/discord_install_manager.zsh --channel canary --update-select 600-300
+zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
 ```
 
 Download, replace, and clean Discord Canary with a pinned direct CDN build:
@@ -516,24 +552,34 @@ zsh shell/discord_install_manager.zsh --channel all --update --openasar
 Run the Python test matrix for this script with:
 
 ```bash
-python -m pytest tests/discord_install_manager
+.venv/bin/python -m pytest --disable-plugin-autoload tests/discord_install_manager
 ```
+
+The direct `--disable-plugin-autoload` option requires pytest 8.4 or newer, as pinned by this repository's minimum requirement.
 
 Compile-check the test sources with:
 
 ```bash
-python -m compileall tests/discord_install_manager
+.venv/bin/python -m compileall tests/discord_install_manager
 ```
 
 Run the complete repository test suite with:
 
 ```bash
-python -m pytest
+.venv/bin/python -m pytest --disable-plugin-autoload
 ```
 
 The suite is split by behavior so CLI parsing, cleanup, downloads, version selection, application replacement, OpenAsar, BetterDiscord wrappers, relaunch/recovery guards, and `--lock` are tested independently. Each test exercises one contract; parameterized cases are used only for equivalent variants of that same contract.
 
 Every test copies the script into a temporary fixture, replaces only that copy's fixed Applications root, and uses a temporary Home. Network, disk-image, application-copy, relaunch, wait, and normal quit commands resolve to controllable fakes, while filesystem changes stay inside the fixture. The lock settings mutation deliberately still runs through the real macOS `/usr/bin/osascript` JavaScript bridge. The suite does not modify live Discord settings, live Discord processes, or `/Applications`.
+
+Alternatively, disable third-party pytest plugin autoload once for the current shell and omit the command-line flag:
+
+```bash
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+.venv/bin/python -m pytest tests/discord_install_manager
+.venv/bin/python -m pytest
+```
 
 ## Safety Guards
 

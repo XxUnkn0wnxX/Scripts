@@ -324,19 +324,33 @@ DNS resolution is limited to IPv4 `A` records.
 Run the focused test suite for this utility with:
 
 ```bash
-python -m pytest tests/vpnroute
+.venv/bin/python -m pytest --disable-plugin-autoload tests/vpnroute
 ```
+
+The direct `--disable-plugin-autoload` option requires pytest 8.4 or newer, as pinned by this repository's minimum requirement.
 
 Run the full repo test suite with:
 
 ```bash
-python -m pytest
+.venv/bin/python -m pytest --disable-plugin-autoload
+```
+
+For current-shell reuse of both test commands, run:
+
+```bash
+export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+
+# focused
+.venv/bin/python -m pytest tests/vpnroute
+
+# full
+.venv/bin/python -m pytest
 ```
 
 When editing the Python sources, it is also useful to run:
 
 ```bash
-python -m compileall python/vpnroute.py tests/vpnroute
+.venv/bin/python -m compileall python/vpnroute.py tests/vpnroute
 ```
 
 ## CDN-backed domains and DNS changes

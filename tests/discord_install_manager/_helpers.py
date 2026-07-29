@@ -5,6 +5,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 SCRIPT_SOURCE = Path(__file__).resolve().parents[2] / "shell" / "discord_install_manager.zsh"
@@ -119,24 +120,130 @@ fi
 set -e
 
 log_file="${TEST_COMMAND_LOG:-}"
-if [ -n "$log_file" ]; then
-  printf 'curl\targs=%s\n' "$*" >> "$log_file"
-fi
-
 state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
-output=""
 url=""
+output=""
+max_filesize=""
+range_start=""
+range_end=""
+range_spec=""
+header_value=""
+dump_header=""
+head_mode=""
+matched_zip_source=""
+
+log_call() {
+  if [ -z "$log_file" ]; then
+    return 0
+  fi
+
+  "${TEST_PYTHON:-/usr/bin/python3}" - "$log_file" "$1" <<'PY'
+import fcntl
+import sys
+
+log_path = sys.argv[1]
+message = sys.argv[2]
+
+with open(log_path, "a", encoding="utf-8") as handle:
+  fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+  handle.write(message + "\\n")
+  handle.flush()
+  fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+PY
+}
+
+log_call "curl\targs=$*"
+
 while [ "$#" -gt 0 ]; do
-  case "$1" in
+  arg="$1"
+  shift
+  case "$arg" in
     --output)
-      shift
       output="$1"
+      shift
+      ;;
+    --output=*)
+      output="${arg#--output=}"
+      ;;
+    -o)
+      output="$1"
+      shift
+      ;;
+    -o*)
+      output="${arg#-o}"
+      ;;
+    --max-filesize)
+      max_filesize="$1"
+      shift
+      ;;
+    --max-filesize=*)
+      max_filesize="${arg#--max-filesize=}"
+      ;;
+    --range)
+      range_spec="$1"
+      shift
+      ;;
+    --range=*)
+      range_spec="${arg#--range=}"
+      ;;
+    --header)
+      header_value="$1"
+      shift
+      ;;
+    --header=*)
+      header_value="${arg#--header=}"
+      ;;
+    -H)
+      header_value="$1"
+      shift
+      ;;
+    -H*)
+      header_value="${arg#-H}"
+      ;;
+    -D)
+      dump_header="$1"
+      shift
+      ;;
+    -D*)
+      dump_header="${arg#-D}"
+      ;;
+    --dump-header)
+      dump_header="$1"
+      shift
+      ;;
+    --dump-header=*)
+      dump_header="${arg#--dump-header=}"
+      ;;
+    -I|--head)
+      head_mode=1
+      ;;
+    --location|--fail|--silent|--show-error|--location-trusted)
       ;;
     *)
-      url="$1"
+      if [ -z "$url" ] && [ "${arg#-}" = "$arg" ]; then
+        url="$arg"
+      fi
       ;;
   esac
-  shift || break
+
+  if [ -n "$header_value" ]; then
+    case "$header_value" in
+      bytes=*)
+        range_spec="${header_value#bytes=}"
+        ;;
+      Range:[[:space:]]bytes=*)
+        range_spec="${header_value#Range: bytes=}"
+        ;;
+      *)
+        ;;
+    esac
+    header_value=""
+  fi
+
+  if [ -n "$range_spec" ]; then
+    range_start="${range_spec%-*}"
+    range_end="${range_spec#*-}"
+  fi
 done
 
 if printf '%s' "$url" | /usr/bin/grep -q '^https://discord.com/api/updates/'; then
@@ -146,11 +253,189 @@ if printf '%s' "$url" | /usr/bin/grep -q '^https://discord.com/api/updates/'; th
   fi
   if [ -n "$output" ]; then
     mkdir -p "$(dirname \"$output\")"
-    printf '%s\n' "$manifest" > "$output"
+  printf '%s\n' "$manifest" > "$output"
   else
     printf '%s\n' "$manifest"
   fi
   exit 0
+fi
+
+if [ "$head_mode" = 1 ]; then
+  header_code=""
+  if [ -n "${TEST_FAKE_CURL_HEADER_MAP_FILE:-}" ] && [ -f "${TEST_FAKE_CURL_HEADER_MAP_FILE}" ]; then
+    while IFS='|' read -r pattern code || [ -n "$pattern" ]; do
+      if [ -z "$pattern" ]; then
+        continue
+      fi
+      case "$pattern" in
+        '#'* )
+          continue
+          ;;
+      esac
+      case "$url" in
+        $pattern)
+          header_code="$code"
+          ;;
+      esac
+      [ -n "$header_code" ] && break
+    done < "${TEST_FAKE_CURL_HEADER_MAP_FILE}"
+  fi
+  if [ -z "$header_code" ]; then
+    header_code="${TEST_FAKE_CURL_DEFAULT_HEADER_CODE:-404}"
+  fi
+
+  if [ "$header_code" = "200" ]; then
+    if [ -n "${TEST_FAKE_CURL_LAST_MODIFIED+x}" ]; then
+      last_modified_value="${TEST_FAKE_CURL_LAST_MODIFIED}"
+    else
+      last_modified_value="Mon, 01 Jan 2024 00:00:00 GMT"
+    fi
+    if [ -n "$dump_header" ]; then
+      printf 'HTTP/1.1 200 OK\r\n' > "$dump_header"
+      if [ -n "$last_modified_value" ]; then
+        printf "Last-Modified: %s\r\n" "$last_modified_value" >> "$dump_header"
+      fi
+    fi
+    printf 'HTTP/1.1 200 OK\r\n'
+    if [ -n "$last_modified_value" ]; then
+      printf "Last-Modified: %s\r\n" "$last_modified_value"
+    fi
+    exit 0
+  fi
+
+  if [ -n "$dump_header" ]; then
+    printf 'HTTP/1.1 %s Not Found\r\n' "$header_code" > "$dump_header"
+  fi
+  printf 'HTTP/1.1 %s Not Found\r\n' "$header_code"
+  exit 1
+fi
+
+if [ -n "$output" ] && [ -n "$url" ] && printf '%s' "$range_start" | /usr/bin/grep -Eq '^[0-9]+$' && printf '%s' "$range_end" | /usr/bin/grep -Eq '^[0-9]+$'; then
+  requested_range="bytes=${range_start}-${range_end}"
+  requested_len=$(( range_end - range_start + 1 ))
+
+  range_map_code=""
+  range_map_status=""
+  range_map_last_modified=""
+  range_map_content_range=""
+  range_map_body=""
+
+  if [ -n "${TEST_FAKE_CURL_RANGE_MAP_FILE:-}" ] && [ -f "${TEST_FAKE_CURL_RANGE_MAP_FILE}" ]; then
+    while IFS='|' read -r pattern pattern_range code content_range last_modified body || [ -n "$pattern" ]; do
+      if [ -z "$pattern" ]; then
+        continue
+      fi
+      case "$pattern" in
+        '#'* )
+          continue
+          ;;
+      esac
+      case "$url" in
+        $pattern)
+          if [ "$pattern_range" = "*" ] || [ "$pattern_range" = "$requested_range" ]; then
+            range_map_status="$code"
+            range_map_last_modified="$last_modified"
+            range_map_content_range="$content_range"
+            range_map_body="$body"
+          fi
+          ;;
+      esac
+      [ -n "$range_map_status" ] && break
+    done < "${TEST_FAKE_CURL_RANGE_MAP_FILE}"
+  fi
+
+  if [ -n "$range_map_status" ]; then
+    if [ -z "$range_map_content_range" ] && [ -n "$range_map_body" ] && [ -f "$range_map_body" ]; then
+      body_size="$(/usr/bin/wc -c < "$range_map_body" | /usr/bin/awk '{print $1}')"
+      range_map_content_range="bytes ${range_start}-${range_end}/${body_size}"
+    fi
+
+    if [ -n "$dump_header" ]; then
+      printf 'HTTP/1.1 %s Response\r\n' "$range_map_status" > "$dump_header"
+      if [ -n "$range_map_content_range" ]; then
+        printf 'Content-Range: %s\r\n' "$range_map_content_range" >> "$dump_header"
+      fi
+      if [ -n "$range_map_last_modified" ]; then
+        printf 'Last-Modified: %s\r\n' "$range_map_last_modified" >> "$dump_header"
+      fi
+    fi
+
+    if [ -n "$range_map_body" ] && [ -f "$range_map_body" ]; then
+      mkdir -p "$(dirname \"$output\")"
+      /bin/cp "$range_map_body" "$output"
+    fi
+
+    case "$range_map_status" in
+      2*)
+        exit 0
+        ;;
+      *)
+        exit 1
+        ;;
+    esac
+  fi
+
+  if [ -n "${TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE:-}" ] && [ -f "${TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE}" ]; then
+    while IFS='|' read -r pattern zip_file || [ -n "$pattern" ]; do
+      if [ -z "$pattern" ]; then
+        continue
+      fi
+      case "$pattern" in
+        '#'* )
+          continue
+          ;;
+      esac
+      case "$url" in
+        $pattern)
+          matched_zip_source="$zip_file"
+          ;;
+      esac
+      [ -n "${matched_zip_source:-}" ] && break
+    done < "${TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE}"
+
+    if [ -n "${matched_zip_source:-}" ] && [ -f "$matched_zip_source" ]; then
+      zip_size="$(/usr/bin/wc -c < "$matched_zip_source" | /usr/bin/awk '{print $1}')"
+      if [ "$range_end" -lt "$range_start" ] || [ "$range_end" -ge "$zip_size" ] || [ "$range_start" -lt 0 ]; then
+        if [ -n "$dump_header" ]; then
+          printf 'HTTP/1.1 416 Requested Range Not Satisfiable\r\n' > "$dump_header"
+        fi
+        exit 1
+      fi
+
+      if [ -n "$max_filesize" ] && [ "$requested_len" -gt "$max_filesize" ]; then
+        if [ -n "$dump_header" ]; then
+          printf 'HTTP/1.1 400 Bad Request\r\n' > "$dump_header"
+        fi
+        exit 1
+      fi
+
+      if [ "$range_start" -lt "$zip_size" ] && [ "$range_end" -lt "$zip_size" ] && [ "$range_end" -ge "$range_start" ]; then
+        requested_len=$(( range_end - range_start + 1 ))
+        range_content="bytes ${range_start}-${range_end}/${zip_size}"
+        if [ -n "$dump_header" ]; then
+          printf 'HTTP/1.1 206 Partial Content\r\n' > "$dump_header"
+          printf 'Content-Range: %s\r\n' "$range_content" >> "$dump_header"
+          if [ -n "${TEST_FAKE_CURL_LAST_MODIFIED:-}" ]; then
+            printf 'Last-Modified: %s\r\n' "${TEST_FAKE_CURL_LAST_MODIFIED:-Mon, 01 Jan 2024 00:00:00 GMT}" >> "$dump_header"
+          fi
+        fi
+
+        mkdir -p "$(dirname \"$output\")"
+        /bin/dd if="$matched_zip_source" of="$output" bs=1 skip="$range_start" count="$requested_len" 2>/dev/null
+        exit 0
+      fi
+
+      if [ -n "$dump_header" ]; then
+        printf 'HTTP/1.1 416 Requested Range Not Satisfiable\r\n' > "$dump_header"
+      fi
+      exit 1
+    fi
+  fi
+
+  if [ -n "$dump_header" ]; then
+    printf 'HTTP/1.1 416 Requested Range Not Satisfiable\r\n' > "$dump_header"
+  fi
+  exit 1
 fi
 
 if [ -z "$output" ]; then
@@ -162,7 +447,7 @@ if [ -z "$output" ]; then
         continue
       fi
       case "$pattern" in
-        '#'*)
+        '#'* )
           continue
           ;;
       esac
@@ -180,9 +465,26 @@ if [ -z "$output" ]; then
   fi
 
   if [ "$header_code" = "200" ]; then
+    if [ -n "${TEST_FAKE_CURL_LAST_MODIFIED+x}" ]; then
+      last_modified_value="${TEST_FAKE_CURL_LAST_MODIFIED}"
+    else
+      last_modified_value="Mon, 01 Jan 2024 00:00:00 GMT"
+    fi
+
+    if [ -n "$dump_header" ]; then
+      printf 'HTTP/1.1 200 OK\r\n' > "$dump_header"
+      if [ -n "$last_modified_value" ]; then
+        printf "Last-Modified: %s\r\n" "$last_modified_value" >> "$dump_header"
+      fi
+    fi
     printf 'HTTP/1.1 200 OK\r\n'
-    printf "Last-Modified: ${TEST_FAKE_CURL_LAST_MODIFIED:-Mon, 01 Jan 2024 00:00:00 GMT}\r\n"
+    if [ -n "$last_modified_value" ]; then
+      printf "Last-Modified: %s\r\n" "$last_modified_value"
+    fi
   else
+    if [ -n "$dump_header" ]; then
+      printf 'HTTP/1.1 %s Not Found\r\n' "$header_code" > "$dump_header"
+    fi
     printf 'HTTP/1.1 %s Not Found\r\n' "$header_code"
   fi
   exit 0
@@ -209,7 +511,6 @@ else
 fi
 """,
         )
-
     _write_executable(
         fake_bin / "hdiutil",
         """#!/usr/bin/env sh
@@ -515,6 +816,7 @@ def _run_manager(
     process_env["PATH"] = f"{tool_path}:/usr/bin:/bin:/usr/sbin:/sbin"
     process_env["TEST_COMMAND_LOG"] = str(env["command_log"])
     process_env["TEST_FAKE_STATE_DIR"] = str(env["fake_state"])
+    process_env["TEST_PYTHON"] = sys.executable
     if "discord_pid_tracker" in env:
         process_env["TEST_FAKE_DISCORD_PID_TRACKER"] = str(env["discord_pid_tracker"])
 
@@ -588,4 +890,37 @@ def _assert_no_download_artifacts(env: dict[str, Path]) -> None:
 def _write_fake_curl_header_map(env: dict[str, Path], entries: list[tuple[str, str]]) -> Path:
     map_path = env["script"].parent / "curl_headers.map"
     map_path.write_text("\n".join(f"{pattern}|{code}" for pattern, code in entries), encoding="utf-8")
+    return map_path
+
+
+def _write_fake_curl_range_map(
+    env: dict[str, Path],
+    entries: list[tuple[str, str, str, str, str, str]],
+) -> Path:
+    map_path = env["script"].parent / "curl_range.map"
+    map_path.write_text(
+        "\n".join(
+            "|".join(
+                (
+                    pattern,
+                    requested_range,
+                    status,
+                    content_range,
+                    last_modified,
+                    body_path,
+                )
+            )
+            for pattern, requested_range, status, content_range, last_modified, body_path in entries
+        ),
+        encoding="utf-8",
+    )
+    return map_path
+
+
+def _write_fake_curl_zip_source_map(
+    env: dict[str, Path],
+    entries: list[tuple[str, Path]],
+) -> Path:
+    map_path = env["script"].parent / "curl_zip_sources.map"
+    map_path.write_text("\n".join(f"{pattern}|{zip_path}" for pattern, zip_path in entries), encoding="utf-8")
     return map_path
