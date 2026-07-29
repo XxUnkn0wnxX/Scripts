@@ -140,11 +140,11 @@ Pass a range to start and stop at explicit versions:
 zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
 ```
 
-Discord's CDN does not expose a browsable directory index for these builds, so `--update-select` starts from the channel's current update manifest version and probes older numeric DMG URLs from newest to oldest. If a minimum version is provided, the scan stops there. If a range is provided, the scan starts at the first version and stops at the second version inclusively, even when the lower bound itself is not found on the CDN. If the requested start or minimum version is newer than the current manifest version, the scan uses the detected latest version instead. If no selector is provided, only the manifest version is probed.
+Discord's CDN does not expose a browsable directory index for these builds. Bare `--update-select` reads the channel's current update manifest, probes a bounded window above it, and prints only the highest DMG artifact found. This catches newer CDN builds that Discord has uploaded without advertising through the manifest. If a minimum version is provided, the scan starts from the manifest version and stops at the requested floor; a floor newer than the manifest is clamped to the manifest version. If an explicit range is provided, both endpoints are honored exactly—even when the range is newer than the manifest—and the scan stops at the second version inclusively whether or not that lower bound exists on the CDN.
 
-For each candidate, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. No full ZIP download is used.
+For each reported version, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. Bare discovery candidates use only the DMG `HEAD` probe until the highest artifact is selected. No full ZIP download is used.
 
-The scan buffers matching builds and prints them newest-to-oldest as a completed list, then exits without changing the installed apps or Discord data:
+For selectors, the scan buffers matching builds and prints them newest-to-oldest as a completed list. Bare mode prints only its highest discovered artifact. It then exits without changing the installed apps or Discord data:
 
 ```text
 Last-Modified  Version - [Minimum macOS]
@@ -158,6 +158,9 @@ Defaults and limits appear in the scan header:
 
 ```text
 scan workers: 4
+manifest: 0.0.402
+upward discovery: 10 versions above the manifest
+highest CDN artifact: 0.0.403
 scan floor: 0.0.400
 scan range: 0.0.500 down to 0.0.400
 scan limit: newest 4 builds because DISCORD_UPDATE_SELECT_SCAN_LIMIT is set
@@ -170,6 +173,13 @@ To use eight workers for update-select scans in the current shell:
 ```bash
 export DISCORD_UPDATE_SELECT_JOBS=8
 zsh shell/discord_install_manager.zsh --channel canary --update-select 500-400
+```
+
+Bare discovery checks 10 versions above the manifest by default. Set `DISCORD_UPDATE_SELECT_UPWARD_LIMIT` to change that window; positive values are accepted up to 100, while zero or invalid values fall back to 10:
+
+```bash
+export DISCORD_UPDATE_SELECT_UPWARD_LIMIT=20
+zsh shell/discord_install_manager.zsh --channel stable --update-select
 ```
 
 Range scanning is limited to 100 version steps (101 inclusive builds), accepts floor-only or explicit descending ranges, and prints a usage error when the span is exceeded.
@@ -382,7 +392,7 @@ discord_install_manager.zsh --help
       <td><nobr><code>--update-select [minimum-version|start-end]</code></nobr></td>
       <td>Flag</td>
       <td><nobr>optional version</nobr></td>
-      <td>Prints available direct CDN DMG builds (with <code>Last-Modified</code> and <code>LSMinimumSystemVersion</code>) for one selected channel, then exits without making changes. Without a selector, it prints only the manifest version. With a minimum version such as <code>900</code> or <code>0.0.900</code>, it scans down to that floor. With a range such as <code>500-400</code>, it scans from <code>0.0.500</code> down to <code>0.0.400</code>. Requested starts or floors newer than the current manifest version are clamped to the detected latest version. A range is capped at 100 steps (101 inclusive builds). It does not support <code>all</code>.</td>
+      <td>Prints available direct CDN DMG builds (with <code>Last-Modified</code> and <code>LSMinimumSystemVersion</code>) for one selected channel, then exits without making changes. Without a selector, it probes a bounded window above the manifest and prints only the highest discovered artifact. With a minimum version such as <code>900</code> or <code>0.0.900</code>, it scans from the manifest version down to that floor; a newer floor is clamped to the manifest. With a range such as <code>500-400</code>, it scans exactly from <code>0.0.500</code> down to <code>0.0.400</code>, including ranges newer than the manifest. A range is capped at 100 steps (101 inclusive builds). It does not support <code>all</code>.</td>
     </tr>
     <tr>
       <td><nobr><code>--openasar</code></nobr></td>
