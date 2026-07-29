@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
 import plistlib
 import re
+import subprocess
+import sys
+import threading
 from pathlib import Path
 import zipfile
 
@@ -53,6 +57,37 @@ def _run_update_select(
     if extra_env:
         base_env.update(extra_env)
     return _run_manager(env, *args, extra_env=base_env, **kwargs)
+
+
+def _start_update_select(
+    env: dict[str, Path],
+    *args: str,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.Popen[str]:
+    process_env = os.environ.copy()
+    process_env.update(
+        {
+            "HOME": str(env["home"]),
+            "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+            "TEST_COMMAND_LOG": str(env["command_log"]),
+            "TEST_FAKE_STATE_DIR": str(env["fake_state"]),
+            "TEST_FAKE_CURL_UPDATE_MANIFEST": UPDATE_SELECT_MANIFEST,
+            "TEST_PYTHON": sys.executable,
+        }
+    )
+    if extra_env:
+        process_env.update(extra_env)
+
+    env["command_log"].write_text("")
+    return subprocess.Popen(
+        [str(env["script"]), *args],
+        cwd=str(env["home"]),
+        env=process_env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        bufsize=1,
+    )
 
 
 def _update_select_request_urls(
@@ -713,7 +748,9 @@ def test_update_select_versioned_zip_url_and_plist_paths_are_channel_specific(
         _assert_update_select_zip_urls(env, [_versioned_zip_url(channel, "0.0.5")])
 
 
-def test_update_select_rows_print_in_completion_order_with_concurrent_workers(env: dict[str, Path]):
+def test_update_select_rows_print_in_version_order_with_forced_out_of_order_completion(
+    env: dict[str, Path],
+):
     map_path = _write_fake_curl_header_map(
         env,
         [
@@ -784,9 +821,72 @@ def test_update_select_rows_print_in_completion_order_with_concurrent_workers(en
         ],
     )
     rows = _extract_update_select_rows(result.stdout)
-    assert set(rows) == {"0.0.5", "0.0.4", "0.0.3", "0.0.2"}
-    assert rows[0] == "0.0.4"
-    assert rows[1] == "0.0.3"
+    assert rows == ["0.0.5", "0.0.4", "0.0.3", "0.0.2"]
+
+
+def test_update_select_streams_ordered_head_before_slower_lower_worker_finishes(
+    env: dict[str, Path],
+):
+    map_path = _write_fake_curl_header_map(
+        env,
+        [
+            ("*0.0.5*", "200"),
+            ("*0.0.4*", "200"),
+        ],
+    )
+    sleep_map_path = _write_fake_curl_sleep_map(
+        env,
+        [("*0.0.4/Discord.dmg", "4")],
+    )
+    process = _start_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "5-4",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_SLEEP_MAP_FILE": str(sleep_map_path),
+            "DISCORD_UPDATE_SELECT_JOBS": "2",
+        },
+    )
+    output_lines: list[str] = []
+    head_row_seen = threading.Event()
+
+    assert process.stdout is not None
+    assert process.stderr is not None
+
+    def read_stdout() -> None:
+        for line in process.stdout:
+            output_lines.append(line)
+            if "0.0.5 - [" in line:
+                head_row_seen.set()
+
+    reader = threading.Thread(target=read_stdout, daemon=True)
+    reader.start()
+
+    try:
+        assert head_row_seen.wait(timeout=2.5), (
+            "The next ordered row was not streamed before the slower lower worker finished."
+        )
+        assert process.poll() is None, (
+            "The command finished before proving that the ordered head row streamed early."
+        )
+        returncode = process.wait(timeout=10)
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        reader.join(timeout=2)
+
+    stderr = process.stderr.read()
+    output = "".join(output_lines)
+    assert returncode == 0, stderr
+    assert _extract_update_select_rows(output) == ["0.0.5", "0.0.4"]
 
 
 def test_update_select_reaps_worker_that_exits_before_marking_completion(
@@ -815,7 +915,7 @@ def test_update_select_reaps_worker_that_exits_before_marking_completion(
     )
 
     assert result.returncode == 0, result.stderr
-    assert set(_extract_update_select_rows(result.stdout)) == {"0.0.5", "0.0.3"}
+    assert _extract_update_select_rows(result.stdout) == ["0.0.5", "0.0.3"]
     assert "0.0.4 - [" not in result.stdout
     _assert_update_select_head_urls(
         env,

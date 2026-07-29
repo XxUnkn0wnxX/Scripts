@@ -144,7 +144,7 @@ Discord's CDN does not expose a browsable directory index for these builds. Bare
 
 For each reported version, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. Bare discovery candidates use only the DMG `HEAD` probe until the highest artifact is selected. No full ZIP download is used.
 
-For selectors, each build is printed as soon as its full metadata worker finishes, so rows appear in worker-completion order (not guaranteed newest-to-oldest). Bare mode prints only its highest discovered artifact. It then exits without changing the installed apps or Discord data:
+For selectors, each build is printed in deterministic newest-to-oldest version order, even though metadata workers run in parallel. The bounded reorder window holds at most the configured worker count (eight by default). A ready lower version waits behind an unfinished higher version; otherwise each contiguous row is emitted immediately when the next required version completes. Bare mode prints only its highest discovered artifact. It then exits without changing the installed apps or Discord data:
 
 ```text
 Last-Modified  Version - [Minimum macOS]
