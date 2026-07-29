@@ -116,6 +116,7 @@ Notes:
   --update-select ranges are limited to 100 version steps (101 inclusive builds), for example 500-400.
   update-select uses bounded parallel probing and reads minimal ZIP metadata only for versions it reports.
   DMG HEAD is the availability and Last-Modified source for update-select output.
+  Range rows stream in deterministic newest-to-oldest order through a bounded reorder window.
   --update-select defaults to 8 workers and reads DISCORD_UPDATE_SELECT_JOBS (maximum 8).
   Bare --update-select probes 10 versions above the manifest by default.
   DISCORD_UPDATE_SELECT_UPWARD_LIMIT changes that window (maximum 100).
@@ -1737,8 +1738,9 @@ print_update_select_versions() {
   local completion_pid
   local output_file
   local -a next_active_pids
+  local next_launch_suffix
+  local next_output_suffix
   local worker_pid
-  typeset -A worker_outputs=()
   typeset -A worker_done_files=()
 
   app_name="$(app_name_for_channel "$channel")"
@@ -1908,18 +1910,21 @@ print_update_select_versions() {
   print "Last-Modified  Version - [Minimum macOS]"
 
   pids=()
-  suffix="$first_suffix"
-  while (( suffix >= last_suffix || ${#pids} > 0 )); do
-    while (( suffix >= last_suffix && ${#pids} < scan_jobs )); do
-      ordinal=$(( first_suffix - suffix ))
+  next_launch_suffix="$first_suffix"
+  next_output_suffix="$first_suffix"
+
+  while (( next_output_suffix >= last_suffix || next_launch_suffix >= last_suffix || ${#pids} > 0 )); do
+    while (( next_launch_suffix >= last_suffix &&
+             ${#pids} < scan_jobs &&
+             next_output_suffix - next_launch_suffix < scan_jobs )); do
+      ordinal=$(( first_suffix - next_launch_suffix ))
       version_file="${result_dir}/${ordinal}.txt"
       completion_file="${result_dir}/${ordinal}.done"
-      run_update_select_worker "$channel" "$suffix" "$version_file" "$completion_file" &
+      run_update_select_worker "$channel" "$next_launch_suffix" "$version_file" "$completion_file" &
       pid="$!"
-      worker_outputs[$pid]="$version_file"
       worker_done_files[$pid]="$completion_file"
       pids+=( "$pid" )
-      suffix=$(( suffix - 1 ))
+      next_launch_suffix=$(( next_launch_suffix - 1 ))
     done
 
     completion_pid=""
@@ -1938,18 +1943,32 @@ print_update_select_versions() {
       done
 
       if [[ "$completion_pid" != <-> ]]; then
-        /bin/sleep 0.05
+        /bin/sleep 0.01
       fi
     done
 
     wait "$completion_pid" || true
-    if [[ -n "${worker_outputs[$completion_pid]-}" ]]; then
-      output_file="${worker_outputs[$completion_pid]}"
+    completion_file="${worker_done_files[$completion_pid]-}"
+    if [[ -n "$completion_file" ]] && [[ ! -f "$completion_file" ]]; then
+      /bin/mkdir -p "$(/usr/bin/dirname "$completion_file")"
+      /usr/bin/touch "$completion_file"
+    fi
+
+    while (( next_output_suffix >= last_suffix )); do
+      ordinal=$(( first_suffix - next_output_suffix ))
+      completion_file="${result_dir}/${ordinal}.done"
+      output_file="${result_dir}/${ordinal}.txt"
+      if [[ ! -f "$completion_file" ]]; then
+        break
+      fi
+
       if [[ -f "$output_file" ]]; then
         found_any=true
         /bin/cat "$output_file"
       fi
-    fi
+
+      next_output_suffix=$(( next_output_suffix - 1 ))
+    done
 
     next_active_pids=()
     for worker_pid in "$pids[@]"; do
@@ -1957,9 +1976,6 @@ print_update_select_versions() {
       next_active_pids+=( "$worker_pid" )
     done
     pids=( "${next_active_pids[@]}" )
-    if [[ -n "${worker_outputs[$completion_pid]+x}" ]]; then
-      unset "worker_outputs[$completion_pid]"
-    fi
     if [[ -n "${worker_done_files[$completion_pid]+x}" ]]; then
       unset "worker_done_files[$completion_pid]"
     fi
