@@ -161,15 +161,15 @@ def _versioned_dmg_url(channel: str, version: str) -> str:
     return f"https://{host}/apps/osx/{normalized_version}/{archive}"
 
 
-def test_update_select_without_selector_prints_latest_only(env: dict[str, Path]):
+def test_update_select_without_selector_prints_highest_discovered_artifact_only(
+    env: dict[str, Path],
+):
     map_path = _write_fake_curl_header_map(
         env,
         [
+            ("*0.0.7*", "200"),
+            ("*0.0.6*", "200"),
             ("*0.0.5*", "200"),
-            ("*0.0.4*", "200"),
-            ("*0.0.3*", "404"),
-            ("*0.0.2*", "404"),
-            ("*0.0.1*", "404"),
         ],
     )
 
@@ -178,22 +178,30 @@ def test_update_select_without_selector_prints_latest_only(env: dict[str, Path])
         "--channel",
         "stable",
         "--update-select",
-        extra_env={"TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path)},
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "2",
+        },
     )
 
     assert result.returncode == 0, result.stderr
     assert "Available Discord macOS DMG versions:" in result.stdout
-    assert "latest: 0.0.5" in result.stdout
-    assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.5 - [unknown]" in result.stdout
-    assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.4" not in result.stdout
-    assert "0.0.3" not in result.stdout
+    assert "manifest: 0.0.5" in result.stdout
+    assert "upward discovery: 2 versions above the manifest" in result.stdout
+    assert "highest CDN artifact: 0.0.7" in result.stdout
+    assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.7 - [unknown]" in result.stdout
+    assert "0.0.6 - [" not in result.stdout
+    assert "0.0.5 - [" not in result.stdout
     assert "scan floor:" not in result.stdout
     assert "scan limit:" not in result.stdout
     _assert_update_select_head_urls(
         env,
-        [_versioned_dmg_url("stable", "0.0.5")],
+        [
+            _versioned_dmg_url("stable", "0.0.7"),
+            _versioned_dmg_url("stable", "0.0.6"),
+        ],
     )
-    _assert_update_select_zip_urls(env, [_versioned_zip_url("stable", "0.0.5")])
+    _assert_update_select_zip_urls(env, [_versioned_zip_url("stable", "0.0.7")])
     _assert_no_download_artifacts(env)
 
 
@@ -400,7 +408,7 @@ def test_update_select_newer_minimum_clamps_to_latest(env: dict[str, Path]):
     )
 
     assert result.returncode == 0, result.stderr
-    assert "requested floor was newer than latest; using latest 0.0.5" in result.stdout
+    assert "requested floor was newer than the manifest; using 0.0.5" in result.stdout
     assert "scan floor: 0.0.5" in result.stdout
     assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.5 - [unknown]" in result.stdout
     assert "0.0.4" not in result.stdout
@@ -410,10 +418,11 @@ def test_update_select_newer_minimum_clamps_to_latest(env: dict[str, Path]):
     )
 
 
-def test_update_select_range_start_newer_than_latest_is_clamped(env: dict[str, Path]):
+def test_update_select_range_start_newer_than_manifest_is_honored(env: dict[str, Path]):
     map_path = _write_fake_curl_header_map(
         env,
         [
+            ("*0.0.6*", "200"),
             ("*0.0.5*", "200"),
             ("*0.0.4*", "200"),
             ("*0.0.3*", "200"),
@@ -430,14 +439,16 @@ def test_update_select_range_start_newer_than_latest_is_clamped(env: dict[str, P
     )
 
     assert result.returncode == 0, result.stderr
-    assert "requested start was newer than latest; using latest 0.0.5" in result.stdout
-    assert "scan range: 0.0.5 down to 0.0.3" in result.stdout
+    assert "requested start was newer than latest" not in result.stdout
+    assert "scan range: 0.0.6 down to 0.0.3" in result.stdout
+    assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.6 - [unknown]" in result.stdout
     assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.5 - [unknown]" in result.stdout
     assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.4 - [unknown]" in result.stdout
     assert "Mon, 01 Jan 2024 00:00:00 GMT  0.0.3 - [unknown]" in result.stdout
     _assert_update_select_head_urls(
         env,
         [
+            _versioned_dmg_url("stable", "0.0.6"),
             _versioned_dmg_url("stable", "0.0.5"),
             _versioned_dmg_url("stable", "0.0.4"),
             _versioned_dmg_url("stable", "0.0.3"),
@@ -446,6 +457,7 @@ def test_update_select_range_start_newer_than_latest_is_clamped(env: dict[str, P
     _assert_update_select_zip_urls(
         env,
         [
+            _versioned_zip_url("stable", "0.0.6"),
             _versioned_zip_url("stable", "0.0.5"),
             _versioned_zip_url("stable", "0.0.4"),
             _versioned_zip_url("stable", "0.0.3"),
@@ -566,7 +578,7 @@ def test_update_select_reports_minimum_macos_for_stored_and_deflated_plist_metad
 
 
 @pytest.mark.parametrize("scan_limit", ["0", "abc", None])
-def test_update_select_no_selector_always_returns_latest_only(
+def test_update_select_no_selector_ignores_downward_scan_limit(
     env: dict[str, Path],
     scan_limit: str | None,
 ):
@@ -580,7 +592,10 @@ def test_update_select_no_selector_always_returns_latest_only(
             ("*0.0.1*", "200"),
         ],
     )
-    extra_env = {"TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path)}
+    extra_env = {
+        "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+        "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+    }
     if scan_limit is not None:
         extra_env["DISCORD_UPDATE_SELECT_SCAN_LIMIT"] = scan_limit
 
@@ -597,8 +612,16 @@ def test_update_select_no_selector_always_returns_latest_only(
     assert "0.0.4" not in result.stdout
     assert "scan limit: newest" not in result.stdout
     assert "scan floor:" not in result.stdout
+    assert "manifest: 0.0.5" in result.stdout
+    assert "highest CDN artifact: 0.0.5" in result.stdout
     assert "0.0.5 - [unknown]" in result.stdout
-    _assert_update_select_head_urls(env, [_versioned_dmg_url("stable", "0.0.5")])
+    _assert_update_select_head_urls(
+        env,
+        [
+            _versioned_dmg_url("stable", "0.0.6"),
+            _versioned_dmg_url("stable", "0.0.5"),
+        ],
+    )
     _assert_update_select_zip_urls(env, [_versioned_zip_url("stable", "0.0.5")])
 
 

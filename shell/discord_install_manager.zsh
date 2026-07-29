@@ -60,6 +60,8 @@ typeset -A channel_update_select_plist_paths=(
 DISCORD_UPDATE_SELECT_MAX_SCAN_SPAN=100
 DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS=4
 DISCORD_UPDATE_SELECT_MAX_JOBS=8
+DISCORD_UPDATE_SELECT_DEFAULT_UPWARD_LIMIT=10
+DISCORD_UPDATE_SELECT_MAX_UPWARD_LIMIT=100
 ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT=65557
 ZIP_UPDATE_SELECT_CENTRAL_DIR_BYTES_LIMIT=4194304
 ZIP_UPDATE_SELECT_COMPRESSED_PLIST_BYTES_LIMIT=1048576
@@ -85,7 +87,7 @@ Options:
   --update-select       Print available DMG versions for one selected channel, then exit.
                         Uses bounded range probes (no full ZIP downloads) and supports 101-build ranges.
                         Optionally pass a minimum version such as 900 or a range such as 500-400.
-                        Bare --update-select probes only the latest version.
+                        Bare --update-select finds and prints the highest CDN artifact in a bounded window.
   --openasar            Download and inject OpenAsar into the selected Discord app.
   --openasar-source     Use a specific OpenAsar repo URL, app.asar URL, or local path. Implies --openasar.
   --BD                  Preserve a valid BetterDiscord wrapper and replace its nested betterdiscord.app.asar.
@@ -112,9 +114,11 @@ Notes:
   --update with a version, --dl, and --update-select require a single selected channel.
   --update-select only prints versions; it does not clean, update, inject, or relaunch anything.
   --update-select ranges are limited to 100 version steps (101 inclusive builds), for example 500-400.
-  update-select uses bounded parallel range probing to read only minimal ZIP metadata from each candidate version.
+  update-select uses bounded parallel probing and reads minimal ZIP metadata only for versions it reports.
   DMG HEAD is the availability and Last-Modified source for update-select output.
   --update-select defaults to 4 workers and reads DISCORD_UPDATE_SELECT_JOBS (maximum 8).
+  Bare --update-select probes 10 versions above the manifest by default.
+  DISCORD_UPDATE_SELECT_UPWARD_LIMIT changes that window (maximum 100).
   --openasar must be paired with --channel so the target app is explicit.
   --lock requires --update with an explicit version and either --openasar or --openasar-source.
   --lock supports exactly one named channel and cannot be combined with --BD or --update-select.
@@ -1039,6 +1043,23 @@ update_select_worker_count() {
   print -- "$requested_jobs"
 }
 
+update_select_upward_limit() {
+  local requested_limit
+
+  requested_limit="${DISCORD_UPDATE_SELECT_UPWARD_LIMIT:-$DISCORD_UPDATE_SELECT_DEFAULT_UPWARD_LIMIT}"
+  if [[ "$requested_limit" == <-> ]]; then
+    if (( requested_limit < 1 )); then
+      requested_limit="$DISCORD_UPDATE_SELECT_DEFAULT_UPWARD_LIMIT"
+    elif (( requested_limit > DISCORD_UPDATE_SELECT_MAX_UPWARD_LIMIT )); then
+      requested_limit="$DISCORD_UPDATE_SELECT_MAX_UPWARD_LIMIT"
+    fi
+  else
+    requested_limit="$DISCORD_UPDATE_SELECT_DEFAULT_UPWARD_LIMIT"
+  fi
+
+  print -- "$requested_limit"
+}
+
 http_code_from_headers() {
   local header_path="$1"
   /usr/bin/perl -ne '
@@ -1583,6 +1604,27 @@ minimum_macos_for_update_select_version() (
   minimum_macos_for_update_select_cleanup
   print -- "$minimum_version"
 )
+
+run_update_select_availability_worker() {
+  local channel="$1"
+  local version_suffix="$2"
+  local result_file="$3"
+  local version
+  local dmg_url
+  local code
+  local head_headers
+
+  version="0.0.$version_suffix"
+  dmg_url="$(versioned_download_url_for_channel "$channel" "$version")"
+  head_headers="$result_file.headers"
+
+  curl --location --fail --silent -I -D "$head_headers" "$dmg_url" >/dev/null || return 0
+  code="$(http_code_from_headers "$head_headers")"
+  if [[ "$code" == 200 ]]; then
+    print -- "$version_suffix" > "$result_file"
+  fi
+}
+
 run_update_select_worker() {
   local channel="$1"
   local version_suffix="$2"
@@ -1667,9 +1709,13 @@ print_update_select_versions() {
   local last_suffix=1
   local range_start=""
   local range_end=""
-  local clamped_start=false
   local clamped_floor=false
   local range_requested=false
+  local upward_discovery=false
+  local upward_limit=0
+  local discovery_ceiling
+  local discovered_suffix
+  local discovery_file
   local scan_jobs
   local scan_limit="${DISCORD_UPDATE_SELECT_SCAN_LIMIT:-0}"
   local suffix
@@ -1716,14 +1762,6 @@ print_update_select_versions() {
     if [[ "$requested_start_suffix" != "" ]]; then
       first_suffix="$requested_start_suffix"
       last_suffix="$requested_floor_suffix"
-      if (( first_suffix > latest_suffix )); then
-        first_suffix="$latest_suffix"
-        clamped_start=true
-      fi
-      if (( last_suffix > first_suffix || requested_floor_suffix > first_suffix )); then
-        last_suffix="$first_suffix"
-        clamped_floor=true
-      fi
     else
       last_suffix="$requested_floor_suffix"
       if (( requested_floor_suffix > first_suffix )); then
@@ -1733,6 +1771,8 @@ print_update_select_versions() {
     fi
   else
     last_suffix="$latest_suffix"
+    upward_discovery=true
+    upward_limit="$(update_select_upward_limit)"
   fi
 
   if [[ "$scan_limit" == <-> && "$scan_limit" -gt 0 ]]; then
@@ -1752,17 +1792,17 @@ print_update_select_versions() {
   fi
 
   print "Available $app_name macOS DMG versions:"
-  print "  latest: $latest_version"
+  print "  manifest: $latest_version"
   print "  source: Discord DMG URLs (ZIP archive is metadata-only)"
   print "  note: CDN directory listing is denied, so this probes versioned URLs."
+  if [[ "$upward_discovery" == true ]]; then
+    print "  upward discovery: $upward_limit versions above the manifest"
+  fi
   if [[ "$range_requested" == true && -n "$requested_start_suffix" ]]; then
     print "  scan range requested: 0.0.$requested_start_suffix down to 0.0.$requested_floor_suffix"
   fi
-  if [[ "$clamped_start" == true ]]; then
-    print "  requested start was newer than latest; using latest $latest_version"
-  fi
   if [[ "$clamped_floor" == true ]]; then
-    print "  requested floor was newer than latest; using latest $latest_version"
+    print "  requested floor was newer than the manifest; using $latest_version"
   fi
   if [[ -n "$range_start" ]]; then
     print "  scan range: 0.0.$first_suffix down to 0.0.$last_suffix"
@@ -1781,9 +1821,6 @@ print_update_select_versions() {
   if (( scan_jobs == 0 )); then
     scan_jobs="$DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS"
   fi
-
-  print
-  print "Last-Modified  Version - [Minimum macOS]"
 
   if ! result_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/discord-update-select.XXXXXX")" || [[ -z "$result_dir" ]]; then
     print -u2 "Could not create temporary storage for the update-select scan."
@@ -1818,6 +1855,45 @@ print_update_select_versions() {
   old_sig_term="$(trap -p TERM)"
   old_sig_hup="$(trap -p HUP)"
   trap 'print_update_select_versions_abort' INT TERM HUP
+
+  if [[ "$upward_discovery" == true ]]; then
+    discovery_ceiling=$(( latest_suffix + upward_limit ))
+    discovered_suffix="$latest_suffix"
+    pids=()
+
+    for (( suffix = latest_suffix + 1; suffix <= discovery_ceiling; suffix++ )); do
+      discovery_file="${result_dir}/discovery-${suffix}.txt"
+      run_update_select_availability_worker "$channel" "$suffix" "$discovery_file" &
+      pids+=("$!")
+
+      if (( ${#pids} >= scan_jobs )); then
+        for pid in "$pids[@]"; do
+          wait "$pid" || true
+        done
+        pids=()
+      fi
+    done
+
+    for pid in "$pids[@]"; do
+      wait "$pid" || true
+    done
+    pids=()
+
+    for (( suffix = discovery_ceiling; suffix > latest_suffix; suffix-- )); do
+      discovery_file="${result_dir}/discovery-${suffix}.txt"
+      if [[ -f "$discovery_file" ]]; then
+        discovered_suffix="$suffix"
+        break
+      fi
+    done
+
+    first_suffix="$discovered_suffix"
+    last_suffix="$discovered_suffix"
+    print "  highest CDN artifact: 0.0.$discovered_suffix"
+  fi
+
+  print
+  print "Last-Modified  Version - [Minimum macOS]"
 
   pids=()
   for (( suffix = first_suffix; suffix >= last_suffix; suffix-- )); do
