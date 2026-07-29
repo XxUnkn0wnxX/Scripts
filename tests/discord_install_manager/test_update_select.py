@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 import zipfile
 
@@ -13,6 +14,7 @@ import pytest
 
 from _helpers import (
     _assert_no_download_artifacts,
+    _assert_no_update_select_scratch,
     _read_command_log,
     _run_manager,
     _write_fake_curl_header_map,
@@ -331,6 +333,7 @@ def test_update_select_selector_and_os_filter_keeps_matching_rows(
 
     assert result.returncode == 0, result.stderr
     assert _extract_update_select_rows(result.stdout) == ["0.0.5", "0.0.3"]
+    _assert_no_update_select_scratch(env)
 
 
 def test_update_select_without_selector_and_os_filter_without_matches_fails(
@@ -370,6 +373,7 @@ def test_update_select_without_selector_and_os_filter_without_matches_fails(
     combined_output = result.stdout + result.stderr
     assert "No direct-CDN builds for Discord matched exact LSMinimumSystemVersion 12.0" in combined_output
     assert "within 0.0.5 down to 0.0.5." in combined_output
+    _assert_no_update_select_scratch(env)
 
 
 def test_update_select_os_filter_excludes_unknown_metadata(
@@ -473,16 +477,31 @@ def test_update_select_bare_os_match_cancels_slower_lower_worker(
             ("*0.0.4*", "200"),
         ],
     )
-    zip_path = _write_update_select_zip(
-        env,
-        "stable",
-        "0.0.5",
-        "11.0",
-        zipfile.ZIP_STORED,
-    )
+    zip_paths: list[tuple[str, Path]] = [
+        (
+            _versioned_zip_url("stable", "0.0.5"),
+            _write_update_select_zip(
+                env,
+                "stable",
+                "0.0.5",
+                "11.0",
+                zipfile.ZIP_STORED,
+            ),
+        ),
+        (
+            _versioned_zip_url("stable", "0.0.4"),
+            _write_update_select_zip(
+                env,
+                "stable",
+                "0.0.4",
+                "11.0",
+                zipfile.ZIP_STORED,
+            ),
+        ),
+    ]
     sleep_map_path = _write_fake_curl_sleep_map(
         env,
-        [("*0.0.4/Discord.dmg", "4")],
+        [("*0.0.4/Discord.zip", "4")],
     )
     process = _start_update_select(
         env,
@@ -494,10 +513,7 @@ def test_update_select_bare_os_match_cancels_slower_lower_worker(
         extra_env={
             "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
             "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
-                _write_fake_curl_zip_source_map(
-                    env,
-                    [(_versioned_zip_url("stable", "0.0.5"), zip_path)],
-                )
+                _write_fake_curl_zip_source_map(env, zip_paths),
             ),
             "TEST_FAKE_CURL_SLEEP_MAP_FILE": str(sleep_map_path),
             "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
@@ -518,7 +534,54 @@ def test_update_select_bare_os_match_cancels_slower_lower_worker(
                 process.wait(timeout=2)
 
     assert process.returncode == 0, stderr
+    assert stderr == ""
     assert _extract_update_select_rows(stdout) == ["0.0.5"]
+    _assert_no_update_select_scratch(env)
+
+
+def test_update_os_resolver_signal_removes_script_local_scratch(
+    env: dict[str, Path],
+):
+    map_path = _write_fake_curl_header_map(env, [("*0.0.5*", "200")])
+    sleep_map_path = _write_fake_curl_sleep_map(
+        env,
+        [("*0.0.5/Discord.dmg", "4")],
+    )
+    process = _start_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update",
+        "--OS",
+        "11",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_SLEEP_MAP_FILE": str(sleep_map_path),
+            "DISCORD_UPDATE_SELECT_UPWARD_LIMIT": "1",
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "1",
+        },
+    )
+
+    try:
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            if list(env["script"].parent.glob(".discord-update-select-resolver.*")):
+                break
+            time.sleep(0.01)
+        else:
+            pytest.fail("Resolver scratch directory was not created before timeout.")
+
+        process.terminate()
+        stdout, stderr = process.communicate(timeout=3)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=2)
+
+    assert process.returncode == 130, (stdout, stderr)
+    assert stderr == ""
+    _assert_no_update_select_scratch(env)
+    _assert_no_download_artifacts(env)
 
 
 def test_update_select_scan_limit_applies_with_selector(env: dict[str, Path]):
