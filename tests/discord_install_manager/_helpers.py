@@ -131,6 +131,7 @@ header_value=""
 dump_header=""
 head_mode=""
 matched_zip_source=""
+sleep_seconds=""
 
 log_call() {
   if [ -z "$log_file" ]; then
@@ -245,6 +246,39 @@ while [ "$#" -gt 0 ]; do
     range_end="${range_spec#*-}"
   fi
 done
+
+if [ -n "${TEST_FAKE_CURL_SLEEP_MAP_FILE:-}" ] && [ -f "${TEST_FAKE_CURL_SLEEP_MAP_FILE}" ]; then
+  while IFS='|' read -r pattern delay || [ -n "$pattern" ]; do
+    if [ -z "$pattern" ]; then
+      continue
+    fi
+    case "$pattern" in
+      '#'* )
+        continue
+        ;;
+    esac
+    case "$url" in
+      $pattern)
+        sleep_seconds="$delay"
+        ;;
+    esac
+    [ -n "$sleep_seconds" ] && break
+  done < "${TEST_FAKE_CURL_SLEEP_MAP_FILE}"
+fi
+
+if [ -n "$sleep_seconds" ]; then
+  /bin/sleep "$sleep_seconds"
+fi
+
+if [ -n "${TEST_FAKE_CURL_KILL_PARENT_PATTERN:-}" ]; then
+  case "$url" in
+    ${TEST_FAKE_CURL_KILL_PARENT_PATTERN})
+      /bin/kill -KILL "$PPID"
+      /bin/sleep 0.1
+      exit 137
+      ;;
+  esac
+fi
 
 if printf '%s' "$url" | /usr/bin/grep -q '^https://discord.com/api/updates/'; then
   manifest="${TEST_FAKE_CURL_UPDATE_MANIFEST:-}"
@@ -890,6 +924,18 @@ def _assert_no_download_artifacts(env: dict[str, Path]) -> None:
 def _write_fake_curl_header_map(env: dict[str, Path], entries: list[tuple[str, str]]) -> Path:
     map_path = env["script"].parent / "curl_headers.map"
     map_path.write_text("\n".join(f"{pattern}|{code}" for pattern, code in entries), encoding="utf-8")
+    return map_path
+
+
+def _write_fake_curl_sleep_map(
+    env: dict[str, Path],
+    entries: list[tuple[str, str]],
+) -> Path:
+    map_path = env["script"].parent / "curl_sleeps.map"
+    map_path.write_text(
+        "\n".join(f"{pattern}|{seconds}" for pattern, seconds in entries),
+        encoding="utf-8",
+    )
     return map_path
 
 

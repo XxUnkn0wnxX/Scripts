@@ -58,7 +58,7 @@ typeset -A channel_update_select_plist_paths=(
 )
 
 DISCORD_UPDATE_SELECT_MAX_SCAN_SPAN=100
-DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS=4
+DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS=8
 DISCORD_UPDATE_SELECT_MAX_JOBS=8
 DISCORD_UPDATE_SELECT_DEFAULT_UPWARD_LIMIT=10
 DISCORD_UPDATE_SELECT_MAX_UPWARD_LIMIT=100
@@ -116,7 +116,7 @@ Notes:
   --update-select ranges are limited to 100 version steps (101 inclusive builds), for example 500-400.
   update-select uses bounded parallel probing and reads minimal ZIP metadata only for versions it reports.
   DMG HEAD is the availability and Last-Modified source for update-select output.
-  --update-select defaults to 4 workers and reads DISCORD_UPDATE_SELECT_JOBS (maximum 8).
+  --update-select defaults to 8 workers and reads DISCORD_UPDATE_SELECT_JOBS (maximum 8).
   Bare --update-select probes 10 versions above the manifest by default.
   DISCORD_UPDATE_SELECT_UPWARD_LIMIT changes that window (maximum 100).
   --openasar must be paired with --channel so the target app is explicit.
@@ -1629,6 +1629,7 @@ run_update_select_worker() {
   local channel="$1"
   local version_suffix="$2"
   local result_file="$3"
+  local completion_file="${4:-}"
   local dmg_url
   local zip_url
   local code
@@ -1642,23 +1643,27 @@ run_update_select_worker() {
   zip_url="$(versioned_update_select_archive_for_channel "$channel" "$version")"
   head_headers="$result_file.headers"
 
-  curl --location --fail --silent -I -D "$head_headers" "$dmg_url" >/dev/null || return 0
-  code="$(http_code_from_headers "$head_headers")"
-  if [[ "$code" != 200 ]]; then
-    return 0
+  if curl --location --fail --silent -I -D "$head_headers" "$dmg_url" >/dev/null; then
+    code="$(http_code_from_headers "$head_headers")"
+    if [[ "$code" == 200 ]]; then
+      last_modified="$(last_modified_from_headers "$head_headers")"
+      [[ -n "$last_modified" ]] || last_modified="unknown"
+
+      if ! minimum="$(minimum_macos_for_update_select_version "$channel" "$version" "$zip_url")"; then
+        minimum="unknown"
+      elif [[ -z "$minimum" ]]; then
+        minimum="unknown"
+      fi
+
+      /bin/mkdir -p "$(/usr/bin/dirname "$result_file")"
+      /usr/bin/printf '%-29s  %s - [%s]\n' "$last_modified" "$version" "$minimum" > "$result_file"
+    fi
   fi
 
-  last_modified="$(last_modified_from_headers "$head_headers")"
-  [[ -n "$last_modified" ]] || last_modified="unknown"
-
-  if ! minimum="$(minimum_macos_for_update_select_version "$channel" "$version" "$zip_url")"; then
-    minimum="unknown"
-  elif [[ -z "$minimum" ]]; then
-    minimum="unknown"
+  if [[ -n "$completion_file" ]]; then
+    /bin/mkdir -p "$(/usr/bin/dirname "$completion_file")"
+    /usr/bin/touch "$completion_file"
   fi
-
-  /bin/mkdir -p "$(/usr/bin/dirname "$result_file")"
-  /usr/bin/printf '%-29s  %s - [%s]\n' "$last_modified" "$version" "$minimum" > "$result_file"
 }
 
 latest_version_for_channel() {
@@ -1721,13 +1726,20 @@ print_update_select_versions() {
   local suffix
   local found_any=false
   local result_dir
-  local pids
+  local -a pids
   local version_file
   local ordinal
   local old_sig_int
   local old_sig_term
   local old_sig_hup
   local pid
+  local completion_file
+  local completion_pid
+  local output_file
+  local -a next_active_pids
+  local worker_pid
+  typeset -A worker_outputs=()
+  typeset -A worker_done_files=()
 
   app_name="$(app_name_for_channel "$channel")"
 
@@ -1896,30 +1908,60 @@ print_update_select_versions() {
   print "Last-Modified  Version - [Minimum macOS]"
 
   pids=()
-  for (( suffix = first_suffix; suffix >= last_suffix; suffix-- )); do
-    ordinal=$(( first_suffix - suffix ))
-    version_file="${result_dir}/${ordinal}.txt"
-    run_update_select_worker "$channel" "$suffix" "$version_file" &
-    pids+=("$!")
+  suffix="$first_suffix"
+  while (( suffix >= last_suffix || ${#pids} > 0 )); do
+    while (( suffix >= last_suffix && ${#pids} < scan_jobs )); do
+      ordinal=$(( first_suffix - suffix ))
+      version_file="${result_dir}/${ordinal}.txt"
+      completion_file="${result_dir}/${ordinal}.done"
+      run_update_select_worker "$channel" "$suffix" "$version_file" "$completion_file" &
+      pid="$!"
+      worker_outputs[$pid]="$version_file"
+      worker_done_files[$pid]="$completion_file"
+      pids+=( "$pid" )
+      suffix=$(( suffix - 1 ))
+    done
 
-    if (( ${#pids} >= scan_jobs )); then
-      for pid in "$pids[@]"; do
-        wait "$pid" || true
+    completion_pid=""
+    while [[ "$completion_pid" != <-> ]]; do
+      for worker_pid in "$pids[@]"; do
+        [[ "$worker_pid" == <-> ]] || continue
+        completion_file="${worker_done_files[$worker_pid]-}"
+        if [[ -n "$completion_file" ]] && [[ -f "$completion_file" ]]; then
+          completion_pid="$worker_pid"
+          break
+        fi
+        if ! /bin/kill -0 "$worker_pid" 2>/dev/null; then
+          completion_pid="$worker_pid"
+          break
+        fi
       done
-      pids=()
+
+      if [[ "$completion_pid" != <-> ]]; then
+        /bin/sleep 0.05
+      fi
+    done
+
+    wait "$completion_pid" || true
+    if [[ -n "${worker_outputs[$completion_pid]-}" ]]; then
+      output_file="${worker_outputs[$completion_pid]}"
+      if [[ -f "$output_file" ]]; then
+        found_any=true
+        /bin/cat "$output_file"
+      fi
     fi
-  done
 
-  for pid in "$pids[@]"; do
-    wait "$pid" || true
-  done
-
-  for (( suffix = first_suffix; suffix >= last_suffix; suffix-- )); do
-    ordinal=$(( first_suffix - suffix ))
-    version_file="${result_dir}/${ordinal}.txt"
-    if [[ -f "$version_file" ]]; then
-      found_any=true
-      /bin/cat "$version_file"
+    next_active_pids=()
+    for worker_pid in "$pids[@]"; do
+      [[ "$worker_pid" == "$completion_pid" ]] && continue
+      next_active_pids+=( "$worker_pid" )
+    done
+    pids=( "${next_active_pids[@]}" )
+    if [[ -n "${worker_outputs[$completion_pid]+x}" ]]; then
+      unset "worker_outputs[$completion_pid]"
+    fi
+    if [[ -n "${worker_done_files[$completion_pid]+x}" ]]; then
+      unset "worker_done_files[$completion_pid]"
     fi
   done
 

@@ -12,6 +12,7 @@ from _helpers import (
     _read_command_log,
     _run_manager,
     _write_fake_curl_header_map,
+    _write_fake_curl_sleep_map,
     _write_fake_curl_range_map,
     _write_fake_curl_zip_source_map,
 )
@@ -305,7 +306,7 @@ def test_update_select_descending_range_selects_specified_window(env: dict[str, 
 
     assert result.returncode == 0, result.stderr
     assert "scan range: 0.0.5 down to 0.0.3" in result.stdout
-    assert _extract_update_select_rows(result.stdout) == ["0.0.5", "0.0.4", "0.0.3"]
+    assert set(_extract_update_select_rows(result.stdout)) == {"0.0.5", "0.0.4", "0.0.3"}
     _assert_update_select_head_urls(
         env,
         [
@@ -324,7 +325,9 @@ def test_update_select_descending_range_selects_specified_window(env: dict[str, 
     )
 
 
-def test_update_select_accepts_inclusive_100_step_range_and_stays_descending(env: dict[str, Path]):
+def test_update_select_accepts_inclusive_100_step_range_and_reports_every_version(
+    env: dict[str, Path],
+):
     map_path = _write_fake_curl_header_map(env, [("*", "200")])
 
     result = _run_update_select(
@@ -341,7 +344,10 @@ def test_update_select_accepts_inclusive_100_step_range_and_stays_descending(env
 
     assert result.returncode == 0, result.stderr
     assert "scan range: 0.0.500 down to 0.0.400" in result.stdout
-    assert _extract_update_select_rows(result.stdout) == [f"0.0.{i}" for i in range(500, 399, -1)]
+    rows = _extract_update_select_rows(result.stdout)
+    expected_rows = [f"0.0.{i}" for i in range(500, 399, -1)]
+    assert len(rows) == len(expected_rows)
+    assert set(rows) == set(expected_rows)
 
 
 def test_update_select_rejects_too_wide_inclusive_range(env: dict[str, Path]):
@@ -628,8 +634,10 @@ def test_update_select_no_selector_ignores_downward_scan_limit(
 @pytest.mark.parametrize(
     "jobs,expected",
     [
-        (None, "4"),
-        ("0", "4"),
+        (None, "8"),
+        ("0", "8"),
+        ("invalid", "8"),
+        ("3", "3"),
         ("12", "8"),
     ],
 )
@@ -705,7 +713,7 @@ def test_update_select_versioned_zip_url_and_plist_paths_are_channel_specific(
         _assert_update_select_zip_urls(env, [_versioned_zip_url(channel, "0.0.5")])
 
 
-def test_update_select_rows_stay_descending_with_concurrent_workers(env: dict[str, Path]):
+def test_update_select_rows_print_in_completion_order_with_concurrent_workers(env: dict[str, Path]):
     map_path = _write_fake_curl_header_map(
         env,
         [
@@ -713,6 +721,22 @@ def test_update_select_rows_stay_descending_with_concurrent_workers(env: dict[st
             ("*0.0.4*", "200"),
             ("*0.0.3*", "200"),
             ("*0.0.2*", "200"),
+        ],
+    )
+    zip_path = _write_update_select_zip(
+        env,
+        "stable",
+        "0.0.5",
+        "12.0",
+        zipfile.ZIP_STORED,
+    )
+    sleep_map_path = _write_fake_curl_sleep_map(
+        env,
+        [
+            ("*0.0.5/Discord.dmg", "2"),
+            ("*0.0.4*", "0"),
+            ("*0.0.3*", "0"),
+            ("*0.0.2*", "0"),
         ],
     )
 
@@ -725,6 +749,18 @@ def test_update_select_rows_stay_descending_with_concurrent_workers(env: dict[st
         extra_env={
             "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
             "DISCORD_UPDATE_SELECT_JOBS": "2",
+            "TEST_FAKE_CURL_SLEEP_MAP_FILE": str(sleep_map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(
+                    env,
+                    [
+                        ("*0.0.5*", zip_path),
+                        ("*0.0.4*", zip_path),
+                        ("*0.0.3*", zip_path),
+                        ("*0.0.2*", zip_path),
+                    ]
+                ),
+            ),
         },
     )
 
@@ -747,7 +783,48 @@ def test_update_select_rows_stay_descending_with_concurrent_workers(env: dict[st
             _versioned_zip_url("stable", "0.0.2"),
         ],
     )
-    assert _extract_update_select_rows(result.stdout) == ["0.0.5", "0.0.4", "0.0.3", "0.0.2"]
+    rows = _extract_update_select_rows(result.stdout)
+    assert set(rows) == {"0.0.5", "0.0.4", "0.0.3", "0.0.2"}
+    assert rows[0] == "0.0.4"
+    assert rows[1] == "0.0.3"
+
+
+def test_update_select_reaps_worker_that_exits_before_marking_completion(
+    env: dict[str, Path],
+):
+    map_path = _write_fake_curl_header_map(
+        env,
+        [
+            ("*0.0.5*", "200"),
+            ("*0.0.4*", "200"),
+            ("*0.0.3*", "200"),
+        ],
+    )
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "5-3",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_KILL_PARENT_PATTERN": "*0.0.4/Discord.dmg",
+            "DISCORD_UPDATE_SELECT_JOBS": "2",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert set(_extract_update_select_rows(result.stdout)) == {"0.0.5", "0.0.3"}
+    assert "0.0.4 - [" not in result.stdout
+    _assert_update_select_head_urls(
+        env,
+        [
+            _versioned_dmg_url("stable", "0.0.5"),
+            _versioned_dmg_url("stable", "0.0.4"),
+            _versioned_dmg_url("stable", "0.0.3"),
+        ],
+    )
 
 
 def test_update_select_range_200_with_mismatched_content_range_reports_unknown(env: dict[str, Path]):
