@@ -32,7 +32,7 @@ Repo layout:
 - [`mkv_utils.zsh`](shell/mkv_utils.zsh) - Interactive MKV metadata, extraction, and track-edit helper. [Docs](docs/mkv-utils.md)
 - [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) - Satisfactory splitter, balancer, and compressor planner. [Docs](docs/satisfactory-balancer.md)
 - [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) - macOS-only launcher and updater wrapper for Satisfactory Modeler. [Docs](docs/satisfactory-modeler.md)
-- [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) - macOS-only Discord Stable/PTB/Canary updater reset, app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. [Docs](docs/discord-install-manager.md)
+- [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) - macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. [Docs](docs/discord-install-manager.md)
 - [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) - Compare custom tap formulas against upstream Homebrew versions. [Docs](docs/brew-custom-compare.md)
 - [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) - Download and install current Apple mobile-device support packages. [Docs](docs/fetch-ios-pkgs.md)
 - [`codex-sync-model-provider.zsh`](shell/codex-sync-model-provider.zsh) - macOS-only guarded sync of the configured Codex model provider into persisted SQLite thread and session metadata. [Docs](docs/codex-sync-model-provider.md)
