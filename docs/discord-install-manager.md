@@ -167,6 +167,8 @@ Bare `--update-select --OS <version>` starts at that highest direct CDN artifact
 
 For each reported version, the script checks DMG availability with a `HEAD` request and reads `Last-Modified`, then performs bounded ZIP byte-range reads for `Info.plist` metadata only. Bare discovery candidates use only the DMG `HEAD` probe until the highest artifact is selected. No full ZIP download is used.
 
+Update-selection scratch files are kept in a hidden per-run directory beside the manager script, rather than in the system temporary directory. The directory and its nested range files are removed after success, a handled failure, or a handled interruption.
+
 For selectors, each build is printed in deterministic newest-to-oldest version order, even though metadata workers run in parallel. The bounded reorder window holds at most the configured worker count (eight by default). A ready lower version waits behind an unfinished higher version; otherwise each contiguous row is emitted immediately when the next required version completes. Bare mode prints only its highest discovered artifact. It then exits without changing the installed apps or Discord data:
 
 ```text

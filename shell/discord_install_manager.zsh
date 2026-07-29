@@ -1146,6 +1146,7 @@ terminate_update_select_worker_tree() {
   local -a descendant_pids
 
   [[ "$root_pid" == <-> ]] || return 0
+  /bin/kill -STOP "$root_pid" 2>/dev/null || return 0
 
   pending_pids=( "$root_pid" )
   descendant_pids=()
@@ -1157,15 +1158,17 @@ terminate_update_select_worker_tree() {
 
     for child_pid in ${(f)child_output}; do
       [[ "$child_pid" == <-> ]] || continue
+      /bin/kill -STOP "$child_pid" 2>/dev/null || continue
       descendant_pids+=( "$child_pid" )
       pending_pids+=( "$child_pid" )
     done
   done
 
-  /bin/kill -TERM "$root_pid" 2>/dev/null || true
   for (( index = ${#descendant_pids}; index >= 1; index-- )); do
-    /bin/kill -TERM "${descendant_pids[$index]}" 2>/dev/null || true
+    /bin/kill -KILL "${descendant_pids[$index]}" 2>/dev/null || true
   done
+
+  /bin/kill -KILL "$root_pid" 2>/dev/null || true
 }
 
 http_code_from_headers() {
@@ -1344,6 +1347,7 @@ minimum_macos_for_update_select_version() (
   local channel="$1"
   local version="$2"
   local zip_url="$3"
+  local temp_root="${4:-$script_dir}"
 
   local zip_size
   local tail_offset
@@ -1385,7 +1389,9 @@ minimum_macos_for_update_select_version() (
   local range_start
   local range_end
   local range_total
-  temp_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/discord-update-select-range.XXXXXX")"
+  local terminated=false
+
+  temp_dir="$(/usr/bin/mktemp -d "${temp_root}/.discord-update-select-range.XXXXXX")"
   [[ -n "$temp_dir" ]] || return 1
 
   minimum_macos_for_update_select_cleanup() {
@@ -1394,13 +1400,24 @@ minimum_macos_for_update_select_version() (
   }
 
   minimum_macos_for_update_select_fail() {
-    minimum_macos_for_update_select_cleanup
     exit 1
   }
 
-  trap 'minimum_macos_for_update_select_cleanup; exit 130' INT TERM HUP
+  minimum_macos_for_update_select_handle_signal() {
+    terminated=true
+    return 0
+  }
+
+  minimum_macos_for_update_select_abort_if_terminated() {
+    [[ "$terminated" == true ]] && exit 130
+    return 0
+  }
+
+  trap 'minimum_macos_for_update_select_cleanup' EXIT
+  trap 'minimum_macos_for_update_select_handle_signal' INT TERM HUP
 
   download_update_select_range "$zip_url" 0 0 "$temp_dir/bytes-0-0" "$temp_dir/headers-0-0" 1 || minimum_macos_for_update_select_fail
+  minimum_macos_for_update_select_abort_if_terminated
   read -r range_code range_start range_end range_total <<<"$(content_range_from_headers "$temp_dir/headers-0-0")"
   if [[ "$range_code" != 206 ]] || (( range_start != 0 || range_end != 0 )); then
     minimum_macos_for_update_select_fail
@@ -1410,6 +1427,7 @@ minimum_macos_for_update_select_version() (
   if (( zip_size <= 0 )); then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   if (( zip_size <= ZIP_UPDATE_SELECT_EOCD_TAIL_BYTES_LIMIT )); then
     tail_offset=0
@@ -1421,6 +1439,7 @@ minimum_macos_for_update_select_version() (
 
   tail_end=$(( zip_size - 1 ))
   download_update_select_range "$zip_url" "$tail_offset" "$tail_end" "$temp_dir/central-tail" "$temp_dir/headers-central-tail" "$tail_size" "$zip_size" || minimum_macos_for_update_select_fail
+  minimum_macos_for_update_select_abort_if_terminated
 
   central_info="$(/usr/bin/perl -e '
     use strict;
@@ -1469,6 +1488,7 @@ minimum_macos_for_update_select_version() (
   if [[ -z "$central_info" ]]; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   read -r central_offset central_size <<<"$central_info"
   central_path="$temp_dir/central-directory"
@@ -1478,6 +1498,7 @@ minimum_macos_for_update_select_version() (
   fi
 
   download_update_select_range "$zip_url" "$central_offset" "$central_end" "$central_path" "$temp_dir/headers-central" "$central_size" "$zip_size" || minimum_macos_for_update_select_fail
+  minimum_macos_for_update_select_abort_if_terminated
 
   central_entry="$(/usr/bin/perl -e '
     use strict;
@@ -1540,6 +1561,7 @@ minimum_macos_for_update_select_version() (
   if [[ -z "$central_entry" ]]; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   read -r method central_crc comp_size uncompressed_size local_flags central_fname_len local_offset <<<"$central_entry"
 
@@ -1552,6 +1574,7 @@ minimum_macos_for_update_select_version() (
   fi
 
   download_update_select_range "$zip_url" "$local_offset" "$(( local_offset + 29 ))" "$temp_dir/local-header" "$temp_dir/headers-local" 30 "$zip_size" || minimum_macos_for_update_select_fail
+  minimum_macos_for_update_select_abort_if_terminated
 
   local_entry="$(/usr/bin/perl -e '
     use strict;
@@ -1594,11 +1617,13 @@ minimum_macos_for_update_select_version() (
   if [[ -z "$local_entry" ]]; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   read -r local_crc local_comp_size local_uncompressed_size local_fname_len local_extra_len local_data_descriptor <<<"$local_entry"
   if (( local_comp_size == 0 && local_data_descriptor == 0 )) || (( local_uncompressed_size == 0 && local_data_descriptor == 0 )); then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   if (( local_data_descriptor == 0 )); then
     if (( local_comp_size != comp_size || local_uncompressed_size != uncompressed_size || local_crc != central_crc )); then
@@ -1618,8 +1643,10 @@ minimum_macos_for_update_select_version() (
   if (( filename_extra_size < 30 )); then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   download_update_select_range "$zip_url" "$(( local_offset + 30 ))" "$(( local_offset + filename_extra_size - 1 ))" "$temp_dir/local-name-extra" "$temp_dir/headers-name-extra" "$(( filename_extra_size - 30 ))" "$zip_size" || minimum_macos_for_update_select_fail
+  minimum_macos_for_update_select_abort_if_terminated
 
   local_name_entry="$(/usr/bin/perl -e '
     use strict;
@@ -1647,6 +1674,7 @@ minimum_macos_for_update_select_version() (
   if [[ -z "$local_name_entry" ]]; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   data_start=$(( local_offset + filename_extra_size ))
   data_end=$(( data_start + comp_size - 1 ))
@@ -1654,9 +1682,11 @@ minimum_macos_for_update_select_version() (
   if (( data_start < 0 || data_start >= zip_size || data_end < data_start || data_end >= zip_size || comp_size < 1 )); then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   compressed_path="$temp_dir/compressed-plist"
   download_update_select_range "$zip_url" "$data_start" "$data_end" "$compressed_path" "$temp_dir/headers-plist" "$comp_size" "$zip_size" || minimum_macos_for_update_select_fail
+  minimum_macos_for_update_select_abort_if_terminated
 
   plist_path="$temp_dir/plist"
   if (( method == 8 )); then
@@ -1676,6 +1706,7 @@ minimum_macos_for_update_select_version() (
   if (( plist_size > ZIP_UPDATE_SELECT_UNCOMPRESSED_PLIST_BYTES_LIMIT || plist_size != uncompressed_size )); then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   bundle_version="$(plist_string_from_info_plist "$plist_path" CFBundleVersion)"
   if [[ -z "$bundle_version" ]]; then
@@ -1684,20 +1715,24 @@ minimum_macos_for_update_select_version() (
   if ! normalized_bundle_version="$(normalize_discord_version "$bundle_version" 2>/dev/null)"; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   if [[ "$normalized_bundle_version" != "$version" ]]; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   plist_crc="$(/usr/bin/cksum -o 3 "$plist_path" | /usr/bin/awk '{ print $1 }')"
   if (( plist_crc != central_crc )); then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   minimum_version="$(plist_string_from_info_plist "$plist_path" LSMinimumSystemVersion)"
   if [[ -z "$minimum_version" ]]; then
     minimum_macos_for_update_select_fail
   fi
+  minimum_macos_for_update_select_abort_if_terminated
 
   minimum_version="${minimum_version%\+}"
 
@@ -1709,7 +1744,7 @@ minimum_macos_for_update_select_version() (
       ;;
   esac
 
-  minimum_macos_for_update_select_cleanup
+  minimum_macos_for_update_select_abort_if_terminated
   print -- "$minimum_version"
 )
 
@@ -1721,6 +1756,8 @@ run_update_select_availability_worker() {
   local dmg_url
   local code
   local head_headers
+
+  trap - INT TERM HUP
 
   version="0.0.$version_suffix"
   dmg_url="$(versioned_download_url_for_channel "$channel" "$version")"
@@ -1746,11 +1783,15 @@ run_update_select_worker() {
   local minimum="unknown"
   local metadata_file="${5:-}"
   local head_headers
+  local scratch_root
+
+  trap - INT TERM HUP
 
   version="0.0.$version_suffix"
   dmg_url="$(versioned_download_url_for_channel "$channel" "$version")"
   zip_url="$(versioned_update_select_archive_for_channel "$channel" "$version")"
   head_headers="$result_file.headers"
+  scratch_root="$(/usr/bin/dirname "$result_file")"
 
   if curl --location --fail --silent -I -D "$head_headers" "$dmg_url" >/dev/null; then
     code="$(http_code_from_headers "$head_headers")"
@@ -1758,7 +1799,7 @@ run_update_select_worker() {
       last_modified="$(last_modified_from_headers "$head_headers")"
       [[ -n "$last_modified" ]] || last_modified="unknown"
 
-      if ! minimum="$(minimum_macos_for_update_select_version "$channel" "$version" "$zip_url")"; then
+      if ! minimum="$(minimum_macos_for_update_select_version "$channel" "$version" "$zip_url" "$scratch_root")"; then
         minimum="unknown"
       elif [[ -z "$minimum" ]]; then
         minimum="unknown"
@@ -1819,28 +1860,71 @@ download_version_for_channel() {
 resolve_update_version_for_macos_filter() {
   local channel="$1"
   local app_name
+  local resolver_dir
   local machine_output
   local tmp_output
   local selected_version
   local candidate_version
   local candidate_minimum
+  local old_sig_int
+  local old_sig_term
+  local old_sig_hup
+  local setup_interrupted=false
+
+  resolve_update_version_for_macos_filter_cleanup() {
+    if [[ -n "$resolver_dir" && -d "$resolver_dir" ]]; then
+      /bin/rm -rf -- "$resolver_dir" || true
+    fi
+    return 0
+  }
+
+  resolve_update_version_for_macos_filter_restore_traps() {
+    trap - INT TERM HUP
+    [[ -n "$old_sig_int" ]] && eval "$old_sig_int"
+    [[ -n "$old_sig_term" ]] && eval "$old_sig_term"
+    [[ -n "$old_sig_hup" ]] && eval "$old_sig_hup"
+    return 0
+  }
+
+  resolve_update_version_for_macos_filter_abort() {
+    resolve_update_version_for_macos_filter_cleanup
+    resolve_update_version_for_macos_filter_restore_traps
+    exit 130
+  }
+
+  resolve_update_version_for_macos_filter_mark_interrupted() {
+    setup_interrupted=true
+    return 0
+  }
 
   app_name="$(app_name_for_channel "$channel")"
   print "Resolving the newest $app_name direct-CDN build with exact LSMinimumSystemVersion $update_select_macos_filter..."
 
-  tmp_output="$(
-    /usr/bin/mktemp "${TMPDIR:-/tmp}/discord-update-select-resolved.XXXXXX"
-  )" || return 1
-  machine_output="$(
-    /usr/bin/mktemp "${TMPDIR:-/tmp}/discord-update-select-machined.XXXXXX"
-  )" || {
-    /bin/rm -f -- "$tmp_output"
-    return 1
-  }
+  resolver_dir=""
+  old_sig_int="$(trap -p INT)"
+  old_sig_term="$(trap -p TERM)"
+  old_sig_hup="$(trap -p HUP)"
+  trap 'resolve_update_version_for_macos_filter_mark_interrupted' INT TERM HUP
 
-  if ! print_update_select_versions "$channel" "" "$update_select_macos_filter" "$machine_output" > "$tmp_output" 2>&1; then
+  if ! resolver_dir="$(/usr/bin/mktemp -d "${script_dir}/.discord-update-select-resolver.XXXXXX")"; then
+    if [[ "$setup_interrupted" == true ]]; then
+      resolve_update_version_for_macos_filter_abort
+    fi
+    resolve_update_version_for_macos_filter_restore_traps
+    return 1
+  fi
+  if [[ "$setup_interrupted" == true ]]; then
+    resolve_update_version_for_macos_filter_abort
+  fi
+  trap 'resolve_update_version_for_macos_filter_abort' INT TERM HUP
+
+  tmp_output="$resolver_dir/output"
+  machine_output="$resolver_dir/machine"
+
+  if ! print_update_select_versions "$channel" "" "$update_select_macos_filter" "$machine_output" "$resolver_dir" > "$tmp_output" 2>&1; then
     /bin/cat "$tmp_output" >&2
-    /bin/rm -f -- "$tmp_output" "$machine_output"
+    resolve_update_version_for_macos_filter_cleanup
+    resolve_update_version_for_macos_filter_restore_traps
     print -u2 "No changes were made because $app_name OS-version resolution failed."
     return 1
   fi
@@ -1853,7 +1937,8 @@ resolve_update_version_for_macos_filter() {
       break
     fi
   done < "$machine_output"
-  /bin/rm -f -- "$tmp_output" "$machine_output"
+  resolve_update_version_for_macos_filter_cleanup
+  resolve_update_version_for_macos_filter_restore_traps
 
   if [[ -z "$selected_version" ]]; then
     print -u2 "No direct-CDN build for $app_name matched exact LSMinimumSystemVersion $update_select_macos_filter."
@@ -1871,6 +1956,7 @@ print_update_select_versions() {
   local selector="${2:-}"
   local minimum_system_filter="${3:-}"
   local machine_output_file="${4:-}"
+  local abort_cleanup_dir="${5:-}"
   local app_name
   local latest_version
   local latest_suffix
@@ -1893,9 +1979,10 @@ print_update_select_versions() {
   local output_rows_target=0
   local output_rows_printed=0
   local output_limit_reached=false
+  local setup_interrupted=false
   local suffix
   local found_any=false
-  local result_dir
+  local result_dir=""
   local -a pids
   local version_file
   local ordinal
@@ -2020,12 +2107,8 @@ print_update_select_versions() {
     scan_jobs="$DISCORD_UPDATE_SELECT_MIN_DEFAULT_JOBS"
   fi
 
-  if ! result_dir="$(/usr/bin/mktemp -d "${TMPDIR:-/tmp}/discord-update-select.XXXXXX")" || [[ -z "$result_dir" ]]; then
-    print -u2 "Could not create temporary storage for the update-select scan."
-    return 1
-  fi
   print_update_select_versions_cleanup() {
-    [[ -n "$result_dir" ]] && [[ -d "$result_dir" ]] && /bin/rm -rf -- "$result_dir"
+    [[ -n "$result_dir" ]] && [[ -d "$result_dir" ]] && /bin/rm -rf -- "$result_dir" || true
     return 0
   }
   print_update_select_versions_restore_traps() {
@@ -2046,12 +2129,33 @@ print_update_select_versions() {
     done
 
     print_update_select_versions_cleanup
+    if [[ -n "$abort_cleanup_dir" && -d "$abort_cleanup_dir" ]]; then
+      /bin/rm -rf -- "$abort_cleanup_dir" || true
+    fi
     print_update_select_versions_restore_traps
     exit 130
   }
+  print_update_select_versions_mark_interrupted() {
+    setup_interrupted=true
+    return 0
+  }
+
   old_sig_int="$(trap -p INT)"
   old_sig_term="$(trap -p TERM)"
   old_sig_hup="$(trap -p HUP)"
+  trap 'print_update_select_versions_mark_interrupted' INT TERM HUP
+
+  if ! result_dir="$(/usr/bin/mktemp -d "${script_dir}/.discord-update-select.XXXXXX")" || [[ -z "$result_dir" ]]; then
+    if [[ "$setup_interrupted" == true ]]; then
+      print_update_select_versions_abort
+    fi
+    print_update_select_versions_restore_traps
+    print -u2 "Could not create temporary storage for the update-select scan."
+    return 1
+  fi
+  if [[ "$setup_interrupted" == true ]]; then
+    print_update_select_versions_abort
+  fi
   trap 'print_update_select_versions_abort' INT TERM HUP
 
   if [[ "$upward_discovery" == true ]]; then

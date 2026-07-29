@@ -921,6 +921,10 @@ def _assert_no_download_artifacts(env: dict[str, Path]) -> None:
     assert not list(env["script"].parent.glob("mount-*"))
 
 
+def _assert_no_update_select_scratch(env: dict[str, Path]) -> None:
+    assert not list(env["script"].parent.glob(".discord-update-select*"))
+
+
 def _write_fake_curl_header_map(env: dict[str, Path], entries: list[tuple[str, str]]) -> Path:
     map_path = env["script"].parent / "curl_headers.map"
     map_path.write_text("\n".join(f"{pattern}|{code}" for pattern, code in entries), encoding="utf-8")
