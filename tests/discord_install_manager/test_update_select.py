@@ -286,9 +286,138 @@ def test_update_select_without_selector_and_os_filter_finds_hidden_canary_match(
     assert "upward discovery: 2 versions above the manifest" in result.stdout
     assert "highest CDN artifact: 0.0.1215" in result.stdout
     assert "OS scan limit: newest 11 candidate builds" in result.stdout
-    assert "OS filter: exact LSMinimumSystemVersion 11.0" in result.stdout
+    assert "OS filter: LSMinimumSystemVersion major family 11 (11 or 11.x)" in result.stdout
     assert "OS scan range: 0.0.1215 down to 0.0.1205" in result.stdout
     assert "0.0.1214 - [" not in result.stdout
+
+
+def test_update_select_major_family_os_filter_includes_matching_prefixes_only_and_orders_newest_to_oldest(
+    env: dict[str, Path],
+):
+    minimum_by_version = {
+        "0.0.10": "10",
+        "0.0.9": "10.0",
+        "0.0.8": "10.13",
+        "0.0.7": "11.0",
+        "0.0.6": "10.99",
+        "0.0.5": "12.0",
+        "0.0.4": "10.15.7",
+        "0.0.3": "100.0",
+    }
+    map_path = _write_fake_curl_header_map(
+        env,
+        [(f"*{version}*", "200") for version in minimum_by_version],
+    )
+    zip_entries: list[tuple[str, Path]] = []
+    for version, minimum in minimum_by_version.items():
+        zip_entries.append(
+            (
+                _versioned_zip_url("stable", version),
+                _write_update_select_zip(
+                    env,
+                    "stable",
+                    version,
+                    minimum,
+                    zipfile.ZIP_STORED,
+                ),
+            )
+        )
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "10-3",
+        "--OS",
+        "10",
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, zip_entries)
+            ),
+            "DISCORD_UPDATE_OS_SCAN_LIMIT": "1",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _extract_update_select_rows(result.stdout) == [
+        "0.0.10",
+        "0.0.9",
+        "0.0.8",
+        "0.0.6",
+        "0.0.4",
+    ]
+    assert "OS filter: LSMinimumSystemVersion major family 10 (10 or 10.x)" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("os_filter", "minimum_by_version"),
+    [
+        (
+            "10.13",
+            {
+                "0.0.6": "10.13",
+                "0.0.5": "10",
+                "0.0.4": "10.13.1",
+                "0.0.3": "10.14",
+            },
+        ),
+        (
+            "10.15.7",
+            {
+                "0.0.6": "10.15.7",
+                "0.0.5": "10.15",
+                "0.0.4": "10.15.6",
+                "0.0.3": "10.15.8",
+            },
+        ),
+    ],
+    ids=("minor", "patch"),
+)
+def test_update_select_exact_component_os_filter_matches_only_exact_metadata(
+    env: dict[str, Path],
+    os_filter: str,
+    minimum_by_version: dict[str, str],
+):
+    map_path = _write_fake_curl_header_map(
+        env,
+        [(f"*{version}*", "200") for version in minimum_by_version],
+    )
+    zip_entries: list[tuple[str, Path]] = []
+    for version, minimum in minimum_by_version.items():
+        zip_entries.append(
+            (
+                _versioned_zip_url("stable", version),
+                _write_update_select_zip(
+                    env,
+                    "stable",
+                    version,
+                    minimum,
+                    zipfile.ZIP_STORED,
+                ),
+            )
+        )
+
+    result = _run_update_select(
+        env,
+        "--channel",
+        "stable",
+        "--update-select",
+        "6-3",
+        "--OS",
+        os_filter,
+        extra_env={
+            "TEST_FAKE_CURL_HEADER_MAP_FILE": str(map_path),
+            "TEST_FAKE_CURL_ZIP_SOURCE_MAP_FILE": str(
+                _write_fake_curl_zip_source_map(env, zip_entries)
+            ),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert _extract_update_select_rows(result.stdout) == ["0.0.6"]
+    assert f"OS filter: exact LSMinimumSystemVersion {os_filter}" in result.stdout
 
 
 def test_update_select_selector_and_os_filter_keeps_matching_rows(
