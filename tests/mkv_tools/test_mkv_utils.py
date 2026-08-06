@@ -319,6 +319,7 @@ def test_mkv_utils_option7_multi_file_uses_per_file_track_layout(env: dict[str, 
         input_data="7\nY\n0\n",
     )
 
+    output = result.stdout + result.stderr
     assert result.returncode == 0
     calls = _command_invocations(_read_command_log(env), "mkvmerge")
     remux_calls = [call for call in calls if " -o " in f" {call} "]
@@ -332,6 +333,13 @@ def test_mkv_utils_option7_multi_file_uses_per_file_track_layout(env: dict[str, 
     assert "--audio-tracks 11" in second_call
     assert "--subtitle-tracks 12" in second_call
     assert "--audio-tracks 1,2" not in second_call
+    assert "track_rows=" not in output
+    assert "row=" not in output
+    assert "track_type=" not in output
+    assert "track_id=" not in output
+    assert "track_rows_valid=" not in output
+    assert "excluded_id=" not in output
+    assert "requested_ids_valid=" not in output
 
 
 def test_mkv_utils_option8_reorder_tracks_replaces_original(env: dict[str, Path]):

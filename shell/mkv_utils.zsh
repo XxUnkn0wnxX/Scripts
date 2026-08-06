@@ -1041,7 +1041,7 @@ elif [ "$choice" = "4" ]; then
   for target in "${targets[@]}"; do
     typeset -a video_keep audio_keep subtitle_keep raw_tracks
     typeset -A seen_track_ids
-    typeset track_rows row track_type track_id track_rows_valid excluded_id requested_ids_valid
+    typeset track_rows="" row="" track_type="" track_id="" track_rows_valid="" excluded_id="" requested_ids_valid=""
     video_keep=()
     audio_keep=()
     subtitle_keep=()

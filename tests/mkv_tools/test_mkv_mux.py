@@ -354,6 +354,37 @@ def test_mkv_mux_option3_creates_boosted_files_and_safe_sorting(env: dict[str, P
     assert not (env["workdir"] / "boost_single_original.mkv").exists()
 
 
+def test_mkv_mux_option3_multi_file_multi_track_processing_keeps_codec_extension_hidden(
+    env: dict[str, Path],
+):
+    first = _mkv_file(env, "boost_multi_one.mkv")
+    second = _mkv_file(env, "boost_multi_two.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        fzf_responses=[[first.name, second.name]],
+        input_data="3\n1\nY\n2dB,-3dB\n",
+    )
+
+    log = _read_command_log(env)
+    mkvextract_calls = _command_invocations(log, "mkvextract")
+    ffmpeg_calls = _command_invocations(log, "ffmpeg")
+    mkvmerge_calls = _command_invocations(log, "mkvmerge")
+    output = result.stdout + result.stderr
+
+    assert result.returncode == 0
+    assert any("boost_multi_one.mkv" in call for call in mkvextract_calls)
+    assert any("boost_multi_two.mkv" in call for call in mkvextract_calls)
+    assert any("-filter:a volume=2dB" in call for call in ffmpeg_calls)
+    assert any("-filter:a volume=-3dB" in call for call in ffmpeg_calls)
+    assert any("--track-name 0:-3dB" in call and "--track-name 0:2dB" in call for call in mkvmerge_calls)
+    assert (env["workdir"] / f"{first.stem}_boosted (1).mkv").exists()
+    assert (env["workdir"] / f"{second.stem}_boosted (1).mkv").exists()
+    assert first.exists()
+    assert second.exists()
+    assert "codec_extension=" not in output
+
+
 def test_mkv_mux_option3_uses_fdk_aac_encoder_when_available(env: dict[str, Path]):
     source = _mkv_file(env, "boost_single.mkv")
 
