@@ -1132,7 +1132,7 @@ if [ "$choice" -eq 1 ]; then
       track_id=$(echo "$track_info" | awk '{print $3}' | tr -d ':')
 
       # Determine file extension via ext_override, or fall back to codec suffix
-      local codec_extension
+      local codec_extension=""
       if [[ -n "${ext_override[$codec]}" ]]; then
         codec_extension="${ext_override[$codec]}"
       else
