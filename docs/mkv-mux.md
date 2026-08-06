@@ -315,6 +315,36 @@ Then pick:
 <press Enter>
 ```
 
+## Testing Notes
+
+Run the focused Python test matrix for this script with:
+
+```bash
+.venv/bin/python -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_mux.py
+```
+
+Run both Matroska script matrices with:
+
+```bash
+.venv/bin/python -m pytest --disable-plugin-autoload tests/mkv_tools
+```
+
+Compile-check the test sources with:
+
+```bash
+.venv/bin/python -m compileall tests/mkv_tools
+```
+
+Run the complete repository test suite with:
+
+```bash
+.venv/bin/python -m pytest --disable-plugin-autoload
+```
+
+The `mkv_mux` matrix runs a temporary copy of the script through its real interactive entry point. Controllable fake `ffmpeg`, `ffprobe`, `mkvmerge`, `mkvextract`, `fzf`, `jq`, and `rsync` commands isolate the tests from live media while recording command arguments and creating only temporary fixture outputs. The harness verifies that every required fake resolves ahead of any installed media tool.
+
+The matrix covers command-line guards and help output; option `1` copy and AAC replacement paths; audio mapping, metadata, dispositions, limiter validation and arguments, safe output naming, non-safe overwrite refusal, filenames with spaces, and encode-failure cleanup; option `2` remux and non-video handling; and option `3` extraction, boost filters, track naming/order, safe-mode sorting, backup restoration, and controlled failure cleanup.
+
 ## Troubleshooting
 
 - `No files selected. Exiting.`

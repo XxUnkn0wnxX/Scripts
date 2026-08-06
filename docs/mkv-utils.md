@@ -401,6 +401,36 @@ N
 0:0,0:2,0:1
 ```
 
+## Testing Notes
+
+Run the focused Python test matrix for this script with:
+
+```bash
+.venv/bin/python -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
+```
+
+Run both Matroska script matrices with:
+
+```bash
+.venv/bin/python -m pytest --disable-plugin-autoload tests/mkv_tools
+```
+
+Compile-check the test sources with:
+
+```bash
+.venv/bin/python -m compileall tests/mkv_tools
+```
+
+Run the complete repository test suite with:
+
+```bash
+.venv/bin/python -m pytest --disable-plugin-autoload
+```
+
+The `mkv_utils` matrix runs a temporary copy of the script through its real interactive entry point. Controllable fake `mkvmerge`, `mkvextract`, `mkvpropedit`, `fzf`, `jq`, and Python runtime commands isolate the tests from live Matroska files while recording command arguments and keeping filesystem changes inside temporary fixtures. The harness verifies that every required fake resolves ahead of any installed media tool.
+
+The matrix covers command-line and no-media guards; the track-ID conversion and metadata operations in options `1` through `5`; filenames and track names containing spaces; multi-file partial-failure summaries; attachment extraction; video removal with `.mka` conversion; remove and reorder success/failure cleanup; and extension selection for extracted tracks in options `6` through `9`.
+
 ## Troubleshooting
 
 - `No file selected. Exiting.`
