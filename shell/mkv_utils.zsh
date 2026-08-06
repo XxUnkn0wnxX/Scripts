@@ -319,10 +319,16 @@ prompt_for_track_order() {
 # Function to display track information safely, projecting only the fields we need
 display_track_info() {
   local source_file="$1"
+  local mkv_json="${2-}"
 
   echo "-----------------------  mkvmerge JSON track listing -----------------------"
-  mkvmerge -J "$source_file" < /dev/null \
-    | jq -r '
+  if (( $# < 2 )); then
+    if ! mkv_json="$(mkvmerge -J "$source_file" < /dev/null)"; then
+      return 1
+    fi
+  fi
+
+  printf '%s\n' "$mkv_json" | jq -r '
         .tracks[]
         | {
             id:    .id,
@@ -335,6 +341,34 @@ display_track_info() {
           + (if .name != "" then " [\(.name)]" else "" end)
           + (if .lang != "" then " [\(.lang)]" else "" end)
       '
+}
+
+collect_tracks_for_remux() {
+  local source_file="$1"
+  local mkv_json="${2-}"
+  local track_rows
+
+  if (( $# < 2 )); then
+    if ! mkv_json="$(mkvmerge -J "$source_file" < /dev/null)"; then
+      return 1
+    fi
+  fi
+
+  if ! track_rows="$(printf '%s\n' "$mkv_json" \
+    | jq -er '.tracks as $tracks
+        | if ($tracks | type) != "array" then error("missing or invalid tracks array")
+          elif ($tracks | length) == 0 then error("empty tracks array")
+          elif any($tracks[]; .type != "video" and .type != "audio" and .type != "subtitles") then error("unsupported track type")
+          elif any($tracks[]; (.id | type) != "number") then error("non-numeric track ID")
+          elif any($tracks[]; .id < 0 or .id != (.id | floor)) then error("invalid track ID")
+          elif (($tracks | map(.id) | unique | length) != ($tracks | length)) then error("duplicate track ID")
+          else $tracks[]
+          end
+        | [.type, .id] | @tsv')"; then
+    return 1
+  fi
+
+  print -r -- "$track_rows"
 }
 
 # Function to rename tracks using mkvpropedit
@@ -953,7 +987,17 @@ elif [ "$choice" = "4" ]; then
 
   # Show JSON-based track list for first file
   source_file=${targets[1]}
-  display_track_info "$source_file"
+  source_mkv_json=""
+  source_track_rows=""
+  if ! source_mkv_json="$(mkvmerge -J "$source_file" < /dev/null)" \
+    || ! source_track_rows="$(collect_tracks_for_remux "$source_file" "$source_mkv_json")"; then
+    echo "Error on ${source_file}; track inspection failed; file unchanged."
+    exit 1
+  fi
+  if ! display_track_info "$source_file" "$source_mkv_json"; then
+    echo "Error on ${source_file}; track inspection failed; file unchanged."
+    exit 1
+  fi
 
   # Ask which track IDs to remove
   track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): ")
@@ -975,14 +1019,6 @@ elif [ "$choice" = "4" ]; then
 
   echo "Removing tracks: ${exclude_ids[*]}"
 
-  # Build keep lists by streaming mkvmerge JSON directly into jq
-  video_keep=($(mkvmerge -J "$source_file" < /dev/null \
-                 | jq -r '.tracks[] | select(.type=="video")      | .id'))
-  audio_keep=($(mkvmerge -J "$source_file" < /dev/null \
-                 | jq -r '.tracks[] | select(.type=="audio")      | .id'))
-  subtitle_keep=($(mkvmerge -J "$source_file" < /dev/null \
-                 | jq -r '.tracks[] | select(.type=="subtitles") | .id'))
-
   # Helper to filter out excluded IDs
   filter_keep() {
     local arr=("$@") keep=()
@@ -991,9 +1027,6 @@ elif [ "$choice" = "4" ]; then
     done
     echo "${keep[@]}"
   }
-  video_keep=($(filter_keep "${video_keep[@]}"))
-  audio_keep=($(filter_keep "${audio_keep[@]}"))
-  subtitle_keep=($(filter_keep "${subtitle_keep[@]}"))
 
   # Apply removal to each file
   files_count=${#targets[@]}
@@ -1002,7 +1035,100 @@ elif [ "$choice" = "4" ]; then
   successful_files=0
   failed_files=()
   queue_start=$SECONDS
+  if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+    echo "Total Files Count: $files_count"
+  fi
   for target in "${targets[@]}"; do
+    typeset -a video_keep audio_keep subtitle_keep raw_tracks
+    typeset -A seen_track_ids
+    typeset track_rows row track_type track_id track_rows_valid excluded_id requested_ids_valid
+    video_keep=()
+    audio_keep=()
+    subtitle_keep=()
+    seen_track_ids=()
+    track_rows=""
+    if [[ "$target" == "$source_file" ]]; then
+      track_rows="$source_track_rows"
+    elif ! track_rows="$(collect_tracks_for_remux "$target")"; then
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        failed_files+=("${target:t}")
+        echo "Failed: ${target:t}"
+      else
+        echo "Error on ${target}; track inspection failed; file unchanged."
+      fi
+      file_index=$((file_index + 1))
+      continue
+    fi
+    raw_tracks=("${(@f)track_rows}")
+    track_rows_valid=true
+
+    for row in "${raw_tracks[@]}"; do
+      [[ -z "$row" ]] && continue
+      track_type="${row%%$'\t'*}"
+      track_id="${row#*$'\t'}"
+
+      if ! [[ "$track_id" == <-> ]]; then
+        track_rows_valid=false
+        break
+      fi
+      if [[ -n "${seen_track_ids[$track_id]-}" ]]; then
+        track_rows_valid=false
+        break
+      fi
+      seen_track_ids[$track_id]=1
+
+      case "$track_type" in
+        video) video_keep+=("$track_id") ;;
+        audio) audio_keep+=("$track_id") ;;
+        subtitles) subtitle_keep+=("$track_id") ;;
+        *) track_rows_valid=false; break ;;
+      esac
+    done
+
+    if [[ "$track_rows_valid" != true ]]; then
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        failed_files+=("${target:t}")
+        echo "Failed: ${target:t}"
+      else
+        echo "Error on ${target}; track inspection failed; file unchanged."
+      fi
+      file_index=$((file_index + 1))
+      continue
+    fi
+
+    requested_ids_valid=true
+    for excluded_id in "${exclude_ids[@]}"; do
+      if [[ -z "${seen_track_ids[$excluded_id]-}" ]]; then
+        requested_ids_valid=false
+        break
+      fi
+    done
+    if [[ "$requested_ids_valid" != true ]]; then
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        failed_files+=("${target:t}")
+        echo "Failed: ${target:t}"
+      else
+        echo "Error on ${target}; requested Track ID not found; file unchanged."
+      fi
+      file_index=$((file_index + 1))
+      continue
+    fi
+
+    video_keep=($(filter_keep "${video_keep[@]}"))
+    audio_keep=($(filter_keep "${audio_keep[@]}"))
+    subtitle_keep=($(filter_keep "${subtitle_keep[@]}"))
+
+    if [[ ${#video_keep[@]} -eq 0 && ${#audio_keep[@]} -eq 0 && ${#subtitle_keep[@]} -eq 0 ]]; then
+      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
+        failed_files+=("${target:t}")
+        echo "Failed: ${target:t}"
+      else
+        echo "Error on ${target}; no tracks to keep after removal; file unchanged."
+      fi
+      file_index=$((file_index + 1))
+      continue
+    fi
+
     base=${target##*/}; base=${base%.*}; ext=${target##*.}
     [[ ${#video_keep[@]} -eq 0 ]] && out_ext=mka || out_ext=$ext
     tmp="${base}_temp.${out_ext}"
@@ -1019,9 +1145,6 @@ elif [ "$choice" = "4" ]; then
       || cmd+=(--no-subtitles)
     cmd+=("$target")
 
-    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 && $file_index -eq 1 ]]; then
-      echo "Total Files Count: $files_count"
-    fi
     echo "Executing: ${cmd[*]}"
     remux_start=$SECONDS
     if "${cmd[@]}"; then
