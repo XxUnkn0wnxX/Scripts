@@ -192,6 +192,9 @@ if [ -f "$call_file" ]; then
 fi
 printf '%s\\n' "$call" > "$call_file"
 
+if [ "$call_mode" = "json" ] && [ -n "${TEST_FAKE_MKVMERGE_JSON_FAIL_CALL:-}" ] && [ "$call" -eq "${TEST_FAKE_MKVMERGE_JSON_FAIL_CALL}" ]; then
+  exit 1
+fi
 if [ "$call_mode" = "remux" ] && [ -n "${TEST_FAKE_MKVMERGE_FAIL_CALL:-}" ] && [ "$call" -eq "${TEST_FAKE_MKVMERGE_FAIL_CALL}" ]; then
   exit 1
 fi
@@ -219,6 +222,15 @@ if [ "$call_mode" = "json" ]; then
   base="$(basename "$source_file")"
 
   case "$base" in
+    *option7_alt*)
+      cat <<'JSON'
+{"tracks":[
+  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng"}},
+  {"id":11,"type":"audio","properties":{"id":11,"codec_id":"A_AAC","track_name":"Narration","language":"eng"}},
+  {"id":12,"type":"subtitles","properties":{"id":12,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng"}}
+]}
+JSON
+      ;;
     *novideo*)
       cat <<'JSON'
 {"tracks":[
@@ -431,6 +443,18 @@ mkvmerge_last_file="${state_dir}/fake_mkvmerge_last_file"
 
 query="$*"
 
+call_file="${state_dir}/fake_jq_calls"
+call=1
+if [ -f "$call_file" ]; then
+  previous="$(cat "$call_file" 2>/dev/null || echo 0)"
+  call=$((previous + 1))
+fi
+printf '%s\\n' "$call" > "$call_file"
+
+if [ -n "${TEST_FAKE_JQ_FAIL_CALL:-}" ] && [ "$call" -eq "${TEST_FAKE_JQ_FAIL_CALL}" ]; then
+  exit 1
+fi
+
 query_file="${state_dir}/fake_jq_query.$$"
 input_file="${state_dir}/fake_jq_input.$$"
 cat > "$input_file"
@@ -445,6 +469,7 @@ base="$(basename "$source_file")"
 /usr/bin/python3 - "$base" "$query_file" "$input_file" <<'PY'
 #!/usr/bin/env python3
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -454,6 +479,12 @@ query = Path(sys.argv[2]).read_text()
 raw_input = Path(sys.argv[3]).read_text()
 
 def tracks_for(base: str):
+    if "option7_alt" in base:
+        return [
+            (0, "video", "V_MPEG4/ISO/AVC", "", "eng"),
+            (11, "audio", "A_AAC", "Narration", "eng"),
+            (12, "subtitles", "S_TEXT/ASS", "Subs", "eng"),
+        ]
     if "novideo" in base:
         return [
             (0, "audio", "A_AC3", "Dolby", "eng"),
@@ -510,6 +541,24 @@ if ".streams[]" in query:
         pass
     for row in streams:
         print(json.dumps(row, separators=(",", ":")))
+    sys.exit(0)
+
+if ".tracks" in query and "@tsv" in query:
+    row_mode = os.environ.get("TEST_FAKE_JQ_TRACK_ROW_MODE", "")
+    if row_mode == "empty":
+        sys.exit(0)
+    if row_mode == "non-numeric":
+        print("video\tbad")
+        sys.exit(0)
+    if row_mode == "duplicate":
+        print("video\t0")
+        print("audio\t0")
+        sys.exit(0)
+    if row_mode == "unsupported":
+        print("buttons\t0")
+        sys.exit(0)
+    for idx, typ, codec, _name, _lang in tracks:
+        print(f"{typ}\t{idx}")
     sys.exit(0)
 
 if "select(.id==" in query:
