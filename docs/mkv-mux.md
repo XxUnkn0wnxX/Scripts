@@ -333,28 +333,36 @@ Then pick:
 
 ## Testing Notes
 
+From the repository root, create and activate the required virtual environment, then install the dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 Run the focused Python test matrix for this script with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_mux.py
+python -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_mux.py
 ```
 
 Run both Matroska script matrices with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload tests/mkv_tools
+python -m pytest --disable-plugin-autoload tests/mkv_tools
 ```
 
 Compile-check the test sources with:
 
 ```bash
-.venv/bin/python -m compileall tests/mkv_tools
+python -m compileall tests/mkv_tools
 ```
 
 Run the complete repository test suite with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload
+python -m pytest --disable-plugin-autoload
 ```
 
 The `mkv_mux` matrix runs a temporary copy of the script through its real interactive entry point. Controllable fake `ffmpeg`, `ffprobe`, `mkvmerge`, `mkvextract`, `fzf`, `jq`, and `rsync` commands isolate the tests from live media while recording command arguments and creating only temporary fixture outputs. The harness verifies that every required fake resolves ahead of any installed media tool.

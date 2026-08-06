@@ -321,10 +321,18 @@ DNS resolution is limited to IPv4 `A` records.
 
 ## Testing notes
 
+From the repository root, create and activate the required virtual environment, then install the dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 Run the focused test suite for this utility with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload tests/vpnroute
+python -m pytest --disable-plugin-autoload tests/vpnroute
 ```
 
 The direct `--disable-plugin-autoload` option requires pytest 8.4 or newer, as pinned by this repository's minimum requirement.
@@ -332,7 +340,7 @@ The direct `--disable-plugin-autoload` option requires pytest 8.4 or newer, as p
 Run the full repo test suite with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload
+python -m pytest --disable-plugin-autoload
 ```
 
 For current-shell reuse of both test commands, run:
@@ -341,16 +349,16 @@ For current-shell reuse of both test commands, run:
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 
 # focused
-.venv/bin/python -m pytest tests/vpnroute
+python -m pytest tests/vpnroute
 
 # full
-.venv/bin/python -m pytest
+python -m pytest
 ```
 
 When editing the Python sources, it is also useful to run:
 
 ```bash
-.venv/bin/python -m compileall python/vpnroute.py tests/vpnroute
+python -m compileall python/vpnroute.py tests/vpnroute
 ```
 
 ## CDN-backed domains and DNS changes
