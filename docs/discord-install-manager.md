@@ -631,10 +631,18 @@ zsh shell/discord_install_manager.zsh --channel all --update --openasar
 
 ## Testing Notes
 
+From the repository root, create and activate the required virtual environment, then install the dependencies:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
 Run the Python test matrix for this script with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload tests/discord_install_manager
+python -m pytest --disable-plugin-autoload tests/discord_install_manager
 ```
 
 The direct `--disable-plugin-autoload` option requires pytest 8.4 or newer, as pinned by this repository's minimum requirement.
@@ -642,13 +650,13 @@ The direct `--disable-plugin-autoload` option requires pytest 8.4 or newer, as p
 Compile-check the test sources with:
 
 ```bash
-.venv/bin/python -m compileall tests/discord_install_manager
+python -m compileall tests/discord_install_manager
 ```
 
 Run the complete repository test suite with:
 
 ```bash
-.venv/bin/python -m pytest --disable-plugin-autoload
+python -m pytest --disable-plugin-autoload
 ```
 
 The suite is split by behavior so CLI parsing, cleanup, downloads, version selection, application replacement, OpenAsar, BetterDiscord wrappers, relaunch/recovery guards, and `--lock` are tested independently. Each test exercises one contract; parameterized cases are used only for equivalent variants of that same contract.
@@ -659,8 +667,8 @@ Alternatively, disable third-party pytest plugin autoload once for the current s
 
 ```bash
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
-.venv/bin/python -m pytest tests/discord_install_manager
-.venv/bin/python -m pytest
+python -m pytest tests/discord_install_manager
+python -m pytest
 ```
 
 ## Safety Guards
