@@ -46,6 +46,12 @@ Show help:
 zsh shell/mkv_mux.zsh --help
 ```
 
+Enable AAC encoder debug output:
+
+```bash
+zsh shell/mkv_mux.zsh --debug
+```
+
 Enable the extra limiter prompt for supported audio re-encode paths:
 
 ```bash
@@ -86,6 +92,11 @@ zsh shell/mkv_mux.zsh --climit --nsafe /path/to/folder
       <td>Adds one extra prompt for supported audio re-encode paths so you can apply an <code>alimiter</code> ceiling filter.</td>
     </tr>
     <tr>
+      <td><nobr><code>--debug</code></nobr></td>
+      <td>Flag</td>
+      <td>Prints the selected AAC encoder before each option 1 or option 3 encode batch.</td>
+    </tr>
+    <tr>
       <td><nobr><code>--nsafe</code></nobr></td>
       <td>Flag</td>
       <td>Turns off safe mode so the script can overwrite the normal target path instead of always creating a new filename.</td>
@@ -107,6 +118,10 @@ What it does:
 - Uses `ffmpeg` to put the selected file into an MKV container
 - Can keep the current audio as-is
 - Can optionally re-encode incompatible audio tracks to AAC
+- Uses the same cached AAC encoder selection used by option `3`.
+- When available, picks `libfdk_aac` from `ffmpeg -hide_banner -encoders` and falls back to `-c:a aac -q:a 0`.
+- When `libfdk_aac` is selected, uses:
+  `-c:a libfdk_aac -profile:a aac_low -vbr 5 -afterburner 1`
 - Preserves audio track order plus language/title/disposition metadata when it re-encodes those tracks
 - With <code>--climit</code>, the replacement AAC encode path can also apply the limiter
 
@@ -170,6 +185,7 @@ What it does:
 - Extracts that track
 - Creates one or more boosted AAC versions
 - Muxes those boosted versions back into the Matroska file
+- Uses the same AAC encoder selection policy as option `1` for boost outputs.
 
 Good for:
 
@@ -343,7 +359,7 @@ Run the complete repository test suite with:
 
 The `mkv_mux` matrix runs a temporary copy of the script through its real interactive entry point. Controllable fake `ffmpeg`, `ffprobe`, `mkvmerge`, `mkvextract`, `fzf`, `jq`, and `rsync` commands isolate the tests from live media while recording command arguments and creating only temporary fixture outputs. The harness verifies that every required fake resolves ahead of any installed media tool.
 
-The matrix covers command-line guards and help output; option `1` copy and AAC replacement paths; audio mapping, metadata, dispositions, limiter validation and arguments, safe output naming, non-safe overwrite refusal, filenames with spaces, and encode-failure cleanup; option `2` remux and non-video handling; and option `3` extraction, boost filters, track naming/order, safe-mode sorting, backup restoration, and controlled failure cleanup.
+The matrix covers command-line guards and help output; automatic FDK/native AAC selection and `--debug` output; option `1` copy and AAC replacement paths; audio mapping, metadata, dispositions, limiter validation and arguments, safe output naming, non-safe overwrite refusal, filenames with spaces, and encode-failure cleanup; option `2` remux and non-video handling; and option `3` extraction, boost filters, track naming/order, safe-mode sorting, backup restoration, and controlled failure cleanup.
 
 ## Troubleshooting
 
