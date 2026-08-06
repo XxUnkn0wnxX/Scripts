@@ -34,18 +34,32 @@ log_file="${TEST_COMMAND_LOG:-}"
 argv_dir="${TEST_ARGV_LOG_DIR:-}"
 [ -z "$argv_dir" ] || printf '%s\\0' "$@" > "$argv_dir/ffmpeg.$$"
 state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
-call_file="${state_dir}/fake_ffmpeg_calls"
+is_encoder_probe=0
+for arg in "$@"; do
+  if [ "$arg" = "-encoders" ]; then
+    is_encoder_probe=1
+    break
+  fi
+done
 
+if [ -n "$log_file" ]; then
+  printf 'ffmpeg\\targs=%s\\n' "$*" >> "$log_file"
+fi
+
+if [ "$is_encoder_probe" -eq 1 ]; then
+  if [ "${TEST_FAKE_FFMPEG_HAS_LIBFDK:-0}" = "1" ]; then
+    printf '%s\n' "A....A libfdk_aac AAC (Advanced Audio Coding)"
+  fi
+  exit 0
+fi
+
+call_file="${state_dir}/fake_ffmpeg_calls"
 call=1
 if [ -f "$call_file" ]; then
   previous="$(cat "$call_file" 2>/dev/null || echo 0)"
   call=$((previous + 1))
 fi
 printf '%s\n' "$call" > "$call_file"
-
-if [ -n "$log_file" ]; then
-  printf 'ffmpeg\\targs=%s\\n' "$*" >> "$log_file"
-fi
 
 fail_call="${TEST_FAKE_FFMPEG_FAIL_CALL:-}"
 if [ -n "$fail_call" ] && [ "$call" -eq "$fail_call" ]; then

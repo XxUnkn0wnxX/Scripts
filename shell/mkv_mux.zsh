@@ -95,6 +95,9 @@ safe_mode_write=true
 thread_count=8  # Hard-coded to use 8 threads
 max_concurrent_jobs=4  # Hard-coded max concurrent ffmpeg jobs for volume boost
 ceiling_limiter_default="alimiter=limit=0.99:attack=20:release=20"
+use_debug=false
+selected_aac_encoder=""
+typeset -a selected_aac_encoder_args=()
 # ——————————————————————————————
 # Extension overrides for Plex/VLC (audio only)
 typeset -A ext_override=(
@@ -157,6 +160,33 @@ collect_audio_stream_metadata() {
             )
           }
       '
+}
+
+resolve_aac_encoder_selection() {
+  if [[ -n "$selected_aac_encoder" ]]; then
+    return 0
+  fi
+
+  if ffmpeg -hide_banner -encoders 2>/dev/null \
+    | awk '$2 == "libfdk_aac" { found=1 } END { exit !found }'; then
+    selected_aac_encoder=libfdk_aac
+    selected_aac_encoder_args=(-c:a libfdk_aac -profile:a aac_low -vbr 5 -afterburner 1)
+  else
+    selected_aac_encoder=native_aac
+    selected_aac_encoder_args=(-c:a aac -q:a 0)
+  fi
+}
+
+log_aac_encoder_selection() {
+  if [[ "$use_debug" != true ]]; then
+    return 0
+  fi
+
+  if [[ "$selected_aac_encoder" == libfdk_aac ]]; then
+    echo "Debug: AAC encoder selected: libfdk_aac"
+  else
+    echo "Debug: AAC encoder selected: FFmpeg native AAC"
+  fi
 }
 
 # Function to remove the temporary directory
@@ -304,6 +334,7 @@ remux_to_mkv_ffmpeg() {
     local ai=0
 
     # Extract & re-encode each audio track
+    local seen_aac_encoder_debug=false
     while IFS= read -r idx; do
       local out_audio="${WORK_DIR}/${base}_a${idx}.m4a"
       local audio_language="und"
@@ -331,11 +362,13 @@ remux_to_mkv_ffmpeg() {
       if [[ -n "$ceiling_limiter" ]]; then
         ffmpeg_reencode_cmd+=(-filter:a "${ceiling_limiter}:level=0")
       fi
-      ffmpeg_reencode_cmd+=(
-        -c:a aac -q:a 0
-        -threads "$thread_count"
-        "$out_audio"
-      )
+      resolve_aac_encoder_selection
+      if [[ "$seen_aac_encoder_debug" != true ]]; then
+        log_aac_encoder_selection
+        seen_aac_encoder_debug=true
+      fi
+      ffmpeg_reencode_cmd+=("${selected_aac_encoder_args[@]}")
+      ffmpeg_reencode_cmd+=(-threads "$thread_count" "$out_audio")
       "${ffmpeg_reencode_cmd[@]}" &
       FFMPEG_PID=$!
       wait $FFMPEG_PID
@@ -431,6 +464,7 @@ boost_audio_volume() {
   if [ "$max_jobs" -lt 1 ]; then
     max_jobs=1
   fi
+  local seen_aac_encoder_debug=false
   for volume_change in "${volume_change_array[@]}"; do
     while true; do
       local running_jobs=0
@@ -458,7 +492,12 @@ boost_audio_volume() {
     if [[ -n "$ceiling_limiter" ]]; then
       audio_filter+=",${ceiling_limiter}:level=0"
     fi
-    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "$audio_filter" -c:a aac -q:a 0 -threads "$thread_count" "$boosted_file" &
+    resolve_aac_encoder_selection
+    if [[ "$seen_aac_encoder_debug" != true ]]; then
+      log_aac_encoder_selection
+      seen_aac_encoder_debug=true
+    fi
+    ffmpeg -nostdin -y -i "$extracted_file" -filter:a "$audio_filter" "${selected_aac_encoder_args[@]}" -threads "$thread_count" "$boosted_file" &
     ffmpeg_pids+=($!)
   done
 
@@ -792,12 +831,13 @@ canonicalize_volume_changes() {
 
 print_help() {
   cat <<EOF
-Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [working_directory]
+Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [--debug] [working_directory]
        ${SCRIPT_NAME} --help
 
 Interactive Matroska remux and audio volume tool.
 
 Arguments:
+  --debug               Print the selected AAC encoder before options 1 and 3 encode.
   --climit              Enable the extra ceiling limiter prompt for audio re-encode paths.
   --nsafe               Disable safe mode and allow in-place/non-safe writes.
   --help, -h            Show this help page and exit.
@@ -807,6 +847,8 @@ Menu options:
   1) Remux to MKV (ffmpeg)
      Remux selected video files into MKV with ffmpeg.
      You can optionally re-encode incompatible audio tracks to AAC.
+     The script prefers libfdk_aac when ffmpeg exposes the encoder.
+     Fallback is ffmpeg's native AAC: -c:a aac -q:a 0.
      With --climit, those replacement AAC tracks can also apply an alimiter ceiling filter.
 
   2) Remux to MKV (mkvmerge)
@@ -814,6 +856,7 @@ Menu options:
 
   3) Volume Boost
      Extract one audio track, create one or more boosted AAC versions, then mux them back.
+     Uses the same AAC encoder selection policy as option 1.
      With --climit, each boosted version can also apply an alimiter ceiling filter.
 
 Notes:
@@ -833,6 +876,9 @@ while [ $# -gt 0 ]; do
     --climit|-climit)
       use_ceiling_limiter=true
       ;;
+    --debug)
+      use_debug=true
+      ;;
     --nsafe|-nsafe)
       safe_mode_write=false
       ;;
@@ -841,12 +887,12 @@ while [ $# -gt 0 ]; do
       exit 0
       ;;
     -*)
-      echo "Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [working_directory]" >&2
+      echo "Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [--debug] [working_directory]" >&2
       exit 1
       ;;
     *)
       if [ "$working_dir_set" = true ]; then
-        echo "Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [working_directory]" >&2
+        echo "Usage: ${SCRIPT_NAME} [--climit] [--nsafe] [--debug] [working_directory]" >&2
         exit 1
       fi
       display_dir="$1"

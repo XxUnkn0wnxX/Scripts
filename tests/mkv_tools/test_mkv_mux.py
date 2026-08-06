@@ -39,6 +39,7 @@ def test_mkv_mux_help_shows_options(env: dict[str, Path]):
 
     assert result.returncode == 0
     assert "Usage:" in result.stdout
+    assert "--debug" in result.stdout
     assert "1) Remux to MKV (ffmpeg)" in result.stdout
     assert "2) Remux to MKV (mkvmerge)" in result.stdout
     assert "3) Volume Boost" in result.stdout
@@ -73,8 +74,10 @@ def test_mkv_mux_option1_copy_mode_uses_safe_output_and_copy_args(env: dict[str,
 
     log = _read_command_log(env)
     ffmpeg_calls = _command_invocations(log, "ffmpeg")
+    ffmpeg_argv = _command_argv(env, "ffmpeg")
     assert result.returncode == 0
     assert len(ffmpeg_calls) == 1
+    assert not any("-encoders" in call for call in ffmpeg_argv)
     assert "-c copy" in ffmpeg_calls[0]
     assert "-map 0:v:0" in ffmpeg_calls[0]
     assert f"{source.stem}_temp.mkv" in ffmpeg_calls[0]
@@ -117,6 +120,29 @@ def test_mkv_mux_option1_handles_source_filename_with_spaces(env: dict[str, Path
     assert (env["workdir"] / "episode one_remuxed (1).mkv").exists()
 
 
+def test_mkv_mux_option1_reencode_uses_fdk_aac_encoder_when_available(env: dict[str, Path]):
+    source = _mkv_file(env, "option1_reencode.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="1\nY\n",
+        extra_env={"TEST_FAKE_FFMPEG_HAS_LIBFDK": "1"},
+    )
+
+    log = _read_command_log(env)
+    ffmpeg_calls = _command_invocations(log, "ffmpeg")
+    assert result.returncode == 0
+    reencode_calls = [call for call in ffmpeg_calls if "-c:a libfdk_aac" in call]
+    assert len(reencode_calls) == 2
+    assert all(call.count(" -vbr 5 ") == 1 for call in reencode_calls)
+    assert all(call.count("-afterburner 1") == 1 for call in reencode_calls)
+    assert all("-profile:a aac_low" in call for call in reencode_calls)
+    assert all("-q:a 0" not in call for call in reencode_calls)
+    assert result.stdout.count("Debug: AAC encoder selected: libfdk_aac") == 1
+
+
 def test_mkv_mux_option1_reencode_uses_aac_q_a_0_and_track_maps(env: dict[str, Path]):
     source = _mkv_file(env, "option1_reencode.mkv")
 
@@ -132,6 +158,11 @@ def test_mkv_mux_option1_reencode_uses_aac_q_a_0_and_track_maps(env: dict[str, P
     reencode_calls = [call for call in ffmpeg_calls if "-c:a aac" in call]
     assert len(reencode_calls) == 2
     assert all("-q:a 0" in call for call in reencode_calls)
+    assert result.stdout.count("Debug: AAC encoder selected: FFmpeg native AAC") == 0
+    assert "Debug: AAC encoder selected" not in result.stdout
+    assert all("-c:a libfdk_aac" not in call for call in reencode_calls)
+    assert all("-profile:a aac_low" not in call for call in reencode_calls)
+    assert all("-afterburner 1" not in call for call in reencode_calls)
     assert all(call.count(" -map 0:a:") == 1 for call in reencode_calls)
     merge_call = ffmpeg_calls[-1]
     assert "-c:v copy" in merge_call
@@ -142,6 +173,56 @@ def test_mkv_mux_option1_reencode_uses_aac_q_a_0_and_track_maps(env: dict[str, P
     assert "-map 2:a:0" in merge_call
     assert "-disposition:a:0 default" in merge_call
     assert "-metadata:s:a:1 language=jpn" in merge_call
+
+
+def test_mkv_mux_option1_reencode_cache_checks_encoder_once_per_run(env: dict[str, Path]):
+    source_one = _mkv_file(env, "option1_replace_cached_one.mkv")
+    source_two = _mkv_file(env, "option1_replace_cached_two.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source_one.name, source_two.name]],
+        input_data="1\nY\n",
+        extra_env={"TEST_FAKE_FFMPEG_HAS_LIBFDK": "1"},
+    )
+
+    ffmpeg_argv = _command_argv(env, "ffmpeg")
+    assert result.returncode == 0
+    assert len([call for call in ffmpeg_argv if "-encoders" in call]) == 1
+    assert result.stdout.count("Debug: AAC encoder selected: libfdk_aac") == 2
+
+
+def test_mkv_mux_option1_no_debug_output_for_copy_only(env: dict[str, Path]):
+    source = _mkv_file(env, "option1_copy_only.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="1\nN\n",
+    )
+
+    assert result.returncode == 0
+    assert "Debug: AAC encoder selected" not in result.stdout
+
+
+def test_mkv_mux_option1_reencode_uses_native_debug_text_with_debug(env: dict[str, Path]):
+    source = _mkv_file(env, "option1_reencode.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="1\nY\n",
+    )
+
+    ffmpeg_calls = _command_invocations(_read_command_log(env), "ffmpeg")
+    reencode_calls = [call for call in ffmpeg_calls if "-c:a aac" in call]
+    assert result.returncode == 0
+    assert len(reencode_calls) == 2
+    assert result.stdout.count("Debug: AAC encoder selected: FFmpeg native AAC") == 1
+    assert "Debug: AAC encoder selected: libfdk_aac" not in result.stdout
 
 
 def test_mkv_mux_option1_reencode_applies_climiter_filter_in_reencode_stage(env: dict[str, Path]):
@@ -216,6 +297,22 @@ def test_mkv_mux_option2_runs_mkvmerge_and_safe_naming(env: dict[str, Path]):
     assert (env["workdir"] / f"{source.stem}_remuxed (2).mkv").exists()
 
 
+def test_mkv_mux_option2_shows_no_debug_output(env: dict[str, Path]):
+    source = _mkv_file(env, "option2_source.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="2\n",
+    )
+
+    assert result.returncode == 0
+    assert "Debug: AAC encoder selected" not in result.stdout
+    ffmpeg_argv = _command_argv(env, "ffmpeg")
+    assert not any("-encoders" in call for call in ffmpeg_argv)
+
+
 def test_mkv_mux_option2_skips_non_video_file(env: dict[str, Path]):
     source = _mkv_file(env, "not_video.txt")
 
@@ -257,6 +354,50 @@ def test_mkv_mux_option3_creates_boosted_files_and_safe_sorting(env: dict[str, P
     assert not (env["workdir"] / "boost_single_original.mkv").exists()
 
 
+def test_mkv_mux_option3_uses_fdk_aac_encoder_when_available(env: dict[str, Path]):
+    source = _mkv_file(env, "boost_single.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="3\n2dB,-3dB\n",
+        extra_env={"TEST_FAKE_FFMPEG_HAS_LIBFDK": "1"},
+    )
+
+    ffmpeg_calls = _command_invocations(_read_command_log(env), "ffmpeg")
+    boosted_calls = [call for call in ffmpeg_calls if "-filter:a" in call and "-encoders" not in call]
+    assert result.returncode == 0
+    assert len(boosted_calls) == 2
+    assert all("-c:a libfdk_aac" in call for call in boosted_calls)
+    assert all("-profile:a aac_low" in call for call in boosted_calls)
+    assert all(call.count(" -vbr 5 ") == 1 for call in boosted_calls)
+    assert all(call.count("-afterburner 1") == 1 for call in boosted_calls)
+    assert all("-q:a 0" not in call for call in boosted_calls)
+    assert result.stdout.count("Debug: AAC encoder selected: libfdk_aac") == 1
+    assert result.stdout.count("Debug: AAC encoder selected") == 1
+
+
+def test_mkv_mux_option3_uses_native_aac_when_libfdk_missing(env: dict[str, Path]):
+    source = _mkv_file(env, "boost_single_climit.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="3\n2dB\n",
+    )
+
+    ffmpeg_calls = _command_invocations(_read_command_log(env), "ffmpeg")
+    assert result.returncode == 0
+    assert result.stdout.count("Debug: AAC encoder selected: FFmpeg native AAC") == 1
+    assert "Debug: AAC encoder selected: libfdk_aac" not in result.stdout
+    assert any("-c:a aac -q:a 0" in call for call in ffmpeg_calls)
+    assert not any("-c:a libfdk_aac" in call for call in ffmpeg_calls)
+    assert not any("-profile:a aac_low" in call for call in ffmpeg_calls)
+    assert not any("-afterburner 1" in call for call in ffmpeg_calls)
+
+
 def test_mkv_mux_option3_climiter_is_added_to_boost_filters(env: dict[str, Path]):
     source = _mkv_file(env, "boost_single_climit.mkv")
 
@@ -269,9 +410,36 @@ def test_mkv_mux_option3_climiter_is_added_to_boost_filters(env: dict[str, Path]
 
     ffmpeg_calls = _command_invocations(_read_command_log(env), "ffmpeg")
     assert result.returncode == 0
+    assert "Debug: AAC encoder selected" not in result.stdout
     assert any(
         "volume=2dB,alimiter=limit=0.8:attack=14:release=14:level=0" in call
         for call in ffmpeg_calls
+    )
+
+
+def test_mkv_mux_option3_climiter_preserves_fdk_filter_shape(env: dict[str, Path]):
+    source = _mkv_file(env, "boost_single_climit.mkv")
+
+    result = _run_mkv_mux(
+        env,
+        "--climit",
+        "--debug",
+        fzf_responses=[[source.name]],
+        input_data="3\n2dB\nalimiter=limit=0.8:attack=14:release=14\n",
+        extra_env={"TEST_FAKE_FFMPEG_HAS_LIBFDK": "1"},
+    )
+
+    ffmpeg_calls = _command_invocations(_read_command_log(env), "ffmpeg")
+    assert result.returncode == 0
+    boosted_calls = [call for call in ffmpeg_calls if "-filter:a" in call and "-encoders" not in call]
+    assert len(boosted_calls) == 1
+    assert any(
+        "-c:a libfdk_aac -profile:a aac_low -vbr 5 -afterburner 1" in call
+        for call in boosted_calls
+    )
+    assert any(
+        "volume=2dB,alimiter=limit=0.8:attack=14:release=14:level=0" in call
+        for call in boosted_calls
     )
 
 
