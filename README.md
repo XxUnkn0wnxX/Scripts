@@ -62,6 +62,7 @@ Repo layout:
 - [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Steam-Reveal-Spoilers.user.js) - Automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates. [Docs](docs/steam-reveal-spoilers.md)
 - [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js) - Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. [Docs](docs/stackexchange-reveal-spoilers.md)
 - [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) - Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. [Docs](docs/youtube-shorts-switcher.md)
+- [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) - Applies a constrained fluid-width layout only on Reddit post/comment routes, while leaving feed and community pages at native width. [Docs](docs/reddit-fluid-width.md)
 
 ---
 
