@@ -6,7 +6,7 @@ Current documented release: `1.0.0`.
 
 ## What It Does
 
-- targets only `/r/<community>/comments/<post-id>/...` post routes
+- targets only `/r/<community>/comments/<post-id>/` post routes and their descendant paths
 - keeps feed/landing routes such as `https://www.reddit.com/r/satisfactory/` unchanged
 - widens only `#subgrid-container` and the direct `.main-container.fixed-sidebar` row
 - keeps the native right rail width at `316px` while growing only the main post column
@@ -18,11 +18,7 @@ The default mode pins the post workspace inline-end/right edge to `100%` with `0
 
 ## Where It Works
 
-The userscript loads on Reddit `/r/*` routes so it is already present when Reddit opens a post through client-side navigation. Style still applies only on the strict route pattern:
-
-```text
-https://www.reddit.com/r/<community>/comments/<post-id>/...
-```
+The userscript loads on Reddit `/r/*` routes so it is already present when Reddit opens a post through client-side navigation. Style still applies only on the canonical post route and its deeper in-post paths: `https://www.reddit.com/r/<community>/comments/<post-id>/`
 
 `<community>` is matched case-insensitively after `/r/`, and `comments` must follow immediately.
 
@@ -104,7 +100,7 @@ The floating back-button offset in wide layouts is protected by the fixed `1120p
 
 1. Install a userscript manager such as Tampermonkey or Violentmonkey.
 2. Open the script page on your preferred host (Greasy Fork or OpenUserJS) and click **Install**.
-3. Open any post URL matching `https://www.reddit.com/r/<community>/comments/<post-id>/...`.
+3. Open any post URL matching `https://www.reddit.com/r/<community>/comments/<post-id>/`; deeper in-post paths are supported too.
 
 ## Compatibility and Safety
 
