@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.5
+// @version      1.0.4.6
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -25,7 +25,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4.5';
+  const SCRIPT_VERSION = '1.0.4.6';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -72,9 +72,6 @@
   const WRAPPER_ENTER_ACTIVE_CLASS = 'psprices-checkout-wrapper-enter-active';
   const WRAPPER_ENTER_MS = 450;
   const LINKGEN_START_DELAY_MS = 150;
-  const HEADER_WORDMARK_CLASS =
-    'text-base font-bold leading-none group-hover:underline text-text ' +
-    'group-hover:text-primary dark:group-hover:text-white';
   const HEADER_BADGE_CLASS =
     'text-[8px] font-bold bg-blue-700 dark:bg-blue-600 text-white ' +
     'px-1 py-0 rounded lowercase overflow-hidden';
@@ -232,15 +229,35 @@
     }
     headerBadgeHost = null;
     for (const homeLink of document.querySelectorAll(
-      'a[aria-label="PSprices Home"]'
+      'a[aria-label]'
     )) {
-      const wordmark = [...homeLink.querySelectorAll('span')].find(
-        (span) =>
-          span.className === HEADER_WORDMARK_CLASS &&
-          span.textContent.trim().toLowerCase() === 'psprices'
+      const homeLabel = (homeLink.getAttribute('aria-label') || '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+      if (homeLabel !== 'psprices home') continue;
+
+      const matchingWords = [...homeLink.querySelectorAll('*')].filter(
+        (node) =>
+          node.namespaceURI === 'http://www.w3.org/1999/xhtml' &&
+          node.textContent
+            .trim()
+            .replace(/\s+/g, ' ')
+            .toLowerCase() === 'psprices'
       );
+      let wordmark;
+      for (let i = matchingWords.length - 1; i >= 0; i--) {
+        const candidate = matchingWords[i];
+        const hasNestedMatch = matchingWords.some(
+          (other) => other !== candidate && candidate.contains(other)
+        );
+        if (!hasNestedMatch) {
+          wordmark = candidate;
+          break;
+        }
+      }
       const line = wordmark?.parentElement;
-      if (!line?.classList.contains('leading-5')) continue;
+      if (!line) continue;
       const existingBadges = [...line.children].filter(
         (child) =>
           child !== wordmark &&

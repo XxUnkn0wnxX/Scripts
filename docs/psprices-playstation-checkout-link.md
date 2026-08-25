@@ -2,7 +2,7 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
 
-Current documented release: `1.0.4.5`.
+Current documented release: `1.0.4.6`.
 
 ## PlayStation Store Setup and Redirect Caveat
 
