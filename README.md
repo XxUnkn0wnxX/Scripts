@@ -8,6 +8,7 @@ Repo layout:
 - Python CLIs live under [`python/`](python/)
 - Shell scripts live under [`shell/`](shell/)
 - Audio shell helpers live under [`shell/audio/`](shell/audio/)
+- Oh My Zsh plugins live under [`shell/oh-my-zsh/`](shell/oh-my-zsh/)
 - Downloadable tools live under [`tools/`](tools/)
 
 ## Markdown Cheat Sheets
@@ -41,6 +42,11 @@ Repo layout:
 
 - [`shell/audio/strip_audio_tags.zsh`](shell/audio/strip_audio_tags.zsh) - Strip metadata from `.m4a` files in the current folder. [Docs](docs/strip-audio-tags.md)
 - [`shell/audio/fix_tags.zsh`](shell/audio/fix_tags.zsh) - Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. [Docs](docs/fix-tags.md)
+
+## [Oh My Zsh Plugins](shell/oh-my-zsh/)
+
+- [`shell/oh-my-zsh/`](shell/oh-my-zsh/) - Docs index for custom Oh My Zsh plugins in this repo.
+- [`pyactivate`](shell/oh-my-zsh/plugins/pyactivate/README.md) - Multi-virtualenv selection, active-root tracking, parent/child project switching, automatic deactivation when you leave the tracked root, and optional `fzf`-based selection.
 
 ## [Zen Scripts](Zen%20Scripts/)
 
