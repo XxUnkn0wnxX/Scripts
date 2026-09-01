@@ -56,6 +56,10 @@ Repo layout:
 
 - [`GPC Builder by Jimmy CrakCrn.zip`](tools/GPC%20Builder%20by%20Jimmy%20CrakCrn.zip) - Portable Cronus Zen GPC scripting IDE by Jimmy CrakCrn with a code editor, validator, component builder, OLED layout designer, embedded references, and Anthropic API-powered assistance.
 
+## Other
+
+- [Seagate Exos 3.5-inch SATA Model-Code Reference](docs/Seagate%20Exos%203.5in%20SATA%20Model%20Codes.md) - Capacity-based lookup for standard, factory-recertified, and excluded Seagate Exos SATA model codes.
+
 ## 📝 TODO
 
 - [Cross-platform Discord bundle downloader](TODO.md) - Planned download-only Python CLI for discovering and fetching Stable, PTB, or Canary client bundles for macOS, Linux, and Windows.
