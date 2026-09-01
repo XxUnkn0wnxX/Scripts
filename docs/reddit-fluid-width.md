@@ -15,7 +15,7 @@ Current documented release: `1.0.1`.
 - includes no network calls and no storage reads/writes
 - visible `#left-sidebar-container` controls fluid width mode:
   - when a visible rail is present, width uses configured `contentWidthPercent` (default `95%`)
-  - when rail content is not visible (empty shell, CSS-hidden, visibility-hidden/collapsed, zero-size, or fully off-left), `--reddit-fluid-width` uses `noLeftSidebarContentWidthPercent` (default `100%`)
+  - when rail content is not visible (empty shell, CSS-hidden, visibility-hidden/collapsed, zero-size, or fully off-left), `--reddit-fluid-width` uses `noLeftSidebarContentWidthPercent` (default `95%`)
 
 The default mode pins the post workspace inline-end/right edge to `100%` with `0px` outer margin and changes only the left edge as width adjusts. Set `pinRightSidebar` to `false` to center the whole grid as Reddit's left nav expands or collapses.
 
@@ -61,17 +61,17 @@ Edit near the top of the script:
 ```js
 const CONFIG = Object.freeze({
   contentWidthPercent: 95,
-  noLeftSidebarContentWidthPercent: 100,
+  noLeftSidebarContentWidthPercent: 95,
   minGutterPx: 32,
   pinRightSidebar: true,
 });
 ```
 
 - `contentWidthPercent` controls the max container percentage width while a visible left sidebar is present (default `95%`).
-- `noLeftSidebarContentWidthPercent` controls the max container percentage width when the left rail is considered absent; default `100%`.
+- `noLeftSidebarContentWidthPercent` controls the max container percentage width when the left rail is considered absent; default `95%`.
 - Both width values are independently clamped to `1..100`:
   - `contentWidthPercent` falls back to `95` if invalid.
-  - `noLeftSidebarContentWidthPercent` falls back to `100` if invalid.
+  - `noLeftSidebarContentWidthPercent` falls back to `95` if invalid.
 - `minGutterPx` controls minimum left/start safety gutter in pinned mode; in centered mode it is used on both sides
 - `pinRightSidebar` controls geometry mode:
   - `true` (default): pins the inline-end/right edge at `100%` (`0px` outer margin), only the left edge moves, and only one gutter is subtracted
@@ -82,7 +82,7 @@ Lowering `noLeftSidebarContentWidthPercent` in pinned-right mode creates a large
 The script validates values at runtime:
 
 - `contentWidthPercent` is clamped to `1-100%` with a `95` fallback
-- `noLeftSidebarContentWidthPercent` is also clamped to `1-100%` with an independent `100` fallback
+- `noLeftSidebarContentWidthPercent` is also clamped to `1-100%` with an independent `95` fallback
 - gutter is clamped to `16-128px`
 - `pinRightSidebar` is treated as boolean and defaults to `true`
 

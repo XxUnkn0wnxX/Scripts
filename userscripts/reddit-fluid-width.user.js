@@ -31,7 +31,7 @@
   // true (default) pins the right edge at 100%/0px; false centers the whole grid.
   const CONFIG = Object.freeze({
     contentWidthPercent: 95,
-    noLeftSidebarContentWidthPercent: 100,
+    noLeftSidebarContentWidthPercent: 95,
     minGutterPx: 32,
     pinRightSidebar: true,
   });
@@ -61,7 +61,7 @@
 
     const noLeftSidebarContentWidthPercent = Number.isFinite(noLeftSidebarPercentRaw)
       ? Math.max(1, Math.min(100, noLeftSidebarPercentRaw))
-      : 100;
+      : 95;
 
     const minGutterPx = Number.isFinite(gutterRaw)
       ? Math.max(16, Math.min(128, Math.round(gutterRaw)))
