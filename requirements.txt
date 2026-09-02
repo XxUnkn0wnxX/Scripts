@@ -1,18 +1,38 @@
-certifi>=2025.10.5
-charset-normalizer>=3.4.4
-defusedxml>=0.7.1
-idna>=3.11
-lxml>=6.0.2
-python-docx>=1.2.0
-pytest>=8.4.0
-PyYAML>=6.0.2
+# Shared terminal output
+# Used by: nord_ovpn_picker.py, safari_bookmarks_export.py, vpnroute.py
+rich>=13.7.1
+
+# NordVPN OpenVPN picker
 prompt-toolkit>=3.0.48
 questionary>=2.0.1
 requests>=2.32.5
-rich>=13.7.1
+PyYAML>=6.0.2
+
+# VPN route helper
 dnspython>=2.6.1
-typing_extensions>=4.15.0
-urllib3>=2.5.0
+
+# YouTube transcript helper
 youtube-transcript-api>=1.2.3
-pymkv2 
+python-docx>=1.2.0
+
+# MKV shell helpers
+# pymkv2 is checked as an installed distribution; pymkv supplies the imported API.
+pymkv2
 pymkv
+
+# Shared Python test runner
+pytest>=8.4.0
+
+# Explicitly pinned transitive dependencies
+# requests
+certifi>=2025.10.5
+charset-normalizer>=3.4.4
+idna>=3.11
+urllib3>=2.5.0
+
+# youtube-transcript-api
+defusedxml>=0.7.1
+
+# python-docx
+lxml>=6.0.2
+typing_extensions>=4.15.0
