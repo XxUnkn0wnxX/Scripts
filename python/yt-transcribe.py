@@ -3,8 +3,8 @@
 yt-transcribe.py
 
 CLI utility for downloading YouTube captions and exporting them as plain text
-or Word documents. See tmp/goals.md for the full specification guiding this
-implementation.
+or Word documents. See docs/yt-transcribe.md for the current specification
+guiding this implementation.
 """
 
 from __future__ import annotations
