@@ -56,10 +56,21 @@ An empty `CODEX_HOME` is treated as unset and falls back to `$HOME/.codex`. If
 `0`.
 
 Codex also supports placing SQLite-backed state elsewhere with
-`CODEX_SQLITE_HOME` or the higher-precedence `sqlite_home` configuration key;
-see [Core location environment variables](https://learn.chatgpt.com/docs/config-file/environment-variables#core-locations).
-This script intentionally does not consult either setting: it always targets
-`<resolved-codex-root>/state_5.sqlite`. Do not use it with a split SQLite layout.
+`CODEX_SQLITE_HOME` or the higher-precedence root-level `sqlite_home`
+configuration key; see [Core location environment variables](https://learn.chatgpt.com/docs/config-file/environment-variables#core-locations).
+This script resolves the effective SQLite directory with the following
+precedence:
+
+1. A valid root-level `sqlite_home` in `config.toml`.
+2. A nonempty `CODEX_SQLITE_HOME`.
+3. The resolved `CODEX_HOME` root.
+
+Relative values resolve from the invocation working directory. The script still
+targets `<resolved-codex-root>/state_5.sqlite`; when the effective SQLite
+directory differs from the resolved Codex root, it fails closed and reports the
+source, raw value, resolved directory, effective DB path, and supported script
+DB path. It never redirects to an alternate DB, so keep the effective SQLite
+directory equal to the Codex root for this utility.
 
 The script alias is defined in:
 
@@ -85,6 +96,9 @@ zsh shell/codex-sync-model-provider.zsh --dry-run
 - zsh
 - `sqlite3`
 - `jq`
+- native `ps` for live active-process checks
+- native `sleep` for bounded signal/recovery waits
+- native `lsof` when using `--unlock`
 - `7zz` for normal backed live runs
 - `/usr/bin/stat` for permission checks and preservation
 
@@ -94,7 +108,10 @@ Homebrew can provide the non-native dependencies:
 brew install jq sevenzip
 ```
 
-Live runs refuse to start when Codex appears active. Close the Codex app, CLI, IDE sessions, workers, and subagents before live execution. `--dry-run` remains available while Codex is active.
+Live runs check for active Codex processes early and again immediately before
+the first production filesystem mutation. Close the Codex app, CLI, IDE
+sessions, workers, and subagents before live execution. `--dry-run` bypasses
+the active-process check and remains available while Codex is active.
 
 ## Usage modes
 
@@ -107,10 +124,14 @@ codex-sync
 Default live behavior (no flags):
 
 - Resolves root from `CODEX_HOME`/`$HOME/.codex`, reads `config.toml`, and validates the live execution path.
+- Resolves effective SQLite home as root `sqlite_home`, then nonempty `CODEX_SQLITE_HOME`, then the Codex root; a split layout is rejected rather than redirected.
+- Checks for active Codex early and immediately before the first production filesystem mutation.
+- Accepts an absent `backfill_state`; when present, requires the exact singleton `id=1` with text status `complete` at the early guard and again at the live final gate.
 - Runs full preflight and safety validation before any backup or write.
 - Writes SQLite/session updates only when needed.
 - Creates `7zz` backup archives before live writes.
-- Prompts before writing when there is something to do.
+- Prompts before provider writes when there is something to do, unless `--yes` is supplied.
+- If `--unlock` is supplied, performs its separate lock-recovery analysis and dedicated prompt before provider synchronization; `--yes` does not bypass that unlock prompt.
 - If there are no pending updates, exits `0` with `No changes needed.` **before** any prompt, backup, or writes.
 
 ### Dry run
@@ -123,8 +144,9 @@ codex-sync --dry-run
 
 - It keeps all read-side checks and compatibility validation.
 - It prints planned targets (root, DB, sessions, change summary).
-- It bypasses live-write-only guards: active-Codex refusal, recovery-marker handling, and `7zz` checks.
-- It does not write, backup, prompt, or apply recovery behavior.
+- It bypasses the live active-Codex check, recovery-marker handling, and `7zz` checks.
+- With `--unlock`, it still performs read-only lock ownership analysis; dry-run unlock never prompts, signals, or edits data or lock paths.
+- It does not write, backup, prompt, or apply live recovery behavior.
 - On a successful dry-run, it exits `0` after reporting that no DB or session changes were made.
 
 ### Live with `--yes`
@@ -133,7 +155,8 @@ codex-sync --dry-run
 codex-sync --yes
 ```
 
-This only skips the confirmation step. All other live behavior remains active.
+This skips only the provider-write confirmation step. All other live behavior
+remains active, and `--unlock` still requires its dedicated y/N prompt.
 
 ## Option guide
 
@@ -145,7 +168,7 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
 - Exact effect:
   - Full read-only plan is executed.
   - No DB or session file writes.
-  - No backups created and no recovery path is used.
+  - No backups created and no live recovery mutation is applied.
   - No interactive prompts.
 - Does not bypass:
   - Configuration load/shape validation
@@ -154,6 +177,7 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - Duplicate and integrity checks
 - Caveats:
   - Active-Codex/pending-marker/`7zz` requirements are not enforced because write path is not entered.
+  - A dry-run with `--unlock` still performs ownership analysis with `lsof` and `ps`, but never prompts, signals, or mutates data or lock paths.
   - `--skip-backup` only changes dry-run plan output.
   - `--yes` has no extra effect in dry-run mode.
   - `--force` still queues overwrite logic, but still performs no writes.
@@ -165,10 +189,11 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - Skips confirmation prompt before live writes.
 - Exact non-effect:
   - Does not alter dry-run behavior.
-  - Does not alter signal or recovery behavior.
+  - Does not alter signal or unlock-recovery behavior.
   - Does not disable preflight validation.
   - Does not disable backup creation unless `--skip-backup` is set.
   - Does not bypass active-Codex refusal.
+  - Does not bypass the dedicated `--unlock` confirmation prompt.
   - Does not relax preflight, schema checks, signal policy, or recovery handling.
   - Does not allow positional arguments.
 
@@ -259,9 +284,52 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
 - `--dry-run + --skip-backup`: dry-run mode never writes anyway; only plan output differs (`Backup: skipped`).
 - `--dry-run + --yes`: `--yes` has no additional effect because no prompt is shown in dry-run.
 - `--dry-run + --force`: previewed scope becomes full overwrite scope, but no writes are executed.
+- `--dry-run + --unlock`: performs read-only `lsof`/`ps` ownership analysis without a prompt, signal, or mutation.
+- `--yes + --unlock`: skips only the provider-write prompt; the dedicated unlock prompt remains mandatory before live signaling.
 - Option order is generally irrelevant for boolean flags.
 - Repeated `--padding-bytes N` uses the final value.
 - Repeated boolean options are harmless duplicates.
+
+## SQLite layout and runtime guards
+
+The script never redirects its target database. It computes an effective SQLite
+directory from root-level `config.toml` `sqlite_home`, then nonempty
+`CODEX_SQLITE_HOME`, then the resolved `CODEX_HOME` root. Relative values use
+the invocation working directory. If the effective directory differs from the
+Codex root, the run exits `1` before looking up or changing the root database
+and reports the source, raw value, resolved directory, effective DB path, and
+script target DB path.
+
+`backfill_state` is optional for compatibility. If it is present, the table
+must have the expected visible `INTEGER` `id` and `TEXT` `status` columns and
+exactly one row: `id = 1` with text status `complete`. The script checks this
+early on every run and checks it again at the live final write gate. Missing,
+running, malformed, or extra state fails closed with recovery guidance.
+
+Live active-Codex detection runs early and again immediately before the first
+production filesystem mutation. Dry-run bypasses this active check, while
+`--dry-run --unlock` still performs its separate read-only lock analysis. The
+second live check narrows the start-after-check window but cannot atomically
+prevent a process from starting after the check and before the write.
+
+### `--unlock`
+
+- Syntax: `codex-sync --unlock`
+- Exact effect:
+  - Inspects `thread-writer-locks` ownership with `lsof` and correlates owners with a fresh `ps` snapshot.
+  - Groups every affected UUID thread lock under its owner for review.
+  - On a live run, permits signaling only for a same-EUID, PPID-1, stable-`lstart` process classified as a `comm`/`argv[0]` basename-matched Codex candidate; this does not prove native ownership or orphan status.
+  - Sends `TERM`, waits a bounded interval, and obtains fresh ownership/process evidence before each target and before any `KILL` escalation. `KILL` is sent only while the original lock remains held.
+- Safety behavior:
+  - Zero-byte UUID `.lock` targets and `.coordination.lock` may persist; their existence alone is not proof of ownership. `lsof` ownership is decisive.
+  - Any protected or unconfirmed holder refuses all signaling.
+  - The dedicated `Continue with lock recovery? [y/N]` prompt is always required for live signaling, even with `--yes`.
+  - No lock target, JSONL file, or SQLite file is edited or deleted by unlock recovery.
+- Dry-run behavior:
+  - `--dry-run --unlock` is analysis only: it never prompts, signals, or mutates data or lock paths.
+  - If no holder is reported by `lsof`, the state is already unlocked and no recovery action is planned.
+- Final race:
+  - The script revalidates immediately before each signal, but a PID can still be recycled in the unavoidable interval after the final check and before `kill`; this cannot be made atomic.
 
 ## Backups and interruptions
 
@@ -373,6 +441,20 @@ codex-sync --yes --force
 codex-sync --yes --skip-backup
 ```
 
+- Analyze held writer locks without prompting or signaling:
+
+```zsh
+codex-sync --dry-run --unlock
+```
+
+- Recover an actionable basename-matched Codex candidate, then continue with provider sync:
+
+```zsh
+codex-sync --unlock
+```
+
+The unlock prompt remains mandatory even when `--yes` is also supplied.
+
 - Skip future bucket prep:
 
 ```zsh
@@ -390,9 +472,34 @@ codex-sync --yes --padding-bytes 512
 | Option | Meaning |
 |---|---|
 | `--dry-run` | Read-only planning mode. No writes, backups, or prompts. |
-| `--yes` | Skip confirmation prompt only. |
+| `--unlock` | Analyze `lsof`-owned UUID locks; live recovery has a dedicated prompt and strict revalidation. |
+| `--yes` | Skip the provider-write prompt only; `--unlock` still prompts separately. |
 | `--force` | Rewrite provider values even when already equal. |
 | `--skip-backup` | Run without backups and enable extended signal-ignore behavior during write phases. |
 | `--no-prepare-bucket` | Disable first-line padding reserve for future changes. |
 | `--padding-bytes N` | Set reserve size for future first-line growth. Must be separate positive integer, default `256`. |
 | `-h`, `--help` | Display built-in usage and exit. |
+
+## Testing Notes
+
+The repository requires `pytest>=8.4`. From the repository root, create and
+activate a virtual environment, then install the declared dependencies:
+
+```zsh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Run syntax, compile, focused, and full-suite checks:
+
+```zsh
+zsh -n shell/codex-sync-model-provider.zsh
+python -m compileall tests/codex_sync_model_provider
+python -m pytest --disable-plugin-autoload tests/codex_sync_model_provider
+python -m pytest --disable-plugin-autoload
+```
+
+The focused tests execute a copied script against a synthetic temporary Codex
+root, fake `ps`/`lsof`, and disposable child processes where needed. They never
+read or write the real `$HOME/.codex` and never signal real Codex PIDs.

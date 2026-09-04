@@ -16,6 +16,14 @@ set -o nounset
 #   1. $CODEX_HOME when it is set.
 #   2. $HOME/.codex otherwise.
 #
+# Effective SQLite home resolution:
+#   1. A valid root-level config.toml sqlite_home value.
+#   2. A nonempty CODEX_SQLITE_HOME value.
+#   3. The resolved Codex root.
+#   Relative values resolve from the invocation working directory. A differing
+#   effective SQLite home is diagnosed and rejected; this script never redirects
+#   its state_5.sqlite target to an alternate directory.
+#
 # Purpose:
 #   Reads root-level model_provider from $CODEX_HOME/config.toml
 #   and updates ONLY the persisted Codex thread provider fields:
@@ -31,7 +39,13 @@ set -o nounset
 # Safety:
 #   - Refuses to run if config.toml has no valid root-level model_provider.
 #   - Refuses to run if state_5.sqlite is missing.
-#   - Refuses to run if Codex appears active.
+#   - Checks for active Codex early and immediately before the first production
+#     filesystem mutation on live runs; dry-run bypasses the active check.
+#   - Refuses to run if Codex appears active at either live check.
+#   - Validates a present backfill_state as an exact singleton id=1/text complete
+#     state early and immediately before live writes.
+#   - --unlock analyzes lsof-owned UUID locks and uses a dedicated confirmation
+#     prompt before any live signal; --yes does not bypass that prompt.
 #   - Refuses to run if the threads schema contract for provider migration is not met.
 #   - Allows idx_threads_provider drift as a warning.
 #   - Blocks dangerous user UPDATE triggers against threads.
@@ -57,12 +71,17 @@ set -o nounset
 #
 # Native macOS/standard CLI tools also used:
 #   sqlite3, awk, grep, date, mkdir, mv, tail, rm, sort, uniq,
-#   chmod, /usr/bin/stat, touch, wc, dd, ps.
+#   chmod, /usr/bin/stat, touch, wc, dd, ps, sleep.
+#   lsof is required only for --unlock.
+
+PS_CMD=/bin/ps
+LSOF_CMD=/usr/sbin/lsof
 
 DRY_RUN=0
 YES=0
 FORCE=0
 SKIP_BACKUP=0
+UNLOCK=0
 PREPARE_BUCKET=1
 PADDING_BYTES=256
 session_write_total=0
@@ -87,6 +106,35 @@ restore_in_progress=0
 restore_work_dir=""
 restore_failure_detail=""
 restore_marker_name=".sync-model-provider-in-progress"
+active_codex_processes=""
+active_codex_processes_error=""
+unlock_error=""
+unlock_declined=0
+unlock_lock_dir=""
+unlock_lsof_output=""
+unlock_ps_output=""
+unlock_held_lock_count=0
+unlock_wait_active=0
+unlock_status=0
+unlock_signal_no_holders=0
+typeset -a unlock_holder_pids=()
+typeset -a unlock_candidate_pids=()
+typeset -a unlock_protected_pids=()
+typeset -a unlock_sorted_pids=()
+typeset -a unlock_plan_candidate_pids=()
+typeset -a unlock_signal_targets=()
+typeset -A unlock_pid_thread_map=()
+typeset -A unlock_pid_seen=()
+typeset -A unlock_thread_seen=()
+typeset -A unlock_pid_ppid_map=()
+typeset -A unlock_pid_uid_map=()
+typeset -A unlock_pid_lstart_map=()
+typeset -A unlock_pid_comm_map=()
+typeset -A unlock_pid_args_map=()
+typeset -A unlock_pid_identity_map=()
+typeset -A unlock_pid_reason_map=()
+typeset -A unlock_plan_pid_thread_map=()
+typeset -A unlock_plan_pid_identity_map=()
 
 fail() {
   progress_finish_line
@@ -271,6 +319,860 @@ progress_emit_final_line() {
   fi
   progress_active_line=0
   progress_last_line_render_sec=0
+}
+
+unlock_set_error() {
+  unlock_error="$1"
+  return 1
+}
+
+unlock_reset_lock_state() {
+  unlock_holder_pids=()
+  unlock_sorted_pids=()
+  unlock_pid_thread_map=()
+  unlock_pid_seen=()
+  unlock_thread_seen=()
+  unlock_held_lock_count=0
+}
+
+unlock_reset_process_state() {
+  unlock_ps_output=""
+  unlock_pid_ppid_map=()
+  unlock_pid_uid_map=()
+  unlock_pid_lstart_map=()
+  unlock_pid_comm_map=()
+  unlock_pid_args_map=()
+  unlock_pid_identity_map=()
+  unlock_candidate_pids=()
+  unlock_protected_pids=()
+  unlock_pid_reason_map=()
+}
+
+unlock_scan_locks() {
+  local lock_dir="$codex_dir/thread-writer-locks"
+  local lsof_status=0
+  local line=""
+  local field=""
+  local value=""
+  local current_pid=""
+  local current_command=""
+  local record_has_command=0
+  local record_has_fd=0
+  local thread_id=""
+  local pid_thread_key=""
+
+  unlock_reset_lock_state
+  unlock_lock_dir="$lock_dir"
+
+  [[ -d "$lock_dir" ]] || return 0
+
+  set +e
+  unlock_lsof_output="$("$LSOF_CMD" -nP -Fpcfn +d "$lock_dir" 2>&1)"
+  lsof_status=$?
+  set -e
+
+  if (( lsof_status != 0 && lsof_status != 1 )); then
+    unlock_set_error "lsof failed with exit status $lsof_status"
+    return 1
+  fi
+
+  if [[ -n "$unlock_lsof_output" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -n "$line" ]] || {
+        unlock_set_error "lsof emitted a blank machine-output record"
+        return 1
+      }
+
+      field="${line[1]}"
+      value="${line[2,-1]}"
+      case "$field" in
+        p)
+          [[ "$value" == <-> && "$value" != 0 ]] || {
+            unlock_set_error "lsof emitted an invalid PID record"
+            return 1
+          }
+          if [[ -n "$current_pid" && ( $record_has_command -eq 0 || $record_has_fd -eq 1 ) ]]; then
+            unlock_set_error "lsof emitted an incomplete process record"
+            return 1
+          fi
+          current_pid="$value"
+          current_command=""
+          record_has_command=0
+          record_has_fd=0
+          ;;
+        c)
+          [[ -n "$current_pid" && -n "$value" && $record_has_fd -eq 0 ]] || {
+            unlock_set_error "lsof emitted an invalid command record"
+            return 1
+          }
+          current_command="$value"
+          record_has_command=1
+          ;;
+        f)
+          [[ -n "$current_pid" && $record_has_command -eq 1 ]] || {
+            unlock_set_error "lsof emitted a file-descriptor record without a valid process"
+            return 1
+          }
+          record_has_fd=1
+          ;;
+        n)
+          [[ -n "$current_pid" && $record_has_command -eq 1 && $record_has_fd -eq 1 && -n "$value" ]] || {
+            unlock_set_error "lsof emitted a name record without a valid file-descriptor record"
+            return 1
+          }
+          record_has_fd=0
+          if [[ "$value" == "$lock_dir/"* ]]; then
+            thread_id="${value#${lock_dir}/}"
+            [[ "$thread_id" =~ '^[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}[.]lock$' ]] ||
+              continue
+            thread_id="${thread_id%.lock}"
+            pid_thread_key="$current_pid|$thread_id"
+            unlock_pid_thread_map[$pid_thread_key]=1
+            unlock_pid_seen[$current_pid]=1
+            unlock_thread_seen[$thread_id]=1
+          fi
+          ;;
+        *)
+          unlock_set_error "lsof emitted an unsupported machine-output field: $field"
+          return 1
+          ;;
+      esac
+    done <<< "$unlock_lsof_output"
+  fi
+
+  if [[ -n "$current_pid" && ( $record_has_command -eq 0 || $record_has_fd -eq 1 ) ]]; then
+    unlock_set_error "lsof emitted an incomplete final process record"
+    return 1
+  fi
+
+  unlock_held_lock_count=${#unlock_thread_seen}
+  if (( ${#unlock_pid_seen} > 0 )); then
+    unlock_holder_pids=(${(k)unlock_pid_seen})
+    unlock_sorted_pids=("${(@f)$(printf '%s\n' "${unlock_holder_pids[@]}" | sort -n -u)}")
+    unlock_holder_pids=("${unlock_sorted_pids[@]}")
+  fi
+
+  return 0
+}
+
+unlock_snapshot_processes() {
+  local ps_status=0
+  local line=""
+  local pid=""
+  local ppid=""
+  local uid=""
+  local lstart_day=""
+  local lstart_month=""
+  local lstart_date=""
+  local lstart_time=""
+  local lstart_year=""
+  local lstart=""
+  local comm=""
+  local args=""
+
+  unlock_reset_process_state
+  set +e
+  unlock_ps_output="$("$PS_CMD" -axww -o pid= -o ppid= -o uid= -o lstart= -o comm= -o args= 2>&1)"
+  ps_status=$?
+  set -e
+
+  (( ps_status == 0 )) || {
+    unlock_set_error "ps failed with exit status $ps_status"
+    return 1
+  }
+
+  if [[ -n "$unlock_ps_output" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      [[ -n "$line" ]] || {
+        unlock_set_error "ps emitted a blank process record"
+        return 1
+      }
+
+      pid=""
+      ppid=""
+      uid=""
+      lstart_day=""
+      lstart_month=""
+      lstart_date=""
+      lstart_time=""
+      lstart_year=""
+      lstart=""
+      comm=""
+      args=""
+      read -r pid ppid uid lstart_day lstart_month lstart_date lstart_time lstart_year comm args <<< "$line"
+      [[ "$pid" == <-> && "$pid" != 0 && "$ppid" == <-> && "$uid" == <-> ]] || {
+        unlock_set_error "ps emitted a malformed process record"
+        return 1
+      }
+      [[ "$lstart_day" =~ '^[[:alpha:]]{3}$' &&
+         "$lstart_month" =~ '^[[:alpha:]]{3}$' &&
+         "$lstart_date" == <-> &&
+         "$lstart_time" =~ '^[0-9]{2}:[0-9]{2}:[0-9]{2}$' &&
+         "$lstart_year" == <-> && -n "$comm" ]] || {
+        unlock_set_error "ps emitted a malformed or missing lstart identity for PID $pid"
+        return 1
+      }
+      lstart="$lstart_day $lstart_month $lstart_date $lstart_time $lstart_year"
+      [[ -z "${unlock_pid_ppid_map[$pid]-}" ]] || {
+        unlock_set_error "ps emitted duplicate PID $pid"
+        return 1
+      }
+
+      unlock_pid_ppid_map[$pid]="$ppid"
+      unlock_pid_uid_map[$pid]="$uid"
+      unlock_pid_lstart_map[$pid]="$lstart"
+      unlock_pid_comm_map[$pid]="$comm"
+      unlock_pid_args_map[$pid]="$args"
+      unlock_pid_identity_map[$pid]="$ppid|$uid|$lstart|$comm|$args"
+    done <<< "$unlock_ps_output"
+  fi
+
+  return 0
+}
+
+unlock_is_native_codex() {
+  local comm="$1"
+  local args="$2"
+  local command_base="${comm##*/}"
+  local first_arg=""
+  local token_base=""
+  local -a argv=()
+
+  command_base="${command_base#\"}"
+  command_base="${command_base%\"}"
+  command_base="${command_base#'}"
+  command_base="${command_base%'}"
+  [[ "${(L)command_base}" == "codex" ]] && return 0
+
+  [[ -n "$args" ]] || return 1
+  argv=("${(@z)args}")
+  (( ${#argv[@]} > 0 )) || return 1
+  first_arg="${argv[1]}"
+  first_arg="${first_arg#\"}"
+  first_arg="${first_arg%\"}"
+  first_arg="${first_arg#'}"
+  first_arg="${first_arg%'}"
+  token_base="${first_arg##*/}"
+  [[ "${(L)token_base}" == "codex" ]]
+}
+
+unlock_classify_processes() {
+  local pid=""
+  local ppid=""
+  local uid=""
+  local comm=""
+  local args=""
+  local reason=""
+  local native=0
+
+  unlock_candidate_pids=()
+  unlock_protected_pids=()
+  unlock_pid_reason_map=()
+
+  for pid in "${unlock_holder_pids[@]}"; do
+    if [[ -z "${unlock_pid_ppid_map[$pid]-}" ]]; then
+      unlock_pid_reason_map[$pid]="PID is absent from the fresh ps snapshot"
+      unlock_protected_pids+=("$pid")
+      continue
+    fi
+
+    ppid="${unlock_pid_ppid_map[$pid]}"
+    uid="${unlock_pid_uid_map[$pid]}"
+    comm="${unlock_pid_comm_map[$pid]}"
+    args="${unlock_pid_args_map[$pid]}"
+    reason=""
+
+    if [[ "$uid" != "$EUID" ]]; then
+      reason="UID $uid is not the current EUID $EUID"
+    fi
+    if [[ "$ppid" != 1 ]]; then
+      [[ -z "$reason" ]] || reason+="; "
+      reason+="PPID is $ppid, not 1"
+    fi
+    native=0
+    unlock_is_native_codex "$comm" "$args" && native=1
+    if (( ! native )); then
+      [[ -z "$reason" ]] || reason+="; "
+      reason+="comm/argv[0] basename is not an exact case-insensitive Codex match"
+    fi
+
+    if [[ -z "$reason" ]]; then
+      unlock_pid_reason_map[$pid]="same-user PPID-1 basename-matched Codex candidate holding at least one valid UUID lock"
+      unlock_candidate_pids+=("$pid")
+    else
+      unlock_pid_reason_map[$pid]="$reason"
+      unlock_protected_pids+=("$pid")
+    fi
+  done
+
+  if (( ${#unlock_candidate_pids[@]} > 0 )); then
+    unlock_candidate_pids=("${(@f)$(printf '%s\n' "${unlock_candidate_pids[@]}" | sort -n -u)}")
+  fi
+  if (( ${#unlock_protected_pids[@]} > 0 )); then
+    unlock_protected_pids=("${(@f)$(printf '%s\n' "${unlock_protected_pids[@]}" | sort -n -u)}")
+  fi
+  return 0
+}
+
+unlock_array_contains() {
+  local needle="$1"
+  shift
+  local value=""
+
+  for value in "$@"; do
+    [[ "$value" == "$needle" ]] && return 0
+  done
+  return 1
+}
+
+unlock_print_classification() {
+  local stage="$1"
+  local pid=""
+  local ppid=""
+  local uid=""
+  local lstart=""
+  local comm=""
+  local args=""
+  local key=""
+  local thread_id=""
+  local -a thread_ids=()
+
+  echo
+  echo "Unlock recovery ${stage}: held session writer locks"
+  if (( ${#unlock_holder_pids[@]} == 0 )); then
+    echo "  No held UUID session writer locks found."
+    return 0
+  fi
+
+  for pid in "${unlock_holder_pids[@]}"; do
+    ppid="${unlock_pid_ppid_map[$pid]-<not present>}"
+    uid="${unlock_pid_uid_map[$pid]-<not present>}"
+    lstart="${unlock_pid_lstart_map[$pid]-<not present>}"
+    comm="${unlock_pid_comm_map[$pid]-<not present>}"
+    args="${unlock_pid_args_map[$pid]-<not present>}"
+    echo "  PID $pid | PPID $ppid | UID $uid"
+    echo "    start: $lstart"
+    echo "    command: $comm"
+    echo "    args: ${args:-<empty>}"
+    if [[ -n "${unlock_pid_reason_map[$pid]-}" ]] &&
+       unlock_array_contains "$pid" "${unlock_candidate_pids[@]}"; then
+      echo "    classification: actionable candidate"
+    else
+      echo "    classification: protected/unconfirmed"
+    fi
+    echo "    reason: ${unlock_pid_reason_map[$pid]-unknown}"
+    echo "    affected thread IDs:"
+    thread_ids=()
+    for key in "${(@k)unlock_pid_thread_map}"; do
+      [[ "${key%%|*}" == "$pid" ]] || continue
+      thread_id="${key#*|}"
+      thread_ids+=("$thread_id")
+    done
+    if (( ${#thread_ids[@]} > 0 )); then
+      thread_ids=("${(@f)$(printf '%s\n' "${thread_ids[@]}" | sort -u)}")
+      for thread_id in "${thread_ids[@]}"; do
+        echo "      $thread_id"
+      done
+    else
+      echo "      <none>"
+    fi
+  done
+}
+
+unlock_collect_state() {
+  unlock_scan_locks || return 1
+  (( ${#unlock_holder_pids[@]} > 0 )) || return 0
+  unlock_snapshot_processes || return 1
+  unlock_classify_processes
+}
+
+unlock_save_plan() {
+  local key=""
+  local pid=""
+
+  unlock_plan_candidate_pids=("${unlock_candidate_pids[@]}")
+  unlock_plan_pid_thread_map=()
+  unlock_plan_pid_identity_map=()
+  for key in "${(@k)unlock_pid_thread_map}"; do
+    unlock_plan_pid_thread_map[$key]="${unlock_pid_thread_map[$key]}"
+  done
+  for pid in "${unlock_plan_candidate_pids[@]}"; do
+    unlock_plan_pid_identity_map[$pid]="${unlock_pid_identity_map[$pid]-}"
+  done
+}
+
+unlock_plan_matches_current() {
+  local mode="${1:-exact}"
+  local key=""
+  local pid=""
+
+  (( ${#unlock_protected_pids[@]} == 0 )) || return 1
+  if [[ "$mode" == exact ]]; then
+    [[ ${#unlock_candidate_pids[@]} -eq ${#unlock_plan_candidate_pids[@]} ]] || return 1
+    [[ ${#unlock_pid_thread_map[@]} -eq ${#unlock_plan_pid_thread_map[@]} ]] || return 1
+  elif [[ "$mode" == subset ]]; then
+    [[ ${#unlock_candidate_pids[@]} -le ${#unlock_plan_candidate_pids[@]} ]] || return 1
+    [[ ${#unlock_pid_thread_map[@]} -le ${#unlock_plan_pid_thread_map[@]} ]] || return 1
+  else
+    return 1
+  fi
+
+  for pid in "${unlock_candidate_pids[@]}"; do
+    unlock_array_contains "$pid" "${unlock_plan_candidate_pids[@]}" || return 1
+    [[ "${unlock_pid_identity_map[$pid]-}" == "${unlock_plan_pid_identity_map[$pid]-}" ]] || return 1
+  done
+  for key in "${(@k)unlock_pid_thread_map}"; do
+    [[ -n "${unlock_plan_pid_thread_map[$key]-}" ]] || return 1
+  done
+  return 0
+}
+
+unlock_target_holds_original_lock() {
+  local target_pid="$1"
+  local key=""
+
+  for key in "${(@k)unlock_pid_thread_map}"; do
+    [[ "${key%%|*}" == "$target_pid" ]] || continue
+    [[ -n "${unlock_plan_pid_thread_map[$key]-}" ]] && return 0
+  done
+  return 1
+}
+
+unlock_prepare_signal_target() {
+  local signal_name="$1"
+  local target_pid="$2"
+
+  unlock_collect_state || return 1
+  if (( ${#unlock_holder_pids[@]} == 0 )); then
+    echo "No target locks remain before ${signal_name}; no further signals will be sent."
+    unlock_signal_no_holders=1
+    return 2
+  fi
+
+  unlock_plan_matches_current subset || {
+    unlock_set_error "lock owner identity or lock set changed before ${signal_name} for PID $target_pid; refusing to signal"
+    return 1
+  }
+
+  if ! unlock_array_contains "$target_pid" "${unlock_candidate_pids[@]}" ||
+     ! unlock_target_holds_original_lock "$target_pid"; then
+    echo "Skipping ${signal_name} for PID $target_pid: it no longer holds an original UUID lock."
+    return 2
+  fi
+  return 0
+}
+
+unlock_confirm_plan() {
+  local pid=""
+  local key=""
+  local thread_id=""
+  local -a thread_ids=()
+  local reply=""
+
+  echo
+  echo "Unlock recovery will send TERM to the actionable Codex owner PID(s): ${unlock_plan_candidate_pids[*]}"
+  echo "Affected thread IDs:"
+  for key in "${(@k)unlock_plan_pid_thread_map}"; do
+    thread_id="${key#*|}"
+    thread_ids+=("$thread_id")
+  done
+  thread_ids=("${(@f)$(printf '%s\n' "${thread_ids[@]}" | sort -u)}")
+  for thread_id in "${thread_ids[@]}"; do
+    echo "  $thread_id"
+  done
+  echo "No data, lock path, JSONL, or SQLite file will be edited or deleted."
+  echo -n "Continue with lock recovery? [y/N] "
+  if ! read -r reply; then
+    reply=""
+  fi
+  echo
+  case "${reply:l}" in
+    y)
+      return 0
+      ;;
+    *)
+      echo "Unlock recovery not confirmed. No recovery or sync was performed."
+      unlock_declined=1
+      return 1
+      ;;
+  esac
+}
+
+unlock_wait_for_pids() {
+  local -i tick=0
+  local pid=""
+
+  unlock_wait_active=1
+  while (( tick < 50 )); do
+    unlock_wait_active=0
+    for pid in "${unlock_signal_targets[@]}"; do
+      if kill -0 "$pid" >/dev/null 2>&1; then
+        unlock_wait_active=1
+        break
+      fi
+    done
+    if (( unlock_wait_active == 0 )); then
+      return 0
+    fi
+    sleep 0.1
+    (( tick += 1 ))
+  done
+  return 0
+}
+
+unlock_signal_term() {
+  local target_pid=""
+  local pid=""
+  local -i signal_status=0
+
+  unlock_signal_no_holders=0
+  for target_pid in "${unlock_signal_targets[@]}"; do
+    if unlock_prepare_signal_target TERM "$target_pid"; then
+      echo "  Sending TERM to PID $target_pid."
+      if ! kill -TERM "$target_pid" >/dev/null 2>&1; then
+        echo "Unlock recovery could not send TERM to PID $target_pid." >&2
+        unlock_set_error "TERM signalling failed; refusing escalation"
+        return 1
+      fi
+    else
+      signal_status=$?
+      if (( signal_status == 2 )); then
+        (( unlock_signal_no_holders )) && return 0
+        continue
+      fi
+      return 1
+    fi
+  done
+  return 0
+}
+
+unlock_signal_kill() {
+  local target_pid=""
+  local pid=""
+  local -i signal_status=0
+
+  unlock_signal_no_holders=0
+  for target_pid in "${unlock_signal_targets[@]}"; do
+    if unlock_prepare_signal_target KILL "$target_pid"; then
+      echo "  Escalating to KILL for PID $target_pid."
+      if ! kill -KILL "$target_pid" >/dev/null 2>&1; then
+        echo "Unlock recovery could not send KILL to PID $target_pid." >&2
+        unlock_set_error "KILL signalling failed"
+        return 1
+      fi
+    else
+      signal_status=$?
+      if (( signal_status == 2 )); then
+        (( unlock_signal_no_holders )) && return 0
+        continue
+      fi
+      return 1
+    fi
+  done
+  return 0
+}
+
+unlock_recovery() {
+  local initial_thread_count=0
+
+  unlock_declined=0
+  unlock_error=""
+  unlock_collect_state || return 1
+  unlock_print_classification "initial scan"
+
+  if (( ${#unlock_holder_pids[@]} == 0 )); then
+    return 0
+  fi
+
+  if (( DRY_RUN )); then
+    if (( ${#unlock_candidate_pids[@]} > 0 )); then
+      echo "Dry run: would send TERM to candidate PID(s): ${unlock_candidate_pids[*]}."
+    fi
+    if (( ${#unlock_protected_pids[@]} > 0 )); then
+      echo "Dry run: protected/unconfirmed holders would prevent live signalling."
+    fi
+    echo "Dry run: no prompt, signal, data edit, lock-path edit/deletion, JSONL edit, or SQLite edit performed."
+    return 0
+  fi
+
+  if (( ${#unlock_protected_pids[@]} > 0 )); then
+    unlock_set_error "protected or unconfirmed lock holder(s) found; refusing to signal any PID"
+    return 1
+  fi
+  if (( ${#unlock_candidate_pids[@]} == 0 )); then
+    unlock_set_error "no actionable lock owner was confirmed"
+    return 1
+  fi
+
+  unlock_save_plan
+  unlock_signal_targets=("${unlock_plan_candidate_pids[@]}")
+  initial_thread_count="$unlock_held_lock_count"
+  if ! unlock_confirm_plan; then
+    (( unlock_declined )) && return 3
+    return 1
+  fi
+
+  unlock_collect_state || return 1
+  unlock_print_classification "pre-TERM revalidation"
+  unlock_plan_matches_current exact || {
+    unlock_set_error "lock owner identity or lock set changed before signalling; refusing to signal"
+    return 1
+  }
+
+  unlock_signal_term || return 1
+  unlock_wait_for_pids
+  unlock_collect_state || return 1
+  unlock_print_classification "post-TERM scan"
+
+  unlock_collect_state || return 1
+  unlock_print_classification "pre-KILL decision scan"
+  if (( ${#unlock_holder_pids[@]} > 0 )); then
+    if (( ${#unlock_protected_pids[@]} > 0 )); then
+      unlock_set_error "lock ownership became protected or unconfirmed after TERM; refusing KILL"
+      return 1
+    fi
+
+    unlock_plan_matches_current subset || {
+      unlock_set_error "lock owner identity or lock set changed after TERM; refusing KILL"
+      return 1
+    }
+    echo "TERM did not release all target locks; revalidating each target before escalation."
+    unlock_plan_matches_current subset || {
+      unlock_set_error "lock owner identity or lock set changed before KILL; refusing escalation"
+      return 1
+    }
+    unlock_signal_kill || return 1
+    unlock_wait_for_pids
+    unlock_collect_state || return 1
+    unlock_print_classification "post-KILL scan"
+    if (( ${#unlock_holder_pids[@]} > 0 )); then
+      unlock_set_error "one or more target locks remain held after KILL"
+      return 1
+    fi
+  fi
+
+  echo "Released $initial_thread_count thread writer lock(s) from PID(s): ${unlock_plan_candidate_pids[*]}."
+  echo "No data, lock path, JSONL, or SQLite file was edited or deleted by unlock recovery."
+  return 0
+}
+
+collect_active_codex_processes() {
+  local ps_output=""
+
+  active_codex_processes=""
+  active_codex_processes_error=""
+
+  (( DRY_RUN )) && return 0
+
+  if ! ps_output="$("$PS_CMD" -axww -o pid= -o ppid= -o comm= -o args= 2>/dev/null)"; then
+    active_codex_processes_error="ps failed"
+    return 1
+  fi
+
+  if ! active_codex_processes="$(awk '
+    function token_basename(token) {
+      gsub(/^"/, "", token)
+      gsub(/"$/, "", token)
+      sub(/^.*\//, "", token)
+      return token
+    }
+
+    function is_native_codex_token(token, base) {
+      base = token_basename(token)
+      return base == "codex" || base == "Codex" || \
+        base == "codex-code-mode-host" || base == "codex.js"
+    }
+
+    function is_node_codex_token(token) {
+      gsub(/^"/, "", token)
+      gsub(/"$/, "", token)
+      return token ~ /(^|\/)@openai\/codex([\/@]|$)/ || \
+        token ~ /(^|\/)@openai[+]codex([\/@]|$)/ || \
+        token == "codex.js" || token ~ /\/codex[.]js$/
+    }
+
+    {
+      if (NF < 3) {
+        next
+      }
+
+      command_token = $3
+      command_base = token_basename(command_token)
+      args = $0
+      sub(/^[[:space:]]*[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]*/, "", args)
+      first_arg = args
+      sub(/[[:space:]].*$/, "", first_arg)
+      argv0_base = token_basename(first_arg)
+
+      if (is_native_codex_token(command_token) || is_native_codex_token(first_arg)) {
+        print $1 "\t" $2 "\t" args
+        next
+      }
+
+      if (command_base == "node" || command_base == "nodejs" ||
+          argv0_base == "node" || argv0_base == "nodejs") {
+        for (i = 4; i <= NF; i += 1) {
+          if (is_node_codex_token($i)) {
+            print $1 "\t" $2 "\t" args
+            next
+          }
+        }
+      }
+    }
+  ' <<< "$ps_output")"; then
+    active_codex_processes_error="process output parsing failed"
+    return 1
+  fi
+
+  return 0
+}
+
+assert_no_active_codex() {
+  local guard_phase="${1:-unknown}"
+
+  (( DRY_RUN )) && return 0
+
+  if ! collect_active_codex_processes; then
+    progress_finish_line
+    echo >&2
+    echo "ERROR: Could not inspect running processes during ${guard_phase}; refusing live sync." >&2
+    echo "  Process check: ${active_codex_processes_error:-unknown error}" >&2
+    echo "  Database: ${db_file:-<unresolved>}" >&2
+    echo "Close Codex and resolve the process-inspection failure before rerunning." >&2
+    return 1
+  fi
+
+  [[ -z "$active_codex_processes" ]] && return 0
+
+  progress_finish_line
+  echo >&2
+  echo "ERROR: Codex appears to be running during ${guard_phase}." >&2
+  echo "Close all Codex sessions first, then rerun this script." >&2
+  echo "Active process evidence (PID, PPID, command/args):" >&2
+  print -r -- "$active_codex_processes" >&2
+  return 1
+}
+
+backfill_failure() {
+  local guard_phase="$1"
+  local detail="$2"
+
+  progress_finish_line
+  echo >&2
+  echo "ERROR: Backfill readiness check failed during ${guard_phase}." >&2
+  echo "  Database: ${db_file:-<unresolved>}" >&2
+  echo "  Observation: ${detail}" >&2
+  echo "Start Codex normally, let its startup rebuild finish, close Codex, then rerun this script." >&2
+  return 1
+}
+
+assert_backfill_complete() {
+  local guard_phase="${1:-unknown}"
+  local table_count=""
+  local schema_probe=""
+  local row_probe=""
+  local schema_columns=0
+  local id_columns=0
+  local status_columns=0
+  local hidden_id_columns=0
+  local hidden_status_columns=0
+  local integer_id_columns=0
+  local text_status_columns=0
+  local row_count=0
+  local valid_row_count=0
+  local row_details=""
+
+  if ! table_count="$(
+    sqlite3 -readonly -batch -noheader "$db_file" \
+      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='backfill_state';" \
+      2>/dev/null
+  )"; then
+    backfill_failure "$guard_phase" "could not query whether table backfill_state exists (SQLite query error)"
+    return 1
+  fi
+
+  if [[ "$table_count" != 0 && "$table_count" != 1 ]]; then
+    backfill_failure "$guard_phase" "table-existence query returned an invalid result: ${table_count}"
+    return 1
+  fi
+
+  (( table_count == 0 )) && return 0
+
+  if ! schema_probe="$(
+    sqlite3 -readonly -batch -noheader "$db_file" <<'SQL'
+SELECT
+  COUNT(*),
+  COALESCE(SUM(CASE WHEN name = 'id' AND hidden = 0 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN name = 'status' AND hidden = 0 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN name = 'id' AND hidden <> 0 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN name = 'status' AND hidden <> 0 THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN name = 'id' AND upper(trim(COALESCE(type, ''))) = 'INTEGER' THEN 1 ELSE 0 END), 0),
+  COALESCE(SUM(CASE WHEN name = 'status' AND upper(trim(COALESCE(type, ''))) = 'TEXT' THEN 1 ELSE 0 END), 0)
+FROM pragma_table_xinfo('backfill_state');
+SQL
+  )"; then
+    backfill_failure "$guard_phase" "could not inspect the backfill_state schema (SQLite query error)"
+    return 1
+  fi
+
+  IFS='|' read -r schema_columns id_columns status_columns hidden_id_columns \
+    hidden_status_columns integer_id_columns text_status_columns <<< "$schema_probe"
+
+  if [[ "$schema_columns" != <-> || "$id_columns" != <-> || "$status_columns" != <-> ||
+        "$hidden_id_columns" != <-> || "$hidden_status_columns" != <-> ||
+        "$integer_id_columns" != <-> || "$text_status_columns" != <-> ]]; then
+    backfill_failure "$guard_phase" "backfill_state schema probe returned an invalid result"
+    return 1
+  fi
+
+  if (( id_columns != 1 || status_columns != 1 || hidden_id_columns != 0 ||
+        hidden_status_columns != 0 || integer_id_columns != 1 || text_status_columns != 1 )); then
+    backfill_failure "$guard_phase" "backfill_state schema is invalid; expected visible INTEGER id and TEXT status columns"
+    return 1
+  fi
+
+  if ! row_probe="$(
+    sqlite3 -readonly -batch -noheader "$db_file" <<'SQL'
+SELECT
+  COUNT(*) || '|' ||
+  COALESCE(
+    group_concat(
+      'id_type=' || typeof(id) ||
+      ',id_is_1=' || CASE WHEN id = 1 THEN 'yes' ELSE 'no' END ||
+      ',status_type=' || typeof(status) ||
+      ',status=' || CASE
+        WHEN status = 'complete' THEN 'complete'
+        WHEN status = 'running' THEN 'running'
+        ELSE '<redacted>'
+      END ||
+      ',status_hex=' || CASE
+        WHEN status IS NULL THEN '<NULL>'
+        ELSE hex(CAST(status AS BLOB))
+      END,
+      '; '
+    ),
+    '<none>'
+  ) || '|' ||
+  COALESCE(SUM(CASE WHEN id = 1 AND typeof(status) = 'text' AND status = 'complete' THEN 1 ELSE 0 END), 0)
+FROM backfill_state;
+SQL
+  )"; then
+    backfill_failure "$guard_phase" "could not query backfill_state rows (SQLite query error)"
+    return 1
+  fi
+
+  IFS='|' read -r row_count row_details valid_row_count <<< "$row_probe"
+  if [[ "$row_count" != <-> || "$valid_row_count" != <-> ]]; then
+    backfill_failure "$guard_phase" "backfill_state row probe returned an invalid result"
+    return 1
+  fi
+
+  if (( row_count != 1 || valid_row_count != 1 )); then
+    backfill_failure "$guard_phase" "observed rows=${row_count}, valid_complete_rows=${valid_row_count}; ${row_details}"
+    return 1
+  fi
+
+  return 0
 }
 
 progress_percent_text() {
@@ -1416,11 +2318,12 @@ sync_failure() {
 usage() {
   cat <<'USAGE'
 Usage:
-  ./codex-sync-model-provider.zsh [--dry-run] [--yes] [--force] [--skip-backup] [--no-prepare-bucket] [--padding-bytes N]
+  ./codex-sync-model-provider.zsh [--dry-run] [--unlock] [--yes] [--force] [--skip-backup] [--no-prepare-bucket] [--padding-bytes N]
 
 Options:
   --dry-run            Show what would be changed, but do not write anything.
-  --yes                Do not ask for interactive confirmation before writing.
+  --unlock             Analyze held locks and recover a basename-matched Codex candidate before syncing.
+  --yes                Do not ask for provider-write confirmation; --unlock still prompts separately.
   --force              Rewrite provider fields even when they already match config.toml.
   --skip-backup        Skip 7zz backups. Live writes ignore catchable termination
                        signals from the first write through final validation.
@@ -1430,9 +2333,13 @@ Options:
 
 Environment:
   CODEX_HOME           Codex state root. Defaults to $HOME/.codex.
+  CODEX_SQLITE_HOME    Fallback SQLite home when root config sqlite_home is absent.
+                       Relative values resolve from the invocation working directory.
+                       A split effective SQLite layout is rejected.
 
 Examples:
   ./codex-sync-model-provider.zsh --dry-run
+  ./codex-sync-model-provider.zsh --dry-run --unlock
   ./codex-sync-model-provider.zsh
   ./codex-sync-model-provider.zsh --yes
   ./codex-sync-model-provider.zsh --yes --force
@@ -1446,6 +2353,9 @@ while (( $# > 0 )); do
   case "$1" in
     --dry-run)
       DRY_RUN=1
+      ;;
+    --unlock)
+      UNLOCK=1
       ;;
     --yes)
       YES=1
@@ -1508,6 +2418,11 @@ need_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 not found in PATH."
 }
 
+need_fixed_cmd() {
+  local command_path="$1"
+  [[ -x "$command_path" ]] || fail "$command_path is required for process inspection."
+}
+
 need_cmd sqlite3
 need_cmd jq
 if (( ! DRY_RUN && ! SKIP_BACKUP )); then
@@ -1527,7 +2442,13 @@ need_cmd chmod
 need_cmd touch
 need_cmd wc
 need_cmd dd
-need_cmd ps
+if (( ! DRY_RUN || UNLOCK )); then
+  need_fixed_cmd "$PS_CMD"
+  need_cmd sleep
+fi
+if (( UNLOCK )); then
+  need_fixed_cmd "$LSOF_CMD"
+fi
 [[ -x /usr/bin/stat ]] || fail "/usr/bin/stat is required for permission preflight."
 STAT_CMD=/usr/bin/stat
 
@@ -1572,8 +2493,358 @@ legacy_transcript_status() {
   fi
 }
 
+trim_toml_whitespace() {
+  local value="$1"
+
+  while [[ "$value" == [[:space:]]* ]]; do
+    value="${value[2,-1]}"
+  done
+  while [[ "$value" == *[[:space:]] ]]; do
+    value="${value[1,-2]}"
+  done
+
+  REPLY="$value"
+}
+
+strip_toml_comment() {
+  local line="$1"
+  local result=""
+  local quote=""
+  local escaped=0
+  local i
+  local char
+
+  for (( i = 1; i <= ${#line}; i += 1 )); do
+    char="${line[i]}"
+
+    if [[ "$quote" == double ]]; then
+      result+="$char"
+      if (( escaped )); then
+        escaped=0
+      elif [[ "$char" == \\ ]]; then
+        escaped=1
+      elif [[ "$char" == '"' ]]; then
+        quote=""
+      fi
+    elif [[ "$quote" == single ]]; then
+      result+="$char"
+      [[ "$char" == "'" ]] && quote=""
+    else
+      case "$char" in
+        '#')
+          break
+          ;;
+        '"')
+          quote=double
+          result+="$char"
+          ;;
+        "'")
+          quote=single
+          result+="$char"
+          ;;
+        *)
+          result+="$char"
+          ;;
+      esac
+    fi
+  done
+
+  REPLY="$result"
+}
+
+decode_toml_basic_string() {
+  local value="$1"
+  local i
+  local digits
+  local next
+  local hex
+  local hex_start
+  local hex_end
+  local codepoint
+
+  toml_decode_error=""
+  toml_decoded_value=""
+
+  for (( i = 1; i <= ${#value}; i += 1 )); do
+    [[ "${value[i]}" == \\ ]] || continue
+
+    if (( i == ${#value} )); then
+      toml_decode_error="a trailing backslash is not valid"
+      return 1
+    fi
+
+    next="${value[i + 1]}"
+    case "$next" in
+      b|t|n|f|r|u|U)
+        ;;
+      \\|\")
+        ;;
+      *)
+        toml_decode_error="unsupported escape sequence: \\$next"
+        return 1
+        ;;
+    esac
+
+    case "$next" in
+      u)
+        digits=4
+        ;;
+      U)
+        digits=8
+        ;;
+      *)
+        digits=0
+        ;;
+    esac
+
+    if (( digits > 0 )); then
+      if (( i + digits >= ${#value} + 1 )); then
+        toml_decode_error="incomplete \\$next escape sequence"
+        return 1
+      fi
+
+      hex_start=$(( i + 2 ))
+      hex_end=$(( i + 1 + digits ))
+      hex="${value[$hex_start,$hex_end]}"
+      if [[ ! "$hex" =~ ^[0-9A-Fa-f]{$digits}$ ]]; then
+        toml_decode_error="invalid hexadecimal \\$next escape sequence"
+        return 1
+      fi
+      codepoint=$(( 16#$hex ))
+      if (( codepoint < 0x20 || codepoint == 0x7f )); then
+        toml_decode_error="control character escape sequences are not valid"
+        return 1
+      fi
+      i=$(( i + digits ))
+    fi
+  done
+
+  if ! toml_decoded_value="$(printf '"%s"' "$value" | jq -er . 2>/dev/null)"; then
+    toml_decode_error="the quoted value could not be decoded"
+    return 1
+  fi
+  [[ -n "$toml_decoded_value" ]] || {
+    toml_decode_error="the decoded value is empty"
+    return 1
+  }
+  return 0
+}
+
+parse_root_sqlite_home() {
+  local config_path="$1"
+  local line=""
+  local code=""
+  local rest=""
+  local raw_value=""
+  local inner=""
+  local quote_end=0
+  local escaped=0
+  local i
+  local char
+  local line_number=0
+  local key_prefix_length=0
+
+  sqlite_home_config_present=0
+  sqlite_home_config_count=0
+  sqlite_home_config_raw=""
+  sqlite_home_config_value=""
+  sqlite_home_config_error=""
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_number=$(( line_number + 1 ))
+    [[ "$line" == *$'\r' ]] && line="${line%$'\r'}"
+
+    strip_toml_comment "$line"
+    code="$REPLY"
+    trim_toml_whitespace "$code"
+    code="$REPLY"
+
+    [[ -n "$code" ]] || continue
+    [[ "${code[1]}" == '[' ]] && break
+
+    key_prefix_length=0
+    if [[ "${code[1,13]}" == '"sqlite_home"' ]]; then
+      key_prefix_length=13
+    elif [[ "${code[1,13]}" == "'sqlite_home'" ]]; then
+      key_prefix_length=13
+    elif [[ "$code" =~ '^sqlite_home($|[[:space:]=])' ]]; then
+      key_prefix_length=11
+    fi
+
+    if (( key_prefix_length > 0 )); then
+      sqlite_home_config_present=1
+      sqlite_home_config_count=$(( sqlite_home_config_count + 1 ))
+      if (( sqlite_home_config_count > 1 )); then
+        sqlite_home_config_error="duplicate root-level sqlite_home entries (line $line_number)"
+        return 1
+      fi
+
+      rest="${code[$(( key_prefix_length + 1 )),-1]}"
+      trim_toml_whitespace "$rest"
+      rest="$REPLY"
+      if [[ "$rest" != "="* ]]; then
+        sqlite_home_config_error="malformed root-level sqlite_home entry (line $line_number)"
+        return 1
+      fi
+
+      raw_value="${rest#=}"
+      trim_toml_whitespace "$raw_value"
+      raw_value="$REPLY"
+      sqlite_home_config_raw="$raw_value"
+
+      if [[ -z "$raw_value" ]]; then
+        sqlite_home_config_error="root-level sqlite_home is empty (line $line_number)"
+        return 1
+      fi
+
+      case "${raw_value[1]}" in
+        "'")
+          if [[ "${raw_value[-1]}" != "'" || ${#raw_value} -lt 2 ]]; then
+            sqlite_home_config_error="root-level sqlite_home must be a closed single-line string (line $line_number)"
+            return 1
+          fi
+          inner="${raw_value[2,-2]}"
+          if [[ "$inner" == *"'"* ]]; then
+            sqlite_home_config_error="root-level sqlite_home contains an unsupported single-quoted value (line $line_number)"
+            return 1
+          fi
+          sqlite_home_config_value="$inner"
+          ;;
+        '"')
+          quote_end=0
+          escaped=0
+          for (( i = 2; i <= ${#raw_value}; i += 1 )); do
+            char="${raw_value[i]}"
+            if (( escaped )); then
+              escaped=0
+              continue
+            fi
+            if [[ "$char" == \\ ]]; then
+              escaped=1
+              continue
+            fi
+            if [[ "$char" == '"' ]]; then
+              quote_end=$i
+              break
+            fi
+          done
+
+          if (( escaped || quote_end == 0 )); then
+            sqlite_home_config_error="root-level sqlite_home has an unterminated double-quoted value (line $line_number)"
+            return 1
+          fi
+          if (( quote_end != ${#raw_value} )); then
+            sqlite_home_config_error="root-level sqlite_home has unsupported trailing content (line $line_number)"
+            return 1
+          fi
+
+          inner="${raw_value[2,-2]}"
+          if ! decode_toml_basic_string "$inner"; then
+            sqlite_home_config_error="root-level sqlite_home could not be decoded (line $line_number): $toml_decode_error"
+            return 1
+          fi
+          sqlite_home_config_value="$toml_decoded_value"
+          ;;
+        *)
+          sqlite_home_config_error="unsupported root-level sqlite_home value (line $line_number); expected a single- or double-quoted string"
+          return 1
+          ;;
+      esac
+
+      if [[ -z "$sqlite_home_config_value" ]]; then
+        sqlite_home_config_error="root-level sqlite_home is empty (line $line_number)"
+        return 1
+      fi
+      for (( i = 1; i <= ${#sqlite_home_config_value}; i += 1 )); do
+        char="${sqlite_home_config_value[i]}"
+        if [[ "$char" == [[:cntrl:]] ]]; then
+          sqlite_home_config_error="root-level sqlite_home contains control characters or newlines (line $line_number)"
+          return 1
+        fi
+      done
+    fi
+  done < "$config_path"
+
+  return 0
+}
+
+check_sqlite_layout() {
+  local env_sqlite_home="${CODEX_SQLITE_HOME:-}"
+  local effective_source=""
+  local raw_configured_value="(not configured)"
+  local effective_sqlite_dir=""
+  local env_sqlite_dir=""
+
+  if ! parse_root_sqlite_home "$config_file"; then
+    progress_finish_line
+    print -r -- "ERROR: Invalid root-level sqlite_home in config.toml: $sqlite_home_config_error" >&2
+    return 1
+  fi
+
+  if (( sqlite_home_config_present )); then
+    effective_source="config.toml sqlite_home"
+    raw_configured_value="$sqlite_home_config_raw"
+    effective_sqlite_dir="${sqlite_home_config_value:A}"
+
+    if [[ -n "$env_sqlite_home" ]]; then
+      env_sqlite_dir="${env_sqlite_home:A}"
+      if [[ "$env_sqlite_dir" != "$effective_sqlite_dir" ]]; then
+        print -r -- "NOTICE: root-level sqlite_home overrides a differing CODEX_SQLITE_HOME value." >&2
+      fi
+    fi
+  elif [[ -n "$env_sqlite_home" ]]; then
+    effective_source="CODEX_SQLITE_HOME"
+    raw_configured_value="$env_sqlite_home"
+    effective_sqlite_dir="${env_sqlite_home:A}"
+  else
+    effective_source="CODEX_HOME default"
+    effective_sqlite_dir="$codex_dir"
+  fi
+
+  [[ -n "$effective_sqlite_dir" ]] || {
+    progress_finish_line
+    print -r -- "ERROR: Effective SQLite home resolved to an empty directory." >&2
+    return 1
+  }
+
+  if [[ "$effective_sqlite_dir" != "$codex_dir" ]]; then
+    progress_finish_line
+    print -r -- "ERROR: Split SQLite layout is not supported; this script does not redirect to an alternate DB." >&2
+    print -r -- "  Codex root:                  $codex_dir" >&2
+    print -r -- "  Expected SQLite dir:         $codex_dir" >&2
+    print -r -- "  Effective source:            $effective_source" >&2
+    print -r -- "  Raw configured value:        $raw_configured_value" >&2
+    print -r -- "  Resolved effective SQLite dir: $effective_sqlite_dir" >&2
+    print -r -- "  Effective state_5.sqlite path: ${effective_sqlite_dir}/state_5.sqlite" >&2
+    print -r -- "  Script state_5.sqlite target:  $db_file" >&2
+    return 1
+  fi
+
+  return 0
+}
+
 [[ -f "$config_file" ]] || skip "config.toml not found at: $config_file"
+check_sqlite_layout || exit 1
 [[ -f "$db_file" ]] || skip "$db_base not found at: $db_file"
+
+if (( UNLOCK )); then
+  if unlock_recovery; then
+    :
+  else
+    unlock_status=$?
+    if (( unlock_declined && unlock_status == 3 )); then
+      exit 0
+    fi
+    progress_finish_line
+    echo "ERROR: Unlock recovery failed: ${unlock_error:-unknown error}" >&2
+    exit 1
+  fi
+fi
+
+if (( ! DRY_RUN )); then
+  assert_no_active_codex "early" || exit 1
+fi
+assert_backfill_complete "early" || exit 1
 
 # Extract ONLY the root-level model_provider before the first TOML section.
 # Ignores comments and ignores example/provider values lower in the file.
@@ -1905,24 +3176,6 @@ print_list_preview() {
 }
 
 if (( ! DRY_RUN )); then
-  # Refuse real writes while Codex is active.
-  # Codex can appear as node, codex.js, or the vendored codex binary, so check args.
-  codex_processes="$(
-    ps -axo pid=,comm=,args= | awk '
-      /(^|[\/])(codex-)?sync-model-provider[.]zsh( |$)/ { next }
-      /[\/]codex( |$)/ || /codex[.]js/ || /@openai[+]codex/ { print }
-    '
-  )"
-
-  if [[ -n "$codex_processes" ]]; then
-    echo
-    echo "Codex appears to be running."
-    echo "Close all Codex sessions first, then re-run this script."
-    echo
-    print -r -- "$codex_processes"
-    exit 1
-  fi
-
   setup_signal_traps
 fi
 
@@ -2697,7 +3950,6 @@ if (( ! YES )); then
 fi
 
 scratch_dir="$codex_dir/tmp/sync-model-provider"
-mkdir -p "$scratch_dir"
 if (( ${#session_files_to_update[@]} > 0 )); then
   final_preflight_total="${#session_files_to_update[@]}"
   final_preflight_count=0
@@ -2720,6 +3972,15 @@ if (( ${#session_files_to_update[@]} > 0 )); then
 
   progress_emit_final_line "Working: Preflight (Final Checking ${final_preflight_count}/${final_preflight_total})"
 fi
+
+if ! test_checkpoint "before_final_write_gate"; then
+  fail "Fixture-requested failure before final write gate."
+fi
+assert_no_active_codex "before_final_write_gate" || exit 1
+if (( ! DRY_RUN )); then
+  assert_backfill_complete "before_final_write_gate" || exit 1
+fi
+mkdir -p "$scratch_dir"
 
 if (( SKIP_BACKUP )); then
   echo

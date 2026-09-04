@@ -32,5 +32,7 @@ shell/modeler/
 tests/*
 !tests/discord_install_manager/
 !tests/discord_install_manager/*.py
+!tests/codex_sync_model_provider/
+!tests/codex_sync_model_provider/*.py
 !tests/pyactivate/
 !tests/pyactivate/*.py
