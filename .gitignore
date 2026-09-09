@@ -36,3 +36,5 @@ tests/*
 !tests/codex_sync_model_provider/*.py
 !tests/pyactivate/
 !tests/pyactivate/*.py
+!tests/codex_profiles/
+!tests/codex_profiles/*.py

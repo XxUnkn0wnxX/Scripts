@@ -47,6 +47,7 @@ Repo layout:
 
 - [`shell/oh-my-zsh/`](shell/oh-my-zsh/) - Docs index for custom Oh My Zsh plugins in this repo.
 - [`pyactivate`](shell/oh-my-zsh/plugins/pyactivate/README.md) - Multi-virtualenv selection, active-root tracking, parent/child project switching, automatic deactivation when you leave the tracked root, and optional `fzf`-based selection.
+- [`codex-profiles`](shell/oh-my-zsh/plugins/codex-profiles/README.md) - Discover and complete Codex profile names, pick a profile, and start or resume sessions with configurable launch flags.
 
 ## [Zen Scripts](Zen%20Scripts/)
 
