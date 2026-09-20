@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.34
+// @version      1.0.35
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.34';
+  const SCRIPT_VERSION = '1.0.35';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -1805,27 +1805,68 @@
     if (meta) state.cacheMeta = meta;
   }
 
-  function pruneCacheAfterLastPage(state, lastPage) {
-    const meta = state.cacheMeta || readJsonStorage(cacheMetaKey(state.cacheScope));
-    if (!meta || !meta.pages) return;
+  function pruneCacheAfterLastPage(state, lastPage, options = {}) {
+    const confirmedLastPage = Math.max(1, Number(lastPage || 1));
+    const pruneState = Boolean(options.pruneState);
+    const meta = readJsonStorage(cacheMetaKey(state.cacheScope)) || state.cacheMeta;
+    let removedPages = 0;
+    let removedInFlightPages = 0;
 
-    let removed = 0;
-    for (const page of Object.keys(meta.pages)) {
-      const pageNumber = Number(page);
-      if (Number.isInteger(pageNumber) && pageNumber > lastPage) {
-        removeStorageKey(cachePageKey(state.cacheScope, pageNumber));
-        delete meta.pages[page];
-        removed += 1;
+    if (meta && meta.version === CACHE_VERSION) {
+      for (const page of Object.keys(meta.pages || {})) {
+        const pageNumber = Number(page);
+        if (Number.isInteger(pageNumber) && pageNumber > confirmedLastPage) {
+          removeStorageKey(cachePageKey(state.cacheScope, pageNumber));
+          delete meta.pages[page];
+          removedPages += 1;
+        }
       }
+
+      if (meta.inFlightPages && typeof meta.inFlightPages === 'object') {
+        for (const page of Object.keys(meta.inFlightPages)) {
+          const pageNumber = Number(page);
+          if (Number.isInteger(pageNumber) && pageNumber > confirmedLastPage) {
+            delete meta.inFlightPages[page];
+            removedInFlightPages += 1;
+          }
+        }
+        if (Object.keys(meta.inFlightPages).length === 0) {
+          delete meta.inFlightPages;
+        }
+      }
+
+      if (Number(meta.inFlightPage || 0) > confirmedLastPage) {
+        delete meta.inFlightPage;
+        removedInFlightPages += 1;
+      }
+
+      meta.lastPage = confirmedLastPage;
+      updateCacheMetaProgress(meta);
+      try {
+        writeJsonStorage(cacheMetaKey(state.cacheScope), meta);
+      } catch (_) {
+        // Page and state cleanup can still proceed when metadata storage fails.
+      }
+      state.cacheMeta = meta;
+      applyCacheProgressToState(state, meta);
     }
 
-    if (removed > 0) {
-      meta.lastPage = lastPage;
-      updateCacheMetaProgress(meta);
-      writeJsonStorage(cacheMetaKey(state.cacheScope), meta);
-      state.cacheMeta = meta;
-      removeIndexedPagesAfter(state, lastPage);
-      logger.info('Pruned cached pages after page-count change.', 'lastPage', lastPage, 'removedPages', removed);
+    if (pruneState || removedPages > 0) {
+      removeIndexedPagesAfter(state, confirmedLastPage);
+    }
+    if (pruneState) {
+      pruneStatePagesAfter(state, confirmedLastPage);
+    }
+    if (removedPages > 0 || removedInFlightPages > 0) {
+      logger.info(
+        'Pruned cached pages after page-count change.',
+        'lastPage',
+        confirmedLastPage,
+        'removedPages',
+        removedPages,
+        'removedInFlightPages',
+        removedInFlightPages
+      );
     }
   }
 
@@ -1856,6 +1897,17 @@
     }
   }
 
+  function pruneStatePagesAfter(state, lastPage) {
+    const confirmedLastPage = Math.max(1, Number(lastPage || 1));
+    state.pendingPages = state.pendingPages.filter((page) => page <= confirmedLastPage);
+    for (const pages of [state.queuedPages, state.lookaheadPages, state.failedPages, state.statusFailedPages]) {
+      if (!pages || typeof pages.delete !== 'function') continue;
+      for (const page of Array.from(pages)) {
+        if (page > confirmedLastPage) pages.delete(page);
+      }
+    }
+  }
+
   function removeIndexedPage(state, page) {
     const keptItems = [];
     state.itemsByKey.clear();
@@ -1868,15 +1920,16 @@
     state.loadedPages.delete(page);
   }
 
-  function reconcileLastPage(state, detectedLastPage) {
+  function reconcileLastPage(state, detectedLastPage, options = {}) {
     const lastPage = Math.max(1, Number(detectedLastPage || 1));
     if (state.lastPage !== lastPage) {
       logger.info('Collection page count changed.', 'from', state.lastPage, 'to', lastPage);
     }
     state.lastPage = lastPage;
+    state.progressTotalPages = lastPage;
     state.progressTotalApproximate = true;
     syncCacheLastPage(state, lastPage);
-    pruneCacheAfterLastPage(state, lastPage);
+    pruneCacheAfterLastPage(state, lastPage, options);
   }
 
   function queueMissingPages(state, startPage, endPage) {
@@ -2659,7 +2712,61 @@
     return text.length > maxLength ? text.slice(0, maxLength) : text;
   }
 
-  function detectLastPage(doc, route) {
+  function canonicalPaginationQuery(value) {
+    const params = new URLSearchParams(value || '');
+    params.delete('page');
+    params.sort();
+    return params.toString();
+  }
+
+  function detectExplicitLastPage(doc, route, pageUrl = window.location.href) {
+    if (!doc || !route) return 0;
+
+    const routePath = String(route.pathname || '').replace(/\/+$/, '') || '/';
+    const expectedQuery = canonicalPaginationQuery(route.filterQuery);
+    let routeOrigin = String(route.origin || '');
+    try {
+      routeOrigin = new URL(routeOrigin || pageUrl, pageUrl).origin;
+    } catch (_) {
+      return 0;
+    }
+
+    let lastPage = 0;
+    const links = Array.from(doc.querySelectorAll('a[href], link[href]'));
+    for (const link of links) {
+      const relLast = attr(link, 'rel')
+        .split(/\s+/)
+        .some((token) => token.toLowerCase() === 'last');
+      const ariaLabel = attr(link, 'aria-label').replace(/\s+/g, ' ').toLowerCase();
+      if (!relLast && ariaLabel !== 'last page') continue;
+
+      const href = attr(link, 'href');
+      if (!href) continue;
+
+      let url;
+      try {
+        url = new URL(href, pageUrl);
+      } catch (_) {
+        continue;
+      }
+
+      const pathname = url.pathname.replace(/\/+$/, '') || '/';
+      if (url.origin !== routeOrigin || pathname !== routePath) continue;
+
+      const rawPage = url.searchParams.get('page') || '';
+      if (!/^\d+$/.test(rawPage)) continue;
+      const page = Number(rawPage);
+      if (!Number.isSafeInteger(page) || page < 1) continue;
+
+      const filterQuery = canonicalPaginationQuery(url.search);
+      if (filterQuery !== expectedQuery) continue;
+      lastPage = Math.max(lastPage, page);
+    }
+
+    return lastPage;
+  }
+
+  function detectLastPage(doc, route, pageUrl = window.location.href) {
     let lastPage = Math.max(1, route.currentPage || 1);
     const links = Array.from(doc.querySelectorAll('a[href], link[href]'));
 
@@ -2669,7 +2776,7 @@
 
       let url;
       try {
-        url = new URL(href, window.location.href);
+        url = new URL(href, pageUrl);
       } catch (_) {
         continue;
       }
@@ -4385,7 +4492,7 @@
     }
 
     if (sameSearchScope) {
-      appState.lastPage = Math.max(appState.lastPage, backgroundState.lastPage || 1);
+      appState.lastPage = Math.max(1, Number(backgroundState.lastPage || 1));
       appState.loadedPages = new Set(backgroundState.loadedPages);
       appState.failedPages = new Set(backgroundState.failedPages);
       appState.queuedPages = new Set(backgroundState.queuedPages);
@@ -4692,21 +4799,31 @@
       try {
         logger.verbose('Fetching collection page.', 'page', page, 'attempt', attempt + 1);
         markCachePageInFlight(state, page);
-        const html = await fetchPageHtml(state, makePageUrl(state.route, page));
+        const pageUrl = makePageUrl(state.route, page);
+        const html = await fetchPageHtml(state, pageUrl);
         if (!isStateActive(state)) return;
 
         const doc = new DOMParser().parseFromString(html, 'text/html');
-      const items = parsePageItems(doc, state.route, page, makePageUrl(state.route, page));
-      removeIndexedPage(state, page);
-      state.loadedPages.add(page);
-      state.queuedPages.delete(page);
-      seedDetailCacheFromItems(state.cacheRoute || state.route, items);
-      saveCachePage(state, page, items);
-      addItemsToIndex(state, items, 'network');
+        const items = parsePageItems(doc, state.route, page, pageUrl);
+        removeIndexedPage(state, page);
+        state.loadedPages.add(page);
+        state.queuedPages.delete(page);
+        seedDetailCacheFromItems(state.cacheRoute || state.route, items);
+        saveCachePage(state, page, items);
+        addItemsToIndex(state, items, 'network');
 
-        const detectedLastPage = detectLastPage(doc, state.route);
+        const explicitLastPage = page === 1 && items.length > 0
+          ? detectExplicitLastPage(doc, state.route, pageUrl)
+          : 0;
+        const detectedLastPage = detectLastPage(doc, state.route, pageUrl);
         const previousLastPage = state.lastPage;
-        if (detectedLastPage > previousLastPage) {
+        if (explicitLastPage > 0) {
+          reconcileLastPage(state, explicitLastPage, { pruneState: true });
+          state.lookaheadEndPage = 0;
+          state.lastPageKnown = true;
+          state.progressTotalApproximate = false;
+          queueMissingPages(state, 1, state.lastPage);
+        } else if (detectedLastPage > previousLastPage) {
           reconcileLastPage(state, detectedLastPage);
           if (detectLastPageLooksComplete(page, detectedLastPage)) {
             state.lastPageKnown = true;
