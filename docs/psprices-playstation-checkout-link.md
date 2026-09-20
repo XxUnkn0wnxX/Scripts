@@ -221,7 +221,7 @@ This userscript can run alongside:
 - [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js)
 - [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js)
 
-The checkout script replaces only the first exact supported purchase target. It leaves the surrounding buy wrapper and separate SKU panel intact. The SKU userscript can therefore retain a native SKU block or inject its fallback SKU panel without the checkout script treating that change as a new purchase target.
+The checkout script replaces only the first exact supported purchase target. It leaves the surrounding buy wrapper and separate SKU panel available. The SKU userscript prefers its own blue card and hides the native locked or unlocked SKU panel after a valid replacement mounts, restoring the native panel if no replacement can mount. The SKU script owns that behavior without the checkout script treating it as a new purchase target.
 
 The collection live-search script primarily owns the canonical avatar/theme collection pages and fetches product pages only for visible result hydration. The checkout script primarily owns supported product-page purchase targets, so the two scripts do not compete for the same mounted UI.
 
