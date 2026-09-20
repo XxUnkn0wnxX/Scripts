@@ -54,7 +54,7 @@ def _write_betterdiscord_marker(path: Path, channel: str, *, mode: str = "releas
                 "mode": mode,
                 "loader": "index.js",
                 "payload": "../betterdiscord.app.asar",
-                "bdPath": "/tmp/betterdiscord",
+                "bdPath": "/workspace/.tmp/betterdiscord",
                 "installationId": "bd-install-id",
             },
             indent=2,

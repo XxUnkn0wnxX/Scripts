@@ -87,7 +87,8 @@ if [ -n "$log_file" ]; then
   printf 'sleep\\targs=%s\\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 marker="${state_dir}/test-lock-client-spawned"
 
 if [ -z "${TEST_FAKE_LOCK_CLIENT_EXE:-}" ]; then

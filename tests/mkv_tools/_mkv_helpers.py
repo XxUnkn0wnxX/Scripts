@@ -33,7 +33,8 @@ set -e
 log_file="${TEST_COMMAND_LOG:-}"
 argv_dir="${TEST_ARGV_LOG_DIR:-}"
 [ -z "$argv_dir" ] || printf '%s\\0' "$@" > "$argv_dir/ffmpeg.$$"
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 is_encoder_probe=0
 for arg in "$@"; do
   if [ "$arg" = "-encoders" ]; then
@@ -107,7 +108,9 @@ for arg in "$@"; do
   esac
 done
 if [ -n "$source_file" ]; then
-  printf '%s\\n' "$source_file" > "${TEST_FAKE_STATE_DIR:-/tmp}/fake_ffprobe_last_file"
+  state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+  mkdir -p "$state_dir"
+  printf '%s\\n' "$source_file" > "${state_dir}/fake_ffprobe_last_file"
 fi
 base="$(basename "$source_file")"
 
@@ -172,7 +175,8 @@ if [ -n "$log_file" ]; then
   printf 'mkvmerge\\targs=%s\\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 call_mode="remux"
 source_file=""
 
@@ -328,7 +332,8 @@ if [ -n "$log_file" ]; then
   printf 'mkvextract\\targs=%s\\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 call_file="${state_dir}/fake_mkvextract_calls"
 call=1
 if [ -f "$call_file" ]; then
@@ -380,7 +385,8 @@ if [ -n "$log_file" ]; then
   printf 'mkvpropedit\\targs=%s\\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 call_file="${state_dir}/fake_mkvpropedit_calls"
 call=1
 if [ -f "$call_file" ]; then
@@ -407,7 +413,8 @@ if [ -n "$log_file" ]; then
   printf 'fzf\\targs=%s\\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 call_file="${state_dir}/fake_fzf_calls"
 call=1
 if [ -f "$call_file" ]; then
@@ -451,7 +458,8 @@ if [ "$1" = "-r" ]; then
   shift
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 ffprobe_last_file="${state_dir}/fake_ffprobe_last_file"
 mkvmerge_last_file="${state_dir}/fake_mkvmerge_last_file"
 

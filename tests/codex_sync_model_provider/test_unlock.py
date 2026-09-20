@@ -129,7 +129,7 @@ def test_protected_holder_refuses_live_unlock_without_signal(tmp_path: Path) -> 
     assert "Sending TERM" not in combined
     assert "Continue with lock recovery?" not in combined
     assert snapshot_fixture(environment) == before
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert not (environment["codex_home"] / "backups").exists()
 
 
@@ -273,7 +273,7 @@ def test_identity_change_at_term_revalidation_refuses_before_signal(
     assert (environment["control"] / "ps.count").read_text(encoding="utf-8").strip() == "3"
     assert (environment["control"] / "lsof.count").read_text(encoding="utf-8").strip() == "3"
     assert snapshot_fixture(environment) == before
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert not (environment["codex_home"] / "backups").exists()
 
 

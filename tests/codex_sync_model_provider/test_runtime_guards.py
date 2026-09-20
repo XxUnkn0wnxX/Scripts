@@ -217,7 +217,7 @@ def test_early_live_refusal_does_not_create_scratch_or_backup(
 
     assert result.returncode == 1
     assert "during early" in result.stderr
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert not (environment["codex_home"] / "backups").exists()
     assert snapshot_fixture(environment) == before
     assert session_file.read_bytes() == before["sessions/2026/09/11111111-1111-4111-8111-111111111111.jsonl"]
@@ -239,7 +239,7 @@ def test_final_active_race_refuses_before_scratch_or_writes(tmp_path: Path) -> N
     assert result.returncode == 1
     assert "ERROR: Codex appears to be running during before_final_write_gate." in combined
     assert (environment["control"] / "ps.count").read_text(encoding="utf-8").strip() == "2"
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert read_provider_values(environment) == before_db
     assert session_file.read_bytes() == before_session
 
@@ -270,6 +270,6 @@ def test_final_backfill_race_refuses_before_scratch_or_writes(tmp_path: Path) ->
     combined = result.stdout + result.stderr
     assert result.returncode == 1
     assert "ERROR: Backfill readiness check failed during before_final_write_gate." in combined
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert read_provider_values(environment) == before_db
     assert session_file.read_bytes() == before_session

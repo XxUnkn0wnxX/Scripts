@@ -56,7 +56,7 @@ def test_dry_run_reports_db_and_session_updates_without_mutation(tmp_path: Path)
     assert "Rows that would be changed to 'openai': 1" in result.stdout
     assert "Session files that would be updated:  1" in result.stdout
     assert snapshot_fixture(environment) == before
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert not (environment["codex_home"] / "backups").exists()
     assert not (environment["control"] / "ps.count").exists()
 
@@ -74,5 +74,5 @@ def test_matching_live_sync_exits_without_changes_after_early_guard(
     assert "No changes needed." in result.stdout
     assert snapshot_fixture(environment) == before
     assert (environment["control"] / "ps.count").read_text(encoding="utf-8").strip() == "1"
-    assert not (environment["codex_home"] / "tmp").exists()
+    assert not (environment["codex_home"] / ".tmp").exists()
     assert not (environment["codex_home"] / "backups").exists()

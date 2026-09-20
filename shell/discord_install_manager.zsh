@@ -109,9 +109,9 @@ Examples:
   $script_name --channel canary --update-select 500-400
   $script_name --channel canary --update-select --OS 11
   $script_name --channel all --update --OS 11
-  $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
+  $script_name --channel stable ptb --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" --BD
   $script_name --channel all --update --openasar
-  $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --update 401 --lock
+  $script_name --channel stable --openasar-source "\$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" --update 401 --lock
 
 Notes:
   This Discord install manager supports macOS only.

@@ -3949,7 +3949,7 @@ if (( ! YES )); then
   esac
 fi
 
-scratch_dir="$codex_dir/tmp/sync-model-provider"
+scratch_dir="$codex_dir/.tmp/sync-model-provider"
 if (( ${#session_files_to_update[@]} > 0 )); then
   final_preflight_total="${#session_files_to_update[@]}"
   final_preflight_count=0

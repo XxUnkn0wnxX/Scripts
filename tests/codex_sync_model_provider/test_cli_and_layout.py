@@ -32,7 +32,7 @@ def test_unknown_option_exits_two(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("config_value", "source", "cwd_kind"),
     (
-        ('"/tmp/codex-sync-config-sqlite"', "config.toml sqlite_home", "home"),
+        ('"/workspace/.tmp/codex-sync-config-sqlite"', "config.toml sqlite_home", "home"),
         ('"relative-sqlite"', "config.toml sqlite_home", "invoke"),
     ),
 )
@@ -46,7 +46,7 @@ def test_split_config_sqlite_layout_fails_without_mutation(
     )
     cwd = environment["home"] if cwd_kind == "home" else environment["invoke_cwd"]
     expected_effective_dir = (
-        Path("/tmp/codex-sync-config-sqlite")
+        Path("/workspace/.tmp/codex-sync-config-sqlite")
         if cwd_kind == "home"
         else environment["invoke_cwd"] / "relative-sqlite"
     ).resolve()
@@ -130,7 +130,7 @@ def test_section_scoped_sqlite_home_is_ignored(tmp_path: Path) -> None:
     environment = create_environment(tmp_path)
     write_config(
         environment,
-        'model_provider = "openai"\n\n[sqlite]\nsqlite_home = "/tmp/section-sqlite"\n',
+        'model_provider = "openai"\n\n[sqlite]\nsqlite_home = "/workspace/.tmp/section-sqlite"\n',
     )
 
     result = run_script(environment, "--dry-run", "--skip-backup")

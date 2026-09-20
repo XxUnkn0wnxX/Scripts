@@ -161,7 +161,7 @@ def _start_wrapped_app(
                 "mode": "release",
                 "loader": "index.js",
                 "payload": "../betterdiscord.app.asar",
-                "bdPath": "/tmp/betterdiscord",
+                "bdPath": "/workspace/.tmp/betterdiscord",
                 "installationId": "bd-install-id",
             },
             indent=2,
@@ -234,7 +234,8 @@ if [ -n "$log_file" ]; then
   printf 'open\targs=%s\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 attempt_file="${state_dir}/fake_open_attempts"
 fail_attempts="${TEST_FAKE_OPEN_FAIL_ATTEMPTS:-0}"
 attempt=1

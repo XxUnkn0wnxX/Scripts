@@ -51,7 +51,8 @@ def _prepare_fake_commands(fake_bin: Path, *, include_aria2: bool = True) -> Non
 set -e
 
 log_file="${TEST_COMMAND_LOG:-}"
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 attempt_file="${state_dir}/fake_aria2c_attempts"
 attempt=1
 if [ -f "$attempt_file" ]; then
@@ -103,7 +104,8 @@ while [ "$#" -gt 0 ]; do
 
 done
 
-mkdir -p "${out_dir:-/tmp}"
+out_dir="${out_dir:-$PWD/.tmp}"
+mkdir -p "$out_dir"
 if [ -n "$out_name" ]; then
   if [ "$attempt" -le "$empty_attempts" ]; then
     : > "${out_dir}/${out_name}"
@@ -120,7 +122,8 @@ fi
 set -e
 
 log_file="${TEST_COMMAND_LOG:-}"
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 url=""
 output=""
 max_filesize=""
@@ -555,7 +558,8 @@ if [ -n "$log_file" ]; then
   printf 'hdiutil\targs=%s\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 mode="${TEST_FAKE_HDIUTIL_MODE:-}"
 attach_fail_attempts="${TEST_FAKE_HDIUTIL_ATTACH_FAIL_ATTEMPTS:-0}"
 attempt_file="${state_dir}/fake_hdiutil_attach_attempts"
@@ -627,7 +631,8 @@ if [ -n "$log_file" ]; then
   printf 'ditto\targs=%s\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 attempt_file="${state_dir}/fake_ditto_attempts"
 fail_attempts="${TEST_FAKE_DITTO_FAIL_ATTEMPTS:-0}"
 attempt=1
@@ -771,7 +776,8 @@ if [ -n "$log_file" ]; then
   printf 'cmp\targs=%s\n' "$*" >> "$log_file"
 fi
 
-state_dir="${TEST_FAKE_STATE_DIR:-/tmp}"
+state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+mkdir -p "$state_dir"
 attempt_file="${state_dir}/fake_cmp_attempts"
 attempt=1
 if [ -f "$attempt_file" ]; then

@@ -146,5 +146,5 @@ def test_resolve_output_path_uses_current_working_directory_for_relative_paths(t
 
 
 def test_resolve_output_path_keeps_absolute_paths() -> None:
-    absolute = Path("/tmp/vpnroute-output.conf")
-    assert resolve_output_path(absolute, cwd=Path("/private/tmp/ignored")) == absolute
+    absolute = Path("/workspace/.tmp/vpnroute-output.conf")
+    assert resolve_output_path(absolute, cwd=Path("/workspace/.tmp/ignored")) == absolute

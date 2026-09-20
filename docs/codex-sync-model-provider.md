@@ -45,11 +45,13 @@ The script uses these paths under the resolved root:
 <resolved-codex-root>/state_5.sqlite
 <resolved-codex-root>/sessions
 <resolved-codex-root>/backups
+<resolved-codex-root>/.tmp/sync-model-provider
 ```
 
 `config.toml` and `state_5.sqlite` must already exist. The `sessions` directory is
 scanned when present, and the `backups` directory is created when a backed live
-run needs it.
+run needs it. Temporary working files use `.tmp/sync-model-provider`; dry runs
+and early refusals do not create this directory.
 
 An empty `CODEX_HOME` is treated as unset and falls back to `$HOME/.codex`. If
 `config.toml` or `state_5.sqlite` is missing, execution prints `SKIP:` and exits

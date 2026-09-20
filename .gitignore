@@ -9,6 +9,7 @@
 
 # Temporary folders and scratch files
 **/*_temp/
+.tmp/
 tmp/
 Backup/
 *.html

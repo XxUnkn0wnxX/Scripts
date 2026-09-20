@@ -279,7 +279,7 @@ zsh shell/discord_install_manager.zsh --channel stable ptb --update --openasar
 Use `--openasar-source` to inject a specific OpenAsar payload from a local file, a GitHub repo URL, or a direct download URL:
 
 ```bash
-zsh shell/discord_install_manager.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
+zsh shell/discord_install_manager.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar"
 ```
 
 `--openasar-source` implies `--openasar`; the only difference is that it uses the source you provide.
@@ -295,7 +295,7 @@ For a plain GitHub repo URL such as `https://github.com/XxUnkn0wnxX/OpenAsar`, t
 Set `OPENASAR_SOURCE` when running the script if you prefer an environment override instead of the CLI option:
 
 ```bash
-OPENASAR_SOURCE="$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+OPENASAR_SOURCE="$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" \
   zsh shell/discord_install_manager.zsh --channel stable --openasar
 ```
 
@@ -315,7 +315,7 @@ It works with the normal OpenAsar download and with a custom source:
 
 ```bash
 zsh shell/discord_install_manager.zsh --channel stable ptb \
-  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" \
   --BD
 ```
 
@@ -334,7 +334,7 @@ Use `--lock` to update one Discord channel to an explicit build, inject OpenAsar
 ```bash
 zsh shell/discord_install_manager.zsh \
   --channel stable \
-  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" \
   --update 401 \
   --lock
 ```
@@ -568,7 +568,7 @@ zsh shell/discord_install_manager.zsh \
   --channel stable \
   --update \
   --OS 11.0 \
-  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar"
 ```
 
 Download, replace, and clean Discord Canary with a pinned direct CDN build:
@@ -582,7 +582,7 @@ Download Discord Stable `0.0.401`, inject a local OpenAsar build, and lock OpenA
 ```bash
 zsh shell/discord_install_manager.zsh \
   --channel stable \
-  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" \
+  --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" \
   --update 401 \
   --lock
 ```
@@ -596,7 +596,7 @@ zsh shell/discord_install_manager.zsh --channel stable --openasar
 Inject a locally built OpenAsar payload and clean Discord Stable:
 
 ```bash
-zsh shell/discord_install_manager.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar"
+zsh shell/discord_install_manager.zsh --channel stable --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar"
 ```
 
 Refresh OpenAsar inside an existing BetterDiscord wrapper:
@@ -608,7 +608,7 @@ zsh shell/discord_install_manager.zsh --channel stable --openasar --BD
 Refresh a local OpenAsar build inside wrappers where present, with standalone fallback per channel:
 
 ```bash
-zsh shell/discord_install_manager.zsh --channel stable ptb --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/tmp/app.asar" --BD
+zsh shell/discord_install_manager.zsh --channel stable ptb --openasar-source "$HOME/Apps/Dev/BD/OpenAsar/.tmp/app.asar" --BD
 ```
 
 Inject OpenAsar from a specific repo URL:

@@ -235,7 +235,7 @@ def test_parse_args_accepts_split_time_range_and_flags() -> None:
         [
             "--docx",
             "--out",
-            "tmp/output",
+            ".tmp/output",
             "--nostamp",
             "--gencaps",
             "--lang",
@@ -254,7 +254,7 @@ def test_parse_args_accepts_split_time_range_and_flags() -> None:
     )
 
     assert parsed.docx is True
-    assert parsed.out == "tmp/output"
+    assert parsed.out == ".tmp/output"
     assert parsed.nostamp is True
     assert parsed.gencaps is True
     assert parsed.lang == "en,ja"

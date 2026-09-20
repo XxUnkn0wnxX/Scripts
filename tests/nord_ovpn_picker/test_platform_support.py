@@ -10,11 +10,11 @@ from nord_ovpn_picker import (
 
 
 def test_get_repo_venv_python_candidates_for_posix() -> None:
-    candidates = get_repo_venv_python_candidates(Path("/tmp/project/.venv"), platform="linux")
+    candidates = get_repo_venv_python_candidates(Path("/workspace/.tmp/project/.venv"), platform="linux")
 
     assert candidates == [
-        Path("/tmp/project/.venv/bin/python"),
-        Path("/tmp/project/.venv/bin/python3"),
+        Path("/workspace/.tmp/project/.venv/bin/python"),
+        Path("/workspace/.tmp/project/.venv/bin/python3"),
     ]
 
 
@@ -82,10 +82,10 @@ def test_get_cache_dir_for_linux_uses_xdg_cache_home() -> None:
     cache_dir = get_cache_dir(
         home=Path("/home/tester"),
         platform="linux",
-        environ={"XDG_CACHE_HOME": "/tmp/xdg-cache"},
+        environ={"XDG_CACHE_HOME": "/workspace/.tmp/xdg-cache"},
     )
 
-    assert cache_dir == Path("/tmp/xdg-cache/nord-ovpn-picker")
+    assert cache_dir == Path("/workspace/.tmp/xdg-cache/nord-ovpn-picker")
 
 
 def test_get_cache_dir_for_linux_falls_back_to_dot_cache() -> None:
@@ -111,13 +111,13 @@ def test_get_cache_dir_for_windows_falls_back_to_home_local_appdata_path() -> No
 
 
 def test_get_default_output_dir_uses_nordovpns_in_script_dir() -> None:
-    script_dir = Path("/tmp/project")
+    script_dir = Path("/workspace/.tmp/project")
 
     assert get_default_output_dir(cwd=script_dir, script_dir=script_dir) == script_dir.resolve() / "NordOVPNs"
 
 
 def test_get_default_output_dir_uses_caller_directory_outside_script_dir() -> None:
-    script_dir = Path("/tmp/project")
-    caller_dir = Path("/tmp/elsewhere")
+    script_dir = Path("/workspace/.tmp/project")
+    caller_dir = Path("/workspace/.tmp/elsewhere")
 
     assert get_default_output_dir(cwd=caller_dir, script_dir=script_dir) == caller_dir.resolve()
