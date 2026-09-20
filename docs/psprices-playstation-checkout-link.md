@@ -22,7 +22,7 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 
 ## What It Does
 
-- reads the public base product SKU and highest published aggregate price from PSPrices' JSON-LD product metadata
+- reads the public base product SKU and highest published JSON-LD offer price
 - resolves the regional full PlayStation SKU through Sony's public store endpoint
 - builds a regional `checkout.playstation.com/add/` URL
 - replaces the first supported avatar or theme purchase panel with a PSPrices-style checkout card
@@ -69,9 +69,9 @@ PSPrices publishes public product data in JSON-LD:
 The userscript finds an unambiguous `Product` entry and reads:
 
 - the base PlayStation product SKU
-- the highest published aggregate price and currency when available
+- the published offer price and currency when available
 
-For avatars and themes, the card displays `AggregateOffer.highPrice` as one price instead of a low-to-high range. It shows `Free` only when that highest price is zero. This is the highest value PSPrices publishes in JSON-LD, not a guarantee of the live amount charged by the PlayStation Store. The existing product, currency, and conflicting-offer validation remains in force; no price is inferred from labels or from a separate network request.
+For a complete valid `lowPrice`/`highPrice` range, the card displays the higher bound. If exactly one bound is present and valid, it is normalized as both bounds. If neither bound is present, a valid `price` value is accepted. The normalized zero upper bound displays `Free`; invalid or conflicting offers display `Price unavailable`, and an invalid bound never falls back to another field. This published JSON-LD value is not a guarantee of the live amount charged by the PlayStation Store. No price is inferred from labels or from a separate network request.
 
 It validates the product ID and region against the URL, canonical link, product container, and available page-region data. It then requests the matching full regional SKU from:
 

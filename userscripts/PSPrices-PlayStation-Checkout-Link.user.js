@@ -527,14 +527,35 @@
   function normalizeOffer(offers) {
     if (!offers || typeof offers !== 'object' || Array.isArray(offers)) return null;
     const parsePrice = (value) => {
-      if (typeof value === 'string' && !value.trim()) return null;
-      const number = Number(value);
+      if (typeof value === 'number') {
+        return Number.isFinite(value) && value >= 0 ? value : null;
+      }
+      if (typeof value !== 'string' || !value.trim()) return null;
+      const number = Number(value.trim());
       return Number.isFinite(number) && number >= 0 ? number : null;
     };
-    const lowPrice = parsePrice(offers.lowPrice);
-    const highPrice = parsePrice(offers.highPrice);
+    const hasLowPrice = offers.lowPrice !== undefined;
+    const hasHighPrice = offers.highPrice !== undefined;
+    let lowPrice;
+    let highPrice;
+    if (hasLowPrice || hasHighPrice) {
+      if (hasLowPrice && hasHighPrice) {
+        lowPrice = parsePrice(offers.lowPrice);
+        highPrice = parsePrice(offers.highPrice);
+        if (lowPrice === null || highPrice === null || lowPrice > highPrice) return null;
+      } else {
+        const price = parsePrice(hasLowPrice ? offers.lowPrice : offers.highPrice);
+        if (price === null) return null;
+        lowPrice = price;
+        highPrice = price;
+      }
+    } else {
+      const price = parsePrice(offers.price);
+      if (price === null) return null;
+      lowPrice = price;
+      highPrice = price;
+    }
     const priceCurrency = String(offers.priceCurrency || '').trim().toUpperCase();
-    if (lowPrice === null || highPrice === null || lowPrice > highPrice) return null;
     if (!/^[A-Z]{3}$/.test(priceCurrency)) return null;
     return { lowPrice, highPrice, priceCurrency };
   }
