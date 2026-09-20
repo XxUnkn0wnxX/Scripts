@@ -2,7 +2,7 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
 
-Current documented release: `1.0.4.6`.
+Current documented release: `1.0.4.7`.
 
 ## PlayStation Store Setup and Redirect Caveat
 
@@ -22,10 +22,13 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 
 ## What It Does
 
-- reads the public base product SKU and price from PSPrices' JSON-LD product metadata
+- reads the public base product SKU and aggregate price fallback from PSPrices' JSON-LD product metadata
+- prefers one unambiguous localized native avatar price when the selected purchase target exposes it
 - resolves the regional full PlayStation SKU through Sony's public store endpoint
 - builds a regional `checkout.playstation.com/add/` URL
 - replaces the first supported avatar or theme purchase panel with a PSPrices-style checkout card
+- uses PSPrices' native `game-detail-card` surface and corners for the replacement panel
+- accepts both current `shrink-0` and legacy `flex-shrink-0` direct theme purchase wrappers
 - also replaces the PlayStation Store availability loading placeholder or unavailable warning column when no native buy block is present
 - keeps the Add to Cart button disabled until a validated checkout URL is ready
 - shows the specific checkout-link failure reason in the card status area when Sony lookup fails
@@ -67,7 +70,9 @@ PSPrices publishes public product data in JSON-LD:
 The userscript finds an unambiguous `Product` entry and reads:
 
 - the base PlayStation product SKU
-- the current price and currency when available
+- the aggregate price and currency fallback when available
+
+For avatar purchase targets, a single distinct nonempty `[data-test-id="avatar-store-price"]` value inside the validated selected target takes priority. Whitespace is normalized, while the native currency and localized text are preserved. If there are no candidates or conflicting native values, the card uses the JSON-LD aggregate low/high price formatting. Theme targets continue to use that aggregate fallback because no equivalent theme current-price selector is assumed.
 
 It validates the product ID and region against the URL, canonical link, product container, and available page-region data. It then requests the matching full regional SKU from:
 

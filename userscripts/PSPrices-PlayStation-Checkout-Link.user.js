@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.6
+// @version      1.0.4.7
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -25,7 +25,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4.6';
+  const SCRIPT_VERSION = '1.0.4.7';
   const LOG_LEVEL = 'info';
   const SHOW_DIAGNOSTICS = false;
   const FORCE_CLIPBOARD_FALLBACK = false;
@@ -78,6 +78,7 @@
   const SKU_SCRIPT_CARD_ID = 'psprices-product-sku-userscript';
   const UNAVAILABLE_STORE_TEXT =
     'This item is no longer available for purchase on the PlayStation Store';
+  const THEME_TARGET_SELECTOR = 'div.flex-shrink-0, div.shrink-0';
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
@@ -641,12 +642,30 @@
     if (buyBlock.querySelector('[data-test-id="avatar-two-step-flow"]')) {
       return { invalid: true, reason: 'unsupported-avatar-target' };
     }
-    const themeTargets = buyBlock.querySelectorAll(':scope > div.flex-shrink-0');
+    const themeTargets = [...buyBlock.children].filter((element) =>
+      element.matches(THEME_TARGET_SELECTOR)
+    );
     if (themeTargets.length === 1) return { type: 'theme', element: themeTargets[0] };
     return {
       invalid: true,
       reason: themeTargets.length ? 'multiple-theme-targets' : 'missing-purchase-target'
     };
+  }
+
+  function readNativeAvatarPriceText(target) {
+    if (target?.type !== 'avatar' || !target.element) return null;
+    const selector = '[data-test-id="avatar-store-price"]';
+    const candidates = [];
+    if (target.element.matches?.(selector)) candidates.push(target.element);
+    candidates.push(...target.element.querySelectorAll(selector));
+
+    const values = [...new Set(
+      candidates
+        .filter((candidate) => !candidate.closest(`[data-test-id="${CARD_TEST_ID}"]`))
+        .map((candidate) => candidate.textContent.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+    )];
+    return values.length === 1 ? values[0] : null;
   }
 
   function isUnavailableStoreAlert(element) {
@@ -946,6 +965,7 @@
       baseProductId: metadata.baseProductId,
       offer: metadata.offer,
       priceConflict: metadata.priceConflict,
+      nativePriceText: readNativeAvatarPriceText(target),
       regionAlias: route.regionAlias,
       sonyLocale,
       language,
@@ -1129,9 +1149,7 @@
     section.dataset.testId = CARD_TEST_ID;
     section.setAttribute(OWNER_ATTR, mount.ownerId);
     section.setAttribute(TARGET_TYPE_ATTR, mount.targetType);
-    section.className =
-      'rounded-[var(--game-detail-radius-card)] border border-black/40 ' +
-      'dark:border-white/15 p-4 space-y-4';
+    section.className = 'game-detail-card p-4 space-y-4';
 
     const headingRow = document.createElement('div');
     headingRow.className = 'flex items-center justify-between gap-2';
@@ -1140,13 +1158,13 @@
     headingInner.append(
       createTextElement(
         'p',
-        'text-[11px] text-base-content/40 uppercase tracking-[0.15em] font-medium',
+        'text-xs font-medium tracking-wider text-base-content/60 uppercase',
         'PlayStation Store'
       ),
       createTextElement(
         'p',
         'text-3xl font-bold text-base-content tracking-tight leading-none',
-        formatPrice(mount.offer, mount.intlLocale)
+        mount.nativePriceText || formatPrice(mount.offer, mount.intlLocale)
       )
     );
     headingRow.append(headingInner);
@@ -1156,7 +1174,7 @@
     button.dataset.testId = ACTION_TEST_ID;
     button.className =
       'btn btn-md w-full justify-between items-start text-left h-auto ' +
-      'min-h-[3.5rem] py-3 px-4';
+      'min-h-14 py-3 px-4';
     const buttonText = document.createElement('span');
     buttonText.className = 'flex flex-col items-start gap-1.5';
     const buttonLabel = createTextElement(
@@ -1250,7 +1268,7 @@
         gameDetail?.dataset.gameId === mount.routeProductId
       );
     }
-    return mount.targetElement.matches('div.flex-shrink-0') &&
+    return mount.targetElement.matches(THEME_TARGET_SELECTOR) &&
       mount.targetElement.parentElement === mount.buyBlock;
   }
 
@@ -1423,6 +1441,11 @@
   function rerenderActiveMount() {
     const mount = activeMount;
     if (!activeTargetIsOwned(mount)) return;
+    const nativePriceText = readNativeAvatarPriceText({
+      type: mount.targetType,
+      element: mount.targetElement
+    });
+    if (nativePriceText) mount.nativePriceText = nativePriceText;
     removeChildren(mount.targetElement);
     mount.targetElement.append(renderCard(mount));
     hideSticky(mount);
@@ -1974,6 +1997,7 @@
       intlLocale: context.intlLocale,
       presentation: context.presentation,
       offer: context.offer,
+      nativePriceText: context.nativePriceText,
       productKey: context.productKey,
       signatureKey: context.signatureKey,
       generation: ++requestGeneration,
@@ -1992,8 +2016,6 @@
       manualLinkVisible: false,
       ui: null
     };
-    const card = renderCard(mount);
-
     try {
       const current = gatherPageContext();
       if (!sameSignature(context, current)) {
@@ -2001,6 +2023,8 @@
         scheduleLifecycle('mount-signature-changed');
         return;
       }
+      mount.nativePriceText = current.nativePriceText;
+      const card = renderCard(mount);
       while (mount.targetElement.firstChild) {
         savedChildren.append(mount.targetElement.firstChild);
       }

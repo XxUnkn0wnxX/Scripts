@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.35
+// @version      1.0.36
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -20,7 +20,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.35';
+  const SCRIPT_VERSION = '1.0.36';
   const LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -43,7 +43,8 @@
   const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
   const CACHE_SCOPE_VERSION = 'v4';
   const CACHE_RESET_ON_SCHEMA_CHANGE = true;
-  const CACHE_SCHEMA_VERSION = 10;
+  // Invalidate pre-fix or partial collection index/detail metadata so migration rebuilds it once.
+  const CACHE_SCHEMA_VERSION = 11;
   const CACHE_MIGRATION_VERSION = `cache-schema-${CACHE_SCHEMA_VERSION}`;
   const CACHE_MIGRATION_KEY = `${CACHE_PREFIX}:migration-version`;
   // Set true to force the legacy page localStorage cache backend.
@@ -93,6 +94,11 @@
   const AVATAR_FILTER_COLLECTIONS = new Set();
   const THEME_FILTER_COLLECTIONS = new Set();
   const PLATFORM_FILTER_VALUES = Object.freeze(['ps3', 'ps4', 'ps5']);
+  const DEFAULT_PLATFORM_FILTER = '';
+  const PLATFORM_DISPLAY_ORDER = Object.freeze(['ps4', 'ps3', 'ps5']);
+  const TITLE_SORT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+  const ITEM_DISPLAY_SORT_KEYS = new WeakMap();
+  const ALL_PLATFORM_QUERY = PLATFORM_FILTER_VALUES.map((platform) => platform.toUpperCase()).join(',');
   const INITIAL_RENDER_LIMIT = 108;
   const RENDER_STEP = 54;
   // Set to -1 for no hard render cap. High values can be heavy on low-memory machines.
@@ -314,6 +320,9 @@
       for (const [key, value] of params.entries()) {
         url.searchParams.append(key, value);
       }
+    }
+    if (PREWARM_COLLECTIONS.includes(String(route.collection || '').toLowerCase())) {
+      url.searchParams.set('platform', ALL_PLATFORM_QUERY);
     }
     if (page > 1) {
       url.searchParams.set('page', String(page));
@@ -1456,7 +1465,7 @@
 
     if (Array.isArray(item)) {
       const url = String(item[1] || '');
-      const filterFlags = sanitizeCompactFilterFlags(parseFilterFlags(item[2]), collection).join(',');
+      const filterFlags = parseFilterFlags(item[2]).join(',');
       return {
         id: extractGameId(url),
         title: String(item[0] || ''),
@@ -1488,22 +1497,6 @@
     };
   }
 
-  function sanitizeCompactFilterFlags(flags, collection) {
-    const values = parseFilterFlags(flags);
-    const platformFlags = values.filter((flag) => /^ps[345]$/.test(flag));
-    const flagSet = new Set(values);
-    const value = String(collection || '').toLowerCase();
-    const looksLikeOldDefault =
-      (value === AVATAR_CANONICAL_COLLECTION && flagSet.has('ps3') && flagSet.has('ps4') && flagSet.has('ps5')) ||
-      (value === THEME_CANONICAL_COLLECTION && flagSet.has('ps3') && flagSet.has('ps4') && !flagSet.has('ps5'));
-
-    if (!looksLikeOldDefault || platformFlags.length === 0) {
-      return values;
-    }
-
-    return values.filter((flag) => !/^ps[345]$/.test(flag));
-  }
-
   function titleFromUrl(url) {
     const slug = String(url || '')
       .replace(/^https?:\/\/[^/]+/i, '')
@@ -1519,11 +1512,23 @@
   }
 
   function enrichCachedItemsForRoute(route, items, canonicalMap) {
+    // Restore known platform metadata before sorting/windowing, not only after selection.
+    const enrichedItems = items.map((item) => {
+      if (!needsLiveDetailHydration(item)) return item;
+      const detail = readDetailCache(route, item);
+      return detail ? {
+        ...item,
+        ...detail,
+        collection: item.collection,
+        region: item.region,
+        page: item.page,
+      } : item;
+    });
     if (isFilteredCollection(route.collection)) {
-      return deriveItemsForRoute(route, items);
+      return deriveItemsForRoute(route, enrichedItems);
     }
 
-    return items;
+    return enrichedItems;
   }
 
   function clearCache(scope) {
@@ -1719,7 +1724,13 @@
       const pageMeta = meta.pages && meta.pages[String(page)];
       if (!pageMeta) return false;
       if (now - Number(pageMeta.fetchedAt || 0) > CACHE_TTL_MS) return false;
-      if (!storageKeyExists(cachePageKey(scope, page))) return false;
+      const pageKey = cachePageKey(scope, page);
+      // Match readCache's recovery checks before skipping a background cache load.
+      const payload = cacheStorage.type === CACHE_STORAGE_INDEXEDDB
+        ? cacheMemory.get(pageKey)
+        : readJsonStorage(pageKey);
+      if (!payload || payload.version !== CACHE_VERSION || !Array.isArray(payload.items)) return false;
+      if (now - Number(payload.fetchedAt || 0) > CACHE_TTL_MS) return false;
     }
 
     return true;
@@ -2160,16 +2171,40 @@
     return 2;
   }
 
+  function itemDisplaySortKeys(item) {
+    const rawTitle = item && item.title;
+    const rawFlags = item && (Array.isArray(item.filterFlags) ? item.filterFlags.join(',') : item.filterFlags);
+    const platformText = item && item.platformText;
+    let keys = item && ITEM_DISPLAY_SORT_KEYS.get(item);
+    if (!keys || keys.rawTitle !== rawTitle || keys.rawFlags !== rawFlags || keys.platformText !== platformText) {
+      const title = sortableTitle(rawTitle);
+      const flags = itemFilterFlags(item);
+      const rank = PLATFORM_DISPLAY_ORDER.findIndex((platform) => flags.includes(platform));
+      keys = {
+        rawTitle,
+        rawFlags,
+        platformText,
+        title,
+        titleBucket: sortBucketForTitle(title),
+        // Unknown candidates may be PS4; confirm them before filling the window with PS3.
+        platformRank: rank < 0 ? 0 : rank,
+      };
+      if (item) ITEM_DISPLAY_SORT_KEYS.set(item, keys);
+    }
+    return keys;
+  }
+
+  function compareItemsForAllPlatforms(a, b) {
+    return itemDisplaySortKeys(a).platformRank - itemDisplaySortKeys(b).platformRank || compareItemsForDisplay(a, b);
+  }
+
   function compareItemsForDisplay(a, b) {
-    const aTitle = sortableTitle(a && a.title);
-    const bTitle = sortableTitle(b && b.title);
-    const bucketDiff = sortBucketForTitle(aTitle) - sortBucketForTitle(bTitle);
+    const aKeys = itemDisplaySortKeys(a);
+    const bKeys = itemDisplaySortKeys(b);
+    const bucketDiff = aKeys.titleBucket - bKeys.titleBucket;
     if (bucketDiff) return bucketDiff;
 
-    const titleDiff = aTitle.localeCompare(bTitle, undefined, {
-      numeric: true,
-      sensitivity: 'base',
-    });
+    const titleDiff = TITLE_SORT_COLLATOR.compare(aKeys.title, bKeys.title);
     if (titleDiff) return titleDiff;
 
     const pageDiff = (Number(a && a.page) || 0) - (Number(b && b.page) || 0);
@@ -2627,7 +2662,12 @@
   }
 
   function extractProductDetailPlatformText(doc, collection) {
-    const root = doc.querySelector('#platform-badges') || doc;
+    const badges = doc.querySelector('#platform-badges');
+    if (badges && isThemeCollection(collection)) {
+      const textPlatform = normalizedPlatformText(textContent(badges), collection);
+      if (textPlatform) return textPlatform;
+    }
+    const root = badges || doc;
     return isThemeCollection(collection)
       ? extractThemePlatformText(root, collection)
       : extractAvatarPlatformText(root, collection);
@@ -2723,10 +2763,15 @@
     if (!doc || !route) return 0;
 
     const routePath = String(route.pathname || '').replace(/\/+$/, '') || '/';
-    const expectedQuery = canonicalPaginationQuery(route.filterQuery);
     let routeOrigin = String(route.origin || '');
     try {
       routeOrigin = new URL(routeOrigin || pageUrl, pageUrl).origin;
+    } catch (_) {
+      return 0;
+    }
+    let expectedQuery = '';
+    try {
+      expectedQuery = canonicalPaginationQuery(new URL(makePageUrl(route, 1), pageUrl).search);
     } catch (_) {
       return 0;
     }
@@ -2832,7 +2877,7 @@
       renderedResultStaleUntil: new Map(),
       renderedResultRemovalTimer: 0,
       query: '',
-      platformFilter: '',
+      platformFilter: DEFAULT_PLATFORM_FILTER,
       freeOnly: false,
       controlsLocked: true,
       resultLimit: INITIAL_RENDER_LIMIT,
@@ -3482,7 +3527,7 @@
     if (!state || !state.ui) return;
 
     state.query = '';
-    state.platformFilter = normalizedPlatformFilterForRoute(state.route, '');
+    state.platformFilter = normalizedPlatformFilterForRoute(state.route, DEFAULT_PLATFORM_FILTER);
     state.freeOnly = false;
     state.resultLimit = INITIAL_RENDER_LIMIT;
 
@@ -3616,23 +3661,24 @@
       if (!hasQuery) return true;
       if (item.searchText.includes(query)) return true;
       return terms.length > 1 && terms.every((term) => item.searchText.includes(term));
-    }).sort(compareItemsForDisplay);
+    }).sort(state.platformFilter ? compareItemsForDisplay : compareItemsForAllPlatforms);
     const needsConfirmedDetails = !controlsLocked && filteredResultsNeedConfirmedDetails(state);
+    // Skip known nonmatches before windowing so one platform cannot fill another's batch.
+    const filterCandidates = needsConfirmedDetails
+      ? queryMatches.filter((item) => itemMayMatchUiFilters(item, state))
+      : queryMatches;
     const emptyQueryFilterWindowLimit = needsConfirmedDetails && !hasQuery
-      ? Math.min(state.resultLimit, maxRenderableResults(queryMatches.length))
-      : queryMatches.length;
+      ? Math.min(state.resultLimit, maxRenderableResults(filterCandidates.length))
+      : filterCandidates.length;
     const filterCandidatePool = needsConfirmedDetails && !hasQuery
-      ? queryMatches.slice(0, emptyQueryFilterWindowLimit)
-      : queryMatches;
-    const resultPool = needsConfirmedDetails && !hasQuery
-      ? filterCandidatePool
-      : queryMatches;
-    const results = resultPool.filter((item) => itemMatchesUiFilters(item, state));
+      ? filterCandidates.slice(0, emptyQueryFilterWindowLimit)
+      : filterCandidates;
+    const results = filterCandidatePool.filter((item) => itemMatchesUiFilters(item, state));
     const hydrationCandidates = needsConfirmedDetails
       ? limitLiveDetailFilterCandidates(filterCandidatePool.filter((item) => itemNeedsUiFilterHydration(item, state)))
       : [];
     const totalResultCount = needsConfirmedDetails && !hasQuery
-      ? queryMatches.length
+      ? filterCandidates.length
       : results.length;
     const checkedResultCount = needsConfirmedDetails && !hasQuery
       ? emptyQueryFilterWindowLimit
@@ -3703,23 +3749,22 @@
     return Boolean(String(item && item.priceText || '').trim());
   }
 
-  function itemNeedsUiFilterHydration(item, state) {
-    if (!item || !item.url || !needsLiveDetailHydration(item)) return false;
+  function itemMayMatchUiFilters(item, state) {
+    if (!item || !item.url) return false;
 
     const flags = new Set(itemFilterFlags(item));
     const hasPlatformFlags = hasKnownPlatformFlags(item);
     const hasPriceFlags = hasKnownPriceFlags(item);
     const platformFilterValues = platformFilterValuesForState(state);
 
-    if (platformFilterValues.length > 0) {
-      if (!hasPlatformFlags) return true;
-      if (!platformFilterValues.some((flag) => flags.has(flag))) return false;
-    }
-    if (state.freeOnly) {
-      if (!hasPriceFlags) return true;
-      if (!flags.has('free')) return false;
-    }
+    if (platformFilterValues.length > 0 && hasPlatformFlags &&
+        !platformFilterValues.some((flag) => flags.has(flag))) return false;
+    if (state.freeOnly && hasPriceFlags && !flags.has('free')) return false;
     return true;
+  }
+
+  function itemNeedsUiFilterHydration(item, state) {
+    return Boolean(needsLiveDetailHydration(item) && itemMayMatchUiFilters(item, state));
   }
 
   function limitLiveDetailFilterCandidates(items) {
@@ -4453,7 +4498,9 @@
   }
 
   function absorbIndexedPage(state, page, items, source, options = {}) {
-    removeIndexedPage(state, page);
+    if (state.loadedPages.has(page)) {
+      removeIndexedPage(state, page);
+    }
     state.loadedPages.add(page);
     return addItemsToIndex(state, items, source, options);
   }
@@ -4538,25 +4585,36 @@
     if (!state || state.indexStarted) return;
     state.indexStarted = true;
 
-    const currentPageItems = parsePageItems(document, state.route, state.route.currentPage, window.location.href);
-    const detectedLastPage = Math.max(1, detectLastPage(document, state.route));
-    if (state.lastPage !== detectedLastPage) {
-      logger.info('Collection page count detected from DOM.', 'from', state.lastPage, 'to', detectedLastPage);
+    const isCanonicalRoute = PREWARM_COLLECTIONS.includes(String(state.route.collection || '').toLowerCase());
+    if (!isCanonicalRoute) {
+      const currentPageItems = parsePageItems(document, state.route, state.route.currentPage, window.location.href);
+      const detectedLastPage = Math.max(1, detectLastPage(document, state.route));
+      if (state.lastPage !== detectedLastPage) {
+        logger.info('Collection page count detected from DOM.', 'from', state.lastPage, 'to', detectedLastPage);
+      }
+      state.lastPage = detectedLastPage;
+      logger.info(
+        'Route indexed from DOM.',
+        state.route.region,
+        state.route.collection,
+        'page',
+        state.route.currentPage,
+        'items',
+        currentPageItems.length,
+        'lastPage',
+        state.lastPage
+      );
+      seedDetailCacheFromItems(state.cacheRoute || state.route, currentPageItems);
+      absorbIndexedPage(state, state.route.currentPage, currentPageItems, 'dom');
+    } else {
+      logger.info(
+        'Canonical route waits for the all-platform cache.',
+        state.route.region,
+        state.route.collection,
+        'page',
+        state.route.currentPage
+      );
     }
-    state.lastPage = detectedLastPage;
-    logger.info(
-      'Route indexed from DOM.',
-      state.route.region,
-      state.route.collection,
-      'page',
-      state.route.currentPage,
-      'items',
-      currentPageItems.length,
-      'lastPage',
-      state.lastPage
-    );
-    seedDetailCacheFromItems(state.cacheRoute || state.route, currentPageItems);
-    absorbIndexedPage(state, state.route.currentPage, currentPageItems, 'dom');
 
     if (state.cacheEnabled && !state.forceRefresh) {
       const cached = readCache(state.cacheScope);
@@ -4588,7 +4646,7 @@
         }
         let cachedAdded = 0;
         for (const [page, items] of cached.pages.entries()) {
-          if (!isFilteredCollection(state.route.collection) && page === state.route.currentPage) continue;
+          if (!isCanonicalRoute && !isFilteredCollection(state.route.collection) && page === state.route.currentPage) continue;
           if (page > state.lastPage) continue;
           const pageItems = enrichCachedItemsForRoute(state.route, items, canonicalAvatarMap);
           logger.verbose('Loaded cached page.', 'page', page, 'items', pageItems.length);
@@ -4604,7 +4662,7 @@
     state.totalPagesQueued = 0;
     state.indexingDone = true;
     logger.info(
-      'Prepared collection from DOM and local cache.',
+      isCanonicalRoute ? 'Prepared collection from canonical cache.' : 'Prepared collection from DOM and local cache.',
       'loadedPages',
       state.loadedPages.size,
       'lastPage',
@@ -5356,19 +5414,27 @@
   async function startRegionPrewarm(forceRefresh = false) {
     if (!AUTO_INDEX_ON_SITE_VISIT) return;
     clearStalePrewarmStopSignal();
-    if (handlePrewarmStopSignal()) return;
 
     const context = parseRegionContext();
+    const signature = context ? regionSignature(context) : '';
+    // A fresh page load has no completed signature yet, but may already have valid caches.
+    if (context && !forceRefresh && !prewarmState && arePrewarmCachesFresh(context)) {
+      clearRegionPrewarmGraceTimer();
+      clearPrewarmLeaseRetryTimer();
+      markAppWaitingForLease(context, '', '');
+      if (prewarmCompletedSignature !== signature) {
+        logger.info('Region caches are fresh; skipped background indexing.', context.region);
+      }
+      prewarmCompletedSignature = signature;
+      return;
+    }
+
+    if (handlePrewarmStopSignal()) return;
     if (!context) {
       scheduleRegionPrewarmGraceTeardown();
       return;
     }
     clearRegionPrewarmGraceTimer();
-
-    const signature = regionSignature(context);
-    if (prewarmCompletedSignature === signature && !forceRefresh && arePrewarmCachesFresh(context)) {
-      return;
-    }
 
     if (prewarmState && prewarmState.signature === signature && !forceRefresh) {
       return;

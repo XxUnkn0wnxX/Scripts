@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.35`.
+Current documented release: `1.0.36`.
 
 ## What It Does
 
@@ -91,13 +91,13 @@ Search runs with a small input debounce so fast typing does not rebuild the resu
 
 The native PSPrices collection grid and native pagination are hidden on the canonical mounted routes. The userscript keeps its custom result grid empty while the current region cache is still building.
 
-After the current region's avatar and theme caches are both complete, an empty query with `All platforms` selected renders the first `108` indexed items sorted alphabetically. Typing in the search box or enabling platform/free filters narrows that same sorted result set.
+Both avatar and theme search open with `All platforms` selected. After the current region's avatar and theme caches are both complete, an empty query shows the first `108` eligible candidates. All-platform results are grouped in `PS4`, `PS3`, then `PS5` order, with alphabetical sorting within each group. Typing in the search box or enabling platform/free filters narrows the results.
 
 Search, platform/free filters, `Show more`, the result grid, and product-page detail hydration stay locked until the current region's avatar and theme caches are both 100% complete. Nothing populates in the custom grid while the user is still waiting on those caches. If the user stays on the page, the grid automatically populates when both caches hit 100%; a refresh is not required. This lock is still region-scoped: AU unlocks only after AU avatars and AU themes finish, while another region has its own queued or paused cache state. Clearing the current region cache also clears the grid until both rebuilt caches finish.
 
 Text-query changes can keep matching partial results on screen briefly while the next live result set hydrates. Platform and `Free only` changes are treated as hard filter changes: the visible grid is rebuilt from scratch, the render limit resets to `108`, and in-flight detail hydration is abandoned for the previous filter state.
 
-Leading punctuation is ignored for sorting. Result order is:
+In `All platforms`, items matching more than one platform appear in their first matching group in `PS4`, `PS3`, then `PS5` order. Candidates with unknown platforms are checked alongside PS4 candidates before lower-priority groups fill the result window; they only appear once their details confirm the platform. Selecting a single platform uses alphabetical sorting without platform priority. Leading punctuation is ignored. Within each platform group, or a single-platform view, title order is:
 
 - titles beginning with `A-Z`
 - titles beginning with `0-9`
@@ -107,15 +107,25 @@ Leading punctuation is ignored for sorting. Result order is:
 
 The userscript replaces reliance on PSPrices' separate collection filter URLs with local filters:
 
-- `All platforms`
+- `All platforms` (default)
 - `PS3`
 - `PS4`
 - `PS5`
 - `Free only`
 
+The default remains `All platforms` while caches rebuild and when the filters unlock. Both collections still fetch all supported platforms regardless of the selected filter.
+
 The platform dropdown and `Free only` checkbox can be combined. For example, selecting `PS4` and enabling `Free only` shows only free PS4 matches from the current collection's cached results.
 
+Platform filters match any badge on an item, including `PS3` + `PS4`, `PS3` + `PS5`, `PS4` + `PS5`, or all three. Every badge is retained. In `All platforms`, each item appears once in its first matching group in `PS4`, `PS3`, then `PS5` order.
+
+Known platform and price nonmatches are excluded across the full index before the first `108` candidates are selected, so entries for other platforms cannot fill a selected platform's candidate window. Rows with unknown metadata remain eligible for detail loading, and `Show more` expands the eligible candidate window.
+
 The filter data is kept small in the stored index. Product page details are hydrated live for visible matched results, and platform/free filters can also hydrate unknown matching candidates in small batches so unconfirmed rows are not rendered as final results.
+
+Some avatar collection cards omit platform badges. On a cache reload, available IndexedDB product details are restored before sorting and selecting candidates. Remaining unknown platforms are checked automatically, so PS4 results do not require switching the filter away from `All platforms` and back. Compact cache rows retain valid multi-platform flags; schema migration handles incompatible old cache data instead of stripping flags based on their combination.
+
+Theme detail loading recognizes both text platform badges such as `PS3` and image badges such as `PlayStation 4`. Release `1.0.36` raises `CACHE_SCHEMA_VERSION` to `11` so the first load after upgrading automatically purges pre-fix or partial collection index/detail data once. Background indexing then rebuilds the avatar and theme indexes for the visited region.
 
 ## Background Indexing
 
@@ -124,11 +134,17 @@ The script starts background indexing for the current region as soon as it runs 
 For each region, the background worker indexes:
 
 ```text
-/collection/avatars
-/collection/themes
+/collection/avatars?platform=PS3%2CPS4%2CPS5
+/collection/themes?platform=PS3%2CPS4%2CPS5
 ```
 
-The old filtered endpoints are not separately cached. Platform and free filters are derived from the indexed collection data and live result hydration.
+Both canonical collection requests explicitly ask for all supported platforms, independent of any site-wide platform preference selected in the native page. The old filtered endpoints are not separately cached. Platform and free filters are derived from the all-platform index and live result hydration.
+
+On a new page load, background indexing is skipped when both regional caches are complete and fresh, every expected page has a valid cache version and item array, and no page is expired or unfinished. This avoids waiting for another tab's worker when the caches need no work. Missing or invalid pages, scheduled revalidation, and forced refresh still use the existing recovery and cross-tab ownership checks. An already-running local worker keeps its normal lifecycle.
+
+On canonical collection routes, cached canonical pages provide the initial indexed state while background all-platform fetching and revalidation continue. Native collection rows and native pagination are not used to seed or override the canonical index, so each region's page total remains dynamic and comes from its own fetched pagination.
+
+Cache restoration appends newly loaded pages without repeatedly rebuilding the entire item map; replacing an already-loaded page still removes its old rows first. Sorting reuses one locale-aware comparer and per-item sort keys, refreshing those keys when a title or platform metadata changes. Platform grouping, natural numeric comparison, and title ordering stay the same.
 
 Indexing runs in page chunks. A completed page is written to persistent browser storage immediately, and incomplete or failed pages are retried later instead of being treated as valid cache.
 
@@ -213,7 +229,7 @@ The main cache freshness constants are near the top of the userscript:
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
-const CACHE_SCHEMA_VERSION = 10;
+const CACHE_SCHEMA_VERSION = 11;
 const CACHE_RESET_ON_SCHEMA_CHANGE = true;
 ```
 
@@ -225,7 +241,7 @@ Their purposes are:
 - `CACHE_SCHEMA_VERSION`: manual cache migration marker for incompatible cache changes
 - `CACHE_RESET_ON_SCHEMA_CHANGE`: when `true`, changing the schema version purges old script caches on next load
 
-When `CACHE_SCHEMA_VERSION` changes, the script removes previous collection-search cache entries from the active backend and stores the new migration marker. This prevents stale incompatible cache formats from consuming space or causing wrong results.
+When `CACHE_SCHEMA_VERSION` changes, the script removes previous script-owned collection-search and product-detail cache entries from the active backend and stores the new migration marker. For the upgrade to schema `11`, this is a one-time automatic reset for pre-fix or partial collection index/detail state; background indexing rebuilds the avatar and theme indexes for the visited region without affecting unrelated browser data.
 
 ## Storage Budgets
 
@@ -402,7 +418,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.35)
+PSPrices Collection Live Search: has started (v1.0.36)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
