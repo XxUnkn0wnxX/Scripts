@@ -22,8 +22,7 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 
 ## What It Does
 
-- reads the public base product SKU and aggregate price fallback from PSPrices' JSON-LD product metadata
-- prefers one unambiguous localized native avatar price when the selected purchase target exposes it
+- reads the public base product SKU and highest published aggregate price from PSPrices' JSON-LD product metadata
 - resolves the regional full PlayStation SKU through Sony's public store endpoint
 - builds a regional `checkout.playstation.com/add/` URL
 - replaces the first supported avatar or theme purchase panel with a PSPrices-style checkout card
@@ -70,9 +69,9 @@ PSPrices publishes public product data in JSON-LD:
 The userscript finds an unambiguous `Product` entry and reads:
 
 - the base PlayStation product SKU
-- the aggregate price and currency fallback when available
+- the highest published aggregate price and currency when available
 
-For avatar purchase targets, a single distinct nonempty `[data-test-id="avatar-store-price"]` value inside the validated selected target takes priority. Whitespace is normalized, while the native currency and localized text are preserved. If there are no candidates or conflicting native values, the card uses the JSON-LD aggregate low/high price formatting. Theme targets continue to use that aggregate fallback because no equivalent theme current-price selector is assumed.
+For avatars and themes, the card displays `AggregateOffer.highPrice` as one price instead of a low-to-high range. It shows `Free` only when that highest price is zero. This is the highest value PSPrices publishes in JSON-LD, not a guarantee of the live amount charged by the PlayStation Store. The existing product, currency, and conflicting-offer validation remains in force; no price is inferred from labels or from a separate network request.
 
 It validates the product ID and region against the URL, canonical link, product container, and available page-region data. It then requests the matching full regional SKU from:
 
@@ -94,7 +93,7 @@ Only successfully validated full SKUs are cached for the current page session. F
 
 ## Rendering and Timing
 
-The script starts at `document-start` and temporarily suppresses the shared PSPrices purchase wrapper while it validates and replaces the purchase target. The completed wrapper then fades into view.
+The script starts at `document-start` to install bootstrap/cosmetic suppression and the global header badge. It defers purchase-target validation, stabilization, and replacement while the initial HTML is still being parsed; `DOMContentLoaded` schedules the normal mounting pass so parser-owned purchase children finish loading before replacement. The completed wrapper then fades into view, and later DOM, HTMX, and route changes remain event-driven. Related lazy fragments outside the validated product targets leave the checkout card intact.
 
 The bottom sticky Buy Unlocked banner is suppressed by bootstrap CSS as soon as its matching `stickyReveal('#avatar-buy-block')` element is parsed. It remains `display: none` on supported avatar and theme product pages, preventing the native banner from flashing before the JavaScript mount completes.
 

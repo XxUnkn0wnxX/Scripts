@@ -652,22 +652,6 @@
     };
   }
 
-  function readNativeAvatarPriceText(target) {
-    if (target?.type !== 'avatar' || !target.element) return null;
-    const selector = '[data-test-id="avatar-store-price"]';
-    const candidates = [];
-    if (target.element.matches?.(selector)) candidates.push(target.element);
-    candidates.push(...target.element.querySelectorAll(selector));
-
-    const values = [...new Set(
-      candidates
-        .filter((candidate) => !candidate.closest(`[data-test-id="${CARD_TEST_ID}"]`))
-        .map((candidate) => candidate.textContent.replace(/\s+/g, ' ').trim())
-        .filter(Boolean)
-    )];
-    return values.length === 1 ? values[0] : null;
-  }
-
   function isUnavailableStoreAlert(element) {
     return Boolean(
       element?.matches?.('.alert.alert-warning') &&
@@ -773,25 +757,17 @@
 
   function formatPrice(offer, intlLocale) {
     if (!offer) return 'Price unavailable';
-    if (offer.lowPrice === 0 && offer.highPrice === 0) return 'Free';
-    const plainSingle = (value) => `${offer.priceCurrency} ${value}`;
-    const plainRange = () =>
-      `${offer.priceCurrency} ${offer.lowPrice}–${offer.highPrice}`;
-    if (!intlLocale) {
-      return offer.lowPrice === offer.highPrice
-        ? plainSingle(offer.lowPrice)
-        : plainRange();
-    }
+    if (offer.highPrice === 0) return 'Free';
+    const plainPrice = `${offer.priceCurrency} ${offer.highPrice}`;
+    if (!intlLocale) return plainPrice;
     try {
       const formatter = new Intl.NumberFormat(intlLocale, {
         style: 'currency',
         currency: offer.priceCurrency
       });
-      if (offer.lowPrice === offer.highPrice) return formatter.format(offer.lowPrice);
-      return `${formatter.format(offer.lowPrice)}–${formatter.format(offer.highPrice)}`;
+      return formatter.format(offer.highPrice);
     } catch (_) {
-      if (offer.lowPrice === offer.highPrice) return plainSingle(offer.lowPrice);
-      return plainRange();
+      return plainPrice;
     }
   }
 
@@ -965,7 +941,6 @@
       baseProductId: metadata.baseProductId,
       offer: metadata.offer,
       priceConflict: metadata.priceConflict,
-      nativePriceText: readNativeAvatarPriceText(target),
       regionAlias: route.regionAlias,
       sonyLocale,
       language,
@@ -1164,7 +1139,7 @@
       createTextElement(
         'p',
         'text-3xl font-bold text-base-content tracking-tight leading-none',
-        mount.nativePriceText || formatPrice(mount.offer, mount.intlLocale)
+        formatPrice(mount.offer, mount.intlLocale)
       )
     );
     headingRow.append(headingInner);
@@ -1441,11 +1416,6 @@
   function rerenderActiveMount() {
     const mount = activeMount;
     if (!activeTargetIsOwned(mount)) return;
-    const nativePriceText = readNativeAvatarPriceText({
-      type: mount.targetType,
-      element: mount.targetElement
-    });
-    if (nativePriceText) mount.nativePriceText = nativePriceText;
     removeChildren(mount.targetElement);
     mount.targetElement.append(renderCard(mount));
     hideSticky(mount);
@@ -1979,6 +1949,15 @@
   }
 
   function mountReplacement(context) {
+    if (document.readyState === 'loading') {
+      stabilizationCandidate = null;
+      if (stabilizationFrame) {
+        window.cancelAnimationFrame(stabilizationFrame);
+        stabilizationFrame = 0;
+      }
+      return;
+    }
+
     const ownerId = `${Date.now()}-${++mountSequence}`;
     const savedChildren = document.createDocumentFragment();
     const mount = {
@@ -1997,7 +1976,6 @@
       intlLocale: context.intlLocale,
       presentation: context.presentation,
       offer: context.offer,
-      nativePriceText: context.nativePriceText,
       productKey: context.productKey,
       signatureKey: context.signatureKey,
       generation: ++requestGeneration,
@@ -2023,7 +2001,6 @@
         scheduleLifecycle('mount-signature-changed');
         return;
       }
-      mount.nativePriceText = current.nativePriceText;
       const card = renderCard(mount);
       while (mount.targetElement.firstChild) {
         savedChildren.append(mount.targetElement.firstChild);
@@ -2104,6 +2081,15 @@
     if (PRODUCT_PATH.test(window.location.pathname)) {
       enableBootstrapSuppression();
     }
+    // The HTML parser may still be writing prices into children we would detach.
+    if (document.readyState === 'loading') {
+      stabilizationCandidate = null;
+      if (stabilizationFrame) {
+        window.cancelAnimationFrame(stabilizationFrame);
+        stabilizationFrame = 0;
+      }
+      return;
+    }
     const context = gatherPageContext();
     logger.verbose('Lifecycle pass.', context.valid ? context.signatureKey : context.reason);
 
@@ -2178,8 +2164,7 @@
       target === activeTarget ||
       activeTarget?.contains(target) ||
       (gameDetail && target.contains(gameDetail)) ||
-      (activeTarget && target.contains(activeTarget)) ||
-      gameDetail?.contains(target)
+      (activeTarget && target.contains(activeTarget))
     );
   }
 
