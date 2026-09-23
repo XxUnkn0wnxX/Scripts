@@ -1,5 +1,11 @@
 # 📝 TODO
 
+## iOS 27 mobile-device package discovery
+
+- [ ] Update `fetch-ios-pkgs.zsh` to recognize both MobileDevice package names and read the matching CoreTypes URL from the same catalog product.
+  - Follow the [iOS 27 package script agent handoff](docs/ios-27-package-script-plan.md) for the diagnosis, fix scope, implementation steps, and acceptance checks.
+  - Keep the existing DeveloperSeed discovery and legacy macOS support; implementation is deferred.
+
 ## Cross-platform Discord bundle downloader
 
 - [ ] Create a stripped-down Python CLI that only discovers, lists, and downloads Discord client bundles.
