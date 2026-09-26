@@ -4,6 +4,26 @@ Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0
 
 Current documented release: `1.0.0`.
 
+## Screenshots
+
+The same public repository at its native width (left) and with the default 95%
+fluid width (right). The About sidebar keeps its own width.
+
+![GitHub repository before and after applying fluid width](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/comparison.png)
+
+Full-resolution originals: [before](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/repository-before.png) · [after](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/repository-after.png).
+
+The settings panel in dark appearance:
+
+![GitHub Fluid Width settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings.png)
+
+<details>
+<summary>Settings in light appearance</summary>
+
+![GitHub Fluid Width settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings-light.png)
+
+</details>
+
 ## What It Does
 
 - activates only at viewport widths of at least `1472px`

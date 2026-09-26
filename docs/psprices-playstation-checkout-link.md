@@ -4,6 +4,25 @@
 
 Current documented release: `1.1.1`.
 
+## Screenshots
+
+The purchase panel for **Afterparty – Wormhorn Avatar** before (left) and after
+(right). The script replaces the access-purchase prompt with the regional
+PlayStation Store checkout card.
+
+![PSPrices purchase panel before and after applying Checkout Link](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/comparison.png)
+
+The advanced settings panel in dark appearance:
+
+![PSPrices Checkout Link advanced settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings.png)
+
+<details>
+<summary>Settings in light appearance</summary>
+
+![PSPrices Checkout Link advanced settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings-light.png)
+
+</details>
+
 ## Advanced Settings
 
 Choose **PSPrices Checkout Link settings** from your userscript manager's menu.

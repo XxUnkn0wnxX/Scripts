@@ -4,6 +4,13 @@
 
 Current documented release: `1.0.1.5`.
 
+## Screenshots
+
+The **Avatar SKU** card for **Afterparty – Wormhorn Avatar** before (left) and
+after (right). The script shows the public identifier and adds **Copy SKU**.
+
+![PSPrices Avatar SKU card before and after revealing the product identifier](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-product-sku/comparison.png)
+
 ## What It Does
 
 - shows the product SKU in a block matching PSPrices' native avatar SKU design

@@ -4,6 +4,25 @@
 
 Current documented release: `2.9.1`.
 
+## Screenshots
+
+The script adds **Full** above the existing actions on a public Short. Playback
+is paused in this capture.
+
+![YouTube Short with the Full player action added](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/after.png)
+
+Record a shortcut or restore `W` with **Reset defaults**. The settings panel
+follows the browser's preferred appearance.
+
+![YouTube Shorts shortcut settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings.png)
+
+<details>
+<summary>Settings in light appearance</summary>
+
+![YouTube Shorts shortcut settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings-light.png)
+
+</details>
+
 ## What It Does
 
 - adds a round `Full` button to the Shorts actions column

@@ -1,6 +1,6 @@
 # GitHub Fluid Width implementation plan
 
-Status: implementation, documentation, and scoped verification complete; ready for live testing. Current metadata version: `1.0.0`. Publication target: `develop` only. Final verification completed 2026-09-27.
+Status: implementation, documentation, and scoped verification complete; ready for live testing. Current metadata version: `1.0.0`. Source and documentation publication target: `develop`. The separately authorized `.images/` assets go to both `develop` and `master`. Final verification completed 2026-09-27.
 
 Numbered sections and verification paths below retain their historical labels
 so their captured evidence remains traceable. The current source and settings

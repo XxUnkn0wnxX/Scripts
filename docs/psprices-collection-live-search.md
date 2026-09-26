@@ -4,6 +4,35 @@
 
 Current documented release: `1.1.1`.
 
+## Screenshots
+
+The avatar collection before (top) and after (bottom), showing the added search,
+platform and free-only controls, indexing status, and cached results:
+
+![PSPrices avatar collection before and after adding Live Search](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/avatars-comparison.png)
+
+The same controls are available on theme collections:
+
+![PSPrices theme collection before and after adding Live Search](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/themes-comparison.png)
+
+The top of the advanced settings panel in dark appearance. The warning remains
+yellow/amber and readable in either theme.
+
+![PSPrices Live Search advanced settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings.png)
+
+Scroll to the bottom for **Reset defaults**, **Close**, and **Save settings**:
+
+![Bottom of PSPrices Live Search settings with reset and save controls](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-dark-bottom.png)
+
+<details>
+<summary>Settings in light appearance</summary>
+
+![PSPrices Live Search advanced settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-light.png)
+
+![Bottom of PSPrices Live Search settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-light-bottom.png)
+
+</details>
+
 ## What It Does
 
 - adds a native-style live search panel to the main avatar and theme collection pages
