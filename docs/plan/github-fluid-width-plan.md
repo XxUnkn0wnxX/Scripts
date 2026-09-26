@@ -1,6 +1,10 @@
 # GitHub Fluid Width implementation plan
 
-Status: 1.0.3 implementation, documentation, and scoped verification complete; ready for live testing. Publication target: `develop` only. Final verification completed 2026-09-27.
+Status: implementation, documentation, and scoped verification complete; ready for live testing. Current metadata version: `1.0.0`. Publication target: `develop` only. Final verification completed 2026-09-27.
+
+The metadata stays at `1.0.0` during development, as requested. Numbered
+sections and verification paths below retain their historical development
+labels so their captured evidence remains traceable.
 
 ## 1.0.3 scope correction
 
@@ -501,3 +505,20 @@ privacy checks pass. All isolated Firefox/geckodriver processes stopped and
 their temporary profiles were removed. No Actions jobs were dispatched, rerun,
 or cancelled, and no Settings or Security forms were submitted. Captures,
 cookies, and test helpers remain ignored under `.tmp/`.
+
+## Development metadata and lint cleanup — 2026-09-27
+
+Restored metadata version `1.0.0` and replaced the modern storage adapter's
+redundant `gm.getValue.call(gm, ...)` and `gm.setValue.call(gm, ...)` with direct
+method calls. These preserve the same receiver and remove the reported
+`no-useless-call` warnings. The detached legacy GM function calls remain
+unchanged. No layout or settings behavior changed.
+
+Source SHA-256:
+`d1fe206039a362781a47455c91112f88f198aa08d6ac60bdb9f69a0fe2cc9ac2`.
+JavaScript syntax, the nine integrated controller tests, and a focused modern
+GM adapter receiver/persistence check pass. Markdown rendering and whitespace
+checks pass. The earlier browser evidence remains tied to the source hashes
+recorded above; the browser matrix was not repeated for this equivalent-call
+cleanup. User-facing documentation omits development versioning and promotion
+policy.

@@ -2,10 +2,6 @@
 
 Install the development build [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
-This is the `1.0.3` development build. The raw `develop` URL is intentional:
-updates are available there while the script is being tested. A future release
-can promote the same file and documentation to `master`.
-
 ## What It Does
 
 - activates only at viewport widths of at least `1472px`
@@ -20,7 +16,7 @@ can promote the same file and documentation to `master`.
 - follows GitHub client-side navigation, back/forward navigation, Turbo/PJAX rendering, and document/head replacement without polling
 - makes no network requests, account-state checks, GitHub content restructuring, or GitHub job operations; it maintains its own layout style, ownership markers, settings controls, and manager-stored preferences
 
-The 1.0.3 implementation identifies page workspaces from the rendered GitHub
+The implementation identifies page workspaces from the rendered GitHub
 DOM instead of maintaining a positive URL allowlist. Settings, Security,
 Pulse, Actions, search, and other page owners are eligible
 when their live structure exposes a bounded workspace. Dialogs, drawers,
@@ -159,8 +155,6 @@ adding duplicate history hooks or styles.
 1. Install a userscript manager such as Tampermonkey or Violentmonkey.
 2. Open the [development raw script](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) and choose the manager's install option.
 3. Visit a GitHub page with a bounded workspace at a viewport width of at least `1472px`.
-
-Keep the development URL while this `1.0.3` build is being tested. After a future promotion to `master`, the script metadata and documentation can use the stable `master` URLs.
 
 ## Compatibility and Safety
 

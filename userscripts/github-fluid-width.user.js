@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.3
+// @version      1.0.0
 // @description  Controls GitHub workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -1117,8 +1117,8 @@
     const gm = runtime && runtime.GM;
     if (gm && typeof gm.getValue === 'function' && typeof gm.setValue === 'function') {
       return {
-        get: (key) => gm.getValue.call(gm, key),
-        set: (key, value) => gm.setValue.call(gm, key, value),
+        get: (key) => gm.getValue(key),
+        set: (key, value) => gm.setValue(key, value),
       };
     }
     return null;
