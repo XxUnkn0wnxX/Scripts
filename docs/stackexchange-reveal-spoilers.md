@@ -14,8 +14,6 @@ video links. The crops show the answer area at its original resolution.
 
 <a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/comparison.png" alt="Arqade answer with three hidden spoiler blocks before and revealed text and links after" width="900"></a>
 
-Full-resolution crops: [hidden](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/before.png) · [revealed](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/after.png).
-
 Example: [user3389's answer to “What happens when the God King is defeated?”](https://gaming.stackexchange.com/questions/13719/what-happens-when-the-god-king-is-defeated/13722#13722) on Arqade, discussing *Infinity Blade*.
 
 ## What It Does
