@@ -107,6 +107,7 @@ Repo layout:
 | [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js) | Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. | [Docs](docs/stackexchange-reveal-spoilers.md) |
 | [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) | Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. | [Docs](docs/youtube-shorts-switcher.md) |
 | [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) | Applies a constrained fluid-width layout only on Reddit post/comment routes, while leaving feed and community pages at native width. | [Docs](docs/reddit-fluid-width.md) |
+| [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) | Development `1.0.0` userscript that widens selected GitHub workspaces on desktop while preserving native rails, split panes, file views, Markdown measures, and Actions logs. | [Docs](docs/github-fluid-width.md) |
 
 ---
 
