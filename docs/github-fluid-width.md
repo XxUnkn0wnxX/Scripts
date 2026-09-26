@@ -224,8 +224,7 @@ other layouts; unrecognized structures may remain native.
 The settings checks exercise live changes, decimals, reset, persistence failures,
 modal interaction, theme fallback, and host replacement with mocked userscript
 manager APIs. Live installation and update behavior in the user's manager remain
-the final manual check. Detailed source hashes, reports, and verification limits
-are recorded in the [implementation plan](plan/github-fluid-width-plan.md).
+the final manual check.
 
 ## Permissions and Data
 
