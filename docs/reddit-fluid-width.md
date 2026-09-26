@@ -2,27 +2,24 @@
 
 Install [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) with Tampermonkey or Violentmonkey to apply a constrained fluid layout only on Reddit post/comment routes while leaving feeds and landing pages completely native.
 
-Current documented release: `1.1.1`.
+Current documented release: `1.1.2`.
 
 ## Screenshots
+
+Click a preview to open its full-resolution image.
 
 The same public post at Reddit's native width (left) and with the default 95%
 fluid width (right). The post column expands while the sidebars remain visible.
 
-![Reddit post before and after applying fluid width](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/comparison.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/comparison.png" alt="Reddit post before and after applying fluid width" width="900"></a>
 
 Full-resolution originals: [before](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/before.png) · [after](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/after.png).
 
 The settings panel in dark appearance:
 
-![Reddit Fluid Width settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/settings.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/settings.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/settings.png" alt="Reddit Fluid Width settings in dark appearance" width="420"></a>
 
-<details>
-<summary>Settings in light appearance</summary>
-
-![Reddit Fluid Width settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/settings-light.png)
-
-</details>
+Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/reddit-fluid-width/settings-light.png).
 
 ## What It Does
 
@@ -86,6 +83,11 @@ post/comment routes.
 While settings is open, clicks, hover, keyboard focus, and scrolling stay with
 the panel. Long content scrolls inside it. Closing restores page interaction
 without activating a background control under the dismissal click.
+
+Opening settings does not preselect a button, slider, or field. Keyboard focus
+starts on the panel heading; press Tab to move to the first control, or
+Shift+Tab to reach the last. Controls keep a visible focus indicator when you
+navigate to them.
 
 The translucent backdrop follows the page’s visible background: gentle black
 shading over a light page, or a faint white veil over a dark page. The script

@@ -2,26 +2,23 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos.
 
-Current documented release: `1.1.1`.
+Current documented release: `1.1.2`.
 
 ## Screenshots
+
+Click a preview to open its full-resolution image.
 
 The purchase panel for **Afterparty – Wormhorn Avatar** before (left) and after
 (right). The script replaces the access-purchase prompt with the regional
 PlayStation Store checkout card.
 
-![PSPrices purchase panel before and after applying Checkout Link](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/comparison.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/comparison.png" alt="PSPrices purchase panel before and after applying Checkout Link" width="900"></a>
 
 The advanced settings panel in dark appearance:
 
-![PSPrices Checkout Link advanced settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings.png" alt="PSPrices Checkout Link advanced settings in dark appearance" width="560"></a>
 
-<details>
-<summary>Settings in light appearance</summary>
-
-![PSPrices Checkout Link advanced settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings-light.png)
-
-</details>
+Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-checkout-link/settings-light.png).
 
 ## Advanced Settings
 
@@ -33,6 +30,11 @@ There is no floating settings button.
 While settings is open, the background page cannot be clicked, hovered, focused,
 or scrolled. Long settings content scrolls inside the panel. Closing restores
 page interaction without activating anything under the dismissal click.
+
+Opening settings does not preselect a button, slider, or field. Keyboard focus
+starts on the panel heading; press Tab to move to the first control, or
+Shift+Tab to reach the last. Controls keep a visible focus indicator when you
+navigate to them.
 
 The translucent backdrop follows the page’s visible background: gentle black
 shading over a light page, or a faint white veil over a dark page. The script

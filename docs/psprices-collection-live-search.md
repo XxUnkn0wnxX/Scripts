@@ -2,36 +2,31 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.1.1`.
+Current documented release: `1.1.2`.
 
 ## Screenshots
+
+Click a preview to open its full-resolution image.
 
 The avatar collection before (top) and after (bottom), showing the added search,
 platform and free-only controls, indexing status, and cached results:
 
-![PSPrices avatar collection before and after adding Live Search](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/avatars-comparison.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/avatars-comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/avatars-comparison.png" alt="PSPrices avatar collection before and after adding Live Search" width="700"></a>
 
 The same controls are available on theme collections:
 
-![PSPrices theme collection before and after adding Live Search](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/themes-comparison.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/themes-comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/themes-comparison.png" alt="PSPrices theme collection before and after adding Live Search" width="700"></a>
 
 The top of the advanced settings panel in dark appearance. The warning remains
 yellow/amber and readable in either theme.
 
-![PSPrices Live Search advanced settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings.png" alt="PSPrices Live Search advanced settings in dark appearance" width="560"></a>
 
 Scroll to the bottom for **Reset defaults**, **Close**, and **Save settings**:
 
-![Bottom of PSPrices Live Search settings with reset and save controls](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-dark-bottom.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-dark-bottom.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-dark-bottom.png" alt="Bottom of PSPrices Live Search settings with reset and save controls" width="560"></a>
 
-<details>
-<summary>Settings in light appearance</summary>
-
-![PSPrices Live Search advanced settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-light.png)
-
-![Bottom of PSPrices Live Search settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-light-bottom.png)
-
-</details>
+Light appearance: [top of settings](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-light.png) · [bottom controls](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-live-search/settings-light-bottom.png).
 
 ## What It Does
 
@@ -105,6 +100,11 @@ While settings is open, the background page cannot be clicked, hovered, focused,
 or scrolled. Scroll inside the panel to reach the remaining fields and buttons.
 Closing restores page interaction without activating anything under the
 dismissal click.
+
+Opening settings does not preselect a button, slider, or field. Keyboard focus
+starts on the panel heading; press Tab to move to the first control, or
+Shift+Tab to reach the last. Controls keep a visible focus indicator when you
+navigate to them.
 
 The translucent backdrop follows the page’s visible background: gentle black
 shading over a light page, or a faint white veil over a dark page. The script
@@ -551,7 +551,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.1.1)
+PSPrices Collection Live Search: has started (v1.1.2)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.

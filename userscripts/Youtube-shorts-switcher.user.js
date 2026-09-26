@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         YouTube Shorts → Full Player (Action Button + Hotkey)
 // @namespace    https://github.com/XxUnkn0wnxX
-// @version      2.9.1
+// @version      2.9.2
 // @description  Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -772,6 +772,7 @@
         .panel { overflow: auto; overscroll-behavior: contain; max-height: min(560px, calc(100vh - 32px)); padding: 18px; background: var(--settings-panel) !important; color: var(--settings-text) !important; }
         h2, label, .binding span { color: var(--settings-text) !important; }
         h2 { font-size: 16px; margin: 0 0 8px; }
+        h2.settings-heading:focus { outline: none; }
         .binding { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 18px 0 10px; }
         .binding code { min-width: 90px; padding: 7px 9px; border: 1px solid var(--settings-border) !important; border-radius: 6px; background: var(--settings-field) !important; color: var(--settings-text) !important; text-align: center; font: 600 13px ui-monospace, SFMono-Regular, Menlo, monospace; }
         input, select, textarea { border: 1px solid var(--settings-border) !important; border-radius: 6px; background: var(--settings-field) !important; color: var(--settings-text) !important; padding: 4px 6px; }
@@ -794,6 +795,9 @@
       form.className = 'panel';
       const heading = settingsDocument.createElement('h2');
       heading.id = 'youtube-shorts-settings-title';
+      heading.className = 'settings-heading';
+      heading.setAttribute('tabindex', '-1');
+      heading.setAttribute('autofocus', '');
       heading.textContent = 'YouTube Shorts settings';
       const binding = settingsDocument.createElement('div');
       binding.className = 'binding';
@@ -832,6 +836,7 @@
         host,
         shadow,
         dialog,
+        heading,
         binding: bindingValue,
         record,
         reset,
@@ -974,7 +979,6 @@
 
     function show() {
       if (ui && isOpen()) {
-        if (ui.record && typeof ui.record.focus === 'function') ui.record.focus();
         return;
       }
       const mounted = ensureMounted();
@@ -995,7 +999,7 @@
         return;
       }
       setRootLock(isOpen());
-      if (ui.record && typeof ui.record.focus === 'function') ui.record.focus();
+      if (ui.heading && typeof ui.heading.focus === 'function') ui.heading.focus({preventScroll: true});
     }
 
     function close() {

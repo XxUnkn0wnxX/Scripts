@@ -6,11 +6,13 @@ Current documented release: `1.0.1.3`.
 
 ## Screenshots
 
+Click a preview to open its full-resolution image.
+
 The same public Steam guide before (left) and after (right) the script runs.
 The hidden preview becomes readable as “5 dogs” without hovering or clicking
 the spoiler.
 
-![Steam guide with a hidden spoiler before and revealed text after](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/steam-reveal-spoilers/comparison.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/steam-reveal-spoilers/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/steam-reveal-spoilers/comparison.png" alt="Steam guide with a hidden spoiler before and revealed text after" width="900"></a>
 
 Full-resolution originals: [hidden](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/steam-reveal-spoilers/before.png) · [revealed](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/steam-reveal-spoilers/after.png).
 

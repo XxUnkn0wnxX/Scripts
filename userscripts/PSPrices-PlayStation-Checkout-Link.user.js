@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.1
+// @version      1.1.2
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -31,7 +31,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.1.1';
+  const SCRIPT_VERSION = '1.1.2';
 
   const DEFAULT_SETTINGS = Object.freeze({
     LOG_LEVEL: 'info',
@@ -1039,6 +1039,24 @@
         event.stopPropagation?.();
       }
     }, { passive: false });
+    ui.dialog.addEventListener('keydown', settingsDialogTrapFocus);
+  }
+
+  function settingsDialogTrapFocus(event) {
+    if (event.key !== 'Tab' || !settingsDialogUi) return;
+    const controls = Array.from(settingsDialogUi.dialog.querySelectorAll('button, input, select, textarea, [href]'))
+      .filter((element) => !element.disabled && element.offsetParent !== null);
+    if (controls.length === 0) return;
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const active = settingsDialogUi.shadow.activeElement || document.activeElement;
+    if (event.shiftKey && (active === first || active === settingsDialogUi.heading)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function settingsDialogMarkup() {
@@ -1103,6 +1121,7 @@
         input[type="number"], select { width: 100%; border: 1px solid var(--settings-control-border); border-radius: 6px; background: var(--settings-field-bg); color: var(--settings-text); padding: 5px 7px; }
         input::placeholder { color: var(--settings-muted); opacity: 1; }
         :focus-visible { outline: 2px solid var(--settings-focus); outline-offset: 2px; }
+        h2.settings-heading:focus { outline: none; }
         .check { display: flex; gap: 8px; align-items: flex-start; margin: 13px 0; }
         .status { min-height: 1.5em; margin: 14px 0 0; color: var(--settings-muted); }
         .status[data-state="error"] { color: var(--settings-error); }
@@ -1113,7 +1132,7 @@
       </style>
       <dialog id="psprices-checkout-settings-dialog" aria-labelledby="psprices-checkout-settings-title">
         <form class="panel">
-          <h2 id="psprices-checkout-settings-title">PSPrices Checkout Link settings</h2>
+          <h2 class="settings-heading" id="psprices-checkout-settings-title" tabindex="-1" autofocus>PSPrices Checkout Link settings</h2>
           <p class="warning" role="alert">${SETTINGS_WARNING}</p>
           <p class="note">Changes save for the next reload. Saving never changes active checkout state, reloads the page, clears checkout cache, or starts requests.</p>
           <div class="field"><label for="psprices-checkout-setting-LOG_LEVEL">Log level</label><select id="psprices-checkout-setting-LOG_LEVEL" name="LOG_LEVEL"><option value="info">info</option><option value="verbose">verbose</option></select></div>
@@ -1161,6 +1180,7 @@
         host,
         shadow,
         dialog: shadow.querySelector('dialog'),
+        heading: shadow.querySelector('h2.settings-heading'),
         fields,
         save: shadow.querySelector('[data-settings-save]'),
         reset: shadow.querySelector('[data-settings-reset]'),
@@ -1188,7 +1208,6 @@
     }
     settingsDialogPending = false;
     if (ui.dialog.open) {
-      ui.close.focus();
       return;
     }
     if (!settingsDialogOpen) {
@@ -1219,7 +1238,7 @@
       return;
     }
     markSettingsRootOpen();
-    ui.close.focus();
+    if (ui.heading && typeof ui.heading.focus === 'function') ui.heading.focus({preventScroll: true});
   }
 
   function registerSettingsMenu() {

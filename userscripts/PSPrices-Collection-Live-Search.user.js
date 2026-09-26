@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.1
+// @version      1.1.2
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -26,7 +26,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.1.1';
+  const SCRIPT_VERSION = '1.1.2';
   let LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -905,6 +905,7 @@
           dialog[data-backdrop-theme="light"]::backdrop { background: rgb(0 0 0 / 32%); }
           .pspls-settings-panel { overflow: auto; overscroll-behavior: contain; max-height: min(820px, calc(100vh - 24px)); padding: 20px; }
           h2 { margin: 0 0 8px; font-size: 18px; }
+          h2.settings-heading:focus { outline: none; }
           h3 { margin: 22px 0 8px; font-size: 14px; }
           .pspls-settings-warning { margin: 0; border: 1px solid var(--settings-warning-border); border-radius: 7px; background: var(--settings-warning-bg); padding: 9px 10px; color: var(--settings-warning-text); }
           .pspls-settings-note, .pspls-settings-status { color: var(--settings-muted); font-size: 12px; }
@@ -930,7 +931,7 @@
         </style>
         <dialog aria-labelledby="psprices-live-search-settings-title">
           <form class="pspls-settings-panel" novalidate>
-            <h2 id="psprices-live-search-settings-title">PSPrices Live Search settings</h2>
+            <h2 class="settings-heading" id="psprices-live-search-settings-title" tabindex="-1" autofocus>PSPrices Live Search settings</h2>
             <p class="pspls-settings-warning">Advanced users only. Changing these settings can break search, indexing, or caching. You are responsible for problems caused by your changes.</p>
             <p class="pspls-settings-note">Changes save for the next reload. Saving never reconfigures active workers, reloads the page, clears cache, or starts indexing.</p>
             ${groups.map((group) => `<fieldset><legend>${group.name}</legend>${group.definitions.map(settingControlMarkup).join('')}</fieldset>`).join('')}
@@ -946,6 +947,7 @@
         host,
         shadow,
         dialog: shadow.querySelector('dialog'),
+        heading: shadow.querySelector('h2.settings-heading'),
         status: shadow.querySelector('.pspls-settings-status'),
         save: shadow.querySelector('[data-save]'),
         reset: shadow.querySelector('[data-reset]'),
@@ -1035,7 +1037,7 @@
       const first = controls[0];
       const last = controls[controls.length - 1];
       const active = ui.shadow.activeElement || settingsDocument.activeElement;
-      if (event.shiftKey && active === first) {
+      if (event.shiftKey && (active === first || active === ui.heading)) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && active === last) {
@@ -1048,8 +1050,6 @@
       const mounted = ensureMounted();
       if (!mounted) return;
       if (ui.dialog.open) {
-        const firstOpenControl = ui.shadow.querySelector('[data-setting]');
-        if (firstOpenControl && typeof firstOpenControl.focus === 'function') firstOpenControl.focus();
         return;
       }
       pointerDownOutside = false;
@@ -1066,8 +1066,7 @@
         return;
       }
       markRootOpen();
-      const firstControl = ui.shadow.querySelector('[data-setting]');
-      if (firstControl && typeof firstControl.focus === 'function') firstControl.focus();
+      if (ui.heading && typeof ui.heading.focus === 'function') ui.heading.focus({preventScroll: true});
     }
 
     function close() {

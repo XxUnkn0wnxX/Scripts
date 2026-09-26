@@ -2,26 +2,23 @@
 
 [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a Shorts action-column button and configurable hotkey to open the current YouTube Short in the normal watch player.
 
-Current documented release: `2.9.1`.
+Current documented release: `2.9.2`.
 
 ## Screenshots
+
+Click a preview to open its full-resolution image.
 
 The script adds **Full** above the existing actions on a public Short. Playback
 is paused in this capture.
 
-![YouTube Short with the Full player action added](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/after.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/after.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/after.png" alt="YouTube Short with the Full player action added" width="900"></a>
 
 Record a shortcut or restore `W` with **Reset defaults**. The settings panel
 follows the browser's preferred appearance.
 
-![YouTube Shorts shortcut settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings.png" alt="YouTube Shorts shortcut settings in dark appearance" width="420"></a>
 
-<details>
-<summary>Settings in light appearance</summary>
-
-![YouTube Shorts shortcut settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings-light.png)
-
-</details>
+Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/youtube-shorts-switcher/settings-light.png).
 
 ## What It Does
 
@@ -62,6 +59,11 @@ regular video pages, and Shorts. It does not require an active Short.
 While settings is open, the background page cannot be clicked, hovered, focused,
 or scrolled. Any long settings content scrolls inside the panel. Closing restores
 normal page interaction without activating anything under the dismissal click.
+
+Opening settings does not preselect a button, slider, or field. Keyboard focus
+starts on the panel heading; press Tab to move to the first control, or
+Shift+Tab to reach the last. Controls keep a visible focus indicator when you
+navigate to them.
 
 The translucent backdrop follows the page’s visible background: gentle black
 shading over a light page, or a faint white veil over a dark page. The script

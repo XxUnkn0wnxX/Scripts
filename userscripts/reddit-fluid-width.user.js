@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.1
+// @version      1.1.2
 // @description  Widens Reddit post/comment pages only while preserving native feed and landing layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -804,6 +804,7 @@ ${horizontalModeStyles}
           .panel { overflow: auto; overscroll-behavior: contain; max-height: min(680px, calc(100vh - 32px)); padding: 18px; background: var(--settings-panel) !important; color: var(--settings-text) !important; }
           h2, label { color: var(--settings-text) !important; }
           h2 { font-size: 16px; margin: 0 0 8px; }
+          h2.settings-heading:focus { outline: none; }
           .hint, .status { color: var(--settings-muted) !important; font-size: 12px; }
           .status { min-height: 1.4em; margin: 12px 0 0; }
           .row { display: grid; gap: 6px; margin: 14px 0; }
@@ -824,7 +825,7 @@ ${horizontalModeStyles}
         </style>
         <dialog id="reddit-fluid-width-settings-dialog" aria-labelledby="reddit-fluid-width-settings-title">
           <form class="panel">
-            <h2 id="reddit-fluid-width-settings-title">Reddit Fluid Width</h2>
+            <h2 class="settings-heading" id="reddit-fluid-width-settings-title" tabindex="-1" autofocus>Reddit Fluid Width</h2>
             <p class="hint">Width rules apply from 1472px on post and comment pages. Native sidebars remain in place.</p>
             <div class="row">
               <label for="reddit-fluid-width-percent-range">Post width with left sidebar (%)</label>
@@ -860,6 +861,7 @@ ${horizontalModeStyles}
         host,
         shadow,
         dialog: root.querySelector('dialog'),
+        heading: root.querySelector('h2.settings-heading'),
         range: root.querySelector('#reddit-fluid-width-percent-range'),
         percent: root.querySelector('#reddit-fluid-width-percent-number'),
         noLeftRange: root.querySelector('#reddit-fluid-width-no-left-percent-range'),
@@ -940,7 +942,7 @@ ${horizontalModeStyles}
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         const active = ui.shadow.activeElement || settingsDocument.activeElement;
-        if (event.shiftKey && active === first) {
+        if (event.shiftKey && (active === first || active === ui.heading)) {
           event.preventDefault();
           last.focus();
         } else if (!event.shiftKey && active === last) {
@@ -991,7 +993,6 @@ ${horizontalModeStyles}
 
     function show() {
       if (ui && isOpen()) {
-        if (ui.range && typeof ui.range.focus === 'function') ui.range.focus();
         return;
       }
       const mounted = ensureMounted();
@@ -1012,7 +1013,7 @@ ${horizontalModeStyles}
         return;
       }
       setRootLock(isOpen());
-      if (ui.range && typeof ui.range.focus === 'function') ui.range.focus();
+      if (ui.heading && typeof ui.heading.focus === 'function') ui.heading.focus({preventScroll: true});
     }
 
     function close() {

@@ -585,3 +585,28 @@ High-resolution page comparisons and settings captures are stored under
 `.images/userscripts/github-fluid-width/`, with documentation links pointing
 to the requested `master` asset paths. Captures and report provenance remain
 under ignored `.tmp/`; all verification browsers and drivers were stopped.
+
+## Neutral settings focus and compact previews — 2026-09-27
+
+The GitHub source now has SHA-256
+`3491b5d5f56eed5f337dc6defceb6f9f21ad5e71a86cbb940eb6892c5aa85073`.
+Opening settings focuses the noninteractive heading without an outline, so no
+slider, button, or field starts selected. Tab reaches the first control and
+Shift+Tab reaches the last; controls retain their visible keyboard focus rings.
+Invoking the menu while settings is already open preserves the current focus.
+GitHub's version remains `1.0.0`.
+
+The focused Firefox report at
+`.tmp/userscript-settings/reports/settings-focus-final-5/report.json` passes
+70 assertions across fresh-page and reload contexts for all five settings
+panels. It checks neutral opening focus, keyboard navigation, repeated menu
+invocation, unchanged settings and recording state, Escape focus restoration,
+and absence of service side effects. The fixtures use mocked GM APIs. All five
+source hashes match the report, and the isolated browser and driver stopped.
+
+The guides use linked HTML image previews with explicit display widths while
+preserving the original image files and full-resolution links on `master`.
+Greasy Fork's allowed-markup guide and OpenUserJS's renderer whitelist both
+allow the anchor, image, and width attributes used here. Optional light-theme
+captures use ordinary links because OpenUserJS does not retain details/summary
+containers. This update changes documentation display only, not image assets.

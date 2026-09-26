@@ -6,23 +6,20 @@ Current documented release: `1.0.0`.
 
 ## Screenshots
 
+Click a preview to open its full-resolution image.
+
 The same public repository at its native width (left) and with the default 95%
 fluid width (right). The About sidebar keeps its own width.
 
-![GitHub repository before and after applying fluid width](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/comparison.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/comparison.png" alt="GitHub repository before and after applying fluid width" width="900"></a>
 
 Full-resolution originals: [before](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/repository-before.png) · [after](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/repository-after.png).
 
 The settings panel in dark appearance:
 
-![GitHub Fluid Width settings in dark appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings.png)
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings.png" alt="GitHub Fluid Width settings in dark appearance" width="420"></a>
 
-<details>
-<summary>Settings in light appearance</summary>
-
-![GitHub Fluid Width settings in light appearance](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings-light.png)
-
-</details>
+Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/github-fluid-width/settings-light.png).
 
 ## What It Does
 
@@ -119,6 +116,11 @@ Changes already made remain applied and saved.
 While the panel is open, the background page cannot be clicked, hovered, focused,
 or scrolled. Long settings content scrolls inside the panel; closing restores
 normal page interaction without activating anything under the dismissal click.
+
+Opening settings does not preselect a button, slider, or field. Keyboard focus
+starts on the panel heading; press Tab to move to the first control, or
+Shift+Tab to reach the last. Controls keep a visible focus indicator when you
+navigate to them.
 
 The translucent backdrop follows the page’s visible background: gentle black
 shading over a light page, or a faint white veil over a dark page. The script
