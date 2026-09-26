@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.2
+// @version      1.1.3
 // @description  Widens Reddit post/comment pages only while preserving native feed and landing layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -978,9 +978,10 @@ ${horizontalModeStyles}
     }
 
     function handleDialogClick(event) {
+      // Click PointerEvents default isPrimary to false; primary validation ran on pointerdown.
       const shouldClose = pointerDownOutside
         && isOpen()
-        && isPrimaryPointer(event)
+        && (typeof event.button !== 'number' || event.button === 0)
         && event.target === ui.dialog
         && isOutsideDialogPoint(event);
       pointerDownOutside = false;

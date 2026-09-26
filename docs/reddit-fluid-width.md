@@ -2,7 +2,7 @@
 
 Install [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) with Tampermonkey or Violentmonkey to apply a constrained fluid layout only on Reddit post/comment routes while leaving feeds and landing pages completely native.
 
-Current documented release: `1.1.2`.
+Current documented release: `1.1.3`.
 
 ## Screenshots
 

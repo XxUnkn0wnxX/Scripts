@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.2
+// @version      1.1.3
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -26,7 +26,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.1.2';
+  const SCRIPT_VERSION = '1.1.3';
   let LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -992,7 +992,9 @@
         pointerDownOutside = false;
       });
       ui.dialog.addEventListener('click', (event) => {
-        const shouldClose = pointerDownOutside && isPrimaryPointer(event) && isOutsideDialogBounds(event);
+        // Click PointerEvents default isPrimary to false; primary validation ran on pointerdown.
+        const shouldClose = pointerDownOutside &&
+          (typeof event.button !== 'number' || event.button === 0) && isOutsideDialogBounds(event);
         if (isOutsideDialogBounds(event)) {
           event.preventDefault?.();
           event.stopPropagation?.();

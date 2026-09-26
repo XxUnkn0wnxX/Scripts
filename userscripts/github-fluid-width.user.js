@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.0
+// @version      1.0.1
 // @description  Controls GitHub workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -1262,9 +1262,10 @@
     }
 
     function handleDialogClick(event) {
+      // Click PointerEvents default isPrimary to false; primary validation ran on pointerdown.
       const shouldClose = pointerDownOutside
         && isOpen()
-        && isPrimaryPointer(event)
+        && (typeof event.button !== 'number' || event.button === 0)
         && event.target === ui.dialog
         && isOutsideDialogPoint(event);
       pointerDownOutside = false;

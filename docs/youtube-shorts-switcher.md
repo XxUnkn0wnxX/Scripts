@@ -2,7 +2,7 @@
 
 [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a Shorts action-column button and configurable hotkey to open the current YouTube Short in the normal watch player.
 
-Current documented release: `2.9.2`.
+Current documented release: `2.9.3`.
 
 ## Screenshots
 
@@ -90,8 +90,9 @@ Modifiers must match exactly: `W` and `Shift+W` are different bindings. Recordin
 ignores held-key repeats, unfinished text composition, dead keys, and keys the
 browser cannot identify.
 
-Clicking outside the panel closes it too. Shortcuts already recorded remain
-saved; an unfinished recording is cancelled.
+Choose **Close** or click outside the panel to dismiss it. Escape also closes
+the panel when shortcut recording is inactive. Shortcuts already recorded
+remain saved; closing cancels an unfinished recording.
 
 **Reset defaults** immediately restores and saves the default shortcut, `W`.
 The **Full** button's tooltip updates when the shortcut changes. Saved settings

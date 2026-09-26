@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.1.2`.
+Current documented release: `1.1.3`.
 
 ## Screenshots
 
@@ -130,10 +130,10 @@ storage keys, and route definitions remain managed by the script.
 
 Click **Save settings** to store your changes, then reload the page when ready
 to use them. The active indexing run keeps the configuration it started with;
-editing or saving settings does not restart workers or clear caches. Closing
-without saving leaves stored settings unchanged. Clicking outside the panel or
-pressing Escape also closes it and discards unsaved edits. Reopening shows the
-last saved values.
+editing or saving settings does not restart workers or clear caches. Choose
+**Close**, click outside the panel, or press Escape to dismiss it and discard
+unsaved edits. Stored settings stay unchanged, and reopening shows the last
+saved values.
 
 **Reset defaults** restores and saves all built-in tuning values. Reload to
 apply them. Reset does not immediately clear the collection cache. On the next
@@ -551,7 +551,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.1.2)
+PSPrices Collection Live Search: has started (v1.1.3)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.

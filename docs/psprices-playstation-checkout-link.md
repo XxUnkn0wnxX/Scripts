@@ -2,7 +2,7 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos.
 
-Current documented release: `1.1.2`.
+Current documented release: `1.1.3`.
 
 ## Screenshots
 
@@ -61,9 +61,9 @@ forced fallback modes.
 
 Click **Save settings**, then reload the page when ready to apply the saved
 values. Changes do not reconfigure a checkout request already in progress.
-Closing without saving leaves stored settings unchanged. Clicking outside the
-panel or pressing Escape also closes it and discards unsaved edits. Reopening
-shows the last saved values.
+Choose **Close**, click outside the panel, or press Escape to dismiss it and
+discard unsaved edits. Stored settings stay unchanged, and reopening shows the
+last saved values.
 
 **Reset defaults** restores and saves all nine built-in values. Reload to apply
 them. Saving or resetting settings does not open a checkout link, copy anything

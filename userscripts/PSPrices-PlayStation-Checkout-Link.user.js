@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.2
+// @version      1.1.3
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -31,7 +31,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.1.2';
+  const SCRIPT_VERSION = '1.1.3';
 
   const DEFAULT_SETTINGS = Object.freeze({
     LOG_LEVEL: 'info',
@@ -1024,8 +1024,9 @@
       settingsDialogPointerDownOutside = false;
     });
     ui.dialog.addEventListener('click', (event) => {
+      // Click PointerEvents default isPrimary to false; primary validation ran on pointerdown.
       const shouldClose = settingsDialogPointerDownOutside &&
-        settingsDialogPrimaryPointer(event) && settingsDialogOutsideBounds(event);
+        (typeof event.button !== 'number' || event.button === 0) && settingsDialogOutsideBounds(event);
       if (settingsDialogOutsideBounds(event)) {
         event.preventDefault?.();
         event.stopPropagation?.();
