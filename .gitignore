@@ -39,3 +39,5 @@ tests/*
 !tests/pyactivate/*.py
 !tests/codex_profiles/
 !tests/codex_profiles/*.py
+!tests/fetch_ios_pkgs/
+!tests/fetch_ios_pkgs/*.py
