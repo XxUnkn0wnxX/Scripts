@@ -1,6 +1,6 @@
 # github-fluid-width.user.js
 
-Install the development build [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
+Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
 ## What It Does
 
@@ -153,7 +153,7 @@ adding duplicate history hooks or styles.
 ## Basic Install
 
 1. Install a userscript manager such as Tampermonkey or Violentmonkey.
-2. Open the [development raw script](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) and choose the manager's install option.
+2. Open the [userscript](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) and choose the manager's install option.
 3. Visit a GitHub page with a bounded workspace at a viewport width of at least `1472px`.
 
 ## Compatibility and Safety
