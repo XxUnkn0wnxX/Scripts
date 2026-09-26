@@ -4,6 +4,20 @@
 
 Current documented release: `1.0.1.3`.
 
+## Screenshots
+
+Click the preview to open its full-resolution image.
+
+The same Arqade answer before (left) and after (right) the script runs. All
+three spoiler blocks become visible automatically, including the text and
+video links. The crops show the answer area at its original resolution.
+
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/comparison.png" alt="Arqade answer with three hidden spoiler blocks before and revealed text and links after" width="900"></a>
+
+Full-resolution crops: [hidden](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/before.png) · [revealed](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/stackexchange-reveal-spoilers/after.png).
+
+Example: [user3389's answer to “What happens when the God King is defeated?”](https://gaming.stackexchange.com/questions/13719/what-happens-when-the-god-king-is-defeated/13722#13722) on Arqade, discussing *Infinity Blade*.
+
 ## What It Does
 
 - finds spoiler elements that use the `.spoiler` class
