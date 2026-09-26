@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         PSPrices Show Product SKU
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1.4
-// @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections and preferring it over a native SKU panel when a valid value is available. Vibe coded with OpenAI.
+// @version      1.0.1.5
+// @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, with Avatar SKU, Theme SKU, or generic SKU labels and matching helper text in a native-style panel below buy, checkout, or unavailable-store sections. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
 // @author       XxUnkn0wnxX
@@ -90,6 +90,25 @@
     return null;
   }
 
+  function readSkuLabel(gameDetail) {
+    const labels = new Set();
+    // Only the product's category badge identifies its kind; navigation and
+    // related products can link to both collections on the same page.
+    for (const link of gameDetail.querySelectorAll('#platform-badges a[href]')) {
+      try {
+        const pathname = new URL(link.getAttribute('href'), window.location.href).pathname;
+        const category = pathname.match(
+          /^\/region-[a-z0-9-]+\/collection\/(avatars|themes)\/?$/i
+        )?.[1].toLowerCase();
+        if (category === 'avatars') labels.add('Avatar SKU');
+        if (category === 'themes') labels.add('Theme SKU');
+      } catch (_) {
+        // Ignore malformed category links and keep the generic fallback.
+      }
+    }
+    return labels.size === 1 ? [...labels][0] : 'SKU';
+  }
+
   function copyWithFallback(text) {
     const textarea = document.createElement('textarea');
     textarea.value = text;
@@ -117,10 +136,11 @@
     }
   }
 
-  function createSkuCard(sku) {
+  function createSkuCard(sku, label) {
     const card = document.createElement('div');
     card.id = CARD_ID;
     card.dataset.sku = sku;
+    card.dataset.skuLabel = label;
     card.dataset.testId = 'userscript-product-sku';
     card.className =
       'game-detail-card border-primary/30 bg-primary/5 grid gap-3 p-4 ' +
@@ -137,13 +157,17 @@
     headingIcon.className = 'material-symbols-outlined text-lg text-base-content/55';
     headingIcon.setAttribute('aria-hidden', 'true');
     headingIcon.textContent = 'code';
-    heading.append(headingIcon, document.createTextNode('SKU'));
+    heading.append(headingIcon, document.createTextNode(label));
 
     const value = document.createElement('code');
     value.className =
       'block max-w-full overflow-x-auto font-mono text-sm font-semibold whitespace-nowrap text-base-content select-all';
     value.textContent = sku;
-    content.append(heading, value);
+
+    const description = document.createElement('p');
+    description.className = 'text-xs leading-relaxed text-base-content/60';
+    description.textContent = `${label} identifier for third-party utilities.`;
+    content.append(heading, value, description);
 
     const button = document.createElement('button');
     button.type = 'button';
@@ -310,8 +334,10 @@
       return;
     }
 
+    const label = readSkuLabel(gameDetail);
     const isRetainedCard =
       injectedCard?.dataset.sku === sku &&
+      injectedCard.dataset.skuLabel === label &&
       (target.position === 'after-spaced'
         ? target.element.nextElementSibling === injectedCard
         : injectedCard.parentElement === target.element);
@@ -324,7 +350,7 @@
     }
     injectedCard?.remove();
 
-    const card = createSkuCard(sku);
+    const card = createSkuCard(sku, label);
 
     if (target.position === 'append') {
       target.element.append(card);
@@ -362,6 +388,8 @@
   const observer = new MutationObserver(scheduleMount);
   observer.observe(document.documentElement, {
     childList: true,
+    attributes: true,
+    attributeFilter: ['href'],
     subtree: true
   });
 

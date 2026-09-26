@@ -1,8 +1,8 @@
 # PSPrices-PlayStation-Checkout-Link.user.js
 
-[`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts.
+[`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free promo.
 
-Current documented release: `1.0.4.7`.
+Current documented release: `1.0.4.8`.
 
 ## PlayStation Store Setup and Redirect Caveat
 
@@ -36,6 +36,7 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 - blocks the native PlayStation Store availability loading placeholder and unavailable warning from painting before replacement
 - blocks the matching bottom Buy Unlocked banner from painting on supported product pages
 - blocks the avatar collection's `Avatars available for purchase` bridge before it paints
+- permanently hides PSPrices' `ads-free` promo site-wide, including collection pages, avatar/theme product pages, and dynamically mounted notices
 - adds a dominant `🏴‍☠️ unlocked` badge beside the PSPrices header wordmark
 
 ## Where It Works
@@ -47,9 +48,11 @@ https://psprices.com/*
 https://www.psprices.com/*
 ```
 
-Checkout-panel replacement remains restricted to supported `/region-*/game/*` product pages containing one exact avatar/theme buy structure, or one PlayStation Store availability placeholder/unavailable warning where the buy block would normally be. On other pages, the script only maintains the global header badge and does not insert a checkout card.
+Checkout-panel replacement remains restricted to supported `/region-*/game/*` product pages containing one exact avatar/theme buy structure, or one PlayStation Store availability placeholder/unavailable warning where the buy block would normally be. On other pages, the script maintains the global header badge and cosmetic suppression without inserting a checkout card.
 
 On regional `/collection/*` pages, the script also permanently hides `[data-test-id="avatar-collection-bridge"]`. This covers collection routes such as `/collection/avatars`, `/collection/ps4-avatars`, and equivalent paths in every region.
+
+The same document-start cosmetic stylesheet permanently hides the site-wide `[data-notice="ads-free"][data-test-id="notice-tip"]` notice wherever PSPrices mounts it, including collection pages and individual avatar/theme product pages. Other notice types remain visible.
 
 ## Basic Install
 
@@ -102,6 +105,8 @@ The completed wrapper then fades into view, and later DOM, HTMX, and route chang
 The bottom sticky Buy Unlocked banner is suppressed by bootstrap CSS as soon as its matching `stickyReveal('#avatar-buy-block')` element is parsed. It remains `display: none` on supported avatar and theme product pages, preventing the native banner from flashing before the JavaScript mount completes.
 
 The avatar collection bridge uses a separate permanent cosmetic stylesheet installed at `document-start`. This gives it traditional content-blocker behavior and prevents the `Avatars available for purchase` panel from flashing while collection pages render.
+
+The same permanent stylesheet suppresses the notice beginning “Hi! I've been running this independent game deals site” by its exact `data-notice="ads-free"` and `data-test-id="notice-tip"` attributes. It applies as soon as a matching notice is inserted, including during later dynamic page updates.
 
 The normal-use timing constants are near the top of the userscript:
 

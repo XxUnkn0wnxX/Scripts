@@ -1,12 +1,14 @@
 # PSPrices-Show-Product-SKU.user.js
 
-[`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections and preferring it over a native SKU panel when a valid value is available.
+[`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, with Avatar SKU, Theme SKU, or generic SKU labels and matching helper text in a native-style panel below buy, checkout, or unavailable-store sections.
 
-Current documented release: `1.0.1.4`.
+Current documented release: `1.0.1.5`.
 
 ## What It Does
 
 - shows the product SKU in a block matching PSPrices' native avatar SKU design
+- labels the panel `Avatar SKU` or `Theme SKU` when the product's category is identifiable, with `SKU` as the fallback
+- displays matching helper text below the identifier: `Avatar SKU identifier for third-party utilities.`, `Theme SKU identifier for third-party utilities.`, or `SKU identifier for third-party utilities.`
 - follows the native card typography and responsive copy-button placement while retaining the SKU panel's blue accent
 - includes a `Copy SKU` button
 - works with games, DLC, themes, avatars, and other PlayStation products
@@ -51,6 +53,14 @@ For example, a product page may expose:
 ```
 
 That public SKU is then displayed in the injected block.
+
+## Category Labels and Helper Text
+
+The panel reads the collection link in the current product's category badges (`#platform-badges` inside `#game-detail`). A link to `/region-*/collection/avatars` selects `Avatar SKU`; a link to `/region-*/collection/themes` selects `Theme SKU`. Both relative and absolute links work.
+
+If neither category is identified, or both appear in the product's badges, the heading stays `SKU` and the helper text stays `SKU identifier for third-party utilities.` Other products therefore keep the generic wording. Navigation links, related-product links, product titles, and SKU strings do not determine the label.
+
+The label and helper text refresh when the product markup or category link changes, including HTMX updates. This changes the panel's wording only; the SKU value and `Copy SKU` behavior follow the same extraction and copying rules.
 
 ## Existing SKU Blocks
 
