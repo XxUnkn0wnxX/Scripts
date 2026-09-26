@@ -522,3 +522,11 @@ checks pass. The earlier browser evidence remains tied to the source hashes
 recorded above; the browser matrix was not repeated for this equivalent-call
 cleanup. User-facing documentation omits development versioning and promotion
 policy.
+
+## Whole-percentage control steps — 2026-09-27
+
+The percentage slider and numeric input now use `step="1"`, matching the
+gutter control's whole-number increments. Manually entered decimal percentages
+remain supported and saved without rounding. The user guide explains both
+behaviors. Metadata remains `1.0.0`. JavaScript syntax, all nine integrated
+settings tests, Markdown rendering, and whitespace checks pass.

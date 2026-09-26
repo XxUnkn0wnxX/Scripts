@@ -942,8 +942,8 @@
             <div class="row">
               <label for="github-fluid-width-percent-range">Content width percentage</label>
               <div class="range-row">
-                <input id="github-fluid-width-percent-range" type="range" min="1" max="100" step="0.1" aria-label="Content width percentage">
-                <input id="github-fluid-width-percent-number" type="number" min="1" max="100" step="0.1" aria-label="Content width percentage value">
+                <input id="github-fluid-width-percent-range" type="range" min="1" max="100" step="1" aria-label="Content width percentage">
+                <input id="github-fluid-width-percent-number" type="number" min="1" max="100" step="1" aria-label="Content width percentage value">
               </div>
             </div>
             <div class="row">

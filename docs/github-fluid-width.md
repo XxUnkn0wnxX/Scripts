@@ -91,7 +91,7 @@ The global navigation drawer overlays GitHub content and does not reserve a layo
 Open **Width** at the bottom-right of a GitHub page, or choose **GitHub Fluid
 Width settings** from the userscript manager's menu. The panel provides:
 
-- a percentage slider and numeric input that update the current page live
+- a percentage slider and numeric input that update the current page live; the slider and numeric arrows use 1% steps, while decimals such as `95.1` can be entered manually in the numeric field
 - an **Override full-width pages** checkbox, enabled by default
 - a minimum side-gutter setting
 - **Reset defaults** to explicitly restore the current built-in defaults
