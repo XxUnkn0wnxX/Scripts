@@ -6,7 +6,7 @@ A small collection of Python scripts, shell helpers, Cronus Zen files, and Tampe
 
 [![Python utilities](https://img.shields.io/badge/Python-utilities-3776AB?style=flat-square&logo=python&logoColor=white)](#python-utilities) [![Shell helpers](https://img.shields.io/badge/Shell-helpers-4EAA25?style=flat-square&logo=gnubash&logoColor=white)](#shell-utilities) [![Userscripts](https://img.shields.io/badge/Userscripts-Tampermonkey-00485B?style=flat-square&logo=tampermonkey&logoColor=white)](#userscripts-tampermonkey) [![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue?style=flat-square)](COPYING.md)
 
-**Browse:** [📚 Cheat sheets](#markdown-cheat-sheets) · [🐍 Python](#python-utilities) · [🐚 Shell](#shell-utilities) · [🎵 Audio](#audio-helpers) · [🔌 Zsh plugins](#oh-my-zsh-plugins)<br>
+**Browse:** [📚 Cheat sheets](#markdown-cheat-sheets) · [🐍 Python](#python-utilities) · [💻 Shell](#shell-utilities) · [🎵 Audio](#audio-helpers) · [🔌 Zsh plugins](#oh-my-zsh-plugins)<br>
 [🎮 Zen scripts](#zen-scripts) · [🛠️ Tools](#tools) · [💾 References](#other) · [🌐 Userscripts](#userscripts-tampermonkey) · [📝 TODO](TODO.md)
 
 > Python dependencies: `pip install -r requirements.txt`
