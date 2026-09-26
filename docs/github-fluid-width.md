@@ -2,6 +2,8 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
+Current documented release: `1.0.0`.
+
 ## What It Does
 
 - activates only at viewport widths of at least `1472px`
@@ -89,6 +91,19 @@ The global navigation drawer overlays GitHub content and does not reserve a layo
 ## Configuration
 
 Choose **GitHub Fluid Width settings** from the userscript manager's menu.
+The menu is available throughout `github.com`, including the home page and
+pages without a layout that needs widening.
+
+Click outside the panel, press Escape, or choose **Close** to dismiss it.
+Changes already made remain applied and saved.
+While the panel is open, the background page cannot be clicked, hovered, focused,
+or scrolled. Long settings content scrolls inside the panel; closing restores
+normal page interaction without activating anything under the dismissal click.
+
+The translucent backdrop follows the page’s visible background: gentle black
+shading over a light page, or a faint white veil over a dark page. The script
+checks the page colors when you open settings. If they cannot be determined,
+it uses the browser’s preferred appearance, with dark as the fallback.
 
 The panel follows your browser's preferred light or dark appearance, including
 theme changes while it is open. Text, controls, and status messages use matching
@@ -140,6 +155,10 @@ have been saved does not replace those saved values. Source edits made in an
 older release before persistent settings existed cannot be recovered from a
 replacement script file. Resizing automatically updates the loaded layout.
 
+The settings panel requires native modal-dialog support (`showModal`). If the
+browser cannot open a modal, settings stay closed so the script does not expose
+an interactive panel over an unblocked page. Use a browser with that support.
+
 ## Route and Lifecycle Safety
 
 The script maintains one page-layout style element, owned DOM markers, and an
@@ -173,27 +192,29 @@ adding duplicate history hooks or styles.
 - no GitHub content restructuring or job dispatches; only the script's own layout state and settings UI are maintained
 - native horizontal scrolling remains available for code, files, tables, and logs
 
-Browser evidence uses isolated headless Firefox sessions with WebDriver
-injecting the local userscript source into temporary profiles. The 1.0.3
-checks cover nine repository/file routes, signed-in and guest PR Files,
-completed Actions run/log pages, Search, and capped Issues/Settings regressions.
-They include 80%, 95%, 100% and over-100% settings, both override values,
-sidebar preservation, narrow native layouts, resizing, and local scrolling.
-Screenshots were captured for the tested page families and visually inspected
-at the recorded viewports. This does not establish every scroll position or
-every GitHub feature; unrecognized layout structures may remain native.
+Layout verification uses isolated Firefox sessions covering repository and file
+views, signed-in and guest pull-request files, completed Actions runs and logs,
+Search, Issues, and Settings. Checks include multiple percentages, the
+full-width override, native sidebars, resizing, narrow layouts, and local
+scrolling. Captured examples were visually inspected. GitHub can introduce
+other layouts; unrecognized structures may remain native.
 
-The settings panel passes 38 browser assertions with mocked legacy/modern GM
-APIs and nine integrated controller tests. These cover live controls, saved
-decimal and false values, reloads, changed defaults, missing keys, and failed
-storage. Six additional browser assertions verify live reset geometry and
-recovery after removal of the settings host. A real-manager automation
-attempt could install Violentmonkey in an
-isolated profile but could not reach its dashboard to import the script, so
-manager installation and update/reload behavior remain the user's final check.
-The earlier broad 1.0.2 checks are historical, not evidence of the new override
-mode. Detailed source hashes, reports, and verification limits are recorded in
-the [implementation plan](plan/github-fluid-width-plan.md).
+The settings checks exercise live changes, decimals, reset, persistence failures,
+modal interaction, theme fallback, and host replacement with mocked userscript
+manager APIs. Live installation and update behavior in the user's manager remain
+the final manual check. Detailed source hashes, reports, and verification limits
+are recorded in the [implementation plan](plan/github-fluid-width-plan.md).
+
+## Permissions and Data
+
+- `GM.getValue` / `GM_getValue` read this script's saved width, gutter, and override preferences.
+- `GM.setValue` / `GM_setValue` save those preferences and explicit resets.
+- `GM.registerMenuCommand` / `GM_registerMenuCommand` add the settings menu entry.
+
+The script changes layout styles and maintains its own settings dialog. It does
+not send page content or preferences anywhere, load remote code, or make API
+requests. Disabling it and reloading returns the page to GitHub's layout. Saved
+preferences remain in the manager until reset or removed there.
 
 ## Example
 

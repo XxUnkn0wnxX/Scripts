@@ -2,7 +2,7 @@
 
 [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) is a Tampermonkey userscript that adds a Shorts action-column button and configurable hotkey to open the current YouTube Short in the normal watch player.
 
-Current documented release: `2.9.0`.
+Current documented release: `2.9.1`.
 
 ## What It Does
 
@@ -37,6 +37,18 @@ Choose **YouTube Shorts settings** from your userscript manager's menu. There
 is no floating settings button; the **Full** action button remains in the
 Shorts actions column.
 
+The settings menu is available throughout YouTube, including the home page,
+regular video pages, and Shorts. It does not require an active Short.
+
+While settings is open, the background page cannot be clicked, hovered, focused,
+or scrolled. Any long settings content scrolls inside the panel. Closing restores
+normal page interaction without activating anything under the dismissal click.
+
+The translucent backdrop follows the page’s visible background: gentle black
+shading over a light page, or a faint white veil over a dark page. The script
+checks the page colors when you open settings. If they cannot be determined,
+it uses the browser’s preferred appearance, with dark as the fallback.
+
 The settings panel follows your browser's preferred light or dark appearance,
 including changes while it is open. Text, buttons, and status messages adapt
 to remain readable in either theme.
@@ -53,6 +65,13 @@ arrow key. Pressing modifier keys alone does not save a shortcut. Escape or
 **Cancel recording** stops recording and keeps the previous shortcut. Closing
 the panel also cancels unfinished recording.
 
+Modifiers must match exactly: `W` and `Shift+W` are different bindings. Recording
+ignores held-key repeats, unfinished text composition, dead keys, and keys the
+browser cannot identify.
+
+Clicking outside the panel closes it too. Shortcuts already recorded remain
+saved; an unfinished recording is cancelled.
+
 **Reset defaults** immediately restores and saves the default shortcut, `W`.
 The **Full** button's tooltip updates when the shortcut changes. Saved settings
 survive page reloads and script updates. The panel reports storage failures;
@@ -61,6 +80,10 @@ the current page can still use the newly selected shortcut.
 Be mindful of shortcuts already assigned to your browser, operating system,
 or other apps. They may handle a combination before the userscript receives
 it; choose a different shortcut if there is a conflict.
+
+The settings panel requires native modal-dialog support (`showModal`). If the
+browser cannot open a modal, settings stay closed so the script does not expose
+an interactive panel over an unblocked page. Use a browser with that support.
 
 ## Built-in Default
 
@@ -98,7 +121,25 @@ https://www.youtube.com/watch?v=VIDEO_ID
 
 ## Good To Know
 
-- It only acts when a Shorts page is active.
+- The player-switch action only acts when a Shorts page is active; settings remain available on other YouTube pages.
 - The hotkey does not fire while you are typing in an input, text box, or editable content, or while the settings dialog is open.
 - Recording a shortcut does not open the full player. The new shortcut becomes usable after you close settings.
 - Preferences use the userscript manager's per-script storage; the script makes no network requests to save settings.
+
+## Permissions and Data
+
+- `GM.getValue` / `GM_getValue` read this script's saved shortcut.
+- `GM.setValue` / `GM_setValue` save a recorded shortcut or an explicit reset.
+- `GM.registerMenuCommand` / `GM_registerMenuCommand` expose settings on the matched desktop and mobile YouTube hosts.
+
+The script inspects the current route and rendered Shorts player to place its
+button. Pressing the shortcut or clicking **Full** navigates the current tab to
+`/watch?v=VIDEO_ID` on the same YouTube host. It does not retain the Shorts URL's
+other parameters or transfer the playback position. Navigation lets YouTube
+load its normal player; the script itself makes no background network requests,
+uploads viewing data, or loads remote code. Only the shortcut is saved.
+
+Button placement depends on YouTube's rendered player markup, so a different
+mobile or experimental layout may not expose the same action column. Settings
+remain available independently of that column. Disabling the script and
+reloading removes its controls; saved preferences remain in the manager.

@@ -109,6 +109,15 @@ Repo layout:
 | [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) | Applies a constrained fluid width to Reddit post/comment pages with live, saved width and sidebar settings, while keeping feed layouts native. | [Docs](docs/reddit-fluid-width.md) |
 | [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) | Controls capped and naturally full-width GitHub workspaces through live, saved settings; includes a full-width override toggle and preserves sidebars, controls, and local scrolling. | [Docs](docs/github-fluid-width.md) |
 
+GitHub Fluid Width, Reddit Fluid Width, YouTube Shorts Switcher, PSPrices Live
+Search, and PSPrices Checkout Link have settings panels in the userscript
+manager's menu on every page of their matched hosts. Their page-changing
+features retain the scope described in each guide. All five include **Reset
+defaults**. The two fluid-width panels and YouTube save automatically; the two
+PSPrices panels use **Save settings**, then a reload to apply changes. Closing
+a PSPrices panel without saving discards its draft. SKU and the two spoiler
+scripts have no settings panel.
+
 ---
 
 Some scripts expect Homebrew-installed tooling such as `mkvtoolnix`, `ffmpeg`, `jq`, `fzf`, or Microsoft Word for DOCX workflows. Check the linked doc page for each script before running it.

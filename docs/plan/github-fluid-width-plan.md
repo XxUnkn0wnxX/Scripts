@@ -2,9 +2,9 @@
 
 Status: implementation, documentation, and scoped verification complete; ready for live testing. Current metadata version: `1.0.0`. Publication target: `develop` only. Final verification completed 2026-09-27.
 
-The metadata stays at `1.0.0` during development, as requested. Numbered
-sections and verification paths below retain their historical development
-labels so their captured evidence remains traceable.
+Numbered sections and verification paths below retain their historical labels
+so their captured evidence remains traceable. The current source and settings
+verification are recorded in the final section.
 
 ## 1.0.3 scope correction
 
@@ -549,3 +549,39 @@ host measures 0×0. Report:
 `.tmp/github-fluid-width/verification/settings-menu-only/report.json`.
 This checks the menu callback in the browser, not actual manager integration.
 The isolated browser and driver stopped, and their temporary profile was removed.
+
+## Modal settings and documentation — 2026-09-27
+
+The current GitHub source has SHA-256
+`94defc0bd4ef05d3df1db6ebddd9ec87225d333275d38c5c33ed69354efb89fe`.
+The menu remains available on every matched GitHub page. Opening settings uses
+a native modal dialog, locks document scrolling, and keeps background pointer,
+hover, and keyboard interaction inactive. Close, Escape, an outside click,
+native dialog closure, and host replacement release the owned lock. A drag
+that starts inside the panel and ends outside does not dismiss it. Autosaved
+changes remain saved when the panel closes.
+
+The panel follows the browser's light/dark preference with a dark fallback.
+Its backdrop samples the visible page background at opening, using black at
+32% opacity over light pages or white at 12% over dark pages. Unreliable page
+colors fall back to the browser preference, then dark. This affects the
+backdrop only; it does not change the website theme.
+
+The final five-script Firefox modal report at
+`.tmp/userscript-settings/reports/modal-interactions-final-4/report.json`
+passes 102 assertions, including 20 for GitHub. The separate site-wide menu
+smoke report at
+`.tmp/userscript-settings/reports/home-smoke-final-baseline/report.json`
+passes 15 assertions across the five scripts at their final source hashes.
+GitHub's eight page-background/theme combinations pass in
+`.tmp/userscript-settings/reports/page-backdrop/report.json`.
+These local fixtures use mocked GM APIs; they do not establish actual manager
+installation behavior. No service operations are performed by the fixtures.
+
+The user guide documents full-width overrides, native-width minima, shared
+limiter detection, automatic resizing, decimal entry, live reset and saved
+preferences, modal dismissal, appearance, permissions, and verification limits.
+High-resolution page comparisons and settings captures are stored under
+`.images/userscripts/github-fluid-width/`, with documentation links pointing
+to the requested `master` asset paths. Captures and report provenance remain
+under ignored `.tmp/`; all verification browsers and drivers were stopped.

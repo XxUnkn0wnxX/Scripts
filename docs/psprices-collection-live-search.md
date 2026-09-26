@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.1.0`.
+Current documented release: `1.1.1`.
 
 ## What It Does
 
@@ -21,12 +21,16 @@ Current documented release: `1.1.0`.
 
 ## Where It Works
 
-The userscript loads on regional PSPrices pages so background indexing can start before the user opens the collection page:
+The settings menu is available throughout PSPrices, including the home page:
 
 ```text
-https://psprices.com/region-*
-https://www.psprices.com/region-*
+https://psprices.com/*
+https://www.psprices.com/*
 ```
+
+Background indexing retains its regional scope: visiting a `/region-*` page can
+prewarm its collections before you open them. Nonregional pages expose settings
+without starting a collection index.
 
 The visible search UI mounts only on the canonical collection endpoints:
 
@@ -68,6 +72,16 @@ Those routes are left to PSPrices' native page behavior.
 Choose **PSPrices Live Search settings** from the userscript manager's menu.
 There is no floating settings button.
 
+While settings is open, the background page cannot be clicked, hovered, focused,
+or scrolled. Scroll inside the panel to reach the remaining fields and buttons.
+Closing restores page interaction without activating anything under the
+dismissal click.
+
+The translucent backdrop follows the page’s visible background: gentle black
+shading over a light page, or a faint white veil over a dark page. The script
+checks the page colors when you open settings. If they cannot be determined,
+it uses the browser’s preferred appearance, with dark as the fallback.
+
 The panel follows your browser's preferred light or dark appearance and updates
 when that preference changes. Text and controls use matching colors; the
 advanced-user warning stays yellow/amber with readable text in both themes.
@@ -88,7 +102,9 @@ storage keys, and route definitions remain managed by the script.
 Click **Save settings** to store your changes, then reload the page when ready
 to use them. The active indexing run keeps the configuration it started with;
 editing or saving settings does not restart workers or clear caches. Closing
-without saving leaves stored settings unchanged.
+without saving leaves stored settings unchanged. Clicking outside the panel or
+pressing Escape also closes it and discards unsaved edits. Reopening shows the
+last saved values.
 
 **Reset defaults** restores and saves all built-in tuning values. Reload to
 apply them. Reset does not immediately clear the collection cache. On the next
@@ -121,6 +137,10 @@ The panel also includes these startup and scheduling controls:
 Timing fields use milliseconds; cache budgets use bytes. Worker and item counts
 use whole numbers. Only the render and hydration limits that explicitly mention
 `-1` accept it as an unlimited setting.
+
+The settings panel requires native modal-dialog support (`showModal`). If the
+browser cannot open a modal, settings stay closed so the script does not expose
+an interactive panel over an unblocked page. Use a browser with that support.
 
 ## How Search Works
 
@@ -241,6 +261,12 @@ Only one background prewarm worker is intended to run across open PSPrices tabs 
 If a tab unloads while indexing, it broadcasts a short stop signal so other active tabs can pause and retry cleanly instead of duplicating work immediately.
 
 ## Cache Storage
+
+Collection and detail caches belong to the PSPrices page origin. They use
+IndexedDB or localStorage and can be accessed by other code running on that
+origin; they are not private userscript-manager storage. Advanced preferences
+use separate GM storage. Clearing PSPrices site data removes its caches and
+leases, while resetting this script's settings changes its tuning preferences.
 
 The index uses browser `IndexedDB` by default because it has a much larger practical quota than `localStorage`. If IndexedDB cannot open or write, the script falls back to the legacy `localStorage` cache backend.
 
@@ -496,7 +522,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.1.0)
+PSPrices Collection Live Search: has started (v1.1.1)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
@@ -524,3 +550,29 @@ Common failure modes include:
 - another tab owning the current indexing lease
 
 Incomplete pages are not treated as valid finished cache. On the next run, the script resumes from completed pages and rebuilds missing, stale, or corrupt chunks.
+
+## Permissions and Network Activity
+
+- `GM.getValue` / `GM_getValue` read this script's advanced preferences.
+- `GM.setValue` / `GM_setValue` save explicit settings changes and resets.
+- `GM.registerMenuCommand` / `GM_registerMenuCommand` expose the settings panel site-wide.
+- `unsafeWindow` bridges to the PSPrices page's window for route/history tracking, timers, and page events when the manager uses an isolated sandbox.
+
+Indexing uses ordinary browser `fetch` requests for PSPrices collection HTML;
+detail hydration fetches PSPrices product pages. Requests use
+`credentials: 'same-origin'`, so the browser can include the current PSPrices
+session cookies. The script does not extract cookie values. Search queries are
+matched locally against cached titles and details, rather than sent to a search
+service. Result thumbnails load from the image URLs published by PSPrices.
+
+Automatic regional prewarming is enabled by default and can request many
+collection pages even before a collection is opened. The documented delays,
+concurrency limits, tab leases, and pause handling regulate that work. Disable
+`AUTO_INDEX_ON_LOAD` and `AUTO_INDEX_ON_SITE_VISIT`, save, and reload to disable
+the two automatic indexing entry points. Explicit indexing controls remain
+available on supported collections.
+
+The script does not send its caches or preferences to the author, modify
+PSPrices account settings, or place store orders. Disabling it and reloading
+restores native collection controls. Its stored caches and preferences remain
+until cleared through their respective controls or browser/manager storage.

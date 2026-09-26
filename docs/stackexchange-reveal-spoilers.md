@@ -13,7 +13,7 @@ Current documented release: `1.0.1.3`.
 
 ## Where It Works
 
-- `stackexchange.com`
+- `stackexchange.com` and its subdomains, including individual communities such as `gaming.stackexchange.com`
 - `stackoverflow.com`
 - `superuser.com`
 - `serverfault.com`
@@ -21,6 +21,10 @@ Current documented release: `1.0.1.3`.
 - `mathoverflow.net`
 - `stackapps.com`
 - `stackauth.com`
+
+The metadata matches HTTP and HTTPS pages on these hosts. The standalone hosts
+listed above use exact host matches; their other subdomains are not separately
+included. Embedded frames are excluded with `@noframes`.
 
 ## Basic Install
 
@@ -44,3 +48,16 @@ If a Stack Overflow answer uses hidden spoiler formatting, the script reveals th
 - It is designed for Stack Exchange style spoiler markup only.
 - It watches both initial page content and later DOM updates.
 - There are no custom options or hotkeys in this script.
+
+## Permissions and Page Changes
+
+The script uses `@grant none` and requests no userscript-manager APIs. It adds
+`is-visible` to `.spoiler` elements and relies on the site's CSS to reveal them.
+It observes added elements and class changes, including a spoiler becoming
+hidden again, then reapplies visibility. It also checks restored and newly
+loaded pages.
+
+Revealing is automatic for all matching spoiler blocks. There is no settings
+dialog, per-spoiler opt-in, or hide-again control. Disable the script and reload
+to restore the site's spoiler behavior. It does not store preferences, fetch
+answers, send page content anywhere, or change the text of an answer.

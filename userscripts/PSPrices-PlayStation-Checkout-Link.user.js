@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.0
+// @version      1.1.1
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -31,7 +31,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.1.0';
+  const SCRIPT_VERSION = '1.1.1';
 
   const DEFAULT_SETTINGS = Object.freeze({
     LOG_LEVEL: 'info',
@@ -48,6 +48,8 @@
   const SETTINGS_STORAGE_PREFIX = 'psprices-checkout-link.setting:';
   const SETTINGS_STORAGE_MISSING = '__psprices_checkout_setting_missing__';
   const SETTINGS_MENU_LABEL = 'PSPrices Checkout Link settings';
+  const SETTINGS_ROOT_OPEN_ATTR = 'data-psprices-checkout-settings-open';
+  const SETTINGS_GLOBAL_STYLE_ID = 'psprices-checkout-settings-global-style';
   const SETTINGS_WARNING =
     'Advanced users only. Changing these settings can break checkout-link generation or fallback behavior. You are responsible for problems caused by your changes.';
   const SETTINGS_DEFINITIONS = Object.freeze([
@@ -463,6 +465,7 @@
   let settingsDialogPending = false;
   let settingsDialogDraft = null;
   let settingsDialogTouched = new Set();
+  let settingsDialogPointerDownOutside = false;
   let settingsLastSavedSnapshot = null;
   let settingsDialogLastFocus = null;
   let runtimeStarted = false;
@@ -675,6 +678,135 @@
     settingsDialogUi.status.dataset.state = state;
   }
 
+  function ensureSettingsGlobalStyle() {
+    if (!document || typeof document.createElement !== 'function') return;
+    const existing = document.getElementById(SETTINGS_GLOBAL_STYLE_ID);
+    if (existing && existing.isConnected !== false) return;
+    const style = document.createElement('style');
+    style.id = SETTINGS_GLOBAL_STYLE_ID;
+    style.textContent = `
+      html[${SETTINGS_ROOT_OPEN_ATTR}] {
+        scrollbar-gutter: stable;
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+      }
+      html[${SETTINGS_ROOT_OPEN_ATTR}] body {
+        overflow: hidden !important;
+        overscroll-behavior: none !important;
+      }
+    `;
+    const parent = document.head || document.documentElement;
+    if (parent) parent.append(style);
+  }
+
+  function markSettingsRootOpen() {
+    ensureSettingsGlobalStyle();
+    document.documentElement?.setAttribute(SETTINGS_ROOT_OPEN_ATTR, '');
+  }
+
+  function clearSettingsRootOpen() {
+    document.documentElement?.removeAttribute(SETTINGS_ROOT_OPEN_ATTR);
+  }
+
+  function parseSettingsCssColor(value) {
+    const text = String(value || '').trim().toLowerCase();
+    if (text === 'transparent') return [0, 0, 0, 0];
+    const match = text.match(/^rgba?\((.*)\)$/);
+    if (!match) return null;
+    const parts = match[1].replace(/[,/]/g, ' ').trim().split(/\s+/);
+    if (parts.length < 3) return null;
+    const channel = (part) => {
+      const number = Number.parseFloat(part);
+      if (!Number.isFinite(number)) return null;
+      return part.endsWith('%') ? Math.max(0, Math.min(255, number * 2.55)) : Math.max(0, Math.min(255, number));
+    };
+    const red = channel(parts[0]);
+    const green = channel(parts[1]);
+    const blue = channel(parts[2]);
+    if (red === null || green === null || blue === null) return null;
+    let alpha = parts.length > 3 ? Number.parseFloat(parts[3]) : 1;
+    if (parts.length > 3 && parts[3].endsWith('%')) alpha /= 100;
+    return [red, green, blue, Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1];
+  }
+
+  function settingsRelativeLuminance(color) {
+    const channel = (value) => {
+      const normalized = value / 255;
+      return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+    };
+    return channel(color[0]) * 0.2126 + channel(color[1]) * 0.7152 + channel(color[2]) * 0.0722;
+  }
+
+  function sampleSettingsElementLuminance(element, view) {
+    let composite = null;
+    let node = element;
+    while (node && node.nodeType === 1) {
+      let computed;
+      try {
+        computed = view.getComputedStyle(node);
+      } catch (_) {
+        computed = null;
+      }
+      if (computed && computed.display !== 'none' && computed.visibility !== 'hidden' && Number(computed.opacity || 1) > 0) {
+        const color = parseSettingsCssColor(computed.backgroundColor);
+        if (color) {
+          if (!composite) composite = color;
+          else {
+            const alpha = composite[3] + color[3] * (1 - composite[3]);
+            composite = [
+              (composite[0] * composite[3] + color[0] * color[3] * (1 - composite[3])) / (alpha || 1),
+              (composite[1] * composite[3] + color[1] * color[3] * (1 - composite[3])) / (alpha || 1),
+              (composite[2] * composite[3] + color[2] * color[3] * (1 - composite[3])) / (alpha || 1),
+              alpha
+            ];
+          }
+          if (composite[3] >= 0.96) return settingsRelativeLuminance(composite);
+        }
+      }
+      if (node === document.documentElement) break;
+      node = node.parentNode;
+    }
+    return composite && composite[3] >= 0.96 ? settingsRelativeLuminance(composite) : null;
+  }
+
+  function preferredSettingsBackdropTheme(view = window) {
+    try {
+      return view && typeof view.matchMedia === 'function' && view.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'light'
+        : 'dark';
+    } catch (_) {
+      return 'dark';
+    }
+  }
+
+  function detectSettingsBackdropTheme() {
+    const view = document.defaultView || window;
+    const width = Number(view && view.innerWidth);
+    const height = Number(view && view.innerHeight);
+    if (!document || typeof document.elementFromPoint !== 'function' || !view || typeof view.getComputedStyle !== 'function' || width <= 0 || height <= 0) {
+      return preferredSettingsBackdropTheme(view);
+    }
+    const luminances = [];
+    [0.2, 0.5, 0.8].forEach((xRatio) => [0.36, 0.56, 0.76].forEach((yRatio) => {
+      try {
+        const element = document.elementFromPoint(width * xRatio, height * yRatio);
+        const luminance = element ? sampleSettingsElementLuminance(element, view) : null;
+        if (luminance !== null) luminances.push(luminance);
+      } catch (_) {
+        // Layout can reject elementFromPoint while the page is transitioning.
+      }
+    }));
+    if (luminances.length < 3) return preferredSettingsBackdropTheme(view);
+    luminances.sort((a, b) => a - b);
+    return luminances[Math.floor(luminances.length / 2)] < 0.5 ? 'dark' : 'light';
+  }
+
+  function updateSettingsBackdropTheme() {
+    if (settingsDialogUi?.dialog) {
+      settingsDialogUi.dialog.setAttribute('data-backdrop-theme', detectSettingsBackdropTheme());
+    }
+  }
+
   function queueSettingsWrites(entries) {
     if (!settingsStorage) {
       return Promise.reject(new Error('Userscript-manager settings storage is unavailable.'));
@@ -707,9 +839,12 @@
   }
 
   function closeSettingsDialog() {
+    clearSettingsRootOpen();
     if (!settingsDialogUi) return;
     settingsDialogOpen = false;
     settingsDialogDraft = null;
+    settingsDialogPointerDownOutside = false;
+    settingsDialogTouched = new Set();
     if (typeof settingsDialogUi.dialog.close === 'function' && settingsDialogUi.dialog.open) {
       settingsDialogUi.dialog.close();
     } else {
@@ -722,11 +857,38 @@
     settingsDialogLastFocus = null;
   }
 
+  function handleSettingsDialogNativeClose(event = {}) {
+    if (event.currentTarget && settingsDialogUi?.dialog !== event.currentTarget) return;
+    clearSettingsRootOpen();
+    settingsDialogPointerDownOutside = false;
+    if (!settingsDialogOpen) return;
+    settingsDialogOpen = false;
+    settingsDialogDraft = null;
+    settingsDialogTouched = new Set();
+    window.removeEventListener('keydown', settingsDialogKeydown, true);
+    if (settingsDialogLastFocus && typeof settingsDialogLastFocus.focus === 'function') {
+      settingsDialogLastFocus.focus();
+    }
+    settingsDialogLastFocus = null;
+  }
+
   function settingsDialogKeydown(event) {
     if (settingsDialogOpen && event.key === 'Escape') {
       event.preventDefault();
       closeSettingsDialog();
     }
+  }
+
+  function settingsDialogOutsideBounds(event) {
+    const dialog = settingsDialogUi?.dialog;
+    if (!settingsDialogOpen || !dialog?.open || event.target !== dialog) return false;
+    const rect = dialog.getBoundingClientRect();
+    return event.clientX < rect.left || event.clientX > rect.right ||
+      event.clientY < rect.top || event.clientY > rect.bottom;
+  }
+
+  function settingsDialogPrimaryPointer(event) {
+    return event.isPrimary !== false && (typeof event.button !== 'number' || event.button === 0);
   }
 
   function settingsDialogFields() {
@@ -850,9 +1012,33 @@
       closeSettingsDialog();
     });
     ui.dialog.addEventListener('submit', (event) => event.preventDefault());
-    ui.dialog.addEventListener('click', (event) => {
-      if (event.target === ui.dialog) closeSettingsDialog();
+    ui.dialog.addEventListener('close', handleSettingsDialogNativeClose);
+    ui.dialog.addEventListener('pointerdown', (event) => {
+      settingsDialogPointerDownOutside = settingsDialogPrimaryPointer(event) && settingsDialogOutsideBounds(event);
+      if (settingsDialogPointerDownOutside) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+      }
     });
+    ui.dialog.addEventListener('pointercancel', () => {
+      settingsDialogPointerDownOutside = false;
+    });
+    ui.dialog.addEventListener('click', (event) => {
+      const shouldClose = settingsDialogPointerDownOutside &&
+        settingsDialogPrimaryPointer(event) && settingsDialogOutsideBounds(event);
+      if (settingsDialogOutsideBounds(event)) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+      }
+      settingsDialogPointerDownOutside = false;
+      if (shouldClose) closeSettingsDialog();
+    });
+    ui.dialog.addEventListener('wheel', (event) => {
+      if (settingsDialogOutsideBounds(event)) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+      }
+    }, { passive: false });
   }
 
   function settingsDialogMarkup() {
@@ -903,10 +1089,12 @@
         button, input, select { color: inherit; font: inherit; }
         button { cursor: pointer; }
         dialog { width: min(560px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--settings-border); border-radius: 8px; background: var(--settings-panel-bg); color: var(--settings-text); padding: 0; }
-        dialog::backdrop { background: rgb(0 0 0 / 58%); }
+        dialog::backdrop { background: rgb(255 255 255 / 12%); }
         dialog { box-shadow: 0 8px 32px rgb(0 0 0 / 58%); }
-        @media (prefers-color-scheme: light) { dialog { box-shadow: 0 8px 32px rgb(31 35 40 / 28%); } dialog::backdrop { background: rgb(31 35 40 / 36%); } }
-        .panel { overflow: auto; max-height: min(760px, calc(100vh - 32px)); padding: 18px; }
+        @media (prefers-color-scheme: light) { dialog { box-shadow: 0 8px 32px rgb(31 35 40 / 28%); } dialog::backdrop { background: rgb(0 0 0 / 32%); } }
+        dialog[data-backdrop-theme="dark"]::backdrop { background: rgb(255 255 255 / 12%); }
+        dialog[data-backdrop-theme="light"]::backdrop { background: rgb(0 0 0 / 32%); }
+        .panel { overflow: auto; overscroll-behavior: contain; max-height: min(760px, calc(100vh - 32px)); padding: 18px; }
         h2 { font-size: 17px; margin: 0 0 8px; }
         .warning { border: 1px solid var(--settings-warning-border); border-radius: 7px; background: var(--settings-warning-bg); color: var(--settings-warning-text); padding: 9px 10px; }
         .note { color: var(--settings-muted); font-size: 12px; }
@@ -945,6 +1133,19 @@
 
   function ensureSettingsDialogMounted() {
     if (!document || typeof document.createElement !== 'function') return null;
+    if (settingsDialogUi && !settingsDialogUi.host.isConnected) {
+      clearSettingsRootOpen();
+      settingsDialogPointerDownOutside = false;
+      settingsDialogOpen = false;
+      settingsDialogDraft = null;
+      settingsDialogTouched = new Set();
+      window.removeEventListener('keydown', settingsDialogKeydown, true);
+      if (settingsDialogLastFocus && typeof settingsDialogLastFocus.focus === 'function') {
+        settingsDialogLastFocus.focus();
+      }
+      settingsDialogLastFocus = null;
+      settingsDialogUi = null;
+    }
     if (!settingsDialogUi) {
       const host = document.createElement('div');
       host.id = 'psprices-checkout-settings-host';
@@ -970,14 +1171,8 @@
     }
     const parent = document.body || document.documentElement;
     if (parent && settingsDialogUi.host.parentNode !== parent) parent.append(settingsDialogUi.host);
-    if (settingsDialogOpen && settingsDialogUi.dialog && !settingsDialogUi.dialog.hasAttribute('open')) {
-      try {
-        if (typeof settingsDialogUi.dialog.showModal === 'function') settingsDialogUi.dialog.showModal();
-        else settingsDialogUi.dialog.setAttribute('open', '');
-      } catch (_) {
-        settingsDialogUi.dialog.setAttribute('open', '');
-      }
-    }
+    if (settingsDialogOpen && settingsDialogUi.dialog && !settingsDialogUi.dialog.open) handleSettingsDialogNativeClose();
+    if (settingsDialogOpen && settingsDialogUi.dialog?.open) markSettingsRootOpen();
     return settingsDialogUi;
   }
 
@@ -992,9 +1187,14 @@
       return;
     }
     settingsDialogPending = false;
+    if (ui.dialog.open) {
+      ui.close.focus();
+      return;
+    }
     if (!settingsDialogOpen) {
       settingsDialogLastFocus = document.activeElement;
       settingsDialogTouched = new Set();
+      settingsDialogPointerDownOutside = false;
       settingsDialogDraft = copySettings(
         settingsLastSavedSnapshot || activeSettingsSnapshot()
       );
@@ -1010,12 +1210,15 @@
     }
     settingsDialogOpen = true;
     window.addEventListener('keydown', settingsDialogKeydown, true);
+    updateSettingsBackdropTheme();
     try {
-      if (typeof ui.dialog.showModal === 'function' && !ui.dialog.open) ui.dialog.showModal();
-      else ui.dialog.setAttribute('open', '');
+      if (typeof ui.dialog.showModal !== 'function') throw new Error('Native modal dialogs are unavailable.');
+      ui.dialog.showModal();
     } catch (_) {
-      ui.dialog.setAttribute('open', '');
+      closeSettingsDialog();
+      return;
     }
+    markSettingsRootOpen();
     ui.close.focus();
   }
 

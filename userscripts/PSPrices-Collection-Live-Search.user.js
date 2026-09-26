@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.0
+// @version      1.1.1
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -9,8 +9,8 @@
 // @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js
-// @match        https://psprices.com/region-*
-// @match        https://www.psprices.com/region-*
+// @match        https://psprices.com/*
+// @match        https://www.psprices.com/*
 // @run-at       document-start
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -26,7 +26,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.1.0';
+  const SCRIPT_VERSION = '1.1.1';
   let LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -44,6 +44,8 @@
    */
 
   const CACHE_PREFIX = 'psprices-live-search';
+  const SETTINGS_ROOT_OPEN_ATTR = 'data-psprices-live-search-settings-open';
+  const SETTINGS_GLOBAL_STYLE_ID = 'psprices-live-search-settings-global-style';
   const CACHE_VERSION = 4;
   let CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
   let DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -506,6 +508,7 @@
     let storageError = null;
     let current = copyTuningSettings(TUNING_DEFAULTS);
     let draft = copyTuningSettings(current);
+    let lastSaved = copyTuningSettings(current);
     let initialized = false;
     let initializePromise = null;
     let writeChain = Promise.resolve();
@@ -515,9 +518,12 @@
     let version = 0;
     const keyVersions = new Map();
     const pendingKeys = new Set();
+    const pendingValues = new Map();
     const readableKeys = new Set();
     const touchedKeys = new Set();
     const failedReadKeys = new Set();
+    let pointerDownOutside = false;
+    let nativeCloseInProgress = false;
 
     function storageKey(key) {
       return `${SETTINGS_STORAGE_PREFIX}.${key}`;
@@ -546,6 +552,7 @@
       if (!storage) return;
       readableKeys.add(storageKey(key));
       pendingKeys.add(key);
+      pendingValues.set(key, current[key]);
     }
 
     function entriesForPendingKeys() {
@@ -554,7 +561,7 @@
         .map((key) => ({
           key,
           storageKey: storageKey(key),
-          value: current[key],
+          value: pendingValues.has(key) ? pendingValues.get(key) : current[key],
           version: keyVersions.get(key),
         }));
     }
@@ -567,8 +574,12 @@
       for (const entry of entries) {
         try {
           await storage.set(entry.storageKey, entry.value);
+          lastSaved[entry.key] = entry.value;
           if (keyVersions.get(entry.key) === entry.version) {
+            current[entry.key] = entry.value;
+            if (!touchedKeys.has(entry.key)) draft[entry.key] = entry.value;
             pendingKeys.delete(entry.key);
+            pendingValues.delete(entry.key);
             failedReadKeys.delete(entry.key);
           }
         } catch (error) {
@@ -604,6 +615,7 @@
           try {
             await storage.set(entry.storageKey, entry.value);
             readableKeys.add(entry.storageKey);
+            if (entry.key) lastSaved[entry.key] = entry.value;
           } catch (error) {
             failed = true;
             storageError = error;
@@ -622,7 +634,8 @@
         registerSettingsMenu();
         if (!storage) {
           current = copyTuningSettings(onInitialLoad(current) || current);
-          draft = copyTuningSettings(current);
+          lastSaved = copyTuningSettings(current);
+          draft = copyTuningSettings(lastSaved);
           initialized = true;
           setStatus('unavailable');
           return copyTuningSettings(current);
@@ -649,7 +662,8 @@
           current[key] = normalizeTuningValue(definitionForTuningKey(key), values[key], TUNING_DEFAULTS[key]);
         }
         current = copyTuningSettings(onInitialLoad(current) || current);
-        draft = copyTuningSettings(current);
+        lastSaved = copyTuningSettings(current);
+        draft = copyTuningSettings(lastSaved);
         initialized = true;
         registerSettingsMenu();
 
@@ -687,11 +701,147 @@
       return `<div class="pspls-settings-row"><label for="${id}"><code>${definition.label}</code></label><p>${definition.help} ${unit}</p>${control}</div>`;
     }
 
+    function ensureGlobalStyle() {
+      if (!settingsDocument || typeof settingsDocument.createElement !== 'function') return;
+      const existing = settingsDocument.getElementById(SETTINGS_GLOBAL_STYLE_ID);
+      if (existing && existing.isConnected !== false) return;
+      const style = settingsDocument.createElement('style');
+      style.id = SETTINGS_GLOBAL_STYLE_ID;
+      style.textContent = `
+        html[${SETTINGS_ROOT_OPEN_ATTR}] {
+          scrollbar-gutter: stable;
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+        }
+        html[${SETTINGS_ROOT_OPEN_ATTR}] body {
+          overflow: hidden !important;
+          overscroll-behavior: none !important;
+        }
+      `;
+      const parent = settingsDocument.head || settingsDocument.documentElement;
+      if (parent) parent.appendChild(style);
+    }
+
+    function markRootOpen() {
+      ensureGlobalStyle();
+      settingsDocument.documentElement?.setAttribute(SETTINGS_ROOT_OPEN_ATTR, '');
+    }
+
+    function clearRootOpen() {
+      settingsDocument.documentElement?.removeAttribute(SETTINGS_ROOT_OPEN_ATTR);
+    }
+
+    function parseCssColor(value) {
+      const text = String(value || '').trim().toLowerCase();
+      if (text === 'transparent') return [0, 0, 0, 0];
+      const match = text.match(/^rgba?\((.*)\)$/);
+      if (!match) return null;
+      const parts = match[1].replace(/[,/]/g, ' ').trim().split(/\s+/);
+      if (parts.length < 3) return null;
+      const channel = (part) => {
+        const number = Number.parseFloat(part);
+        if (!Number.isFinite(number)) return null;
+        return part.endsWith('%') ? Math.max(0, Math.min(255, number * 2.55)) : Math.max(0, Math.min(255, number));
+      };
+      const red = channel(parts[0]);
+      const green = channel(parts[1]);
+      const blue = channel(parts[2]);
+      if (red === null || green === null || blue === null) return null;
+      let alpha = parts.length > 3 ? Number.parseFloat(parts[3]) : 1;
+      if (parts.length > 3 && parts[3].endsWith('%')) alpha /= 100;
+      return [red, green, blue, Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1];
+    }
+
+    function relativeLuminance(color) {
+      const channel = (value) => {
+        const normalized = value / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      };
+      return channel(color[0]) * 0.2126 + channel(color[1]) * 0.7152 + channel(color[2]) * 0.0722;
+    }
+
+    function sampleElementLuminance(element, view) {
+      let composite = null;
+      let node = element;
+      while (node && node.nodeType === 1) {
+        let computed;
+        try {
+          computed = view.getComputedStyle(node);
+        } catch (_) {
+          computed = null;
+        }
+        if (computed && computed.display !== 'none' && computed.visibility !== 'hidden' && Number(computed.opacity || 1) > 0) {
+          const color = parseCssColor(computed.backgroundColor);
+          if (color) {
+            if (!composite) composite = color;
+            else {
+              const alpha = composite[3] + color[3] * (1 - composite[3]);
+              composite = [
+                (composite[0] * composite[3] + color[0] * color[3] * (1 - composite[3])) / (alpha || 1),
+                (composite[1] * composite[3] + color[1] * color[3] * (1 - composite[3])) / (alpha || 1),
+                (composite[2] * composite[3] + color[2] * color[3] * (1 - composite[3])) / (alpha || 1),
+                alpha
+              ];
+            }
+            if (composite[3] >= 0.96) return relativeLuminance(composite);
+          }
+        }
+        if (node === settingsDocument.documentElement) break;
+        node = node.parentNode;
+      }
+      return composite && composite[3] >= 0.96 ? relativeLuminance(composite) : null;
+    }
+
+    function preferredBackdropTheme(view) {
+      try {
+        return view && typeof view.matchMedia === 'function' && view.matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark';
+      } catch (_) {
+        return 'dark';
+      }
+    }
+
+    function detectBackdropTheme() {
+      const view = settingsDocument.defaultView || runtime.window || runtime;
+      const width = Number(view && view.innerWidth);
+      const height = Number(view && view.innerHeight);
+      if (!settingsDocument || typeof settingsDocument.elementFromPoint !== 'function' || !view || typeof view.getComputedStyle !== 'function' || width <= 0 || height <= 0) {
+        return preferredBackdropTheme(view);
+      }
+      const luminances = [];
+      [0.2, 0.5, 0.8].forEach((xRatio) => [0.36, 0.56, 0.76].forEach((yRatio) => {
+        try {
+          const element = settingsDocument.elementFromPoint(width * xRatio, height * yRatio);
+          const luminance = element ? sampleElementLuminance(element, view) : null;
+          if (luminance !== null) luminances.push(luminance);
+        } catch (_) {
+          // Layout can reject elementFromPoint while the page is transitioning.
+        }
+      }));
+      if (luminances.length < 3) return preferredBackdropTheme(view);
+      luminances.sort((a, b) => a - b);
+      return luminances[Math.floor(luminances.length / 2)] < 0.5 ? 'dark' : 'light';
+    }
+
+    function updateBackdropTheme() {
+      if (ui && ui.dialog) ui.dialog.setAttribute('data-backdrop-theme', detectBackdropTheme());
+    }
+
     function ensureMounted() {
       if (!settingsDocument || typeof settingsDocument.createElement !== 'function') return null;
       if (ui && ui.host && ui.host.isConnected) {
         registerSettingsMenu();
+        if (ui.dialog?.open) markRootOpen();
         return ui;
+      }
+      if (ui && ui.host && !ui.host.isConnected) {
+        clearRootOpen();
+        pointerDownOutside = false;
+        discardDraft();
+        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+        lastFocus = null;
+        ui = null;
       }
       if (!settingsDocument.body) return null;
       const host = settingsDocument.createElement('div');
@@ -749,9 +899,11 @@
           }
           *, *::before, *::after { box-sizing: border-box; }
           dialog { width: min(720px, calc(100vw - 24px)); max-height: min(820px, calc(100vh - 24px)); margin: auto; border: 1px solid var(--settings-border); border-radius: 10px; color: var(--settings-text); background: var(--settings-panel-bg); padding: 0; box-shadow: 0 16px 50px rgb(0 0 0 / 58%); }
-          dialog::backdrop { background: rgb(0 0 0 / 58%); }
-          @media (prefers-color-scheme: light) { dialog { box-shadow: 0 16px 50px rgb(31 35 40 / 34%); } dialog::backdrop { background: rgb(15 23 42 / 46%); } }
-          .pspls-settings-panel { overflow: auto; max-height: min(820px, calc(100vh - 24px)); padding: 20px; }
+          dialog::backdrop { background: rgb(255 255 255 / 12%); }
+          @media (prefers-color-scheme: light) { dialog { box-shadow: 0 16px 50px rgb(31 35 40 / 34%); } dialog::backdrop { background: rgb(0 0 0 / 32%); } }
+          dialog[data-backdrop-theme="dark"]::backdrop { background: rgb(255 255 255 / 12%); }
+          dialog[data-backdrop-theme="light"]::backdrop { background: rgb(0 0 0 / 32%); }
+          .pspls-settings-panel { overflow: auto; overscroll-behavior: contain; max-height: min(820px, calc(100vh - 24px)); padding: 20px; }
           h2 { margin: 0 0 8px; font-size: 18px; }
           h3 { margin: 22px 0 8px; font-size: 14px; }
           .pspls-settings-warning { margin: 0; border: 1px solid var(--settings-warning-border); border-radius: 7px; background: var(--settings-warning-bg); padding: 9px 10px; color: var(--settings-warning-text); }
@@ -818,7 +970,52 @@
         close();
       });
       ui.dialog.addEventListener('submit', (event) => event.preventDefault());
+      ui.dialog.addEventListener('close', (event) => {
+        if (event.currentTarget && ui?.dialog !== event.currentTarget) return;
+        clearRootOpen();
+        pointerDownOutside = false;
+        if (nativeCloseInProgress) return;
+        discardDraft();
+        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+        lastFocus = null;
+      });
+      ui.dialog.addEventListener('pointerdown', (event) => {
+        pointerDownOutside = isPrimaryPointer(event) && isOutsideDialogBounds(event);
+        if (pointerDownOutside) {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+        }
+      });
+      ui.dialog.addEventListener('pointercancel', () => {
+        pointerDownOutside = false;
+      });
+      ui.dialog.addEventListener('click', (event) => {
+        const shouldClose = pointerDownOutside && isPrimaryPointer(event) && isOutsideDialogBounds(event);
+        if (isOutsideDialogBounds(event)) {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+        }
+        pointerDownOutside = false;
+        if (shouldClose) close();
+      });
+      ui.dialog.addEventListener('wheel', (event) => {
+        if (isOutsideDialogBounds(event)) {
+          event.preventDefault?.();
+          event.stopPropagation?.();
+        }
+      }, { passive: false });
       ui.dialog.addEventListener('keydown', trapDialogFocus);
+    }
+
+    function isOutsideDialogBounds(event) {
+      if (!ui?.dialog?.open || event.target !== ui.dialog) return false;
+      const rect = ui.dialog.getBoundingClientRect();
+      return event.clientX < rect.left || event.clientX > rect.right ||
+        event.clientY < rect.top || event.clientY > rect.bottom;
+    }
+
+    function isPrimaryPointer(event) {
+      return event.isPrimary !== false && (typeof event.button !== 'number' || event.button === 0);
     }
 
     function updateDraftFromControl(event) {
@@ -850,40 +1047,55 @@
     function show() {
       const mounted = ensureMounted();
       if (!mounted) return;
+      if (ui.dialog.open) {
+        const firstOpenControl = ui.shadow.querySelector('[data-setting]');
+        if (firstOpenControl && typeof firstOpenControl.focus === 'function') firstOpenControl.focus();
+        return;
+      }
+      pointerDownOutside = false;
       lastFocus = ui.shadow.activeElement || settingsDocument.activeElement || null;
       discardDraft();
       renderSettings();
+      updateBackdropTheme();
       try {
-        if (typeof ui.dialog.showModal === 'function' && !ui.dialog.open) ui.dialog.showModal();
-        else ui.dialog.setAttribute('open', '');
+        if (typeof ui.dialog.showModal !== 'function') throw new Error('Native modal dialogs are unavailable.');
+        ui.dialog.showModal();
       } catch (_) {
-        ui.dialog.setAttribute('open', '');
+        clearRootOpen();
+        lastFocus = null;
+        return;
       }
+      markRootOpen();
       const firstControl = ui.shadow.querySelector('[data-setting]');
       if (firstControl && typeof firstControl.focus === 'function') firstControl.focus();
     }
 
     function close() {
+      clearRootOpen();
       if (!ui) return;
+      pointerDownOutside = false;
       discardDraft();
-      if (typeof ui.dialog.close === 'function' && ui.dialog.open) ui.dialog.close();
-      else ui.dialog.removeAttribute('open');
+      if (typeof ui.dialog.close === 'function' && ui.dialog.open) {
+        nativeCloseInProgress = true;
+        try {
+          ui.dialog.close();
+        } finally {
+          nativeCloseInProgress = false;
+        }
+      } else ui.dialog.removeAttribute('open');
       if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+      lastFocus = null;
     }
 
     function discardDraft() {
-      draft = copyTuningSettings(current);
+      draft = copyTuningSettings(lastSaved);
       touchedKeys.clear();
     }
 
     async function saveDraft() {
-      const previous = current;
       current = normalizeTuningSettings(draft);
       draft = copyTuningSettings(current);
       const keysToSave = new Set(touchedKeys);
-      for (const key of TUNING_SETTING_KEYS) {
-        if (!Object.is(previous[key], current[key])) keysToSave.add(key);
-      }
       for (const key of keysToSave) markUserChange(key);
       touchedKeys.clear();
       renderSettings();
@@ -941,7 +1153,10 @@
       show,
       close,
       flush: flushSettings,
-      isMounted: () => Boolean(ui && ui.host && ui.host.isConnected),
+      isMounted: () => {
+        if (ui && ui.host && !ui.host.isConnected) clearRootOpen();
+        return Boolean(ui && ui.host && ui.host.isConnected);
+      },
       getCurrent: () => copyTuningSettings(current),
     };
   }

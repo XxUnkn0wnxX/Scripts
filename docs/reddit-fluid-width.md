@@ -2,7 +2,7 @@
 
 Install [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) with Tampermonkey or Violentmonkey to apply a constrained fluid layout only on Reddit post/comment routes while leaving feeds and landing pages completely native.
 
-Current documented release: `1.1.0`.
+Current documented release: `1.1.1`.
 
 ## What It Does
 
@@ -22,7 +22,7 @@ The default mode pins the post workspace inline-end/right edge to `100%` with `0
 
 ## Where It Works
 
-The userscript loads on Reddit `/r/*` routes so it is already present when Reddit opens a post through client-side navigation. Style still applies only on the canonical post route and its deeper in-post paths: `https://www.reddit.com/r/<community>/comments/<post-id>/`
+The userscript loads throughout `reddit.com` and `www.reddit.com` for settings access and client-side navigation. Style applies only on the canonical post route and its deeper in-post paths: `https://www.reddit.com/r/<community>/comments/<post-id>/`
 
 `<community>` is matched case-insensitively after `/r/`, and `comments` must follow immediately.
 
@@ -59,6 +59,19 @@ No layout polling or transition overrides are used. Comment expansion and in-thr
 ## Configuration
 
 Choose **Reddit Fluid Width settings** from your userscript manager's menu.
+The menu is available on every page of `reddit.com` and `www.reddit.com`,
+including the home page and feeds. Fluid width still applies only to supported
+post/comment routes.
+
+While settings is open, clicks, hover, keyboard focus, and scrolling stay with
+the panel. Long content scrolls inside it. Closing restores page interaction
+without activating a background control under the dismissal click.
+
+The translucent backdrop follows the page’s visible background: gentle black
+shading over a light page, or a faint white veil over a dark page. The script
+checks the page colors when you open settings. If they cannot be determined,
+it uses the browser’s preferred appearance, with dark as the fallback.
+
 There is no floating settings button. The panel follows your browser's preferred
 light or dark appearance, including changes while it is open. Dark mode is the
 fallback when no supported theme preference is exposed. Light mode uses
@@ -77,7 +90,8 @@ The gutter and pin checkbox also update the layout immediately.
 
 **Reset defaults** restores both percentages to `95%`, the gutter to `32px`, and
 right-side pinning to enabled. It applies and saves these values immediately.
-Closing the panel or pressing Escape keeps changes already made.
+Clicking outside the panel, choosing **Close**, or pressing Escape keeps changes
+already made and saves any pending change.
 
 Preferences are stored separately from the script source. Updates retain saved
 values, including decimals and an unchecked pin setting. Only missing settings
@@ -115,6 +129,10 @@ The script validates values at runtime:
 - `noLeftSidebarContentWidthPercent` is also clamped to `1-100%` with an independent `95` fallback
 - gutter is clamped to `16-128px`
 - `pinRightSidebar` is treated as boolean and defaults to `true`
+
+The settings panel requires native modal-dialog support (`showModal`). If the
+browser cannot open a modal, settings stay closed so the script does not expose
+an interactive panel over an unblocked page. Use a browser with that support.
 
 ## Layout Modes
 
@@ -179,6 +197,18 @@ The floating back-button offset in wide layouts is protected by the `1120px` bas
 - settings use the userscript manager's per-script storage
 - no layout polling; settings saves are debounced
 - supports the legacy and modern GM storage/menu APIs used by Tampermonkey and Violentmonkey
+
+## Permissions and Data
+
+- `GM.getValue` / `GM_getValue` read this script's two percentages, gutter, and pin preference.
+- `GM.setValue` / `GM_setValue` save those preferences and explicit resets.
+- `GM.registerMenuCommand` / `GM_registerMenuCommand` expose settings throughout the two matched Reddit hosts.
+
+Site-wide loading allows settings access and navigation into a post without a
+full reload. It does not extend fluid styling to feeds or the home page. The
+script observes the rendered route and sidebar geometry, adds its own styles
+and dialog, and makes no network requests or uploads. Disabling it and reloading
+restores Reddit's layout; saved preferences remain in the userscript manager.
 
 ## Example
 

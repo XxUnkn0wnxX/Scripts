@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.0
+// @version      1.1.1
 // @description  Widens Reddit post/comment pages only while preserving native feed and landing layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -9,7 +9,8 @@
 // @license      AGPL-3.0-or-later
 // @updateURL    https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js
-// @match        https://www.reddit.com/r/*
+// @match        https://www.reddit.com/*
+// @match        https://reddit.com/*
 // @run-at       document-start
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -379,6 +380,9 @@ ${horizontalModeStyles}
     const onChange = typeof options.onChange === 'function' ? options.onChange : () => {};
     const setTimeoutFn = typeof runtime.setTimeout === 'function' ? runtime.setTimeout.bind(runtime) : setTimeout;
     const clearTimeoutFn = typeof runtime.clearTimeout === 'function' ? runtime.clearTimeout.bind(runtime) : clearTimeout;
+    const ROOT_LOCK_ATTRIBUTE = 'data-reddit-fluid-width-settings-open';
+    const ROOT_LOCK_STYLE_ID = 'reddit-fluid-width-settings-lock-style';
+    const BACKDROP_THEME_ATTRIBUTE = 'data-backdrop-theme';
     let storage = findSettingsStorage(runtime);
     let storageState = storage ? 'loading' : 'unavailable';
     let storageError = null;
@@ -389,10 +393,145 @@ ${horizontalModeStyles}
     let ui = null;
     let lastFocus = null;
     let menuRegistered = false;
+    let pointerDownOutside = false;
     let version = 0;
     const keyVersions = new Map();
     const pendingKeys = new Set();
     const readableKeys = new Set();
+    let rootLockStyle = null;
+
+    function ensureRootLockStyle() {
+      if (!settingsDocument || typeof settingsDocument.createElement !== 'function') return;
+      if (rootLockStyle && rootLockStyle.isConnected) return;
+      const parent = settingsDocument.head || settingsDocument.documentElement;
+      if (!parent) return;
+      let style = typeof settingsDocument.getElementById === 'function'
+        ? settingsDocument.getElementById(ROOT_LOCK_STYLE_ID)
+        : null;
+      if (!style && typeof settingsDocument.querySelector === 'function') {
+        style = settingsDocument.querySelector(`#${ROOT_LOCK_STYLE_ID}`);
+      }
+      if (!style) {
+        style = settingsDocument.createElement('style');
+        style.id = ROOT_LOCK_STYLE_ID;
+        style.textContent = `
+          :root[${ROOT_LOCK_ATTRIBUTE}] { scrollbar-gutter: stable !important; overflow: hidden !important; overscroll-behavior: none !important; }
+          :root[${ROOT_LOCK_ATTRIBUTE}] body { overflow: hidden !important; overscroll-behavior: none !important; }
+        `;
+        parent.appendChild(style);
+      }
+      rootLockStyle = style;
+    }
+
+    function setRootLock(locked) {
+      const root = settingsDocument && settingsDocument.documentElement;
+      if (!root || typeof root.setAttribute !== 'function' || typeof root.removeAttribute !== 'function') return;
+      if (locked) {
+        ensureRootLockStyle();
+        root.setAttribute(ROOT_LOCK_ATTRIBUTE, '');
+      } else {
+        root.removeAttribute(ROOT_LOCK_ATTRIBUTE);
+      }
+    }
+
+    function parseCssColor(value) {
+      const text = String(value || '').trim().toLowerCase();
+      if (text === 'transparent') return [0, 0, 0, 0];
+      const match = text.match(/^rgba?\((.*)\)$/);
+      if (!match) return null;
+      const parts = match[1].replace(/[,/]/g, ' ').trim().split(/\s+/);
+      if (parts.length < 3) return null;
+      const channel = (part) => {
+        const number = Number.parseFloat(part);
+        if (!Number.isFinite(number)) return null;
+        return part.endsWith('%') ? Math.max(0, Math.min(255, number * 2.55)) : Math.max(0, Math.min(255, number));
+      };
+      const red = channel(parts[0]);
+      const green = channel(parts[1]);
+      const blue = channel(parts[2]);
+      if (red === null || green === null || blue === null) return null;
+      let alpha = parts.length > 3 ? Number.parseFloat(parts[3]) : 1;
+      if (parts.length > 3 && parts[3].endsWith('%')) alpha /= 100;
+      return [red, green, blue, Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 1];
+    }
+
+    function relativeLuminance(color) {
+      const channel = (value) => {
+        const normalized = value / 255;
+        return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+      };
+      return channel(color[0]) * 0.2126 + channel(color[1]) * 0.7152 + channel(color[2]) * 0.0722;
+    }
+
+    function sampleElementLuminance(element, view) {
+      let composite = null;
+      let node = element;
+      while (node && node.nodeType === 1) {
+        let computed;
+        try {
+          computed = view.getComputedStyle(node);
+        } catch (_) {
+          computed = null;
+        }
+        const opacity = computed ? Math.max(0, Math.min(1, Number(computed.opacity || 1))) : 0;
+        if (computed && computed.display !== 'none' && computed.visibility !== 'hidden' && opacity > 0) {
+          const color = parseCssColor(computed.backgroundColor);
+          if (color) {
+            color[3] *= opacity;
+            if (!composite) composite = color;
+            else {
+              const front = composite;
+              const back = color;
+              const alpha = front[3] + back[3] * (1 - front[3]);
+              composite = [
+                (front[0] * front[3] + back[0] * back[3] * (1 - front[3])) / (alpha || 1),
+                (front[1] * front[3] + back[1] * back[3] * (1 - front[3])) / (alpha || 1),
+                (front[2] * front[3] + back[2] * back[3] * (1 - front[3])) / (alpha || 1),
+                alpha,
+              ];
+            }
+            if (composite[3] >= 0.96) return relativeLuminance(composite);
+          }
+        }
+        if (node === settingsDocument.documentElement) break;
+        node = node.parentNode;
+      }
+      return composite && composite[3] >= 0.96 ? relativeLuminance(composite) : null;
+    }
+
+    function preferredBackdropTheme(view) {
+      try {
+        return view && typeof view.matchMedia === 'function' && view.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      } catch (_) {
+        return 'dark';
+      }
+    }
+
+    function detectBackdropTheme() {
+      const view = settingsDocument.defaultView || runtime.window || runtime;
+      const width = Number(view && view.innerWidth);
+      const height = Number(view && view.innerHeight);
+      if (!settingsDocument || typeof settingsDocument.elementFromPoint !== 'function' || !view || typeof view.getComputedStyle !== 'function' || width <= 0 || height <= 0) {
+        return preferredBackdropTheme(view);
+      }
+      const luminances = [];
+      [0.2, 0.5, 0.8].forEach((xRatio) => [0.36, 0.56, 0.76].forEach((yRatio) => {
+        try {
+          const element = settingsDocument.elementFromPoint(width * xRatio, height * yRatio);
+          const luminance = element ? sampleElementLuminance(element, view) : null;
+          if (luminance !== null) luminances.push(luminance);
+        } catch (_) {
+          // A page can reject elementFromPoint while it is transitioning layouts.
+        }
+      }));
+      if (luminances.length < 3) return preferredBackdropTheme(view);
+      luminances.sort((a, b) => a - b);
+      return luminances[Math.floor(luminances.length / 2)] < 0.5 ? 'dark' : 'light';
+    }
+
+    function updateBackdropTheme() {
+      if (ui && ui.dialog) ui.dialog.setAttribute(BACKDROP_THEME_ATTRIBUTE, detectBackdropTheme());
+    }
 
     function statusText(state) {
       if (state === 'loading') return 'Loading saved settings…';
@@ -457,7 +596,7 @@ ${horizontalModeStyles}
       if (saveTimer !== null) clearTimeoutFn(saveTimer);
       saveTimer = setTimeoutFn(() => {
         saveTimer = null;
-        flushSettings().catch(() => {});
+        if (ui) flushSettings().catch(() => {});
       }, 120);
     }
 
@@ -601,10 +740,17 @@ ${horizontalModeStyles}
     }
 
     function ensureMounted() {
+      ensureRootLockStyle();
       if (!settingsDocument || typeof settingsDocument.createElement !== 'function') return null;
       if (ui && ui.host && ui.host.isConnected) {
         registerSettingsMenu();
         return ui;
+      }
+      if (ui && ui.host && !ui.host.isConnected) {
+        close();
+        pointerDownOutside = false;
+        setRootLock(false);
+        ui = null;
       }
       if (!settingsDocument.body) return null;
       const host = settingsDocument.createElement('div');
@@ -649,8 +795,13 @@ ${horizontalModeStyles}
           button, input, select, textarea { font: inherit; }
           button { cursor: pointer; }
           dialog { width: min(440px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--settings-border) !important; border-radius: 8px; background: var(--settings-panel) !important; color: var(--settings-text) !important; color-scheme: inherit; padding: 0; box-shadow: 0 8px 32px rgb(0 0 0 / 42%); }
-          dialog::backdrop { background: rgb(0 0 0 / 58%); }
-          .panel { overflow: auto; max-height: min(680px, calc(100vh - 32px)); padding: 18px; background: var(--settings-panel) !important; color: var(--settings-text) !important; }
+          dialog::backdrop { background: rgb(255 255 255 / 12%); }
+          @media (prefers-color-scheme: light) {
+            dialog::backdrop { background: rgb(0 0 0 / 32%); }
+          }
+          dialog[data-backdrop-theme="dark"]::backdrop { background: rgb(255 255 255 / 12%); }
+          dialog[data-backdrop-theme="light"]::backdrop { background: rgb(0 0 0 / 32%); }
+          .panel { overflow: auto; overscroll-behavior: contain; max-height: min(680px, calc(100vh - 32px)); padding: 18px; background: var(--settings-panel) !important; color: var(--settings-text) !important; }
           h2, label { color: var(--settings-text) !important; }
           h2 { font-size: 16px; margin: 0 0 8px; }
           .hint, .status { color: var(--settings-muted) !important; font-size: 12px; }
@@ -765,8 +916,21 @@ ${horizontalModeStyles}
       });
       ui.dialog.addEventListener('cancel', (event) => {
         event.preventDefault();
+        event.stopPropagation();
         close();
       });
+      ui.dialog.addEventListener('close', () => {
+        pointerDownOutside = false;
+        setRootLock(false);
+        flushSettings().catch(() => {});
+        if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+      });
+      ui.dialog.addEventListener('pointerdown', handleDialogPointerDown);
+      ui.dialog.addEventListener('pointercancel', () => { pointerDownOutside = false; });
+      ui.dialog.addEventListener('click', handleDialogClick);
+      ui.dialog.addEventListener('wheel', (event) => {
+        if (isOpen() && event.target === ui.dialog && isOutsideDialogPoint(event)) event.preventDefault();
+      }, {passive: false});
       ui.dialog.addEventListener('submit', (event) => event.preventDefault());
       ui.dialog.addEventListener('keydown', (event) => {
         if (event.key !== 'Tab') return;
@@ -786,25 +950,74 @@ ${horizontalModeStyles}
       });
     }
 
+    function isOpen() {
+      return !!(ui && ui.dialog && (ui.dialog.open || ui.dialog.hasAttribute('open')));
+    }
+
+    function isPrimaryPointer(event) {
+      if (!event || event.isPrimary === false) return false;
+      return event.pointerType !== 'mouse' || event.button === undefined || event.button === 0;
+    }
+
+    function isOutsideDialogPoint(event) {
+      if (!ui || !ui.dialog || !event || typeof ui.dialog.getBoundingClientRect !== 'function') return false;
+      const rect = ui.dialog.getBoundingClientRect();
+      const x = Number(event.clientX);
+      const y = Number(event.clientY);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+      return x < rect.left || x > rect.right || y < rect.top || y > rect.bottom;
+    }
+
+    function handleDialogPointerDown(event) {
+      pointerDownOutside = isOpen()
+        && isPrimaryPointer(event)
+        && event.target === ui.dialog
+        && isOutsideDialogPoint(event);
+    }
+
+    function handleDialogClick(event) {
+      const shouldClose = pointerDownOutside
+        && isOpen()
+        && isPrimaryPointer(event)
+        && event.target === ui.dialog
+        && isOutsideDialogPoint(event);
+      pointerDownOutside = false;
+      if (shouldClose) {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }
+    }
+
     function show() {
+      if (ui && isOpen()) {
+        if (ui.range && typeof ui.range.focus === 'function') ui.range.focus();
+        return;
+      }
       const mounted = ensureMounted();
       if (!mounted) return;
       lastFocus = ui.shadow.activeElement || settingsDocument.activeElement || null;
       renderSettings();
-      if (typeof ui.dialog.showModal === 'function') {
-        try {
-          if (!ui.dialog.open) ui.dialog.showModal();
-        } catch (_) {
-          ui.dialog.setAttribute('open', '');
-        }
-      } else {
-        ui.dialog.setAttribute('open', '');
+      updateBackdropTheme();
+      if (typeof ui.dialog.showModal !== 'function') {
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') console.warn('[Reddit Fluid Width] Native modal dialogs are unavailable; settings remain closed.');
+        setRootLock(false);
+        return;
       }
+      try {
+        if (!ui.dialog.open) ui.dialog.showModal();
+      } catch (error) {
+        setRootLock(false);
+        if (typeof console !== 'undefined' && typeof console.warn === 'function') console.warn('[Reddit Fluid Width] Native settings modal could not open; settings remain closed.', error);
+        return;
+      }
+      setRootLock(isOpen());
       if (ui.range && typeof ui.range.focus === 'function') ui.range.focus();
     }
 
     function close() {
       if (!ui) return;
+      setRootLock(false);
       flushSettings().catch(() => {});
       if (typeof ui.dialog.close === 'function' && ui.dialog.open) ui.dialog.close();
       else ui.dialog.removeAttribute('open');

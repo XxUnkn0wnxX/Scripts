@@ -2,12 +2,23 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos.
 
-Current documented release: `1.1.0`.
+Current documented release: `1.1.1`.
 
 ## Advanced Settings
 
 Choose **PSPrices Checkout Link settings** from your userscript manager's menu.
+The menu is available throughout PSPrices, including its home page. Checkout
+cards still require a supported regional product page.
 There is no floating settings button.
+
+While settings is open, the background page cannot be clicked, hovered, focused,
+or scrolled. Long settings content scrolls inside the panel. Closing restores
+page interaction without activating anything under the dismissal click.
+
+The translucent backdrop follows the page’s visible background: gentle black
+shading over a light page, or a faint white veil over a dark page. The script
+checks the page colors when you open settings. If they cannot be determined,
+it uses the browser’s preferred appearance, with dark as the fallback.
 
 The panel follows your browser's preferred light or dark appearance and updates
 when that preference changes. Text and controls use matching colors; the
@@ -29,7 +40,9 @@ forced fallback modes.
 
 Click **Save settings**, then reload the page when ready to apply the saved
 values. Changes do not reconfigure a checkout request already in progress.
-Closing without saving leaves stored settings unchanged.
+Closing without saving leaves stored settings unchanged. Clicking outside the
+panel or pressing Escape also closes it and discards unsaved edits. Reopening
+shows the last saved values.
 
 **Reset defaults** restores and saves all nine built-in values. Reload to apply
 them. Saving or resetting settings does not open a checkout link, copy anything
@@ -40,6 +53,10 @@ script updates. Missing settings receive their defaults; saved values are not
 replaced merely because source defaults change. The panel validates input and
 reports failed saves. The code examples below identify the settings and their
 built-in values; use the panel to customize them.
+
+The settings panel requires native modal-dialog support (`showModal`). If the
+browser cannot open a modal, settings stay closed so the script does not expose
+an interactive panel over an unblocked page. Use a browser with that support.
 
 ## PlayStation Store Setup and Redirect Caveat
 
@@ -300,3 +317,24 @@ The metadata grants support both modern and legacy userscript-manager APIs:
 - `@connect store.playstation.com`: permission for the Sony lookup host
 
 Sony requests are sent without account cookies or credential-bearing headers.
+
+## Scope of Account and Purchase Changes
+
+The replacement cards, hidden prompts, and `🏴‍☠️ unlocked` badge are local page
+changes. They do not purchase a PSPrices subscription or change the account's
+membership or server-side permissions.
+
+Regional SKU lookup happens automatically after a supported product card mounts.
+The request sends Sony the public product identifier and selected locale; the
+successful result is cached in memory for that page session. Advanced preferences
+are saved separately in userscript-manager storage.
+
+The cart action requires a click. Opening the generated link may add the item
+to the signed-in PlayStation account's cart through Sony's checkout redirect;
+the script does not confirm an order or pay for an item. A clipboard fallback
+replaces the clipboard with that checkout URL only after the action is clicked.
+The manual-link fallback waits for the user to open the displayed link.
+
+Disabling the script and reloading restores the native PSPrices page. It does
+not undo an item already added to the PlayStation cart. Saved preferences remain
+in the manager until reset or removed there.

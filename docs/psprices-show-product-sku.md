@@ -22,6 +22,7 @@ The script only runs on PSPrices product URLs matching:
 
 ```text
 https://psprices.com/region-*/game/*
+https://www.psprices.com/region-*/game/*
 ```
 
 This includes region paths such as `region-au`, `region-us`, and `region-gb`.
@@ -85,3 +86,15 @@ The SKU script owns its injected card and suppression of the native locked or un
 - The script does not add or resolve checkout suffixes such as `-E001`.
 - If a product page provides neither a `Product` SKU in JSON-LD nor an unmasked native unlocked SKU, no block is added.
 - Copying uses the browser clipboard API with a fallback for browsers where direct clipboard access fails.
+
+## Permissions and Data
+
+The script uses `@grant none`: it does not request userscript-manager APIs.
+It reads product data already present in the page, changes the SKU panel, and
+copies the displayed identifier only when **Copy SKU** is clicked. Copying
+replaces the current clipboard text. The fallback temporarily selects the SKU
+in a hidden text field and uses the browser's copy command.
+
+There are no settings, persistent caches, background requests, or data uploads.
+Showing a public SKU does not change PSPrices membership or buy a PlayStation
+product. Disable the script and reload to restore the native SKU panel.
