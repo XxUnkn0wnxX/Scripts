@@ -1,6 +1,6 @@
 # iOS 27 package script plan
 
-Status: **open — implementation and automated validation complete; awaiting explicit approval to promote to `master`.** Keep this plan and the overall iOS TODO open until the user authorizes that push, then mark them done after successful promotion. Handoff recorded on 2026-09-23; implementation work on 2026-09-26. Live installation and connected-device validation remain separate, unverified checks; promotion alone does not establish runtime compatibility.
+Status: **complete — implementation and automated validation passed, Big Sur runtime pass reported by the user, and promotion to `master` explicitly authorized on 2026-09-26.** Handoff recorded on 2026-09-23; implementation and runtime confirmation on 2026-09-26. Detailed runtime logs/device outcomes and testing on other OS/architecture combinations remain optional follow-up checks; completion does not imply runtime coverage of those platforms.
 
 Source: [ChatGPT — iOS 27 package update script](https://chatgpt.com/c/6ab38f6a-6608-83ec-a3a5-bd9e856f20eb), last updated 2026-09-23 at 08:50 UTC. Read through MCP, including the final correction after the catalog evidence was supplied.
 
@@ -14,7 +14,7 @@ The user confirmed that running the script without arguments must retain automat
 - `--dry-run` fetches only the temporary catalog and displays the selection; it creates no Downloads directory and performs no package download, installation, or service action.
 - `--download-only` also downloads the selected packages to `~/Downloads`, then stops.
 - No arguments preserve the current download/install/restart flow. No `--install` or `--legacy` flag is required.
-- The host's seed configuration stays read-only. The parser uses JXA/Foundation through built-in `osascript` without a new runtime dependency. JXA requires OS X 10.10, but the current Apple product declares macOS 10.13 as its installer minimum and includes Intel/ARM targets. Script tests run on Intel Big Sur 11.7.11; end-to-end runtime validation on the listed OS/CPU ranges has not been performed.
+- The host's seed configuration stays read-only. The parser uses JXA/Foundation through built-in `osascript` without a new runtime dependency. JXA requires OS X 10.10, but the current Apple product declares macOS 10.13 as its installer minimum and includes Intel/ARM targets. Automated tests run on Intel Big Sur 11.7.11, and the user subsequently reported that the script worked in a Big Sur runtime test. Other listed OS/CPU combinations remain untested on matching hardware.
 - All selected downloads are staged before replacing existing package files or starting installation. Install order is CoreTypes, MobileDevice, then optional AppleKIS.
 - macOS versions below 13 retain the two-package flow. A numeric `>= 13` comparison also selects the same product's AppleKIS package when available, following Apple's current distribution. Use version ranges rather than release-name allowlists.
 - Detect real macOS version with `SYSTEM_VERSION_COMPAT=0`, and hardware architecture with ARM capability and Rosetta translation probes before an `uname` fallback. Apple Silicon under Rosetta must still be classified as ARM hardware. Current universal package URLs do not change by architecture.
@@ -95,7 +95,7 @@ The same distribution activates `AppleKIS.pkg` through `Script1` when `system.ve
 
 Seed-file discovery checks the standard `Seeding.framework/Resources` path, then `Versions/Current/Resources`, then `Versions/A/Resources`, using only the first readable `SeedCatalogs.plist`. Local Apple framework symlinks confirm that topology. The maintained [Munki installer source](https://github.com/munki/macadmin-scripts/blob/main/installinstallmacos.py) also uses the `Versions/Current` path and reads `DeveloperSeed`. These are framework layouts rather than separate Intel/ARM paths. No readable plist or no valid DeveloperSeed entry must stop before catalog fetch; do not synthesize a URL or alter seed configuration. There is no live ARM filesystem verification in this session.
 
-The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/architecture handling from test coverage. Automated script tests exercise simulated platform probes and package/service actions. A real Big Sur dry run checks discovery only. Installation, service recovery, and device reconnection across Intel/ARM and the documented OS ranges remain untested end to end.
+The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/architecture handling from test coverage. Automated script tests exercise simulated platform probes and package/service actions. A real Big Sur dry run checks discovery only; the subsequent Big Sur runtime pass was reported by the user. Other Intel/ARM and OS combinations remain untested end to end.
 
 ## Implementation checklist
 
@@ -114,7 +114,7 @@ The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/arc
 - [x] Add opt-in `--dry-run` and `--download-only`; preserve automatic installation with no arguments.
 - [x] Explain package-installation and service-recovery privileges, with a short italic password-visibility notice before possible authentication.
 - [x] Update [`fetch-ios-pkgs.md`](../fetch-ios-pkgs.md) for both filenames, modes, dependencies, and compatibility limits.
-- [ ] After explicit user authorization, promote to `master`, verify the remote commit, and mark the overall iOS TODO and this plan done.
+- [x] Receive explicit user authorization for `master` promotion and completion of the overall iOS TODO and this plan.
 
 ## Validation checklist
 
@@ -123,6 +123,8 @@ Parser and installation-flow tests use local fixtures and stubbed system actions
 Final automated suite: **94 passed with each of system zsh 5.8, Homebrew zsh 5.9.2, and upstream zsh 5.3.1**, all on Intel Big Sur 11.7.11. The default invocation was `.venv/bin/python -m pytest -q tests/fetch_ios_pkgs`; other-interpreter runs set `FETCH_IOS_PKGS_ZSH` to the relevant executable path. Python compilation, all three zsh syntax checks, and diff/documentation checks passed. The original selector also failed a renamed-only regression fixture that the new selector passed.
 
 The final live `--dry-run` detected Big Sur 11.7.11 / `x86_64`, selected product `142-23719`, and displayed the MobileDevice/CoreTypes pair. It created no Downloads directory, and the seed plist's SHA-256 matched the pre-change baseline. Selection from the cached real catalog with simulated macOS 27.0 also included that product's AppleKIS URL; this was a parser check, not execution on macOS 27.
+
+On 2026-09-26, the user confirmed that the script worked and that Big Sur runtime testing passed. Record this as user-reported runtime success on the session's Intel Big Sur host. Installer logs, final receipts, restart PID evidence, device/iOS details, and a separate update-prompt result were not supplied. The package installer still uses the original `-verboseR` option with output sent directly to the terminal; curl download progress is also retained.
 
 The compatibility interpreter was built from the upstream [zsh 5.3.1 source archive](https://www.zsh.org/pub/old/zsh-5.3.1.tar.xz) in ignored temporary storage, without installation or source changes. Building with Apple clang required `CFLAGS='-O2 -std=gnu89 -Wno-error=implicit-function-declaration'` so its historical configuration probes compiled correctly, plus `--disable-dynamic --without-tcsetpgrp` for the test build. All test runs still used Big Sur's JXA/Foundation and external utilities; this is older-shell evidence, not a High Sierra system test. Test subprocesses run in isolated process groups so a timed-out shell cannot leave descendants holding the test's output pipes open.
 
@@ -141,6 +143,7 @@ The compatibility interpreter was built from the upstream [zsh 5.3.1 source arch
 - [x] Simulated service recovery covers immediate/delayed replacement, unchanged and partially surviving original PIDs, successful and ineffective kickstart, force-kill targeting, initial absence, observation/permission errors, both legacy plist paths, and missing plists. Recovery runs under the same strict shell options and conditional-call context as normal mode.
 - [x] A service-recovery warning remains nonfatal after successful installations, and output advises unlocking/reconnecting a device that does not reappear. Automatic ejection is omitted.
 - [x] Run system/Homebrew `zsh -n`, focused pytest tests, Python compilation, and final diff/documentation checks.
+- [x] User-reported Big Sur runtime pass received on 2026-09-26.
 - [ ] When ready for live validation, compare discovery output with the actual host catalog, installer applicability, and installed receipts. Record the tested macOS version and device/iOS version.
 - [ ] During an explicitly requested installation test, record the selected product, installed receipts, and reconnect/prompt result. Fixture success alone does not prove that the iOS update prompt is resolved.
 
@@ -155,7 +158,7 @@ Keep these distinct from the confirmed filename/parser fix:
 
 ## Remaining live validation
 
-When a live installation test is explicitly requested:
+Big Sur already has a user-reported runtime pass. For a detailed evidence run or testing on another OS/architecture, when explicitly requested:
 
 1. Record the Mac's OS version, hardware architecture, native/Rosetta execution state, connected device/iOS version, and installed receipts.
 2. Run `--dry-run` and check the current catalog selection and package applicability.
@@ -164,4 +167,4 @@ When a live installation test is explicitly requested:
 
 Offline tests and live catalog selection do not prove that an installation succeeds on every older Mac or resolves the prompt on a connected device.
 
-The original handoff was planning only. The implementation session changed the script and tests and performed live catalog discovery; it did not download real packages, install packages, or restart services.
+The original handoff was planning only. Agent-run validation changed the script and tests and performed live catalog discovery; it did not download real packages, install packages, or restart services. The user subsequently ran the script and reported the successful Big Sur runtime result above.

@@ -42,11 +42,11 @@ Unknown architectures, an unreadable OS version, or a missing usable seed file p
 
 ## Validation Status
 
-**Automated script tests have been performed; end-to-end runtime tests of installation, service recovery, and connected-device behavior have not.** The OS ranges and architectures above have not been fully tested on their corresponding Macs.
+**Automated script tests pass, and the user reported a successful runtime test on Intel macOS Big Sur on 2026-09-26.** Other OS versions, native Apple Silicon, and Rosetta execution remain untested on matching hardware.
 
 All **94 automated tests passed with each of system zsh 5.8, Homebrew zsh 5.9.2, and a temporary upstream zsh 5.3.1 build**, on an Intel Mac running Big Sur 11.7.11. Coverage includes simulated OS ranges through 27 and 28, Intel/native ARM/Rosetta detection, seed-path fallbacks, AppleKIS selection, privilege notices, diagnostic severity, modes, failures, and service recovery. The older-interpreter run still used Big Sur's JXA/Foundation and utilities; it was not a High Sierra runtime test. The temporary interpreter was built only for compatibility testing and was not installed or made a script dependency.
 
-A live `--dry-run` on Big Sur verified catalog discovery only. Downloads, installers, process signals, and launchctl actions in the automated suite are mocked. Native Apple Silicon execution, Rosetta execution, installation on the listed OS ranges, service restart permissions, and device reconnection still need validation on actual matching hardware. No script test result should be read as proof that the connected-device update prompt is resolved.
+A live `--dry-run` on Big Sur independently verified catalog discovery. The subsequent Big Sur runtime pass is user-reported; installer logs, final receipts, replacement PIDs, and detailed device/prompt outcomes were not collected for that run. Downloads, installers, process signals, and launchctl actions in the automated suite are mocked. The Big Sur result does not establish compatibility across the other documented OS/architecture combinations.
 
 ## Basic Usage
 
@@ -55,6 +55,8 @@ A live `--dry-run` on Big Sur verified catalog discovery only. Downloads, instal
 ```
 
 The no-argument behaviour remains automatic: show links, download, install, and attempt a service restart. Before requesting administrator access through `sudo`, it explains that the selected packages will be installed into system locations on `/`, names those packages, and explains the subsequent `usbmuxd` restart. It also explains the service-recovery privilege requirement before that step, in case authentication is requested again. An already-root invocation does not need `sudo`; neither optional mode requests installation or service privileges.
+
+Package installation retains the original `installer -verboseR` output, sent directly to the terminal without filtering or suppression. Downloads retain curl's progress bar and error output.
 
 The password notice is kept short: *Password is invisible as you type.* It uses italics in an interactive terminal and plain text when output is redirected or the terminal declares no formatting support.
 
@@ -111,14 +113,14 @@ Each attempted recovery step allows a bounded wait of up to ten seconds. A resta
 
 Recovery targets `usbmuxd` only. It does not restart Finder, iTunes, or other MobileDevice framework clients. Static inspection of iMazing 3.6.5 found that its corresponding action force-kills `usbmuxd` and relaunches iMazing itself; this did not establish a need to restart every Apple mobile-device agent.
 
-If recovery cannot be confirmed, the script reports a warning and suggests reconnecting the device or rebooting. Successful package installation remains successful even if service recovery cannot be confirmed. Service recovery has been tested with simulated processes and commands; a live restart remains unverified.
+If recovery cannot be confirmed, the script reports a warning and suggests reconnecting the device or rebooting. Successful package installation remains successful even if service recovery cannot be confirmed. Service recovery has been tested with simulated processes and commands. The user reported a successful Big Sur runtime test, but the restart output and replacement PIDs from that run were not independently recorded.
 
 Connected iOS devices are not automatically ejected. Apple's [Finder guidance](https://support.apple.com/en-eg/guide/mac-help/wi-fi-syncing-mchlada1d602/mac) describes ejection before disconnecting a device; it does not establish an eject/restart sequence that guarantees reconnection. A confirmed daemon restart does not prove that Finder or another client has rediscovered the device. If the device does not reappear, unlock it and reconnect its cable.
 
 ## Good To Know
 
 - The script does not compare installed receipts or skip an already-installed build. It installs the selected packages in normal mode, as before.
-- Live package installation and the connected-device update prompt have not been validated as part of this parser change. A successful dry run proves catalog discovery only.
+- Big Sur runtime testing passed according to the user's report. Detailed connected-device update-prompt results and runtime testing on other OS/architecture combinations remain unrecorded. A dry run proves catalog discovery only.
 
 ## Offline Tests
 
