@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4.8
+// @version      1.1.0
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -17,6 +17,12 @@
 // @grant        GM_setClipboard
 // @grant        GM.setClipboard
 // @grant        GM_log
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.registerMenuCommand
 // @connect      store.playstation.com
 // @noframes
 // ==/UserScript==
@@ -25,11 +31,41 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.0.4.8';
-  const LOG_LEVEL = 'info';
-  const SHOW_DIAGNOSTICS = false;
-  const FORCE_CLIPBOARD_FALLBACK = false;
-  const FORCE_MANUAL_LINK_FALLBACK = false;
+  const SCRIPT_VERSION = '1.1.0';
+
+  const DEFAULT_SETTINGS = Object.freeze({
+    LOG_LEVEL: 'info',
+    SHOW_DIAGNOSTICS: false,
+    FORCE_CLIPBOARD_FALLBACK: false,
+    FORCE_MANUAL_LINK_FALLBACK: false,
+    REQUEST_TIMEOUT_MS: 20_000,
+    CLICK_COOLDOWN_MS: 3_000,
+    CLIPBOARD_CALLBACK_WAIT_MS: 1_000,
+    WRAPPER_ENTER_MS: 450,
+    LINKGEN_START_DELAY_MS: 150
+  });
+
+  const SETTINGS_STORAGE_PREFIX = 'psprices-checkout-link.setting:';
+  const SETTINGS_STORAGE_MISSING = '__psprices_checkout_setting_missing__';
+  const SETTINGS_MENU_LABEL = 'PSPrices Checkout Link settings';
+  const SETTINGS_WARNING =
+    'Advanced users only. Changing these settings can break checkout-link generation or fallback behavior. You are responsible for problems caused by your changes.';
+  const SETTINGS_DEFINITIONS = Object.freeze([
+    { name: 'LOG_LEVEL', label: 'Log level', type: 'select' },
+    { name: 'SHOW_DIAGNOSTICS', label: 'Show diagnostics', type: 'boolean' },
+    { name: 'FORCE_CLIPBOARD_FALLBACK', label: 'Force clipboard fallback', type: 'boolean' },
+    { name: 'FORCE_MANUAL_LINK_FALLBACK', label: 'Force Manual Link fallback', type: 'boolean' },
+    { name: 'REQUEST_TIMEOUT_MS', label: 'Request timeout (ms)', type: 'number', min: 1, max: 120_000 },
+    { name: 'CLICK_COOLDOWN_MS', label: 'Click cooldown (ms)', type: 'number', min: 0, max: 120_000 },
+    { name: 'CLIPBOARD_CALLBACK_WAIT_MS', label: 'Clipboard callback wait (ms)', type: 'number', min: 0, max: 10_000 },
+    { name: 'WRAPPER_ENTER_MS', label: 'Wrapper fade duration (ms)', type: 'number', min: 0, max: 10_000 },
+    { name: 'LINKGEN_START_DELAY_MS', label: 'Link generation start delay (ms)', type: 'number', min: 0, max: 10_000 }
+  ]);
+
+  let LOG_LEVEL = DEFAULT_SETTINGS.LOG_LEVEL;
+  let SHOW_DIAGNOSTICS = DEFAULT_SETTINGS.SHOW_DIAGNOSTICS;
+  let FORCE_CLIPBOARD_FALLBACK = DEFAULT_SETTINGS.FORCE_CLIPBOARD_FALLBACK;
+  let FORCE_MANUAL_LINK_FALLBACK = DEFAULT_SETTINGS.FORCE_MANUAL_LINK_FALLBACK;
 
   /*
    * Logging levels:
@@ -49,9 +85,9 @@
   const LOOKUP_BASE_URL =
     'https://store.playstation.com/store/api/chihiro/00_09_000/container';
 
-  const REQUEST_TIMEOUT_MS = 20_000;
-  const CLICK_COOLDOWN_MS = 3_000;
-  const CLIPBOARD_CALLBACK_WAIT_MS = 1_000;
+  let REQUEST_TIMEOUT_MS = DEFAULT_SETTINGS.REQUEST_TIMEOUT_MS;
+  let CLICK_COOLDOWN_MS = DEFAULT_SETTINGS.CLICK_COOLDOWN_MS;
+  let CLIPBOARD_CALLBACK_WAIT_MS = DEFAULT_SETTINGS.CLIPBOARD_CALLBACK_WAIT_MS;
 
   const OWNER_ATTR = 'data-psprices-checkout-userscript';
   const TARGET_TYPE_ATTR = 'data-psprices-checkout-target';
@@ -70,8 +106,8 @@
   const COSMETIC_STYLE_ID = 'psprices-checkout-cosmetic-style';
   const WRAPPER_ENTER_CLASS = 'psprices-checkout-wrapper-enter';
   const WRAPPER_ENTER_ACTIVE_CLASS = 'psprices-checkout-wrapper-enter-active';
-  const WRAPPER_ENTER_MS = 450;
-  const LINKGEN_START_DELAY_MS = 150;
+  let WRAPPER_ENTER_MS = DEFAULT_SETTINGS.WRAPPER_ENTER_MS;
+  let LINKGEN_START_DELAY_MS = DEFAULT_SETTINGS.LINKGEN_START_DELAY_MS;
   const HEADER_BADGE_CLASS =
     'text-[8px] font-bold bg-blue-700 dark:bg-blue-600 text-white ' +
     'px-1 py-0 rounded lowercase overflow-hidden';
@@ -108,10 +144,20 @@
     if (!document.documentElement.classList.contains(BOOTSTRAP_CLASS)) {
       document.documentElement.classList.add(BOOTSTRAP_CLASS);
     }
-    if (document.getElementById(BOOTSTRAP_STYLE_ID)) return;
+    const styleText = buildBootstrapStyleText();
+    const existingStyle = document.getElementById(BOOTSTRAP_STYLE_ID);
+    if (existingStyle) {
+      if (existingStyle.textContent !== styleText) existingStyle.textContent = styleText;
+      return;
+    }
     const style = document.createElement('style');
     style.id = BOOTSTRAP_STYLE_ID;
-    style.textContent = `
+    style.textContent = styleText;
+    (document.head || document.documentElement).append(style);
+  }
+
+  function buildBootstrapStyleText() {
+    return `
       html.${BOOTSTRAP_CLASS}
         #game-detail.game-detail--unlockable[data-game-id]
         #avatar-buy-block[data-avatar-buy-block]:not([${WRAPPER_READY_ATTR}]),
@@ -168,7 +214,11 @@
         }
       }
     `;
-    (document.head || document.documentElement).append(style);
+  }
+
+  function refreshBootstrapStyle() {
+    const style = document.getElementById(BOOTSTRAP_STYLE_ID);
+    if (style) style.textContent = buildBootstrapStyleText();
   }
 
   function releaseTransitionSuppression() {
@@ -396,10 +446,26 @@
     for (const locale of config.locales) VALID_SONY_LOCALES.add(locale);
   }
 
-  const effectiveLogLevel = LOG_LEVEL === 'verbose' ? 'verbose' : 'info';
+  let effectiveLogLevel = LOG_LEVEL === 'verbose' ? 'verbose' : 'info';
   const successfulSkuCache = new Map();
   const loggedMessages = new Map();
   let managerLogWarningShown = false;
+  let settingsReady = false;
+  let settingsStartupPromise = null;
+  let settingsMutationGeneration = 0;
+  let settingsStorage = null;
+  let settingsStorageWriteChain = Promise.resolve();
+  let settingsStorageWarning = null;
+  const settingsProtectedKeys = new Set();
+  let settingsMenuRegistered = false;
+  let settingsDialogUi = null;
+  let settingsDialogOpen = false;
+  let settingsDialogPending = false;
+  let settingsDialogDraft = null;
+  let settingsDialogTouched = new Set();
+  let settingsLastSavedSnapshot = null;
+  let settingsDialogLastFocus = null;
+  let runtimeStarted = false;
   let activeMount = null;
   let transitionActive = false;
   let requestGeneration = 0;
@@ -469,6 +535,575 @@
     warn: (...parts) => writeLog('warn', ...parts),
     error: (...parts) => writeLog('error', ...parts)
   });
+
+  // Cosmetic/bootstrap suppression remains document-start; only checkout
+  // lifecycle startup waits for the asynchronous settings read.
+  ensureHeaderUnlockedBadge();
+  startSettingsInitialization();
+
+  function copySettings(settings) {
+    return SETTINGS_DEFINITIONS.reduce((copy, definition) => {
+      copy[definition.name] = settings[definition.name];
+      return copy;
+    }, {});
+  }
+
+  function normalizeSettingValue(definition, value) {
+    if (definition.type === 'select') {
+      return value === 'info' || value === 'verbose' ? value : null;
+    }
+    if (definition.type === 'boolean') {
+      return typeof value === 'boolean' ? value : null;
+    }
+    if (typeof value !== 'number' && typeof value !== 'string') return null;
+    if (typeof value === 'string' && value.trim() === '') return null;
+    const numeric = typeof value === 'number' ? value : Number(value);
+    if (!Number.isFinite(numeric) || numeric < definition.min || numeric > definition.max) {
+      return null;
+    }
+    return numeric;
+  }
+
+  function validateSettings(settings) {
+    const normalized = {};
+    for (const definition of SETTINGS_DEFINITIONS) {
+      const value = normalizeSettingValue(definition, settings[definition.name]);
+      if (value === null) {
+        return {
+          ok: false,
+          error: `${definition.label} must be a valid ${
+            definition.type === 'number'
+              ? `finite number from ${definition.min} to ${definition.max}`
+              : definition.type === 'boolean' ? 'boolean' : "'info' or 'verbose'"
+          }.`
+        };
+      }
+      normalized[definition.name] = value;
+    }
+    return { ok: true, settings: normalized };
+  }
+
+  function activeSettingsSnapshot() {
+    return {
+      LOG_LEVEL,
+      SHOW_DIAGNOSTICS,
+      FORCE_CLIPBOARD_FALLBACK,
+      FORCE_MANUAL_LINK_FALLBACK,
+      REQUEST_TIMEOUT_MS,
+      CLICK_COOLDOWN_MS,
+      CLIPBOARD_CALLBACK_WAIT_MS,
+      WRAPPER_ENTER_MS,
+      LINKGEN_START_DELAY_MS
+    };
+  }
+
+  function applyRuntimeSettings(settings) {
+    const validated = validateSettings(settings);
+    if (!validated.ok) return false;
+    const values = validated.settings;
+    LOG_LEVEL = values.LOG_LEVEL;
+    SHOW_DIAGNOSTICS = values.SHOW_DIAGNOSTICS;
+    FORCE_CLIPBOARD_FALLBACK = values.FORCE_CLIPBOARD_FALLBACK;
+    FORCE_MANUAL_LINK_FALLBACK = values.FORCE_MANUAL_LINK_FALLBACK;
+    REQUEST_TIMEOUT_MS = values.REQUEST_TIMEOUT_MS;
+    CLICK_COOLDOWN_MS = values.CLICK_COOLDOWN_MS;
+    CLIPBOARD_CALLBACK_WAIT_MS = values.CLIPBOARD_CALLBACK_WAIT_MS;
+    WRAPPER_ENTER_MS = values.WRAPPER_ENTER_MS;
+    LINKGEN_START_DELAY_MS = values.LINKGEN_START_DELAY_MS;
+    effectiveLogLevel = LOG_LEVEL === 'verbose' ? 'verbose' : 'info';
+    return true;
+  }
+
+  function getSettingsStorage() {
+    let modern = null;
+    try {
+      modern = typeof GM === 'object' && GM ? GM : null;
+    } catch (_) {}
+    if (
+      modern &&
+      typeof modern.getValue === 'function' &&
+      typeof modern.setValue === 'function'
+    ) {
+      return {
+        name: 'modern',
+        get(key) {
+          return modern.getValue(key, SETTINGS_STORAGE_MISSING);
+        },
+        set(key, value) {
+          return modern.setValue(key, value);
+        }
+      };
+    }
+    if (typeof GM_getValue === 'function' && typeof GM_setValue === 'function') {
+      return {
+        name: 'legacy',
+        get(key) {
+          return GM_getValue(key, SETTINGS_STORAGE_MISSING);
+        },
+        set(key, value) {
+          return GM_setValue(key, value);
+        }
+      };
+    }
+    return null;
+  }
+
+  function settingsStorageKey(name) {
+    return `${SETTINGS_STORAGE_PREFIX}${name}`;
+  }
+
+  async function readSetting(definition, storage) {
+    try {
+      const raw = await Promise.resolve(storage.get(settingsStorageKey(definition.name)));
+      if (raw === SETTINGS_STORAGE_MISSING) return { kind: 'missing' };
+      if (typeof raw === 'undefined') {
+        return { kind: 'failed', error: new Error('Storage returned an unknown value.') };
+      }
+      const value = normalizeSettingValue(definition, raw);
+      if (value === null) {
+        return { kind: 'failed', error: new Error('Stored setting failed validation.') };
+      }
+      return { kind: 'value', value };
+    } catch (error) {
+      return { kind: 'failed', error };
+    }
+  }
+
+  function setSettingsDialogStatus(message, state = 'info') {
+    if (!settingsDialogUi?.status) return;
+    settingsDialogUi.status.textContent = message;
+    settingsDialogUi.status.dataset.state = state;
+  }
+
+  function queueSettingsWrites(entries) {
+    if (!settingsStorage) {
+      return Promise.reject(new Error('Userscript-manager settings storage is unavailable.'));
+    }
+    const write = settingsStorageWriteChain.then(async () => {
+      const failures = [];
+      for (const entry of entries) {
+        try {
+          await Promise.resolve(settingsStorage.set(entry.key, entry.value));
+        } catch (error) {
+          failures.push({ key: entry.key, error });
+        }
+      }
+      if (failures.length) {
+        const failedKeys = failures.map((failure) => failure.key).join(', ');
+        const error = new Error(`Failed to save settings: ${failedKeys}`);
+        error.failures = failures;
+        throw error;
+      }
+    });
+    settingsStorageWriteChain = write.catch(() => {});
+    return write;
+  }
+
+  function settingsWriteEntries(settings) {
+    return SETTINGS_DEFINITIONS.map((definition) => ({
+      key: settingsStorageKey(definition.name),
+      value: settings[definition.name]
+    }));
+  }
+
+  function closeSettingsDialog() {
+    if (!settingsDialogUi) return;
+    settingsDialogOpen = false;
+    settingsDialogDraft = null;
+    if (typeof settingsDialogUi.dialog.close === 'function' && settingsDialogUi.dialog.open) {
+      settingsDialogUi.dialog.close();
+    } else {
+      settingsDialogUi.dialog.removeAttribute('open');
+    }
+    window.removeEventListener('keydown', settingsDialogKeydown, true);
+    if (settingsDialogLastFocus && typeof settingsDialogLastFocus.focus === 'function') {
+      settingsDialogLastFocus.focus();
+    }
+    settingsDialogLastFocus = null;
+  }
+
+  function settingsDialogKeydown(event) {
+    if (settingsDialogOpen && event.key === 'Escape') {
+      event.preventDefault();
+      closeSettingsDialog();
+    }
+  }
+
+  function settingsDialogFields() {
+    if (!settingsDialogUi) return {};
+    return settingsDialogUi.fields;
+  }
+
+  function renderSettingsDialogDraft() {
+    if (!settingsDialogUi || !settingsDialogDraft) return;
+    for (const definition of SETTINGS_DEFINITIONS) {
+      const field = settingsDialogFields()[definition.name];
+      if (!field) continue;
+      if (definition.type === 'boolean') field.checked = settingsDialogDraft[definition.name];
+      else field.value = String(settingsDialogDraft[definition.name]);
+    }
+  }
+
+  function readSettingsDialogDraft() {
+    const draft = {};
+    for (const definition of SETTINGS_DEFINITIONS) {
+      const field = settingsDialogFields()[definition.name];
+      const raw = definition.type === 'boolean' ? field.checked : field.value;
+      draft[definition.name] = raw;
+    }
+    return validateSettings(draft);
+  }
+
+  function saveSettingsDialogDraft(settings, source) {
+    settingsMutationGeneration += 1;
+    settingsDialogDraft = copySettings(settings);
+    if (!settingsStorage) {
+      setSettingsDialogStatus(
+        'Settings could not be saved because userscript-manager storage is unavailable. Reload will keep the current built-in values.',
+        'error'
+      );
+      return;
+    }
+    setSettingsDialogStatus('Saving settings…', 'saving');
+    const entries = settingsWriteEntries(settings).filter((entry) =>
+      source === 'reset' ||
+      !settingsProtectedKeys.has(entry.key.slice(SETTINGS_STORAGE_PREFIX.length)) ||
+      settingsDialogTouched.has(entry.key.slice(SETTINGS_STORAGE_PREFIX.length))
+    );
+    if (!entries.length) {
+      setSettingsDialogStatus(
+        'No protected settings were changed. Unknown stored values were left untouched; reload to apply any saved changes.',
+        'info'
+      );
+      return;
+    }
+    queueSettingsWrites(entries).then(
+      () => {
+        const nextSaved = copySettings(settingsLastSavedSnapshot || activeSettingsSnapshot());
+        entries.forEach((entry) => {
+          const name = entry.key.slice(SETTINGS_STORAGE_PREFIX.length);
+          nextSaved[name] = entry.value;
+          settingsProtectedKeys.delete(name);
+        });
+        settingsLastSavedSnapshot = nextSaved;
+        settingsStorageWarning = settingsProtectedKeys.size
+          ? new Error('Some protected settings remain unreadable.')
+          : null;
+        const savedStatus = settingsProtectedKeys.size
+          ? 'Settings saved. Unknown stored values remain protected; reload will apply the saved fields only.'
+          : source === 'reset'
+            ? 'Defaults saved. Reload this page to apply them; active checkout state was left unchanged.'
+            : 'Settings saved. Reload this page to apply them; active checkout state was left unchanged.';
+        setSettingsDialogStatus(
+          savedStatus,
+          settingsProtectedKeys.size ? 'error' : 'saved'
+        );
+      },
+      (error) => {
+        const failedKeys = new Set(
+          (error?.failures || []).map((failure) => failure.key)
+        );
+        const nextSaved = copySettings(settingsLastSavedSnapshot || activeSettingsSnapshot());
+        entries.forEach((entry) => {
+          const name = entry.key.slice(SETTINGS_STORAGE_PREFIX.length);
+          if (failedKeys.has(entry.key)) return;
+          nextSaved[name] = entry.value;
+          settingsProtectedKeys.delete(name);
+        });
+        settingsLastSavedSnapshot = nextSaved;
+        settingsStorageWarning = error;
+        setSettingsDialogStatus(
+          'Settings could not be saved completely. Active checkout state was left unchanged; fix storage and save again before reloading.',
+          'error'
+        );
+      }
+    );
+  }
+
+  function resetSettingsDialog() {
+    const defaults = copySettings(DEFAULT_SETTINGS);
+    settingsDialogDraft = defaults;
+    renderSettingsDialogDraft();
+    saveSettingsDialogDraft(defaults, 'reset');
+  }
+
+  function bindSettingsDialogUi() {
+    const ui = settingsDialogUi;
+    if (!ui) return;
+    for (const definition of SETTINGS_DEFINITIONS) {
+      const field = ui.fields[definition.name];
+      field.addEventListener('input', () => settingsDialogTouched.add(definition.name));
+      field.addEventListener('change', () => settingsDialogTouched.add(definition.name));
+    }
+    ui.save.addEventListener('click', () => {
+      const result = readSettingsDialogDraft();
+      if (!result.ok) {
+        setSettingsDialogStatus(result.error, 'error');
+        return;
+      }
+      saveSettingsDialogDraft(result.settings, 'save');
+    });
+    ui.reset.addEventListener('click', resetSettingsDialog);
+    ui.close.addEventListener('click', closeSettingsDialog);
+    ui.dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      closeSettingsDialog();
+    });
+    ui.dialog.addEventListener('submit', (event) => event.preventDefault());
+    ui.dialog.addEventListener('click', (event) => {
+      if (event.target === ui.dialog) closeSettingsDialog();
+    });
+  }
+
+  function settingsDialogMarkup() {
+    return `
+      <style>
+        :host {
+          all: initial;
+          color-scheme: dark;
+          --settings-panel-bg: #161b22;
+          --settings-field-bg: #0d1117;
+          --settings-text: #e6edf3;
+          --settings-muted: #9da7b3;
+          --settings-border: #484f58;
+          --settings-control-border: #6e7681;
+          --settings-button-bg: #21262d;
+          --settings-primary-bg: #1f6feb;
+          --settings-primary-border: #1f6feb;
+          --settings-focus: #58a6ff;
+          --settings-warning-bg: #3d2f00;
+          --settings-warning-text: #ffdf70;
+          --settings-warning-border: #d29922;
+          --settings-error: #ff7b72;
+          --settings-success: #3fb950;
+          color: var(--settings-text);
+          font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+        @media (prefers-color-scheme: light) {
+          :host {
+            color-scheme: light;
+            --settings-panel-bg: #fff;
+            --settings-field-bg: #fff;
+            --settings-text: #1f2328;
+            --settings-muted: #57606a;
+            --settings-border: #d0d7de;
+            --settings-control-border: #8c959f;
+            --settings-button-bg: #f6f8fa;
+            --settings-primary-bg: #0969da;
+            --settings-primary-border: #0969da;
+            --settings-focus: #0969da;
+            --settings-warning-bg: #fff8c5;
+            --settings-warning-text: #533f03;
+            --settings-warning-border: #e0a500;
+            --settings-error: #82071e;
+            --settings-success: #1a7f37;
+          }
+        }
+        *, *::before, *::after { box-sizing: border-box; }
+        button, input, select { color: inherit; font: inherit; }
+        button { cursor: pointer; }
+        dialog { width: min(560px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--settings-border); border-radius: 8px; background: var(--settings-panel-bg); color: var(--settings-text); padding: 0; }
+        dialog::backdrop { background: rgb(0 0 0 / 58%); }
+        dialog { box-shadow: 0 8px 32px rgb(0 0 0 / 58%); }
+        @media (prefers-color-scheme: light) { dialog { box-shadow: 0 8px 32px rgb(31 35 40 / 28%); } dialog::backdrop { background: rgb(31 35 40 / 36%); } }
+        .panel { overflow: auto; max-height: min(760px, calc(100vh - 32px)); padding: 18px; }
+        h2 { font-size: 17px; margin: 0 0 8px; }
+        .warning { border: 1px solid var(--settings-warning-border); border-radius: 7px; background: var(--settings-warning-bg); color: var(--settings-warning-text); padding: 9px 10px; }
+        .note { color: var(--settings-muted); font-size: 12px; }
+        .field { display: grid; gap: 5px; margin: 13px 0; }
+        .field label { font-weight: 600; }
+        input[type="number"], select { width: 100%; border: 1px solid var(--settings-control-border); border-radius: 6px; background: var(--settings-field-bg); color: var(--settings-text); padding: 5px 7px; }
+        input::placeholder { color: var(--settings-muted); opacity: 1; }
+        :focus-visible { outline: 2px solid var(--settings-focus); outline-offset: 2px; }
+        .check { display: flex; gap: 8px; align-items: flex-start; margin: 13px 0; }
+        .status { min-height: 1.5em; margin: 14px 0 0; color: var(--settings-muted); }
+        .status[data-state="error"] { color: var(--settings-error); }
+        .status[data-state="saved"] { color: var(--settings-success); }
+        .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+        .actions button { border: 1px solid var(--settings-border); border-radius: 6px; background: var(--settings-button-bg); color: var(--settings-text); padding: 6px 10px; }
+        .actions .primary { background: var(--settings-primary-bg); border-color: var(--settings-primary-border); color: #fff; }
+      </style>
+      <dialog id="psprices-checkout-settings-dialog" aria-labelledby="psprices-checkout-settings-title">
+        <form class="panel">
+          <h2 id="psprices-checkout-settings-title">PSPrices Checkout Link settings</h2>
+          <p class="warning" role="alert">${SETTINGS_WARNING}</p>
+          <p class="note">Changes save for the next reload. Saving never changes active checkout state, reloads the page, clears checkout cache, or starts requests.</p>
+          <div class="field"><label for="psprices-checkout-setting-LOG_LEVEL">Log level</label><select id="psprices-checkout-setting-LOG_LEVEL" name="LOG_LEVEL"><option value="info">info</option><option value="verbose">verbose</option></select></div>
+          <label class="check" for="psprices-checkout-setting-SHOW_DIAGNOSTICS"><input id="psprices-checkout-setting-SHOW_DIAGNOSTICS" name="SHOW_DIAGNOSTICS" type="checkbox"> <span>Show diagnostics</span></label>
+          <label class="check" for="psprices-checkout-setting-FORCE_CLIPBOARD_FALLBACK"><input id="psprices-checkout-setting-FORCE_CLIPBOARD_FALLBACK" name="FORCE_CLIPBOARD_FALLBACK" type="checkbox"> <span>Force clipboard fallback</span></label>
+          <label class="check" for="psprices-checkout-setting-FORCE_MANUAL_LINK_FALLBACK"><input id="psprices-checkout-setting-FORCE_MANUAL_LINK_FALLBACK" name="FORCE_MANUAL_LINK_FALLBACK" type="checkbox"> <span>Force Manual Link fallback (takes priority)</span></label>
+          <div class="field"><label for="psprices-checkout-setting-REQUEST_TIMEOUT_MS">Request timeout (ms)</label><input id="psprices-checkout-setting-REQUEST_TIMEOUT_MS" name="REQUEST_TIMEOUT_MS" type="number" min="1" max="120000" step="any" inputmode="decimal"></div>
+          <div class="field"><label for="psprices-checkout-setting-CLICK_COOLDOWN_MS">Click cooldown (ms)</label><input id="psprices-checkout-setting-CLICK_COOLDOWN_MS" name="CLICK_COOLDOWN_MS" type="number" min="0" max="120000" step="any" inputmode="decimal"></div>
+          <div class="field"><label for="psprices-checkout-setting-CLIPBOARD_CALLBACK_WAIT_MS">Clipboard callback wait (ms)</label><input id="psprices-checkout-setting-CLIPBOARD_CALLBACK_WAIT_MS" name="CLIPBOARD_CALLBACK_WAIT_MS" type="number" min="0" max="10000" step="any" inputmode="decimal"></div>
+          <div class="field"><label for="psprices-checkout-setting-WRAPPER_ENTER_MS">Wrapper fade duration (ms)</label><input id="psprices-checkout-setting-WRAPPER_ENTER_MS" name="WRAPPER_ENTER_MS" type="number" min="0" max="10000" step="any" inputmode="decimal"></div>
+          <div class="field"><label for="psprices-checkout-setting-LINKGEN_START_DELAY_MS">Link generation start delay (ms)</label><input id="psprices-checkout-setting-LINKGEN_START_DELAY_MS" name="LINKGEN_START_DELAY_MS" type="number" min="0" max="10000" step="any" inputmode="decimal"></div>
+          <p class="status" role="status" aria-live="polite"></p>
+          <div class="actions"><button type="button" data-settings-reset>Reset defaults</button><button type="button" data-settings-close>Close</button><button class="primary" type="button" data-settings-save>Save settings</button></div>
+        </form>
+      </dialog>`;
+  }
+
+  function ensureSettingsDialogMounted() {
+    if (!document || typeof document.createElement !== 'function') return null;
+    if (!settingsDialogUi) {
+      const host = document.createElement('div');
+      host.id = 'psprices-checkout-settings-host';
+      const shadow = typeof host.attachShadow === 'function'
+        ? host.attachShadow({ mode: 'open' })
+        : host;
+      shadow.innerHTML = settingsDialogMarkup();
+      const fields = {};
+      for (const definition of SETTINGS_DEFINITIONS) {
+        fields[definition.name] = shadow.querySelector(`[name="${definition.name}"]`);
+      }
+      settingsDialogUi = {
+        host,
+        shadow,
+        dialog: shadow.querySelector('dialog'),
+        fields,
+        save: shadow.querySelector('[data-settings-save]'),
+        reset: shadow.querySelector('[data-settings-reset]'),
+        close: shadow.querySelector('[data-settings-close]'),
+        status: shadow.querySelector('.status')
+      };
+      bindSettingsDialogUi();
+    }
+    const parent = document.body || document.documentElement;
+    if (parent && settingsDialogUi.host.parentNode !== parent) parent.append(settingsDialogUi.host);
+    if (settingsDialogOpen && settingsDialogUi.dialog && !settingsDialogUi.dialog.hasAttribute('open')) {
+      try {
+        if (typeof settingsDialogUi.dialog.showModal === 'function') settingsDialogUi.dialog.showModal();
+        else settingsDialogUi.dialog.setAttribute('open', '');
+      } catch (_) {
+        settingsDialogUi.dialog.setAttribute('open', '');
+      }
+    }
+    return settingsDialogUi;
+  }
+
+  function openSettingsDialog() {
+    if (!settingsReady) {
+      settingsDialogPending = true;
+      return;
+    }
+    const ui = ensureSettingsDialogMounted();
+    if (!ui) {
+      settingsDialogPending = true;
+      return;
+    }
+    settingsDialogPending = false;
+    if (!settingsDialogOpen) {
+      settingsDialogLastFocus = document.activeElement;
+      settingsDialogTouched = new Set();
+      settingsDialogDraft = copySettings(
+        settingsLastSavedSnapshot || activeSettingsSnapshot()
+      );
+      renderSettingsDialogDraft();
+    }
+    if (settingsStorageWarning) {
+      setSettingsDialogStatus(
+        'Some settings could not be loaded or saved. Unread values remain protected; review your changes and save again.',
+        'error'
+      );
+    } else {
+      setSettingsDialogStatus('', 'info');
+    }
+    settingsDialogOpen = true;
+    window.addEventListener('keydown', settingsDialogKeydown, true);
+    try {
+      if (typeof ui.dialog.showModal === 'function' && !ui.dialog.open) ui.dialog.showModal();
+      else ui.dialog.setAttribute('open', '');
+    } catch (_) {
+      ui.dialog.setAttribute('open', '');
+    }
+    ui.close.focus();
+  }
+
+  function registerSettingsMenu() {
+    if (settingsMenuRegistered) return;
+    let modern = null;
+    try {
+      modern = typeof GM === 'object' && GM ? GM : null;
+    } catch (_) {}
+    try {
+      if (modern && typeof modern.registerMenuCommand === 'function') {
+        const result = modern.registerMenuCommand(SETTINGS_MENU_LABEL, openSettingsDialog);
+        settingsMenuRegistered = true;
+        if (result && typeof result.catch === 'function') result.catch(() => {});
+        return;
+      }
+      if (typeof GM_registerMenuCommand === 'function') {
+        GM_registerMenuCommand(SETTINGS_MENU_LABEL, openSettingsDialog);
+        settingsMenuRegistered = true;
+      }
+    } catch (_) {
+      // Optional menu APIs may be unavailable or declined by the manager.
+    }
+  }
+
+  async function initializeSettings() {
+    settingsStorage = getSettingsStorage();
+    registerSettingsMenu();
+    if (!settingsStorage) {
+      settingsStorageWarning = new Error('Userscript-manager settings storage is unavailable.');
+      settingsLastSavedSnapshot = copySettings(DEFAULT_SETTINGS);
+      return;
+    }
+
+    const readGeneration = settingsMutationGeneration;
+    const results = await Promise.all(
+      SETTINGS_DEFINITIONS.map((definition) => readSetting(definition, settingsStorage))
+    );
+    if (readGeneration !== settingsMutationGeneration) return;
+
+    const next = copySettings(DEFAULT_SETTINGS);
+    const missingEntries = [];
+    results.forEach((result, index) => {
+      const definition = SETTINGS_DEFINITIONS[index];
+      if (result.kind === 'value') {
+        next[definition.name] = result.value;
+      } else if (result.kind === 'missing') {
+        missingEntries.push({
+          key: settingsStorageKey(definition.name),
+          value: DEFAULT_SETTINGS[definition.name]
+        });
+      } else if (!settingsStorageWarning) {
+        settingsProtectedKeys.add(definition.name);
+        settingsStorageWarning = result.error || new Error('A saved setting could not be read.');
+      } else {
+        settingsProtectedKeys.add(definition.name);
+      }
+    });
+    applyRuntimeSettings(next);
+    settingsLastSavedSnapshot = copySettings(next);
+
+    if (missingEntries.length && settingsMutationGeneration === readGeneration) {
+      try {
+        await queueSettingsWrites(missingEntries);
+      } catch (error) {
+        settingsStorageWarning = error;
+      }
+    }
+  }
+
+  function finishSettingsStartup() {
+    if (settingsReady) return;
+    settingsReady = true;
+    refreshBootstrapStyle();
+    ensureHeaderUnlockedBadge();
+    startRuntime();
+    if (settingsDialogPending) openSettingsDialog();
+  }
+
+  function startSettingsInitialization() {
+    if (settingsStartupPromise) return settingsStartupPromise;
+    settingsStartupPromise = initializeSettings().catch((error) => {
+      settingsStorageWarning = error;
+    }).then(() => {
+      finishSettingsStartup();
+    });
+    return settingsStartupPromise;
+  }
 
   function normalizeRegionAlias(value) {
     const candidate = String(value || '').trim().toLowerCase();
@@ -2167,6 +2802,9 @@
   }
 
   function scheduleLifecycle(reason = 'mutation') {
+    if (!settingsReady) {
+      return;
+    }
     if (scheduledFrame) return;
     logger.verbose('Lifecycle scheduled.', reason);
     scheduledFrame = window.requestAnimationFrame(() => {
@@ -2191,64 +2829,73 @@
     );
   }
 
-  logger.info(`has started (v${SCRIPT_VERSION})`);
-  try {
-    logger.verbose('Userscript manager:', GM_info?.scriptHandler || 'unknown');
-  } catch (_) {
-    logger.verbose('Userscript manager: unknown');
-  }
+  function startRuntime() {
+    if (runtimeStarted) return;
+    runtimeStarted = true;
+    logger.info(`has started (v${SCRIPT_VERSION})`);
+    try {
+      logger.verbose('Userscript manager:', GM_info?.scriptHandler || 'unknown');
+    } catch (_) {
+      logger.verbose('Userscript manager: unknown');
+    }
+    if (settingsStorageWarning) {
+      logger.warn('Some saved settings were unavailable; built-in values were retained.');
+    }
 
-  const observer = new MutationObserver(() => {
-    ensureHeaderUnlockedBadge();
-    if (PRODUCT_PATH.test(window.location.pathname)) {
+    const observer = new MutationObserver(() => {
+      ensureHeaderUnlockedBadge();
+      if (settingsDialogUi) ensureSettingsDialogMounted();
+      if (PRODUCT_PATH.test(window.location.pathname)) {
+        enableBootstrapSuppression();
+      }
+      if (activeMount && !activeCardIsIntact(activeMount)) {
+        enableTransitionSuppression();
+        activeMount.buyBlock?.removeAttribute(WRAPPER_READY_ATTR);
+      }
+      scheduleLifecycle('mutation');
+    });
+    observer.observe(document.documentElement, {
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        'class',
+        'data-avatar-buy-block',
+        'data-game-id',
+        'data-region',
+        'data-test-id',
+        'href',
+        'id',
+        'style',
+        'x-data'
+      ],
+      subtree: true
+    });
+    window.addEventListener('pageshow', () => {
+      ensureHeaderUnlockedBadge();
       enableBootstrapSuppression();
-    }
-    if (activeMount && !activeCardIsIntact(activeMount)) {
-      enableTransitionSuppression();
-      activeMount.buyBlock?.removeAttribute(WRAPPER_READY_ATTR);
-    }
-    scheduleLifecycle('mutation');
-  });
-  observer.observe(document.documentElement, {
-    childList: true,
-    attributes: true,
-    attributeFilter: [
-      'class',
-      'data-avatar-buy-block',
-      'data-game-id',
-      'data-region',
-      'data-test-id',
-      'href',
-      'id',
-      'style',
-      'x-data'
-    ],
-    subtree: true
-  });
-  window.addEventListener('pageshow', () => {
-    ensureHeaderUnlockedBadge();
-    enableBootstrapSuppression();
-    scheduleLifecycle('pageshow');
-  });
-  window.addEventListener('popstate', () => {
-    enableBootstrapSuppression();
-    scheduleLifecycle('popstate');
-  });
-  document.addEventListener('DOMContentLoaded', () => {
-    ensureHeaderUnlockedBadge();
-    scheduleLifecycle('DOMContentLoaded');
-  });
-  document.addEventListener('htmx:beforeSwap', (event) => {
-    if (htmxTargetAffectsProductArea(event)) {
-      htmxSwapPending = true;
-      enterTransition('htmx-beforeSwap');
-    }
-  });
-  document.addEventListener('htmx:afterSwap', (event) => {
-    if (htmxSwapPending || htmxTargetAffectsProductArea(event)) {
-      htmxSwapPending = false;
-      scheduleLifecycle('htmx-afterSwap');
-    }
-  });
-  scheduleLifecycle('initial');
+      scheduleLifecycle('pageshow');
+    });
+    window.addEventListener('popstate', () => {
+      enableBootstrapSuppression();
+      scheduleLifecycle('popstate');
+    });
+    document.addEventListener('DOMContentLoaded', () => {
+      ensureHeaderUnlockedBadge();
+      if (settingsDialogPending) openSettingsDialog();
+      scheduleLifecycle('DOMContentLoaded');
+    });
+    document.addEventListener('htmx:beforeSwap', (event) => {
+      if (htmxTargetAffectsProductArea(event)) {
+        htmxSwapPending = true;
+        enterTransition('htmx-beforeSwap');
+      }
+    });
+    document.addEventListener('htmx:afterSwap', (event) => {
+      if (htmxSwapPending || htmxTargetAffectsProductArea(event)) {
+        htmxSwapPending = false;
+        scheduleLifecycle('htmx-afterSwap');
+      }
+    });
+    scheduleLifecycle('initial');
+  }
 })();

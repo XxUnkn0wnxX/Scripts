@@ -2,7 +2,44 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos.
 
-Current documented release: `1.0.4.8`.
+Current documented release: `1.1.0`.
+
+## Advanced Settings
+
+Choose **PSPrices Checkout Link settings** from your userscript manager's menu.
+There is no floating settings button.
+
+The panel follows your browser's preferred light or dark appearance and updates
+when that preference changes. Text and controls use matching colors; the
+advanced-user warning stays yellow/amber with readable text in both themes.
+Dark mode is the fallback when no supported theme preference is exposed. Light
+mode uses near-black text on light surfaces and dark text on the pale-yellow
+warning. Dark mode uses light text on dark surfaces and bright-yellow text on
+the dark-amber warning.
+
+> [!WARNING]
+> **Advanced users only.** Changing these settings can break checkout-link
+> generation or fallback behavior. You are responsible for problems caused by
+> your changes.
+
+The panel contains the nine controls documented below:
+request timeout, click cooldown, clipboard callback wait, fade duration,
+link-generation delay, logging level, diagnostics visibility, and the two
+forced fallback modes.
+
+Click **Save settings**, then reload the page when ready to apply the saved
+values. Changes do not reconfigure a checkout request already in progress.
+Closing without saving leaves stored settings unchanged.
+
+**Reset defaults** restores and saves all nine built-in values. Reload to apply
+them. Saving or resetting settings does not open a checkout link, copy anything
+to the clipboard, or trigger an Add to Cart action.
+
+Preferences live in the userscript manager's per-script storage and survive
+script updates. Missing settings receive their defaults; saved values are not
+replaced merely because source defaults change. The panel validates input and
+reports failed saves. The code examples below identify the settings and their
+built-in values; use the panel to customize them.
 
 ## PlayStation Store Setup and Redirect Caveat
 
@@ -108,7 +145,7 @@ The avatar collection bridge uses a separate permanent cosmetic stylesheet insta
 
 The same permanent stylesheet suppresses both the ad-free browsing notice and the “Cleaner catalog, less noise” notice promoting one-click hiding of mass-release publishers. It identifies their containers by the exact attributes above, without matching message text, and applies as soon as a matching notice is inserted, including during later dynamic page updates.
 
-The normal-use timing constants are near the top of the userscript:
+The timing controls in advanced settings have these built-in values:
 
 ```js
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -138,7 +175,7 @@ The initial action remains grey and disabled. During lookup, the card status rep
 
 ## Optional Flags
 
-The user-adjustable flags are grouped near the log settings:
+The flags in advanced settings have these built-in values:
 
 ```js
 const LOG_LEVEL = 'info';
@@ -258,6 +295,8 @@ The metadata grants support both modern and legacy userscript-manager APIs:
 - `GM.xmlHttpRequest` and `GM_xmlhttpRequest`: anonymous Sony regional-SKU requests
 - `GM.setClipboard` and `GM_setClipboard`: clipboard fallbacks
 - `GM_log`: optional userscript-manager log mirroring
+- `GM.getValue` / `GM_getValue` and `GM.setValue` / `GM_setValue`: saved advanced preferences
+- `GM.registerMenuCommand` / `GM_registerMenuCommand`: access to the settings panel
 - `@connect store.playstation.com`: permission for the Sony lookup host
 
 Sony requests are sent without account cookies or credential-bearing headers.

@@ -89,6 +89,13 @@ The global navigation drawer overlays GitHub content and does not reserve a layo
 ## Configuration
 
 Choose **GitHub Fluid Width settings** from the userscript manager's menu.
+
+The panel follows your browser's preferred light or dark appearance, including
+theme changes while it is open. Text, controls, and status messages use matching
+colors to stay readable in either theme.
+If the browser does not expose a supported theme preference, the panel uses dark
+mode. Light mode uses near-black text; dark mode uses light text.
+
 The panel provides:
 
 - a percentage slider and numeric input that update the current page live; the slider and numeric arrows use 1% steps, while decimals such as `95.1` can be entered manually in the numeric field

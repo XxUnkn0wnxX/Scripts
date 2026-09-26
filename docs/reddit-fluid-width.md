@@ -2,7 +2,7 @@
 
 Install [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) with Tampermonkey or Violentmonkey to apply a constrained fluid layout only on Reddit post/comment routes while leaving feeds and landing pages completely native.
 
-Current documented release: `1.0.1`.
+Current documented release: `1.1.0`.
 
 ## What It Does
 
@@ -12,7 +12,8 @@ Current documented release: `1.0.1`.
 - keeps the native right rail width at `316px` while growing only the main post column
 - supports two post-layout modes: pinned-right geometry and centered geometry
 - keeps the fluid style active while comments expand or load, and synchronizes it on SPA and back/forward route changes
-- includes no network calls and no storage reads/writes
+- provides live settings through the userscript manager's menu, with saved preferences and **Reset defaults**
+- makes no network calls; preferences are stored through the userscript manager
 - visible `#left-sidebar-container` controls fluid width mode:
   - when a visible rail is present, width uses configured `contentWidthPercent` (default `95%`)
   - when rail content is not visible (empty shell, CSS-hidden, visibility-hidden/collapsed, zero-size, or fully off-left), `--reddit-fluid-width` uses `noLeftSidebarContentWidthPercent` (default `95%`)
@@ -50,13 +51,42 @@ The userscript loads on Reddit `/r/*` routes so it is already present when Reddi
   - one coalesced `MutationObserver` for left-rail relevant insert/remove/attribute changes
     - attributes observed: `style`, `class`, `hidden`, `aria-hidden`
     - callback is filtered to left-sidebar node or its ancestors, descendant insert/remove, and descendant class/style/hidden change transitions so empty↔populated shell updates are captured
+- rendered DOM changes also resynchronize the route when sandboxed history wrappers cannot observe page-side navigation, and restore a removed settings host
 - observer callbacks are relevance-filtered, and layout reads are coalesced to at most one animation frame
 
-No mutation polling or timers are used, and no transition overrides are applied. Comment expansion and in-thread pagination preserve the style while the route remains active. CSS percentages and `min()`/`max()` are recalculated by the browser as the window or Reddit workspace changes.
+No layout polling or transition overrides are used. Comment expansion and in-thread pagination preserve the style while the route remains active. CSS percentages and `min()`/`max()` are recalculated by the browser as the window or Reddit workspace changes. Settings saves use a short debounce to avoid writing every intermediate slider value.
 
 ## Configuration
 
-Edit near the top of the script:
+Choose **Reddit Fluid Width settings** from your userscript manager's menu.
+There is no floating settings button. The panel follows your browser's preferred
+light or dark appearance, including changes while it is open. Dark mode is the
+fallback when no supported theme preference is exposed. Light mode uses
+near-black text and dark mode uses light text. The panel contains:
+
+- separate percentage sliders and numeric fields for layouts with and without the left sidebar
+- a minimum gutter control
+- a **Pin right sidebar** checkbox
+- **Reset defaults** and **Close** buttons
+
+The sliders and numeric arrows use whole-percentage steps. For finer control,
+enter a decimal such as `95.1` directly in either percentage field. Changes
+apply live without reloading. The page uses the percentage for its currently
+visible sidebar state; the other percentage is saved for when that state changes.
+The gutter and pin checkbox also update the layout immediately.
+
+**Reset defaults** restores both percentages to `95%`, the gutter to `32px`, and
+right-side pinning to enabled. It applies and saves these values immediately.
+Closing the panel or pressing Escape keeps changes already made.
+
+Preferences are stored separately from the script source. Updates retain saved
+values, including decimals and an unchecked pin setting. Only missing settings
+are initialized from the defaults. Editing the source defaults after preferences
+have been saved does not replace those preferences; use the panel or
+**Reset defaults**. If saving is unavailable or fails, the panel reports that
+changes only apply to the current page.
+
+The built-in defaults near the top of the script are:
 
 ```js
 const CONFIG = Object.freeze({
@@ -113,23 +143,27 @@ Centered mode (`pinRightSidebar: false`):
 - automatically recalculates against Reddit's available workspace as the left nav expands or collapses
 - `pinRightSidebar: false` is an opt-in behavior
 
+Both modes stay within the available parent width, including at `100%`.
+The `1120px` baseline is retained when it fits; a narrower available track takes
+precedence so the workspace cannot overflow merely to preserve that baseline.
+
 ## Safety
 
 - `pinRightSidebar` only changes geometry math. It does not click, expand, pin, or resize any Reddit UI panel; styling remains limited to `#subgrid-container` and its direct `.main-container.fixed-sidebar` row under post-only scope.
 
 ## Technical Notes
 
-- only two selector targets are styled:
+- Reddit layout styling targets only:
   - `#subgrid-container > .main-container.fixed-sidebar`
   - `#subgrid-container`
-- no DOM structure changes; no parent grid-template overrides
+- Reddit's content structure is not rewritten; the script adds its own isolated settings dialog, with no parent grid-template overrides
 - when no-left-sidebar is detected, the rule above lets the post workspace reclaim the full parent-grid span while keeping its right rail at `316px`
 - the style block is inserted once and reused for the page lifetime
 - `#sticky-comment-composer-wrapper`, left nav, back-button positioning, feeds, and comments are not directly modified
 
 ### Floating back button behavior
 
-The floating back-button offset in wide layouts is protected by the fixed `1120px` baseline plus a configurable start/left safety gutter in pinned mode, or equal per-side gutters in centered mode.
+The floating back-button offset in wide layouts is protected by the `1120px` baseline when space permits, plus a configurable start/left safety gutter in pinned mode or equal per-side gutters in centered mode.
 
 ## Basic Install
 
@@ -142,9 +176,9 @@ The floating back-button offset in wide layouts is protected by the fixed `1120p
 - no external dependencies
 - no tracking beacons
 - no data collection
-- no remote settings storage
-- no polling or timers
-- compatible with current Tampermonkey and Violentmonkey releases
+- settings use the userscript manager's per-script storage
+- no layout polling; settings saves are debounced
+- supports the legacy and modern GM storage/menu APIs used by Tampermonkey and Violentmonkey
 
 ## Example
 

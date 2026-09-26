@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.0.36`.
+Current documented release: `1.1.0`.
 
 ## What It Does
 
@@ -17,6 +17,7 @@ Current documented release: `1.0.36`.
 - progressively hydrates visible results with thumbnails, prices, and platform badges from each product page
 - supports light and dark themes by reusing PSPrices utility classes where practical
 - hides the native avatar tablist plus theme platform stripe and Likes/Filter controls on the mounted collection routes before they paint
+- offers saved advanced settings through the userscript manager's menu, with **Reset defaults**
 
 ## Where It Works
 
@@ -61,6 +62,65 @@ Those routes are left to PSPrices' native page behavior.
 2. Open the [raw userscript](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js).
 3. Confirm the installation in the userscript manager.
 4. Open any regional PSPrices page, or go directly to `/collection/avatars` or `/collection/themes`.
+
+## Advanced Settings
+
+Choose **PSPrices Live Search settings** from the userscript manager's menu.
+There is no floating settings button.
+
+The panel follows your browser's preferred light or dark appearance and updates
+when that preference changes. Text and controls use matching colors; the
+advanced-user warning stays yellow/amber with readable text in both themes.
+Dark mode is the fallback when no supported theme preference is exposed. Light
+mode uses near-black text on light surfaces and dark text on the pale-yellow
+warning. Dark mode uses light text on dark surfaces and bright-yellow text on
+the dark-amber warning.
+
+> [!WARNING]
+> **Advanced users only.** Changing these settings can break search, indexing,
+> or caching. You are responsible for problems caused by your changes.
+
+The panel exposes the tuning values documented below, grouped by cache storage,
+fetching, background indexing, result rendering, detail hydration, and logging.
+Labels include the setting names and units. Internal cache schema versions,
+storage keys, and route definitions remain managed by the script.
+
+Click **Save settings** to store your changes, then reload the page when ready
+to use them. The active indexing run keeps the configuration it started with;
+editing or saving settings does not restart workers or clear caches. Closing
+without saving leaves stored settings unchanged.
+
+**Reset defaults** restores and saves all built-in tuning values. Reload to
+apply them. Reset does not immediately clear the collection cache. On the next
+load, the script's normal cache-backend and migration rules still apply.
+
+Preferences use the userscript manager's per-script storage, separately from
+the collection and detail caches. Updates retain saved values, and missing
+settings receive their defaults. Invalid values are rejected or normalized;
+related cache budgets and lease intervals must remain consistent. The panel
+reports storage failures so an unsuccessful save is not mistaken for a saved
+configuration.
+
+The code blocks below show built-in values and their setting names; use the
+panel for normal customization. Changing source defaults does not override
+preferences already saved in the userscript manager.
+
+The panel also includes these startup and scheduling controls:
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `AUTO_INDEX_ON_LOAD` | `true` | Allow automatic indexing on the active collection route. |
+| `AUTO_INDEX_DELAY_MS` | `2500` | Delay before active-route indexing starts. |
+| `AUTO_INDEX_ON_SITE_VISIT` | `true` | Allow regional background indexing from other PSPrices pages. |
+| `INPUT_DEBOUNCE_MS` | `120` | Wait after typing before running the search. |
+| `CACHE_BUDGET_CHECK_INTERVAL_MS` | `5000` | Minimum interval between cache-budget checks. |
+| `INITIAL_HYDRATION_DELAY_MS` | `1500` | Wait before the initial page-hydration pass. |
+| `INITIAL_HYDRATION_RETRY_MS` | `2500` | Wait between initial hydration retries. |
+| `INITIAL_HYDRATION_MAX_ATTEMPTS` | `3` | Maximum initial hydration attempts. |
+
+Timing fields use milliseconds; cache budgets use bytes. Worker and item counts
+use whole numbers. Only the render and hydration limits that explicitly mention
+`-1` accept it as an unlimited setting.
 
 ## How Search Works
 
@@ -133,7 +193,7 @@ Theme detail loading recognizes both text platform badges such as `PS3` and imag
 
 ## Background Indexing
 
-The script starts background indexing for the current region as soon as it runs on a regional PSPrices page.
+By default, the script starts background indexing for the current region when it runs on a regional PSPrices page. Advanced settings can disable automatic indexing.
 
 For each region, the background worker indexes:
 
@@ -190,7 +250,8 @@ The active backend is logged in the browser console:
 PSPrices Collection Live Search: Collection-search cache storage backend. IndexedDB active
 ```
 
-To force the legacy backend for testing, set this near the top of the userscript:
+To force the legacy backend for testing, enable `CACHE_FORCE_LOCAL_STORAGE` in
+advanced settings and reload. Its equivalent source value is:
 
 ```js
 const CACHE_FORCE_LOCAL_STORAGE = true;
@@ -231,7 +292,8 @@ After clearing, background indexing starts again for that region.
 
 ## Cache Freshness and Migration
 
-The main cache freshness constants are near the top of the userscript:
+The cache freshness settings have these built-in values. The schema version and
+migration policy are maintained in the source:
 
 ```js
 const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
@@ -414,7 +476,7 @@ The avatar and theme Likes/Filter action row hides are scoped to the collection 
 
 ## Console Logging
 
-Logging is controlled near the top of the userscript:
+The `LOG_LEVEL` setting controls logging. Its built-in value is:
 
 ```js
 const LOG_LEVEL = 'info';
@@ -434,7 +496,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.0.36)
+PSPrices Collection Live Search: has started (v1.1.0)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.

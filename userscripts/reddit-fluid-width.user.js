@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Reddit Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1
+// @version      1.1.0
 // @description  Widens Reddit post/comment pages only while preserving native feed and landing layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -11,7 +11,12 @@
 // @downloadURL  https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js
 // @match        https://www.reddit.com/r/*
 // @run-at       document-start
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.registerMenuCommand
 // @noframes
 // ==/UserScript==
 
@@ -21,9 +26,13 @@
   const STYLE_ID = 'reddit-fluid-width-style';
   const ROOT_ATTR = 'data-reddit-fluid-width';
   const NO_LEFT_SIDEBAR_ATTR = 'data-reddit-fluid-width-no-left-sidebar';
+  const INSTANCE_FLAG = '__redditFluidWidthInstalled';
   const HISTORY_PATCH_FLAG = '__redditFluidWidthHistoryPatched';
   const ROUTE_RE = /^\/r\/[^/]+\/comments\/[^/]+(?:\/|$)/i;
   const LEFT_SIDEBAR_SELECTOR = '#left-sidebar-container';
+
+  if (window[INSTANCE_FLAG]) return;
+  window[INSTANCE_FLAG] = true;
 
   /*** CONFIG ***/
   // Tune visible-sidebar and no-left-sidebar post widths independently (1-100).
@@ -36,18 +45,58 @@
     pinRightSidebar: true,
   });
 
-  const config = normalizeConfig(CONFIG);
+  const SETTINGS_SCHEMA_VERSION = 1;
+  const SETTINGS_DEFAULTS = CONFIG;
+  const SETTINGS_KEYS = Object.freeze({
+    contentWidthPercent: 'reddit-fluid-width.contentWidthPercent',
+    noLeftSidebarContentWidthPercent: 'reddit-fluid-width.noLeftSidebarContentWidthPercent',
+    minGutterPx: 'reddit-fluid-width.minGutterPx',
+    pinRightSidebar: 'reddit-fluid-width.pinRightSidebar',
+    schemaVersion: 'reddit-fluid-width.schemaVersion',
+  });
+  const SETTINGS_CONFIG_KEYS = Object.freeze([
+    'contentWidthPercent',
+    'noLeftSidebarContentWidthPercent',
+    'minGutterPx',
+    'pinRightSidebar',
+  ]);
+
+  let config = normalizeConfig(CONFIG);
   const style = ensureStyle();
   const html = document.documentElement;
   let sidebarSyncScheduled = false;
   let domReadySidebarSync = false;
+  let routeSyncScheduled = false;
   let sidebarObserver;
+
+  const settingsController = createSettingsController({
+    runtime: {
+      GM_getValue: typeof GM_getValue === 'function' ? GM_getValue : undefined,
+      GM_setValue: typeof GM_setValue === 'function' ? GM_setValue : undefined,
+      GM_registerMenuCommand: typeof GM_registerMenuCommand === 'function' ? GM_registerMenuCommand : undefined,
+      GM: typeof GM === 'object' ? GM : undefined,
+      setTimeout: (callback, delay) => window.setTimeout(callback, delay),
+      clearTimeout: (timer) => window.clearTimeout(timer),
+    },
+    document,
+    defaults: CONFIG,
+    onChange: applySettings,
+  });
 
   style.textContent = buildStyles();
 
   syncRouteState();
   installRouteSyncHooks();
   installLeftSidebarObserver();
+  settingsController.ensureMounted();
+  document.addEventListener('DOMContentLoaded', () => settingsController.ensureMounted(), {once: true, capture: true});
+  settingsController.initialize().catch(() => {});
+
+  function applySettings(next) {
+    config = normalizeConfig(next);
+    style.textContent = buildStyles();
+    syncRouteState();
+  }
 
   function normalizeConfig(source) {
     const percentRaw = Number(source?.contentWidthPercent);
@@ -110,9 +159,12 @@
   html[${ROOT_ATTR}] #subgrid-container {
     --reddit-fluid-width: ${config.contentWidthPercent}%;
     --reddit-fluid-gutter: ${config.minGutterPx}px;
-    width: max(
-      1120px,
-      min(var(--reddit-fluid-width), ${gutteredWidth})
+    width: min(
+      100%,
+      max(
+        1120px,
+        min(var(--reddit-fluid-width), ${gutteredWidth})
+      )
     ) !important;
     box-sizing: border-box;
 ${horizontalModeStyles}
@@ -167,6 +219,18 @@ ${horizontalModeStyles}
     window.addEventListener('popstate', syncRouteState, true);
     window.addEventListener('pageshow', syncRouteState, true);
     window.addEventListener('resize', scheduleLeftSidebarSync, true);
+    for (const event of ['DOMContentLoaded', 'turbo:load', 'turbo:render', 'pjax:end']) {
+      document.addEventListener(event, syncRouteState, true);
+    }
+  }
+
+  function scheduleRouteStateSync() {
+    if (routeSyncScheduled) return;
+    routeSyncScheduled = true;
+    requestAnimationFrame(() => {
+      routeSyncScheduled = false;
+      syncRouteState();
+    });
   }
 
   function scheduleLeftSidebarSync() {
@@ -251,6 +315,8 @@ ${horizontalModeStyles}
     if (!window.MutationObserver) return;
 
     const observer = new MutationObserver((mutations) => {
+      settingsController.ensureMounted();
+      if (mutations.some((mutation) => mutation.type === 'childList')) scheduleRouteStateSync();
       if (!isRedditPostCommentsRoute(location.pathname)) return;
       const currentSidebar = document.querySelector(LEFT_SIDEBAR_SELECTOR);
       if (!isSidebarMutationRelevant(mutations, currentSidebar)) return;
@@ -306,4 +372,512 @@ ${horizontalModeStyles}
       node.querySelector?.(LEFT_SIDEBAR_SELECTOR)
     );
   }
+  function createSettingsController(options = {}) {
+    const runtime = options.runtime || window;
+    const settingsDocument = options.document || document;
+    const defaults = normalizeSettingsConfig({...SETTINGS_DEFAULTS, ...(options.defaults || {})});
+    const onChange = typeof options.onChange === 'function' ? options.onChange : () => {};
+    const setTimeoutFn = typeof runtime.setTimeout === 'function' ? runtime.setTimeout.bind(runtime) : setTimeout;
+    const clearTimeoutFn = typeof runtime.clearTimeout === 'function' ? runtime.clearTimeout.bind(runtime) : clearTimeout;
+    let storage = findSettingsStorage(runtime);
+    let storageState = storage ? 'loading' : 'unavailable';
+    let storageError = null;
+    let current = copySettingsConfig(defaults);
+    let initializePromise = null;
+    let saveTimer = null;
+    let writeChain = Promise.resolve();
+    let ui = null;
+    let lastFocus = null;
+    let menuRegistered = false;
+    let version = 0;
+    const keyVersions = new Map();
+    const pendingKeys = new Set();
+    const readableKeys = new Set();
+
+    function statusText(state) {
+      if (state === 'loading') return 'Loading saved settings…';
+      if (state === 'ready') return 'Saved in your userscript manager.';
+      if (state === 'saving') return 'Saving…';
+      if (state === 'read-error') return 'Saved values could not be read; unknown values were left untouched.';
+      if (state === 'write-error') return 'Changes apply on this page, but saving failed.';
+      return 'Page-only controls: manager storage is unavailable.';
+    }
+
+    function setStatus(state, message) {
+      storageState = state;
+      storageError = message || null;
+      if (ui && ui.status) {
+        ui.status.textContent = message || statusText(state);
+        ui.status.dataset.state = state;
+      }
+    }
+
+    function notify(source) {
+      try {
+        onChange(copySettingsConfig(current), {source, storageState});
+      } catch (error) {
+        setStatus('write-error', `The page updated, but its width callback failed: ${error.message || error}`);
+      }
+      renderSettings();
+    }
+
+    function configStorageKey(key) {
+      return SETTINGS_KEYS[key];
+    }
+
+    function markUserChange(key) {
+      version += 1;
+      keyVersions.set(key, version);
+      if (!storage) return;
+      // A failed read is never silently overwritten. An explicit field edit
+      // authorizes a write for that field only.
+      readableKeys.add(configStorageKey(key));
+      pendingKeys.add(key);
+    }
+
+    function setConfig(partial, source = 'input') {
+      let changed = false;
+      SETTINGS_CONFIG_KEYS.forEach((key) => {
+        if (!Object.prototype.hasOwnProperty.call(partial, key)) return;
+        const next = normalizeSettingValue(key, partial[key], defaults[key]);
+        if (Object.is(next, current[key])) return;
+        current[key] = next;
+        changed = true;
+        markUserChange(key);
+      });
+      if (source === 'reset') SETTINGS_CONFIG_KEYS.forEach((key) => markUserChange(key));
+      if (!changed && source !== 'reset') return copySettingsConfig(current);
+      notify(source);
+      scheduleSettingsSave();
+      return copySettingsConfig(current);
+    }
+
+    function scheduleSettingsSave() {
+      if (!storage || !setTimeoutFn) return;
+      if (saveTimer !== null) clearTimeoutFn(saveTimer);
+      saveTimer = setTimeoutFn(() => {
+        saveTimer = null;
+        flushSettings().catch(() => {});
+      }, 120);
+    }
+
+    function pendingEntries() {
+      return Array.from(pendingKeys)
+        .filter((key) => readableKeys.has(configStorageKey(key)))
+        .map((key) => ({
+          configKey: key,
+          storageKey: configStorageKey(key),
+          value: current[key],
+          version: keyVersions.get(key),
+        }));
+    }
+
+    async function performSettingsWrites(entries) {
+      if (!storage || entries.length === 0) return;
+      let failed = false;
+      setStatus('saving');
+      for (const entry of entries) {
+        try {
+          await Promise.resolve(storage.set(entry.storageKey, entry.value));
+          if (keyVersions.get(entry.configKey) === entry.version) pendingKeys.delete(entry.configKey);
+        } catch (error) {
+          failed = true;
+          storageError = error;
+        }
+      }
+      setStatus(failed ? 'write-error' : 'ready', failed
+        ? 'Changes apply on this page, but saving failed.'
+        : 'Saved in your userscript manager.');
+      // Saving changes status only. Rewriting controls here can undo a native
+      // checkbox toggle between its input and change events.
+    }
+
+    function flushSettings() {
+      if (!storage) return writeChain;
+      const entries = pendingEntries();
+      if (entries.length === 0) return writeChain;
+      writeChain = writeChain.then(() => performSettingsWrites(entries));
+      return writeChain;
+    }
+
+    function queueMissingSettings(entries) {
+      if (!storage || entries.length === 0) return writeChain;
+      writeChain = writeChain.then(async () => {
+        let failed = false;
+        setStatus('saving');
+        for (const entry of entries) {
+          if (entry.configKey && (keyVersions.get(entry.configKey) || 0) !== entry.version) continue;
+          try {
+            await Promise.resolve(storage.set(entry.storageKey, entry.value));
+            readableKeys.add(entry.storageKey);
+          } catch (error) {
+            failed = true;
+            storageError = error;
+          }
+        }
+        setStatus(failed ? 'write-error' : 'ready', failed
+          ? 'The page works, but default settings could not be saved.'
+          : 'Saved in your userscript manager.');
+      });
+      return writeChain;
+    }
+
+    async function initialize() {
+      if (initializePromise) return initializePromise;
+      ensureMounted();
+      initializePromise = (async () => {
+        if (!storage) {
+          setStatus('unavailable');
+          notify('defaults');
+          registerSettingsMenu();
+          return copySettingsConfig(current);
+        }
+
+        const values = {};
+        const failedReads = new Set();
+        const readVersions = new Map(SETTINGS_CONFIG_KEYS.map((key) => [key, keyVersions.get(key) || 0]));
+        await Promise.all(Object.values(SETTINGS_KEYS).map(async (key) => {
+          try {
+            values[key] = await Promise.resolve(storage.get(key));
+            readableKeys.add(key);
+          } catch (error) {
+            failedReads.add(key);
+            storageError = error;
+          }
+        }));
+        SETTINGS_CONFIG_KEYS.forEach((key) => {
+          const storageKey = configStorageKey(key);
+          if (!failedReads.has(storageKey) && values[storageKey] !== undefined &&
+              (keyVersions.get(key) || 0) === readVersions.get(key)) {
+            current[key] = normalizeSettingValue(key, values[storageKey], defaults[key]);
+          }
+        });
+        notify('load');
+        registerSettingsMenu();
+        if (failedReads.size > 0) {
+          setStatus('read-error', 'Saved values could not be read; unknown values were left untouched.');
+          renderSettings();
+          return copySettingsConfig(current);
+        }
+
+        const missing = SETTINGS_CONFIG_KEYS
+          .filter((key) => values[configStorageKey(key)] === undefined)
+          .map((key) => ({
+            configKey: key,
+            storageKey: configStorageKey(key),
+            value: current[key],
+            version: keyVersions.get(key) || 0,
+          }));
+        if (values[SETTINGS_KEYS.schemaVersion] === undefined) {
+          missing.push({storageKey: SETTINGS_KEYS.schemaVersion, value: SETTINGS_SCHEMA_VERSION});
+        }
+        await queueMissingSettings(missing);
+        if (missing.length === 0) setStatus('ready');
+        renderSettings();
+        return copySettingsConfig(current);
+      })();
+      return initializePromise;
+    }
+
+    function resetDefaults() {
+      return setConfig(defaults, 'reset');
+    }
+
+    function registerSettingsMenu() {
+      if (menuRegistered) return;
+      const legacy = runtime.GM_registerMenuCommand;
+      const modern = runtime.GM && runtime.GM.registerMenuCommand;
+      const register = typeof legacy === 'function'
+        ? legacy.bind(runtime)
+        : typeof modern === 'function' ? modern.bind(runtime.GM) : null;
+      if (!register) return;
+      try {
+        const result = register('Reddit Fluid Width settings', show);
+        menuRegistered = true;
+        if (result && typeof result.catch === 'function') result.catch(() => {});
+      } catch (_) {
+        // A manager may decline the optional menu command.
+      }
+    }
+
+    function ensureMounted() {
+      if (!settingsDocument || typeof settingsDocument.createElement !== 'function') return null;
+      if (ui && ui.host && ui.host.isConnected) {
+        registerSettingsMenu();
+        return ui;
+      }
+      if (!settingsDocument.body) return null;
+      const host = settingsDocument.createElement('div');
+      host.id = 'reddit-fluid-width-settings-host';
+      const shadow = typeof host.attachShadow === 'function' ? host.attachShadow({mode: 'open'}) : host;
+      shadow.innerHTML = `
+        <style>
+          :host {
+            all: initial;
+            --settings-panel: #161b22 !important;
+            --settings-field: #0d1117 !important;
+            --settings-surface: #21262d !important;
+            --settings-text: #e6edf3 !important;
+            --settings-muted: #9da7b3 !important;
+            --settings-border: #484f58 !important;
+            --settings-accent: #ff7b72 !important;
+            --settings-primary: #238636 !important;
+            --settings-focus: #58a6ff !important;
+            --settings-danger: #ff7b72 !important;
+            --settings-success: #3fb950 !important;
+            color: var(--settings-text) !important;
+            color-scheme: dark;
+            font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+          @media (prefers-color-scheme: light) {
+            :host {
+              --settings-panel: #ffffff !important;
+              --settings-field: #ffffff !important;
+              --settings-surface: #f6f8fa !important;
+              --settings-text: #1f2328 !important;
+              --settings-muted: #656d76 !important;
+              --settings-border: #d0d7de !important;
+              --settings-accent: #ff4500 !important;
+              --settings-primary: #1f883d !important;
+              --settings-focus: #0969da !important;
+              --settings-danger: #cf222e !important;
+              --settings-success: #1a7f37 !important;
+              color-scheme: light;
+            }
+          }
+          *, *::before, *::after { box-sizing: border-box; }
+          button, input, select, textarea { font: inherit; }
+          button { cursor: pointer; }
+          dialog { width: min(440px, calc(100vw - 32px)); max-height: min(680px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--settings-border) !important; border-radius: 8px; background: var(--settings-panel) !important; color: var(--settings-text) !important; color-scheme: inherit; padding: 0; box-shadow: 0 8px 32px rgb(0 0 0 / 42%); }
+          dialog::backdrop { background: rgb(0 0 0 / 58%); }
+          .panel { overflow: auto; max-height: min(680px, calc(100vh - 32px)); padding: 18px; background: var(--settings-panel) !important; color: var(--settings-text) !important; }
+          h2, label { color: var(--settings-text) !important; }
+          h2 { font-size: 16px; margin: 0 0 8px; }
+          .hint, .status { color: var(--settings-muted) !important; font-size: 12px; }
+          .status { min-height: 1.4em; margin: 12px 0 0; }
+          .row { display: grid; gap: 6px; margin: 14px 0; }
+          .range-row { display: grid; grid-template-columns: 1fr 88px; align-items: center; }
+          input[type="range"] { width: 100%; accent-color: var(--settings-accent); }
+          input[type="number"], input[type="text"], select, textarea { border: 1px solid var(--settings-border) !important; border-radius: 6px; background: var(--settings-field) !important; color: var(--settings-text) !important; padding: 4px 6px; }
+          option { background: var(--settings-field) !important; color: var(--settings-text) !important; }
+          input[type="number"] { width: 88px; }
+          input[type="number"]:hover, input[type="text"]:hover, select:hover, textarea:hover { border-color: var(--settings-accent) !important; }
+          .check { display: flex; gap: 8px; align-items: flex-start; }
+          .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+          .actions button { border: 1px solid var(--settings-border) !important; border-radius: 6px; background: var(--settings-surface) !important; color: var(--settings-text) !important; padding: 5px 9px; }
+          .actions button:hover { background: var(--settings-border) !important; }
+          .actions .primary, .actions .primary:hover { background: var(--settings-primary) !important; border-color: var(--settings-primary) !important; color: #fff !important; }
+          button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--settings-focus) !important; outline-offset: 2px; }
+          .status[data-state="ready"] { color: var(--settings-success) !important; }
+          .status[data-state="read-error"], .status[data-state="write-error"] { color: var(--settings-danger) !important; }
+        </style>
+        <dialog id="reddit-fluid-width-settings-dialog" aria-labelledby="reddit-fluid-width-settings-title">
+          <form class="panel">
+            <h2 id="reddit-fluid-width-settings-title">Reddit Fluid Width</h2>
+            <p class="hint">Width rules apply from 1472px on post and comment pages. Native sidebars remain in place.</p>
+            <div class="row">
+              <label for="reddit-fluid-width-percent-range">Post width with left sidebar (%)</label>
+              <div class="range-row">
+                <input id="reddit-fluid-width-percent-range" type="range" min="1" max="100" step="1" aria-label="Post width with left sidebar percentage">
+                <input id="reddit-fluid-width-percent-number" type="number" min="1" max="100" step="1" aria-label="Post width with left sidebar percentage value">
+              </div>
+            </div>
+            <div class="row">
+              <label for="reddit-fluid-width-no-left-percent-range">Post width without left sidebar (%)</label>
+              <div class="range-row">
+                <input id="reddit-fluid-width-no-left-percent-range" type="range" min="1" max="100" step="1" aria-label="Post width without left sidebar percentage">
+                <input id="reddit-fluid-width-no-left-percent-number" type="number" min="1" max="100" step="1" aria-label="Post width without left sidebar percentage value">
+              </div>
+            </div>
+            <div class="row">
+              <label for="reddit-fluid-width-gutter">Minimum gutter (px)</label>
+              <input id="reddit-fluid-width-gutter" type="number" min="16" max="128" step="1">
+            </div>
+            <label class="check" for="reddit-fluid-width-pin">
+              <input id="reddit-fluid-width-pin" type="checkbox">
+              <span>Pin right sidebar</span>
+            </label>
+            <p class="status" role="status" aria-live="polite"></p>
+            <div class="actions">
+              <button type="button" data-reset>Reset defaults</button>
+              <button class="primary" type="button" data-close>Close</button>
+            </div>
+          </form>
+        </dialog>`;
+      const root = shadow;
+      ui = {
+        host,
+        shadow,
+        dialog: root.querySelector('dialog'),
+        range: root.querySelector('#reddit-fluid-width-percent-range'),
+        percent: root.querySelector('#reddit-fluid-width-percent-number'),
+        noLeftRange: root.querySelector('#reddit-fluid-width-no-left-percent-range'),
+        noLeftPercent: root.querySelector('#reddit-fluid-width-no-left-percent-number'),
+        gutter: root.querySelector('#reddit-fluid-width-gutter'),
+        pin: root.querySelector('#reddit-fluid-width-pin'),
+        status: root.querySelector('.status'),
+        reset: root.querySelector('[data-reset]'),
+        close: root.querySelector('[data-close]'),
+      };
+      bindSettingsUi();
+      (settingsDocument.body || settingsDocument.documentElement).appendChild(host);
+      registerSettingsMenu();
+      renderSettings();
+      return ui;
+    }
+
+    function bindPercentControl(range, number, key) {
+      range.addEventListener('input', () => setConfig({[key]: range.value}));
+      number.addEventListener('input', () => {
+        const value = Number(number.value);
+        if (Number.isFinite(value) && value >= 1 && value <= 100) setConfig({[key]: value});
+      });
+      number.addEventListener('change', () => {
+        if (number.value !== '') setConfig({[key]: number.value});
+        renderSettings({forceNumbers: true});
+        flushSettings().catch(() => {});
+      });
+      number.addEventListener('blur', () => renderSettings({forceNumbers: true}));
+    }
+
+    function bindSettingsUi() {
+      if (!ui) return;
+      ui.close.addEventListener('click', close);
+      ui.reset.addEventListener('click', () => {
+        resetDefaults();
+        flushSettings().catch(() => {});
+      });
+      bindPercentControl(ui.range, ui.percent, 'contentWidthPercent');
+      bindPercentControl(ui.noLeftRange, ui.noLeftPercent, 'noLeftSidebarContentWidthPercent');
+      ui.gutter.addEventListener('input', () => {
+        const value = Number(ui.gutter.value);
+        if (Number.isFinite(value) && value >= 16 && value <= 128) setConfig({minGutterPx: value});
+      });
+      ui.gutter.addEventListener('change', () => {
+        if (ui.gutter.value !== '') setConfig({minGutterPx: ui.gutter.value});
+        renderSettings({forceNumbers: true});
+        flushSettings().catch(() => {});
+      });
+      ui.gutter.addEventListener('blur', () => renderSettings({forceNumbers: true}));
+      ui.pin.addEventListener('change', () => {
+        setConfig({pinRightSidebar: ui.pin.checked});
+        flushSettings().catch(() => {});
+      });
+      ui.dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        close();
+      });
+      ui.dialog.addEventListener('submit', (event) => event.preventDefault());
+      ui.dialog.addEventListener('keydown', (event) => {
+        if (event.key !== 'Tab') return;
+        const focusable = Array.from(ui.dialog.querySelectorAll('button, input, [href], select, textarea'))
+          .filter((element) => !element.disabled && element.offsetParent !== null);
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        const active = ui.shadow.activeElement || settingsDocument.activeElement;
+        if (event.shiftKey && active === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      });
+    }
+
+    function show() {
+      const mounted = ensureMounted();
+      if (!mounted) return;
+      lastFocus = ui.shadow.activeElement || settingsDocument.activeElement || null;
+      renderSettings();
+      if (typeof ui.dialog.showModal === 'function') {
+        try {
+          if (!ui.dialog.open) ui.dialog.showModal();
+        } catch (_) {
+          ui.dialog.setAttribute('open', '');
+        }
+      } else {
+        ui.dialog.setAttribute('open', '');
+      }
+      if (ui.range && typeof ui.range.focus === 'function') ui.range.focus();
+    }
+
+    function close() {
+      if (!ui) return;
+      flushSettings().catch(() => {});
+      if (typeof ui.dialog.close === 'function' && ui.dialog.open) ui.dialog.close();
+      else ui.dialog.removeAttribute('open');
+      if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+    }
+
+    function renderSettings(options = {}) {
+      if (!ui) return;
+      const active = ui.shadow && ui.shadow.activeElement;
+      const forceNumbers = options.forceNumbers === true;
+      ui.range.value = String(current.contentWidthPercent);
+      ui.noLeftRange.value = String(current.noLeftSidebarContentWidthPercent);
+      if (forceNumbers || active !== ui.percent) ui.percent.value = String(current.contentWidthPercent);
+      if (forceNumbers || active !== ui.noLeftPercent) ui.noLeftPercent.value = String(current.noLeftSidebarContentWidthPercent);
+      if (forceNumbers || active !== ui.gutter) ui.gutter.value = String(current.minGutterPx);
+      ui.pin.checked = current.pinRightSidebar;
+      ui.status.textContent = storageError && storageState === 'write-error'
+        ? storageError.message || statusText(storageState)
+        : statusText(storageState);
+      ui.status.dataset.state = storageState;
+    }
+
+    return {initialize, ensureMounted, show, close, setConfig, resetDefaults, flush: flushSettings};
+  }
+
+  function normalizeSettingValue(key, value, fallback) {
+    if (key === 'contentWidthPercent' || key === 'noLeftSidebarContentWidthPercent') {
+      const number = Number(value);
+      return Number.isFinite(number) ? Math.max(1, Math.min(100, number)) : fallback;
+    }
+    if (key === 'minGutterPx') {
+      const number = Number(value);
+      return Math.round(Number.isFinite(number) ? Math.max(16, Math.min(128, number)) : fallback);
+    }
+    if (key === 'pinRightSidebar') return value !== false;
+    return value;
+  }
+
+  function normalizeSettingsConfig(values) {
+    return {
+      contentWidthPercent: normalizeSettingValue('contentWidthPercent', values.contentWidthPercent, SETTINGS_DEFAULTS.contentWidthPercent),
+      noLeftSidebarContentWidthPercent: normalizeSettingValue('noLeftSidebarContentWidthPercent', values.noLeftSidebarContentWidthPercent, SETTINGS_DEFAULTS.noLeftSidebarContentWidthPercent),
+      minGutterPx: normalizeSettingValue('minGutterPx', values.minGutterPx, SETTINGS_DEFAULTS.minGutterPx),
+      pinRightSidebar: normalizeSettingValue('pinRightSidebar', values.pinRightSidebar, SETTINGS_DEFAULTS.pinRightSidebar),
+    };
+  }
+
+  function copySettingsConfig(values) {
+    return {
+      contentWidthPercent: values.contentWidthPercent,
+      noLeftSidebarContentWidthPercent: values.noLeftSidebarContentWidthPercent,
+      minGutterPx: values.minGutterPx,
+      pinRightSidebar: values.pinRightSidebar,
+    };
+  }
+
+  function findSettingsStorage(runtime) {
+    const legacyGet = runtime && runtime.GM_getValue;
+    const legacySet = runtime && runtime.GM_setValue;
+    if (typeof legacyGet === 'function' && typeof legacySet === 'function') {
+      return {
+        get: (key) => legacyGet.call(runtime, key),
+        set: (key, value) => legacySet.call(runtime, key, value),
+      };
+    }
+    const gm = runtime && runtime.GM;
+    if (gm && typeof gm.getValue === 'function' && typeof gm.setValue === 'function') {
+      return {
+        get: (key) => gm.getValue(key),
+        set: (key, value) => gm.setValue(key, value),
+      };
+    }
+    return null;
+  }
+
 })();

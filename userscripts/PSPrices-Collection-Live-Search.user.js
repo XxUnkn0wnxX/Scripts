@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.36
+// @version      1.1.0
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -12,7 +12,13 @@
 // @match        https://psprices.com/region-*
 // @match        https://www.psprices.com/region-*
 // @run-at       document-start
-// @grant        none
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.registerMenuCommand
+// @grant        unsafeWindow
 // @noframes
 // ==/UserScript==
 
@@ -20,8 +26,8 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.0.36';
-  const LOG_LEVEL = 'info';
+  const SCRIPT_VERSION = '1.1.0';
+  let LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
     /^\/region-([a-z0-9-]+)\/collection\/(avatars|themes)\/?$/i;
@@ -39,8 +45,8 @@
 
   const CACHE_PREFIX = 'psprices-live-search';
   const CACHE_VERSION = 4;
-  const CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-  const DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+  let CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+  let DETAIL_CACHE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
   const CACHE_SCOPE_VERSION = 'v4';
   const CACHE_RESET_ON_SCHEMA_CHANGE = true;
   // Invalidate pre-fix or partial collection index/detail metadata so migration rebuilds it once.
@@ -48,7 +54,7 @@
   const CACHE_MIGRATION_VERSION = `cache-schema-${CACHE_SCHEMA_VERSION}`;
   const CACHE_MIGRATION_KEY = `${CACHE_PREFIX}:migration-version`;
   // Set true to force the legacy page localStorage cache backend.
-  const CACHE_FORCE_LOCAL_STORAGE = false;
+  let CACHE_FORCE_LOCAL_STORAGE = false;
   const CACHE_STORAGE_TYPE_KEY = `${CACHE_PREFIX}:storage-type`;
   const CACHE_STORAGE_SIGNAL_KEY = `${CACHE_PREFIX}:cache-signal`;
   const CACHE_STORAGE_INDEXEDDB = 'indexedDB';
@@ -57,34 +63,34 @@
   const CACHE_INDEXEDDB_NAME = `${CACHE_PREFIX}:cache`;
   const CACHE_INDEXEDDB_VERSION = 1;
   const CACHE_INDEXEDDB_STORE = 'entries';
-  const CACHE_LOCAL_MAX_BYTES = 4.4 * 1024 * 1024;
-  const CACHE_LOCAL_TARGET_BYTES = 3.4 * 1024 * 1024;
-  const CACHE_INDEXEDDB_WARN_BYTES = 2 * 1024 * 1024 * 1024;
-  const CACHE_INDEXEDDB_MAX_BYTES = 4 * 1024 * 1024 * 1024;
-  const CACHE_INDEXEDDB_TARGET_BYTES = 3.5 * 1024 * 1024 * 1024;
-  const CACHE_INDEXEDDB_WRITE_BATCH_SIZE = 8;
-  const CACHE_INDEXEDDB_WRITE_FLUSH_MS = 250;
-  const CACHE_BUDGET_CHECK_INTERVAL_MS = 5 * 1000;
-  const CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
-  const INPUT_DEBOUNCE_MS = 120;
-  const FETCH_CONCURRENCY = 6;
-  const FETCH_RETRY_COUNT = 1;
-  const FETCH_TIMEOUT_MS = 30000;
-  const FETCH_DELAY_MS = 800;
-  const FETCH_JITTER_MS = 500;
+  let CACHE_LOCAL_MAX_BYTES = 4.4 * 1024 * 1024;
+  let CACHE_LOCAL_TARGET_BYTES = 3.4 * 1024 * 1024;
+  let CACHE_INDEXEDDB_WARN_BYTES = 2 * 1024 * 1024 * 1024;
+  let CACHE_INDEXEDDB_MAX_BYTES = 4 * 1024 * 1024 * 1024;
+  let CACHE_INDEXEDDB_TARGET_BYTES = 3.5 * 1024 * 1024 * 1024;
+  let CACHE_INDEXEDDB_WRITE_BATCH_SIZE = 8;
+  let CACHE_INDEXEDDB_WRITE_FLUSH_MS = 250;
+  let CACHE_BUDGET_CHECK_INTERVAL_MS = 5 * 1000;
+  let CACHE_REVALIDATE_MS = 12 * 60 * 60 * 1000;
+  let INPUT_DEBOUNCE_MS = 120;
+  let FETCH_CONCURRENCY = 6;
+  let FETCH_RETRY_COUNT = 1;
+  let FETCH_TIMEOUT_MS = 30000;
+  let FETCH_DELAY_MS = 800;
+  let FETCH_JITTER_MS = 500;
   const FETCH_QUERY_MIN_LENGTH = 2;
-  const MAX_HARD_FAILURES = 2;
-  const PAUSED_SEARCH_RESUME_COOLDOWN_MS = 60 * 1000;
-  const AUTO_INDEX_ON_LOAD = true;
-  const AUTO_INDEX_DELAY_MS = 2500;
-  const AUTO_INDEX_ON_SITE_VISIT = true;
-  const PREWARM_FETCH_CONCURRENCY = 6;
-  const BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = 1;
-  const BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES = 2;
-  const PREWARM_COLLECTION_DELAY_MS = 1500;
-  const PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
-  const PREWARM_LEASE_HEARTBEAT_MS = 5000;
-  const PREWARM_LEASE_STALE_MS = 30 * 1000;
+  let MAX_HARD_FAILURES = 2;
+  let PAUSED_SEARCH_RESUME_COOLDOWN_MS = 60 * 1000;
+  let AUTO_INDEX_ON_LOAD = true;
+  let AUTO_INDEX_DELAY_MS = 2500;
+  let AUTO_INDEX_ON_SITE_VISIT = true;
+  let PREWARM_FETCH_CONCURRENCY = 6;
+  let BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = 1;
+  let BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES = 2;
+  let PREWARM_COLLECTION_DELAY_MS = 1500;
+  let PREWARM_CONTEXT_GRACE_MS = 60 * 1000;
+  let PREWARM_LEASE_HEARTBEAT_MS = 5000;
+  let PREWARM_LEASE_STALE_MS = 30 * 1000;
   const PREWARM_COLLECTIONS = Object.freeze([
     'avatars',
     'themes',
@@ -99,26 +105,137 @@
   const TITLE_SORT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
   const ITEM_DISPLAY_SORT_KEYS = new WeakMap();
   const ALL_PLATFORM_QUERY = PLATFORM_FILTER_VALUES.map((platform) => platform.toUpperCase()).join(',');
-  const INITIAL_RENDER_LIMIT = 108;
-  const RENDER_STEP = 54;
+  let INITIAL_RENDER_LIMIT = 108;
+  let RENDER_STEP = 54;
   // Set to -1 for no hard render cap. High values can be heavy on low-memory machines.
-  const MAX_RENDER_LIMIT = -1;
+  let MAX_RENDER_LIMIT = -1;
   // Live detail hydration fills thumbnails, prices, and platform badges for rendered results.
   // Platform/free filters can also hydrate a small batch of unknown candidates so confirmed matches can appear.
-  const LIVE_DETAIL_HYDRATION_ENABLED = true;
+  let LIVE_DETAIL_HYDRATION_ENABLED = true;
   const LIVE_DETAIL_HYDRATION_DELAY_MS = 0;
-  const LIVE_DETAIL_FETCH_CONCURRENCY = 8;
-  const LIVE_DETAIL_FETCH_DELAY_MS = 0;
-  const LIVE_DETAIL_FETCH_JITTER_MS = 0;
-  const LIVE_DETAIL_RENDER_DEBOUNCE_MS = 15;
+  let LIVE_DETAIL_FETCH_CONCURRENCY = 8;
+  let LIVE_DETAIL_FETCH_DELAY_MS = 0;
+  let LIVE_DETAIL_FETCH_JITTER_MS = 0;
+  let LIVE_DETAIL_RENDER_DEBOUNCE_MS = 15;
   // Set to -1 to allow all currently rendered results.
-  const LIVE_DETAIL_MAX_ITEMS_PER_RENDER = -1;
+  let LIVE_DETAIL_MAX_ITEMS_PER_RENDER = -1;
   // Set to -1 to check every unknown candidate for platform/free filters at once.
-  const LIVE_DETAIL_FILTER_CANDIDATE_BATCH = 108;
-  const RENDER_STALE_RESULT_GRACE_MS = 2500;
-  const INITIAL_HYDRATION_DELAY_MS = 1500;
-  const INITIAL_HYDRATION_RETRY_MS = 2500;
-  const INITIAL_HYDRATION_MAX_ATTEMPTS = 3;
+  let LIVE_DETAIL_FILTER_CANDIDATE_BATCH = 108;
+  let RENDER_STALE_RESULT_GRACE_MS = 2500;
+  let INITIAL_HYDRATION_DELAY_MS = 1500;
+  let INITIAL_HYDRATION_RETRY_MS = 2500;
+  let INITIAL_HYDRATION_MAX_ATTEMPTS = 3;
+
+  const SETTINGS_SCHEMA_VERSION = 1;
+  const SETTINGS_STORAGE_PREFIX = `${CACHE_PREFIX}:settings`;
+  const TUNING_SETTING_DEFINITIONS = Object.freeze([
+    { key: 'LOG_LEVEL', group: 'Logging', label: 'LOG_LEVEL', help: 'Console detail level.', type: 'select', options: ['info', 'verbose'] },
+    { key: 'CACHE_FORCE_LOCAL_STORAGE', group: 'Cache storage', label: 'CACHE_FORCE_LOCAL_STORAGE', help: 'Use the legacy localStorage cache backend.', type: 'boolean' },
+    { key: 'CACHE_TTL_MS', group: 'Cache freshness', label: 'CACHE_TTL_MS', help: 'Maximum collection-page cache age.', unit: 'ms', min: 1, max: 31536000000 },
+    { key: 'DETAIL_CACHE_TTL_MS', group: 'Cache freshness', label: 'DETAIL_CACHE_TTL_MS', help: 'Maximum IndexedDB detail-metadata age.', unit: 'ms', min: 1, max: 31536000000 },
+    { key: 'CACHE_REVALIDATE_MS', group: 'Cache freshness', label: 'CACHE_REVALIDATE_MS', help: 'Age before a complete collection is checked again.', unit: 'ms', min: 1, max: 31536000000 },
+    { key: 'CACHE_LOCAL_MAX_BYTES', group: 'Storage budgets', label: 'CACHE_LOCAL_MAX_BYTES', help: 'Hard legacy localStorage budget.', unit: 'bytes', min: 1024, max: 107374182400 },
+    { key: 'CACHE_LOCAL_TARGET_BYTES', group: 'Storage budgets', label: 'CACHE_LOCAL_TARGET_BYTES', help: 'Legacy localStorage pruning target.', unit: 'bytes', min: 1024, max: 107374182400 },
+    { key: 'CACHE_INDEXEDDB_WARN_BYTES', group: 'Storage budgets', label: 'CACHE_INDEXEDDB_WARN_BYTES', help: 'IndexedDB warning threshold.', unit: 'bytes', min: 1024, max: 10995116277760 },
+    { key: 'CACHE_INDEXEDDB_MAX_BYTES', group: 'Storage budgets', label: 'CACHE_INDEXEDDB_MAX_BYTES', help: 'IndexedDB hard cache budget.', unit: 'bytes', min: 1024, max: 10995116277760 },
+    { key: 'CACHE_INDEXEDDB_TARGET_BYTES', group: 'Storage budgets', label: 'CACHE_INDEXEDDB_TARGET_BYTES', help: 'IndexedDB pruning target.', unit: 'bytes', min: 1024, max: 10995116277760 },
+    { key: 'CACHE_INDEXEDDB_WRITE_BATCH_SIZE', group: 'Storage budgets', label: 'CACHE_INDEXEDDB_WRITE_BATCH_SIZE', help: 'Queued IndexedDB writes per flush.', unit: 'writes', min: 1, max: 10000, integer: true },
+    { key: 'CACHE_INDEXEDDB_WRITE_FLUSH_MS', group: 'Storage budgets', label: 'CACHE_INDEXEDDB_WRITE_FLUSH_MS', help: 'Maximum wait before flushing queued IndexedDB writes.', unit: 'ms', min: 1, max: 3600000 },
+    { key: 'CACHE_BUDGET_CHECK_INTERVAL_MS', group: 'Storage budgets', label: 'CACHE_BUDGET_CHECK_INTERVAL_MS', help: 'Minimum time between cache-budget checks.', unit: 'ms', min: 1, max: 3600000 },
+    { key: 'FETCH_CONCURRENCY', group: 'Collection fetching', label: 'FETCH_CONCURRENCY', help: 'Foreground collection-page workers.', unit: 'workers', min: 1, max: 64, integer: true },
+    { key: 'FETCH_RETRY_COUNT', group: 'Collection fetching', label: 'FETCH_RETRY_COUNT', help: 'Additional attempts after a failed collection page.', unit: 'retries', min: 0, max: 20, integer: true },
+    { key: 'FETCH_TIMEOUT_MS', group: 'Collection fetching', label: 'FETCH_TIMEOUT_MS', help: 'Collection-page request timeout.', unit: 'ms', min: 1, max: 3600000 },
+    { key: 'FETCH_DELAY_MS', group: 'Collection fetching', label: 'FETCH_DELAY_MS', help: 'Base wait before a collection-page fetch.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'FETCH_JITTER_MS', group: 'Collection fetching', label: 'FETCH_JITTER_MS', help: 'Random extra collection-fetch wait.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'MAX_HARD_FAILURES', group: 'Collection fetching', label: 'MAX_HARD_FAILURES', help: 'Hard failures before collection indexing pauses.', unit: 'failures', min: 1, max: 100, integer: true },
+    { key: 'PAUSED_SEARCH_RESUME_COOLDOWN_MS', group: 'Collection fetching', label: 'PAUSED_SEARCH_RESUME_COOLDOWN_MS', help: 'Cooldown before typing can resume paused indexing.', unit: 'ms', min: 1, max: 86400000 },
+    { key: 'AUTO_INDEX_ON_LOAD', group: 'Automatic indexing', label: 'AUTO_INDEX_ON_LOAD', help: 'Allow indexing when the active collection loads.', type: 'boolean' },
+    { key: 'AUTO_INDEX_DELAY_MS', group: 'Automatic indexing', label: 'AUTO_INDEX_DELAY_MS', help: 'Wait before active-route auto-indexing.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'AUTO_INDEX_ON_SITE_VISIT', group: 'Automatic indexing', label: 'AUTO_INDEX_ON_SITE_VISIT', help: 'Allow background regional prewarm on a PSPrices visit.', type: 'boolean' },
+    { key: 'PREWARM_FETCH_CONCURRENCY', group: 'Background prewarm', label: 'PREWARM_FETCH_CONCURRENCY', help: 'Background collection-page workers.', unit: 'workers', min: 1, max: 64, integer: true },
+    { key: 'BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER', group: 'Background prewarm', label: 'BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER', help: 'Worker-relative lookahead queue multiplier.', unit: 'multiplier', min: 0, max: 100 },
+    { key: 'BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES', group: 'Background prewarm', label: 'BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES', help: 'Minimum speculative pages ahead of workers.', unit: 'pages', min: 0, max: 10000, integer: true },
+    { key: 'PREWARM_COLLECTION_DELAY_MS', group: 'Background prewarm', label: 'PREWARM_COLLECTION_DELAY_MS', help: 'Pause between avatar and theme prewarm passes.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'PREWARM_CONTEXT_GRACE_MS', group: 'Background prewarm', label: 'PREWARM_CONTEXT_GRACE_MS', help: 'Wait after the region page context disappears.', unit: 'ms', min: 1, max: 86400000 },
+    { key: 'PREWARM_LEASE_HEARTBEAT_MS', group: 'Background prewarm', label: 'PREWARM_LEASE_HEARTBEAT_MS', help: 'Cross-tab lease refresh interval.', unit: 'ms', min: 1, max: 3600000 },
+    { key: 'PREWARM_LEASE_STALE_MS', group: 'Background prewarm', label: 'PREWARM_LEASE_STALE_MS', help: 'Age after which another tab may reclaim a lease.', unit: 'ms', min: 2, max: 86400000 },
+    { key: 'INPUT_DEBOUNCE_MS', group: 'Search and rendering', label: 'INPUT_DEBOUNCE_MS', help: 'Delay before re-running a typed search.', unit: 'ms', min: 0, max: 60000 },
+    { key: 'INITIAL_RENDER_LIMIT', group: 'Search and rendering', label: 'INITIAL_RENDER_LIMIT', help: 'Results initially rendered.', unit: 'results', min: 1, max: 100000, integer: true },
+    { key: 'RENDER_STEP', group: 'Search and rendering', label: 'RENDER_STEP', help: 'Additional results rendered by Show more.', unit: 'results', min: 1, max: 100000, integer: true },
+    { key: 'MAX_RENDER_LIMIT', group: 'Search and rendering', label: 'MAX_RENDER_LIMIT', help: 'Rendered-result cap; -1 means no cap.', unit: 'results', min: 1, max: 1000000, integer: true, sentinel: -1 },
+    { key: 'LIVE_DETAIL_HYDRATION_ENABLED', group: 'Live detail hydration', label: 'LIVE_DETAIL_HYDRATION_ENABLED', help: 'Fetch product detail for rendered and filter candidates.', type: 'boolean' },
+    { key: 'LIVE_DETAIL_FETCH_CONCURRENCY', group: 'Live detail hydration', label: 'LIVE_DETAIL_FETCH_CONCURRENCY', help: 'Concurrent product-detail fetches.', unit: 'workers', min: 1, max: 64, integer: true },
+    { key: 'LIVE_DETAIL_FETCH_DELAY_MS', group: 'Live detail hydration', label: 'LIVE_DETAIL_FETCH_DELAY_MS', help: 'Base wait before each product-detail fetch.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'LIVE_DETAIL_FETCH_JITTER_MS', group: 'Live detail hydration', label: 'LIVE_DETAIL_FETCH_JITTER_MS', help: 'Random extra product-detail wait.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'LIVE_DETAIL_RENDER_DEBOUNCE_MS', group: 'Live detail hydration', label: 'LIVE_DETAIL_RENDER_DEBOUNCE_MS', help: 'Delay before hydrated card updates render.', unit: 'ms', min: 0, max: 60000 },
+    { key: 'LIVE_DETAIL_MAX_ITEMS_PER_RENDER', group: 'Live detail hydration', label: 'LIVE_DETAIL_MAX_ITEMS_PER_RENDER', help: 'Rendered cards to hydrate; -1 means all.', unit: 'items', min: 1, max: 1000000, integer: true, sentinel: -1 },
+    { key: 'LIVE_DETAIL_FILTER_CANDIDATE_BATCH', group: 'Live detail hydration', label: 'LIVE_DETAIL_FILTER_CANDIDATE_BATCH', help: 'Unknown filter candidates checked per pass; -1 means all.', unit: 'items', min: 1, max: 1000000, integer: true, sentinel: -1 },
+    { key: 'RENDER_STALE_RESULT_GRACE_MS', group: 'Live detail hydration', label: 'RENDER_STALE_RESULT_GRACE_MS', help: 'How long clearly stale cards remain while typing.', unit: 'ms', min: 0, max: 600000 },
+    { key: 'INITIAL_HYDRATION_DELAY_MS', group: 'Initial hydration', label: 'INITIAL_HYDRATION_DELAY_MS', help: 'Wait after page readiness before the initial hydration pass.', unit: 'ms', min: 0, max: 3600000 },
+    { key: 'INITIAL_HYDRATION_RETRY_MS', group: 'Initial hydration', label: 'INITIAL_HYDRATION_RETRY_MS', help: 'Wait between initial hydration retries.', unit: 'ms', min: 1, max: 3600000 },
+    { key: 'INITIAL_HYDRATION_MAX_ATTEMPTS', group: 'Initial hydration', label: 'INITIAL_HYDRATION_MAX_ATTEMPTS', help: 'Initial hydration attempts before giving up.', unit: 'attempts', min: 1, max: 100, integer: true },
+  ]);
+  const TUNING_SETTING_KEYS = Object.freeze(TUNING_SETTING_DEFINITIONS.map((definition) => definition.key));
+  const TUNING_DEFAULTS = Object.freeze({
+    LOG_LEVEL,
+    CACHE_FORCE_LOCAL_STORAGE,
+    CACHE_TTL_MS,
+    DETAIL_CACHE_TTL_MS,
+    CACHE_REVALIDATE_MS,
+    CACHE_LOCAL_MAX_BYTES,
+    CACHE_LOCAL_TARGET_BYTES,
+    CACHE_INDEXEDDB_WARN_BYTES,
+    CACHE_INDEXEDDB_MAX_BYTES,
+    CACHE_INDEXEDDB_TARGET_BYTES,
+    CACHE_INDEXEDDB_WRITE_BATCH_SIZE,
+    CACHE_INDEXEDDB_WRITE_FLUSH_MS,
+    CACHE_BUDGET_CHECK_INTERVAL_MS,
+    FETCH_CONCURRENCY,
+    FETCH_RETRY_COUNT,
+    FETCH_TIMEOUT_MS,
+    FETCH_DELAY_MS,
+    FETCH_JITTER_MS,
+    MAX_HARD_FAILURES,
+    PAUSED_SEARCH_RESUME_COOLDOWN_MS,
+    AUTO_INDEX_ON_LOAD,
+    AUTO_INDEX_DELAY_MS,
+    AUTO_INDEX_ON_SITE_VISIT,
+    PREWARM_FETCH_CONCURRENCY,
+    BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER,
+    BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES,
+    PREWARM_COLLECTION_DELAY_MS,
+    PREWARM_CONTEXT_GRACE_MS,
+    PREWARM_LEASE_HEARTBEAT_MS,
+    PREWARM_LEASE_STALE_MS,
+    INPUT_DEBOUNCE_MS,
+    INITIAL_RENDER_LIMIT,
+    RENDER_STEP,
+    MAX_RENDER_LIMIT,
+    LIVE_DETAIL_HYDRATION_ENABLED,
+    LIVE_DETAIL_FETCH_CONCURRENCY,
+    LIVE_DETAIL_FETCH_DELAY_MS,
+    LIVE_DETAIL_FETCH_JITTER_MS,
+    LIVE_DETAIL_RENDER_DEBOUNCE_MS,
+    LIVE_DETAIL_MAX_ITEMS_PER_RENDER,
+    LIVE_DETAIL_FILTER_CANDIDATE_BATCH,
+    RENDER_STALE_RESULT_GRACE_MS,
+    INITIAL_HYDRATION_DELAY_MS,
+    INITIAL_HYDRATION_RETRY_MS,
+    INITIAL_HYDRATION_MAX_ATTEMPTS,
+  });
+
+  const nativeWindow = typeof unsafeWindow === 'object' && unsafeWindow ? unsafeWindow : window;
+  const setTimeout = (...args) => nativeWindow.setTimeout(...args);
+  const clearTimeout = (...args) => nativeWindow.clearTimeout(...args);
+  const setInterval = (...args) => nativeWindow.setInterval(...args);
+  const clearInterval = (...args) => nativeWindow.clearInterval(...args);
+  const INSTANCE_FLAG = '__pspricesCollectionLiveSearchInstalled';
+  try {
+    if (nativeWindow[INSTANCE_FLAG]) return;
+    nativeWindow[INSTANCE_FLAG] = true;
+  } catch (_) {
+    // Continue when a userscript manager exposes a non-writable page wrapper.
+  }
 
   const STYLE_ID = 'psprices-live-search-style';
   const OWNER_ATTR = 'data-psprices-live-search';
@@ -136,7 +253,7 @@
   const PREWARM_STOP_GRACE_MS = 10 * 1000;
   const TAB_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 
-  const effectiveLogLevel = LOG_LEVEL === 'verbose' ? 'verbose' : 'info';
+  let effectiveLogLevel = LOG_LEVEL === 'verbose' ? 'verbose' : 'info';
   const loggedMessages = new Map();
   let managerLogWarningShown = false;
   let appState = null;
@@ -163,6 +280,18 @@
   let cacheWriteFlushTimer = 0;
   let cacheStorageSizeWarningShown = false;
   let cacheStorageModeLogged = false;
+  const settingsController = createLiveSearchSettingsController({
+    runtime: {
+      GM_getValue: typeof GM_getValue === 'function' ? GM_getValue : undefined,
+      GM_setValue: typeof GM_setValue === 'function' ? GM_setValue : undefined,
+      GM_registerMenuCommand: typeof GM_registerMenuCommand === 'function' ? GM_registerMenuCommand : undefined,
+      GM: typeof GM === 'object' ? GM : undefined,
+      setTimeout: (callback, delay) => setTimeout(callback, delay),
+      clearTimeout: (timer) => clearTimeout(timer),
+    },
+    document,
+    onInitialLoad: applyStartupTuningSettings,
+  });
 
   function sanitizeLogValue(value) {
     return String(value ?? '')
@@ -236,8 +365,589 @@
     callback();
   }
 
-  function parseRoute(url = window.location.href) {
-    const parsed = new URL(url, window.location.origin);
+  function definitionForTuningKey(key) {
+    return TUNING_SETTING_DEFINITIONS.find((definition) => definition.key === key) || null;
+  }
+
+  function normalizeTuningValue(definition, value, fallback) {
+    if (definition.type === 'boolean') {
+      return typeof value === 'boolean' ? value : fallback;
+    }
+    if (definition.type === 'select') {
+      return definition.options.includes(value) ? value : fallback;
+    }
+
+    if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) {
+      return fallback;
+    }
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    if (definition.sentinel !== undefined && number === definition.sentinel) return number;
+    if (definition.integer && !Number.isInteger(number)) return fallback;
+    if (number < definition.min || number > definition.max) return fallback;
+    return number;
+  }
+
+  function normalizeTuningSettings(source = {}) {
+    const normalized = {};
+    for (const definition of TUNING_SETTING_DEFINITIONS) {
+      normalized[definition.key] = normalizeTuningValue(
+        definition,
+        source[definition.key],
+        TUNING_DEFAULTS[definition.key]
+      );
+    }
+
+    normalized.CACHE_LOCAL_TARGET_BYTES = Math.min(
+      normalized.CACHE_LOCAL_TARGET_BYTES,
+      normalized.CACHE_LOCAL_MAX_BYTES
+    );
+    normalized.CACHE_INDEXEDDB_WARN_BYTES = Math.min(
+      normalized.CACHE_INDEXEDDB_WARN_BYTES,
+      normalized.CACHE_INDEXEDDB_MAX_BYTES
+    );
+    normalized.CACHE_INDEXEDDB_TARGET_BYTES = Math.min(
+      normalized.CACHE_INDEXEDDB_TARGET_BYTES,
+      normalized.CACHE_INDEXEDDB_MAX_BYTES
+    );
+    if (normalized.PREWARM_LEASE_STALE_MS <= normalized.PREWARM_LEASE_HEARTBEAT_MS) {
+      normalized.PREWARM_LEASE_STALE_MS = Math.max(
+        TUNING_DEFAULTS.PREWARM_LEASE_STALE_MS,
+        normalized.PREWARM_LEASE_HEARTBEAT_MS + 1
+      );
+    }
+    return normalized;
+  }
+
+  function copyTuningSettings(values) {
+    const copy = {};
+    for (const key of TUNING_SETTING_KEYS) copy[key] = values[key];
+    return copy;
+  }
+
+  function applyStartupTuningSettings(values) {
+    const settings = normalizeTuningSettings(values);
+    LOG_LEVEL = settings.LOG_LEVEL;
+    CACHE_FORCE_LOCAL_STORAGE = settings.CACHE_FORCE_LOCAL_STORAGE;
+    CACHE_TTL_MS = settings.CACHE_TTL_MS;
+    DETAIL_CACHE_TTL_MS = settings.DETAIL_CACHE_TTL_MS;
+    CACHE_REVALIDATE_MS = settings.CACHE_REVALIDATE_MS;
+    CACHE_LOCAL_MAX_BYTES = settings.CACHE_LOCAL_MAX_BYTES;
+    CACHE_LOCAL_TARGET_BYTES = settings.CACHE_LOCAL_TARGET_BYTES;
+    CACHE_INDEXEDDB_WARN_BYTES = settings.CACHE_INDEXEDDB_WARN_BYTES;
+    CACHE_INDEXEDDB_MAX_BYTES = settings.CACHE_INDEXEDDB_MAX_BYTES;
+    CACHE_INDEXEDDB_TARGET_BYTES = settings.CACHE_INDEXEDDB_TARGET_BYTES;
+    CACHE_INDEXEDDB_WRITE_BATCH_SIZE = settings.CACHE_INDEXEDDB_WRITE_BATCH_SIZE;
+    CACHE_INDEXEDDB_WRITE_FLUSH_MS = settings.CACHE_INDEXEDDB_WRITE_FLUSH_MS;
+    CACHE_BUDGET_CHECK_INTERVAL_MS = settings.CACHE_BUDGET_CHECK_INTERVAL_MS;
+    FETCH_CONCURRENCY = settings.FETCH_CONCURRENCY;
+    FETCH_RETRY_COUNT = settings.FETCH_RETRY_COUNT;
+    FETCH_TIMEOUT_MS = settings.FETCH_TIMEOUT_MS;
+    FETCH_DELAY_MS = settings.FETCH_DELAY_MS;
+    FETCH_JITTER_MS = settings.FETCH_JITTER_MS;
+    MAX_HARD_FAILURES = settings.MAX_HARD_FAILURES;
+    PAUSED_SEARCH_RESUME_COOLDOWN_MS = settings.PAUSED_SEARCH_RESUME_COOLDOWN_MS;
+    AUTO_INDEX_ON_LOAD = settings.AUTO_INDEX_ON_LOAD;
+    AUTO_INDEX_DELAY_MS = settings.AUTO_INDEX_DELAY_MS;
+    AUTO_INDEX_ON_SITE_VISIT = settings.AUTO_INDEX_ON_SITE_VISIT;
+    PREWARM_FETCH_CONCURRENCY = settings.PREWARM_FETCH_CONCURRENCY;
+    BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER = settings.BACKGROUND_LOOKAHEAD_QUEUE_MULTIPLIER;
+    BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES = settings.BACKGROUND_LOOKAHEAD_MIN_EXTRA_PAGES;
+    PREWARM_COLLECTION_DELAY_MS = settings.PREWARM_COLLECTION_DELAY_MS;
+    PREWARM_CONTEXT_GRACE_MS = settings.PREWARM_CONTEXT_GRACE_MS;
+    PREWARM_LEASE_HEARTBEAT_MS = settings.PREWARM_LEASE_HEARTBEAT_MS;
+    PREWARM_LEASE_STALE_MS = settings.PREWARM_LEASE_STALE_MS;
+    INPUT_DEBOUNCE_MS = settings.INPUT_DEBOUNCE_MS;
+    INITIAL_RENDER_LIMIT = settings.INITIAL_RENDER_LIMIT;
+    RENDER_STEP = settings.RENDER_STEP;
+    MAX_RENDER_LIMIT = settings.MAX_RENDER_LIMIT;
+    LIVE_DETAIL_HYDRATION_ENABLED = settings.LIVE_DETAIL_HYDRATION_ENABLED;
+    LIVE_DETAIL_FETCH_CONCURRENCY = settings.LIVE_DETAIL_FETCH_CONCURRENCY;
+    LIVE_DETAIL_FETCH_DELAY_MS = settings.LIVE_DETAIL_FETCH_DELAY_MS;
+    LIVE_DETAIL_FETCH_JITTER_MS = settings.LIVE_DETAIL_FETCH_JITTER_MS;
+    LIVE_DETAIL_RENDER_DEBOUNCE_MS = settings.LIVE_DETAIL_RENDER_DEBOUNCE_MS;
+    LIVE_DETAIL_MAX_ITEMS_PER_RENDER = settings.LIVE_DETAIL_MAX_ITEMS_PER_RENDER;
+    LIVE_DETAIL_FILTER_CANDIDATE_BATCH = settings.LIVE_DETAIL_FILTER_CANDIDATE_BATCH;
+    RENDER_STALE_RESULT_GRACE_MS = settings.RENDER_STALE_RESULT_GRACE_MS;
+    INITIAL_HYDRATION_DELAY_MS = settings.INITIAL_HYDRATION_DELAY_MS;
+    INITIAL_HYDRATION_RETRY_MS = settings.INITIAL_HYDRATION_RETRY_MS;
+    INITIAL_HYDRATION_MAX_ATTEMPTS = settings.INITIAL_HYDRATION_MAX_ATTEMPTS;
+    effectiveLogLevel = LOG_LEVEL === 'verbose' ? 'verbose' : 'info';
+    return settings;
+  }
+
+  function findSettingsStorage(runtime) {
+    const gm = runtime && runtime.GM;
+    if (gm && typeof gm.getValue === 'function' && typeof gm.setValue === 'function') {
+      return {
+        get: (key) => gm.getValue(key),
+        set: (key, value) => gm.setValue(key, value),
+      };
+    }
+    const legacyGet = runtime && runtime.GM_getValue;
+    const legacySet = runtime && runtime.GM_setValue;
+    if (typeof legacyGet === 'function' && typeof legacySet === 'function') {
+      return {
+        get: (key) => legacyGet.call(runtime, key),
+        set: (key, value) => legacySet.call(runtime, key, value),
+      };
+    }
+    return null;
+  }
+
+  function createLiveSearchSettingsController(options = {}) {
+    const runtime = options.runtime || window;
+    const settingsDocument = options.document || document;
+    const onInitialLoad = typeof options.onInitialLoad === 'function' ? options.onInitialLoad : () => {};
+    const setTimeoutFn = typeof runtime.setTimeout === 'function' ? runtime.setTimeout.bind(runtime) : setTimeout;
+    const clearTimeoutFn = typeof runtime.clearTimeout === 'function' ? runtime.clearTimeout.bind(runtime) : clearTimeout;
+    const storage = findSettingsStorage(runtime);
+    let storageState = storage ? 'loading' : 'unavailable';
+    let storageError = null;
+    let current = copyTuningSettings(TUNING_DEFAULTS);
+    let draft = copyTuningSettings(current);
+    let initialized = false;
+    let initializePromise = null;
+    let writeChain = Promise.resolve();
+    let ui = null;
+    let lastFocus = null;
+    let menuRegistered = false;
+    let version = 0;
+    const keyVersions = new Map();
+    const pendingKeys = new Set();
+    const readableKeys = new Set();
+    const touchedKeys = new Set();
+    const failedReadKeys = new Set();
+
+    function storageKey(key) {
+      return `${SETTINGS_STORAGE_PREFIX}.${key}`;
+    }
+
+    function statusText(state) {
+      if (state === 'loading') return 'Loading saved settings…';
+      if (state === 'ready') return initialized
+        ? 'Saved settings load before cache and indexing startup.'
+        : 'Settings saved. Reload this page to apply them.';
+      if (state === 'saving') return 'Saving settings for the next reload…';
+      if (state === 'read-error') return 'Saved values could not be read; unknown values were left untouched.';
+      if (state === 'write-error') return 'Saving failed. Existing active work was not changed.';
+      return 'Userscript-manager storage is unavailable; changes cannot persist.';
+    }
+
+    function setStatus(state, message) {
+      storageState = state;
+      storageError = message || null;
+      renderSettings();
+    }
+
+    function markUserChange(key) {
+      version += 1;
+      keyVersions.set(key, version);
+      if (!storage) return;
+      readableKeys.add(storageKey(key));
+      pendingKeys.add(key);
+    }
+
+    function entriesForPendingKeys() {
+      return Array.from(pendingKeys)
+        .filter((key) => readableKeys.has(storageKey(key)))
+        .map((key) => ({
+          key,
+          storageKey: storageKey(key),
+          value: current[key],
+          version: keyVersions.get(key),
+        }));
+    }
+
+    async function performWrites(entries, successMessage) {
+      if (!storage || entries.length === 0) return;
+      let failed = false;
+      storageState = 'saving';
+      renderSettings();
+      for (const entry of entries) {
+        try {
+          await storage.set(entry.storageKey, entry.value);
+          if (keyVersions.get(entry.key) === entry.version) {
+            pendingKeys.delete(entry.key);
+            failedReadKeys.delete(entry.key);
+          }
+        } catch (error) {
+          failed = true;
+          storageError = error;
+        }
+      }
+      storageState = failed ? 'write-error' : failedReadKeys.size > 0 ? 'read-error' : 'ready';
+      if (!failed) {
+        storageError = failedReadKeys.size > 0
+          ? 'Settings saved, but some saved values could not be read; unknown values were left untouched.'
+          : successMessage || null;
+      }
+      renderSettings();
+    }
+
+    function flushSettings(successMessage) {
+      if (!storage) return writeChain;
+      const entries = entriesForPendingKeys();
+      if (entries.length === 0) return writeChain;
+      writeChain = writeChain.then(() => performWrites(entries, successMessage));
+      return writeChain;
+    }
+
+    function queueMissingSettings(entries) {
+      if (!storage || entries.length === 0) return writeChain;
+      writeChain = writeChain.then(async () => {
+        let failed = false;
+        storageState = 'saving';
+        renderSettings();
+        for (const entry of entries) {
+          if (entry.key && (keyVersions.get(entry.key) || 0) !== entry.version) continue;
+          try {
+            await storage.set(entry.storageKey, entry.value);
+            readableKeys.add(entry.storageKey);
+          } catch (error) {
+            failed = true;
+            storageError = error;
+          }
+        }
+        storageState = failed ? 'write-error' : 'ready';
+        if (!failed) storageError = null;
+        renderSettings();
+      });
+      return writeChain;
+    }
+
+    async function initialize() {
+      if (initializePromise) return initializePromise;
+      initializePromise = (async () => {
+        registerSettingsMenu();
+        if (!storage) {
+          current = copyTuningSettings(onInitialLoad(current) || current);
+          draft = copyTuningSettings(current);
+          initialized = true;
+          setStatus('unavailable');
+          return copyTuningSettings(current);
+        }
+
+        const values = {};
+        const failedReads = new Set();
+        const readVersions = new Map(TUNING_SETTING_KEYS.map((key) => [key, keyVersions.get(key) || 0]));
+        await Promise.all([...TUNING_SETTING_KEYS, '__schemaVersion'].map(async (key) => {
+          const keyName = key === '__schemaVersion' ? `${SETTINGS_STORAGE_PREFIX}.schemaVersion` : storageKey(key);
+          try {
+            values[key] = await storage.get(keyName);
+            readableKeys.add(keyName);
+          } catch (error) {
+            failedReads.add(key);
+            if (key !== '__schemaVersion') failedReadKeys.add(key);
+            storageError = error;
+          }
+        }));
+
+        for (const key of TUNING_SETTING_KEYS) {
+          if (failedReads.has(key) || values[key] === undefined) continue;
+          if ((keyVersions.get(key) || 0) !== readVersions.get(key)) continue;
+          current[key] = normalizeTuningValue(definitionForTuningKey(key), values[key], TUNING_DEFAULTS[key]);
+        }
+        current = copyTuningSettings(onInitialLoad(current) || current);
+        draft = copyTuningSettings(current);
+        initialized = true;
+        registerSettingsMenu();
+
+        const missing = TUNING_SETTING_KEYS
+          .filter((key) => !failedReads.has(key) && values[key] === undefined)
+          .map((key) => ({
+            key,
+            storageKey: storageKey(key),
+            value: current[key],
+            version: keyVersions.get(key) || 0,
+          }));
+        if (!failedReads.has('__schemaVersion') && values.__schemaVersion === undefined) {
+          missing.push({ storageKey: `${SETTINGS_STORAGE_PREFIX}.schemaVersion`, value: SETTINGS_SCHEMA_VERSION });
+        }
+        await queueMissingSettings(missing);
+        if (failedReads.size > 0) setStatus('read-error');
+        else if (missing.length === 0) setStatus('ready');
+        return copyTuningSettings(current);
+      })();
+      return initializePromise;
+    }
+
+    function settingControlMarkup(definition) {
+      const id = `psprices-live-search-setting-${definition.key.toLowerCase()}`;
+      const unit = definition.unit ? `<span class="pspls-settings-unit">${definition.unit}</span>` : '';
+      let control = '';
+      if (definition.type === 'boolean') {
+        control = `<label class="pspls-settings-check"><input id="${id}" data-setting="${definition.key}" type="checkbox"><span>Enabled</span></label>`;
+      } else if (definition.type === 'select') {
+        control = `<select id="${id}" data-setting="${definition.key}">${definition.options.map((value) => `<option value="${value}">${value}</option>`).join('')}</select>`;
+      } else {
+        const minimum = definition.sentinel === undefined ? definition.min : definition.sentinel;
+        control = `<input id="${id}" data-setting="${definition.key}" type="number" min="${minimum}" max="${definition.max}" step="any">`;
+      }
+      return `<div class="pspls-settings-row"><label for="${id}"><code>${definition.label}</code></label><p>${definition.help} ${unit}</p>${control}</div>`;
+    }
+
+    function ensureMounted() {
+      if (!settingsDocument || typeof settingsDocument.createElement !== 'function') return null;
+      if (ui && ui.host && ui.host.isConnected) {
+        registerSettingsMenu();
+        return ui;
+      }
+      if (!settingsDocument.body) return null;
+      const host = settingsDocument.createElement('div');
+      host.id = 'psprices-live-search-settings-host';
+      const shadow = typeof host.attachShadow === 'function' ? host.attachShadow({ mode: 'open' }) : host;
+      const groups = [];
+      for (const definition of TUNING_SETTING_DEFINITIONS) {
+        let group = groups.find((entry) => entry.name === definition.group);
+        if (!group) {
+          group = { name: definition.group, definitions: [] };
+          groups.push(group);
+        }
+        group.definitions.push(definition);
+      }
+      shadow.innerHTML = `
+        <style>
+          :host {
+            all: initial;
+            color-scheme: dark;
+            --settings-panel-bg: #161b22;
+            --settings-field-bg: #0d1117;
+            --settings-text: #e6edf3;
+            --settings-muted: #9da7b3;
+            --settings-border: #484f58;
+            --settings-control-border: #6e7681;
+            --settings-button-bg: #21262d;
+            --settings-primary-bg: #1f6feb;
+            --settings-primary-border: #1f6feb;
+            --settings-focus: #58a6ff;
+            --settings-warning-bg: #3d2f00;
+            --settings-warning-text: #ffdf70;
+            --settings-warning-border: #d29922;
+            --settings-error: #ff7b72;
+            color: var(--settings-text);
+            font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+          @media (prefers-color-scheme: light) {
+            :host {
+              color-scheme: light;
+              --settings-panel-bg: #fff;
+              --settings-field-bg: #fff;
+              --settings-text: #1f2328;
+              --settings-muted: #57606a;
+              --settings-border: #d0d7de;
+              --settings-control-border: #8c959f;
+              --settings-button-bg: #f6f8fa;
+              --settings-primary-bg: #1f883d;
+              --settings-primary-border: #1f883d;
+              --settings-focus: #0969da;
+              --settings-warning-bg: #fff8c5;
+              --settings-warning-text: #533f03;
+              --settings-warning-border: #e0a500;
+              --settings-error: #b42318;
+            }
+          }
+          *, *::before, *::after { box-sizing: border-box; }
+          dialog { width: min(720px, calc(100vw - 24px)); max-height: min(820px, calc(100vh - 24px)); margin: auto; border: 1px solid var(--settings-border); border-radius: 10px; color: var(--settings-text); background: var(--settings-panel-bg); padding: 0; box-shadow: 0 16px 50px rgb(0 0 0 / 58%); }
+          dialog::backdrop { background: rgb(0 0 0 / 58%); }
+          @media (prefers-color-scheme: light) { dialog { box-shadow: 0 16px 50px rgb(31 35 40 / 34%); } dialog::backdrop { background: rgb(15 23 42 / 46%); } }
+          .pspls-settings-panel { overflow: auto; max-height: min(820px, calc(100vh - 24px)); padding: 20px; }
+          h2 { margin: 0 0 8px; font-size: 18px; }
+          h3 { margin: 22px 0 8px; font-size: 14px; }
+          .pspls-settings-warning { margin: 0; border: 1px solid var(--settings-warning-border); border-radius: 7px; background: var(--settings-warning-bg); padding: 9px 10px; color: var(--settings-warning-text); }
+          .pspls-settings-note, .pspls-settings-status { color: var(--settings-muted); font-size: 12px; }
+          .pspls-settings-status { min-height: 1.4em; margin: 14px 0 0; }
+          .pspls-settings-status[data-state="write-error"], .pspls-settings-status[data-state="read-error"] { color: var(--settings-error); }
+          fieldset { border: 1px solid var(--settings-border); border-radius: 7px; margin: 0 0 12px; padding: 4px 12px 10px; }
+          legend { padding: 0 5px; font-weight: 600; }
+          .pspls-settings-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(120px, .55fr); gap: 10px; align-items: center; border-top: 1px solid var(--settings-border); padding: 9px 0; }
+          .pspls-settings-row:first-of-type { border-top: 0; }
+          .pspls-settings-row label { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+          .pspls-settings-row code { color: var(--settings-text); font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+          .pspls-settings-row p { margin: 0; color: var(--settings-muted); font-size: 12px; }
+          .pspls-settings-unit { white-space: nowrap; }
+          input, select, button { color: inherit; font: inherit; }
+          input[type="number"], select { width: 100%; min-width: 0; border: 1px solid var(--settings-control-border); border-radius: 6px; background: var(--settings-field-bg); color: var(--settings-text); padding: 5px 7px; }
+          input::placeholder { color: var(--settings-muted); opacity: 1; }
+          :focus-visible { outline: 2px solid var(--settings-focus); outline-offset: 2px; }
+          .pspls-settings-check { display: flex; align-items: center; gap: 7px; }
+          .pspls-settings-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+          button { cursor: pointer; border: 1px solid var(--settings-border); border-radius: 6px; background: var(--settings-button-bg); color: var(--settings-text); padding: 6px 10px; }
+          button.pspls-settings-primary { border-color: var(--settings-primary-border); background: var(--settings-primary-bg); color: #fff; }
+          @media (max-width: 600px) { .pspls-settings-row { grid-template-columns: 1fr; gap: 4px; } }
+        </style>
+        <dialog aria-labelledby="psprices-live-search-settings-title">
+          <form class="pspls-settings-panel" novalidate>
+            <h2 id="psprices-live-search-settings-title">PSPrices Live Search settings</h2>
+            <p class="pspls-settings-warning">Advanced users only. Changing these settings can break search, indexing, or caching. You are responsible for problems caused by your changes.</p>
+            <p class="pspls-settings-note">Changes save for the next reload. Saving never reconfigures active workers, reloads the page, clears cache, or starts indexing.</p>
+            ${groups.map((group) => `<fieldset><legend>${group.name}</legend>${group.definitions.map(settingControlMarkup).join('')}</fieldset>`).join('')}
+            <p class="pspls-settings-status" role="status" aria-live="polite"></p>
+            <div class="pspls-settings-actions">
+              <button type="button" data-reset>Reset defaults</button>
+              <button type="button" data-close>Close</button>
+              <button class="pspls-settings-primary" type="button" data-save>Save settings</button>
+            </div>
+          </form>
+        </dialog>`;
+      ui = {
+        host,
+        shadow,
+        dialog: shadow.querySelector('dialog'),
+        status: shadow.querySelector('.pspls-settings-status'),
+        save: shadow.querySelector('[data-save]'),
+        reset: shadow.querySelector('[data-reset]'),
+        close: shadow.querySelector('[data-close]'),
+      };
+      bindUi();
+      (settingsDocument.body || settingsDocument.documentElement).appendChild(host);
+      registerSettingsMenu();
+      renderSettings();
+      return ui;
+    }
+
+    function bindUi() {
+      if (!ui) return;
+      ui.shadow.addEventListener('input', updateDraftFromControl);
+      ui.shadow.addEventListener('change', updateDraftFromControl);
+      ui.save.addEventListener('click', () => { saveDraft().catch(() => {}); });
+      ui.reset.addEventListener('click', () => { resetDefaults().catch(() => {}); });
+      ui.close.addEventListener('click', close);
+      ui.dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        close();
+      });
+      ui.dialog.addEventListener('submit', (event) => event.preventDefault());
+      ui.dialog.addEventListener('keydown', trapDialogFocus);
+    }
+
+    function updateDraftFromControl(event) {
+      const control = event.target;
+      const key = control && control.dataset ? control.dataset.setting : '';
+      const definition = definitionForTuningKey(key);
+      if (!definition) return;
+      draft[key] = definition.type === 'boolean' ? Boolean(control.checked) : control.value;
+      touchedKeys.add(key);
+    }
+
+    function trapDialogFocus(event) {
+      if (event.key !== 'Tab' || !ui) return;
+      const controls = Array.from(ui.dialog.querySelectorAll('button, input, select, textarea, [href]'))
+        .filter((element) => !element.disabled && element.offsetParent !== null);
+      if (controls.length === 0) return;
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      const active = ui.shadow.activeElement || settingsDocument.activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    function show() {
+      const mounted = ensureMounted();
+      if (!mounted) return;
+      lastFocus = ui.shadow.activeElement || settingsDocument.activeElement || null;
+      discardDraft();
+      renderSettings();
+      try {
+        if (typeof ui.dialog.showModal === 'function' && !ui.dialog.open) ui.dialog.showModal();
+        else ui.dialog.setAttribute('open', '');
+      } catch (_) {
+        ui.dialog.setAttribute('open', '');
+      }
+      const firstControl = ui.shadow.querySelector('[data-setting]');
+      if (firstControl && typeof firstControl.focus === 'function') firstControl.focus();
+    }
+
+    function close() {
+      if (!ui) return;
+      discardDraft();
+      if (typeof ui.dialog.close === 'function' && ui.dialog.open) ui.dialog.close();
+      else ui.dialog.removeAttribute('open');
+      if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
+    }
+
+    function discardDraft() {
+      draft = copyTuningSettings(current);
+      touchedKeys.clear();
+    }
+
+    async function saveDraft() {
+      const previous = current;
+      current = normalizeTuningSettings(draft);
+      draft = copyTuningSettings(current);
+      const keysToSave = new Set(touchedKeys);
+      for (const key of TUNING_SETTING_KEYS) {
+        if (!Object.is(previous[key], current[key])) keysToSave.add(key);
+      }
+      for (const key of keysToSave) markUserChange(key);
+      touchedKeys.clear();
+      renderSettings();
+      await flushSettings('Settings saved. Reload this page to apply them.');
+      return copyTuningSettings(current);
+    }
+
+    async function resetDefaults() {
+      current = copyTuningSettings(TUNING_DEFAULTS);
+      draft = copyTuningSettings(current);
+      for (const key of TUNING_SETTING_KEYS) markUserChange(key);
+      touchedKeys.clear();
+      renderSettings();
+      await flushSettings('Defaults saved. Reload this page to apply them.');
+      return copyTuningSettings(current);
+    }
+
+    function registerSettingsMenu() {
+      if (menuRegistered) return;
+      const modern = runtime.GM && runtime.GM.registerMenuCommand;
+      const legacy = runtime.GM_registerMenuCommand;
+      const register = typeof modern === 'function'
+        ? () => runtime.GM.registerMenuCommand('PSPrices Live Search settings', show)
+        : typeof legacy === 'function'
+          ? () => legacy.call(runtime, 'PSPrices Live Search settings', show)
+          : null;
+      if (!register) return;
+      try {
+        const result = register();
+        menuRegistered = true;
+        if (result && typeof result.catch === 'function') result.catch(() => {});
+      } catch (_) {
+        // Optional menu registration can be declined by a userscript manager.
+      }
+    }
+
+    function renderSettings() {
+      if (!ui) return;
+      for (const definition of TUNING_SETTING_DEFINITIONS) {
+        const control = ui.shadow.querySelector(`[data-setting="${definition.key}"]`);
+        if (!control) continue;
+        if (definition.type === 'boolean') control.checked = Boolean(draft[definition.key]);
+        else if (ui.shadow.activeElement !== control) control.value = String(draft[definition.key]);
+      }
+      const message = storageError && (storageState === 'write-error' || storageState === 'read-error')
+        ? storageError.message || String(storageError)
+        : typeof storageError === 'string' ? storageError : statusText(storageState);
+      ui.status.textContent = message;
+      ui.status.dataset.state = storageState;
+    }
+
+    return {
+      initialize,
+      ensureMounted,
+      show,
+      close,
+      flush: flushSettings,
+      isMounted: () => Boolean(ui && ui.host && ui.host.isConnected),
+      getCurrent: () => copyTuningSettings(current),
+    };
+  }
+
+  function parseRoute(url = nativeWindow.location.href) {
+    const parsed = new URL(url, nativeWindow.location.origin);
     const match = ROUTE_PATH.exec(parsed.pathname);
     if (!match) return null;
 
@@ -261,8 +971,8 @@
     };
   }
 
-  function parseRegionContext(url = window.location.href) {
-    const parsed = new URL(url, window.location.origin);
+  function parseRegionContext(url = nativeWindow.location.href) {
+    const parsed = new URL(url, nativeWindow.location.origin);
     const match = REGION_PATH.exec(parsed.pathname);
     if (!match) return null;
 
@@ -2221,7 +2931,7 @@
     return String(node && node.getAttribute(name) ? node.getAttribute(name) : '').trim();
   }
 
-  function absoluteUrl(value, baseUrl = window.location.href) {
+  function absoluteUrl(value, baseUrl = nativeWindow.location.href) {
     if (!value) return '';
     try {
       return new URL(value, baseUrl).href;
@@ -2426,7 +3136,7 @@
     runSearch(state);
   }
 
-  function parsePageItems(doc, route, page, pageUrl = window.location.href) {
+  function parsePageItems(doc, route, page, pageUrl = nativeWindow.location.href) {
     return isThemeCollection(route.collection)
       ? parseThemeItems(doc, route, page, pageUrl)
       : parseAvatarItems(doc, route, page, pageUrl);
@@ -2759,7 +3469,7 @@
     return params.toString();
   }
 
-  function detectExplicitLastPage(doc, route, pageUrl = window.location.href) {
+  function detectExplicitLastPage(doc, route, pageUrl = nativeWindow.location.href) {
     if (!doc || !route) return 0;
 
     const routePath = String(route.pathname || '').replace(/\/+$/, '') || '/';
@@ -2811,7 +3521,7 @@
     return lastPage;
   }
 
-  function detectLastPage(doc, route, pageUrl = window.location.href) {
+  function detectLastPage(doc, route, pageUrl = nativeWindow.location.href) {
     let lastPage = Math.max(1, route.currentPage || 1);
     const links = Array.from(doc.querySelectorAll('a[href], link[href]'));
 
@@ -3065,7 +3775,7 @@
     clearRegionButton.className = 'btn btn-sm btn-outline whitespace-nowrap shadow-sm';
     clearRegionButton.title = `Clear and rebuild live-search cache for ${state.route.region.toUpperCase()}`;
     clearRegionButton.addEventListener('click', () => {
-      if (!window.confirm(`Clear and rebuild PSPrices live-search cache for ${state.route.region.toUpperCase()}?`)) {
+      if (!nativeWindow.confirm(`Clear and rebuild PSPrices live-search cache for ${state.route.region.toUpperCase()}?`)) {
         return;
       }
       clearRegionCache(state.route);
@@ -3615,7 +4325,7 @@
       return;
     }
 
-    window.addEventListener('load', callback, { once: true });
+    nativeWindow.addEventListener('load', callback, { once: true });
   }
 
   function platformOptionsForRoute(route) {
@@ -4184,7 +4894,7 @@
         if (!isLiveDetailRunActive(state, runId)) break;
 
         try {
-          const itemUrl = absoluteUrl(item.url, window.location.href);
+          const itemUrl = absoluteUrl(item.url, nativeWindow.location.href);
           const cachedDetail = readDetailCache(route, item);
           if (cachedDetail && applyLiveDetailToItem(state, item, cachedDetail)) {
             changed = true;
@@ -4587,7 +5297,7 @@
 
     const isCanonicalRoute = PREWARM_COLLECTIONS.includes(String(state.route.collection || '').toLowerCase());
     if (!isCanonicalRoute) {
-      const currentPageItems = parsePageItems(document, state.route, state.route.currentPage, window.location.href);
+      const currentPageItems = parsePageItems(document, state.route, state.route.currentPage, nativeWindow.location.href);
       const detectedLastPage = Math.max(1, detectLastPage(document, state.route));
       if (state.lastPage !== detectedLastPage) {
         logger.info('Collection page count detected from DOM.', 'from', state.lastPage, 'to', detectedLastPage);
@@ -5042,8 +5752,8 @@
 
   function yieldToBrowser() {
     return new Promise((resolve) => {
-      if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(() => resolve(), { timeout: 250 });
+      if (typeof nativeWindow.requestIdleCallback === 'function') {
+        nativeWindow.requestIdleCallback(() => resolve(), { timeout: 250 });
         return;
       }
       setTimeout(resolve, 0);
@@ -5528,7 +6238,8 @@
     }
 
     if (appState && appState.signature === routeSignature(route) && !forceRefresh) {
-      return;
+      if (appState.ui && appState.ui.panel && appState.ui.panel.isConnected) return;
+      teardownApp();
     }
 
     teardownApp();
@@ -5554,45 +6265,69 @@
   }
 
   function installNavigationWatcher() {
-    if (!history[HISTORY_PATCH_ATTR]) {
-      const originalPushState = history.pushState;
-      const originalReplaceState = history.replaceState;
+    const pageHistory = nativeWindow.history;
+    let observedNavigationHref = nativeWindow.location.href;
+    try {
+      if (!pageHistory[HISTORY_PATCH_ATTR]) {
+        const originalPushState = pageHistory.pushState;
+        const originalReplaceState = pageHistory.replaceState;
 
-      history.pushState = function patchedPushState(...args) {
-        const result = originalPushState.apply(this, args);
-        window.dispatchEvent(new Event(NAV_EVENT));
-        return result;
-      };
+        pageHistory.pushState = function patchedPushState(...args) {
+          const result = originalPushState.apply(this, args);
+          nativeWindow.dispatchEvent(new nativeWindow.Event(NAV_EVENT));
+          return result;
+        };
 
-      history.replaceState = function patchedReplaceState(...args) {
-        const result = originalReplaceState.apply(this, args);
-        window.dispatchEvent(new Event(NAV_EVENT));
-        return result;
-      };
+        pageHistory.replaceState = function patchedReplaceState(...args) {
+          const result = originalReplaceState.apply(this, args);
+          nativeWindow.dispatchEvent(new nativeWindow.Event(NAV_EVENT));
+          return result;
+        };
 
-      Object.defineProperty(history, HISTORY_PATCH_ATTR, {
-        value: true,
-        configurable: false,
-      });
+        Object.defineProperty(pageHistory, HISTORY_PATCH_ATTR, {
+          value: true,
+          configurable: false,
+        });
+      }
+    } catch (error) {
+      logger.verbose('Unable to patch page history; using page and HTMX navigation events.', error);
     }
 
-    window.addEventListener('popstate', () => window.dispatchEvent(new Event(NAV_EVENT)));
-    window.addEventListener('storage', handlePrewarmLeaseStorage);
-    window.addEventListener('pagehide', handlePageUnload);
-    window.addEventListener('beforeunload', handlePageUnload);
-    window.addEventListener(NAV_EVENT, () => {
+    const scheduleRouteRefresh = () => {
+      observedNavigationHref = nativeWindow.location.href;
       injectStyles();
       updateRouteClass();
+      settingsController.ensureMounted();
       clearTimeout(routeCheckTimer);
       routeCheckTimer = setTimeout(() => {
         startApp(false);
         startRegionPrewarm(false);
       }, 150);
+    };
+
+    nativeWindow.addEventListener('popstate', () => nativeWindow.dispatchEvent(new nativeWindow.Event(NAV_EVENT)));
+    nativeWindow.addEventListener('pageshow', scheduleRouteRefresh);
+    nativeWindow.addEventListener('storage', handlePrewarmLeaseStorage);
+    nativeWindow.addEventListener('pagehide', handlePageUnload);
+    nativeWindow.addEventListener('beforeunload', handlePageUnload);
+    nativeWindow.addEventListener(NAV_EVENT, scheduleRouteRefresh);
+    document.addEventListener('htmx:afterSwap', scheduleRouteRefresh);
+
+    const remountObserver = new MutationObserver(() => {
+      const appNeedsRemount = Boolean(appState && (!appState.ui || !appState.ui.panel || !appState.ui.panel.isConnected));
+      const locationChanged = nativeWindow.location.href !== observedNavigationHref;
+      if (locationChanged) observedNavigationHref = nativeWindow.location.href;
+      if (appNeedsRemount || !settingsController.isMounted() || locationChanged) scheduleRouteRefresh();
     });
+    remountObserver.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   onReady(() => {
-    initializeCacheStorage().then(() => {
+    settingsController.ensureMounted();
+    settingsController.initialize().catch((error) => {
+      logger.error('Unable to initialize saved live-search settings; using defaults.', error);
+      applyStartupTuningSettings(TUNING_DEFAULTS);
+    }).then(() => initializeCacheStorage()).then(() => {
       runCacheMigration();
       installNavigationWatcher();
       startApp(false);

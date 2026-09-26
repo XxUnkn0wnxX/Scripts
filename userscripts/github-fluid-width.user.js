@@ -910,24 +910,64 @@
       const shadow = typeof host.attachShadow === 'function' ? host.attachShadow({mode: 'open'}) : host;
       shadow.innerHTML = `
         <style>
-          :host { all: initial; color: var(--fgColor-default, #1f2328); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+          :host {
+            all: initial;
+            --settings-panel: #161b22 !important;
+            --settings-field: #0d1117 !important;
+            --settings-surface: #21262d !important;
+            --settings-text: #e6edf3 !important;
+            --settings-muted: #9da7b3 !important;
+            --settings-border: #484f58 !important;
+            --settings-accent: #58a6ff !important;
+            --settings-primary: #238636 !important;
+            --settings-focus: #58a6ff !important;
+            --settings-danger: #ff7b72 !important;
+            --settings-success: #3fb950 !important;
+            color: var(--settings-text) !important;
+            color-scheme: dark;
+            font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          }
+          @media (prefers-color-scheme: light) {
+            :host {
+              --settings-panel: #ffffff !important;
+              --settings-field: #ffffff !important;
+              --settings-surface: #f6f8fa !important;
+              --settings-text: #1f2328 !important;
+              --settings-muted: #656d76 !important;
+              --settings-border: #d0d7de !important;
+              --settings-accent: #0969da !important;
+              --settings-primary: #1f883d !important;
+              --settings-focus: #0969da !important;
+              --settings-danger: #cf222e !important;
+              --settings-success: #1a7f37 !important;
+              color-scheme: light;
+            }
+          }
           *, *::before, *::after { box-sizing: border-box; }
-          button, input { font: inherit; }
+          button, input, select, textarea { font: inherit; }
           button { cursor: pointer; }
-          dialog { width: min(420px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--borderColor-default, #d0d7de); border-radius: 8px; background: var(--bgColor-default, #fff); color: inherit; padding: 0; box-shadow: 0 8px 32px rgb(31 35 40 / 28%); }
-          dialog::backdrop { background: rgb(31 35 40 / 28%); }
-          .panel { overflow: auto; max-height: min(640px, calc(100vh - 32px)); padding: 18px; }
+          dialog { width: min(420px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--settings-border) !important; border-radius: 8px; background: var(--settings-panel) !important; color: var(--settings-text) !important; color-scheme: inherit; padding: 0; box-shadow: 0 8px 32px rgb(0 0 0 / 42%); }
+          dialog::backdrop { background: rgb(0 0 0 / 58%); }
+          .panel { overflow: auto; max-height: min(640px, calc(100vh - 32px)); padding: 18px; background: var(--settings-panel) !important; color: var(--settings-text) !important; }
+          h2, label { color: var(--settings-text) !important; }
           h2 { font-size: 16px; margin: 0 0 8px; }
-          .hint, .status { color: var(--fgColor-muted, #656d76); font-size: 12px; }
+          .hint, .status { color: var(--settings-muted) !important; font-size: 12px; }
           .status { min-height: 1.4em; margin: 12px 0 0; }
           .row { display: grid; gap: 6px; margin: 14px 0; }
           .range-row { display: grid; grid-template-columns: 1fr 88px; align-items: center; }
-          input[type="range"] { width: 100%; accent-color: var(--fgColor-accent, #0969da); }
-          input[type="number"] { width: 88px; border: 1px solid var(--borderColor-default, #d0d7de); border-radius: 6px; background: var(--bgColor-default, #fff); color: inherit; padding: 4px 6px; }
+          input[type="range"] { width: 100%; accent-color: var(--settings-accent); }
+          input[type="number"], input[type="text"], select, textarea { border: 1px solid var(--settings-border) !important; border-radius: 6px; background: var(--settings-field) !important; color: var(--settings-text) !important; padding: 4px 6px; }
+          option { background: var(--settings-field) !important; color: var(--settings-text) !important; }
+          input[type="number"] { width: 88px; }
+          input[type="number"]:hover, input[type="text"]:hover, select:hover, textarea:hover { border-color: var(--settings-accent) !important; }
           .check { display: flex; gap: 8px; align-items: flex-start; }
           .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
-          .actions button { border: 1px solid var(--borderColor-default, #d0d7de); border-radius: 6px; background: var(--bgColor-muted, #f6f8fa); color: inherit; padding: 5px 9px; }
-          .actions .primary { background: var(--button-primary-bgColor-rest, #1f883d); border-color: var(--button-primary-bgColor-rest, #1f883d); color: #fff; }
+          .actions button { border: 1px solid var(--settings-border) !important; border-radius: 6px; background: var(--settings-surface) !important; color: var(--settings-text) !important; padding: 5px 9px; }
+          .actions button:hover { background: var(--settings-border) !important; }
+          .actions .primary, .actions .primary:hover { background: var(--settings-primary) !important; border-color: var(--settings-primary) !important; color: #fff !important; }
+          button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--settings-focus) !important; outline-offset: 2px; }
+          .status[data-state="ready"] { color: var(--settings-success) !important; }
+          .status[data-state="read-error"], .status[data-state="write-error"] { color: var(--settings-danger) !important; }
         </style>
         <dialog id="github-fluid-width-settings-dialog" aria-labelledby="github-fluid-width-settings-title">
           <form class="panel">
