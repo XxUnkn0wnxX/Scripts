@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.0
+// @version      1.0.1
 // @description  Widens GitHub content on desktop while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -107,12 +107,15 @@
     const widthFor = (nativeFloor) => `min(100%, max(${nativeFloor}px, min(${percent}%, calc(100% - ${gutter}px - ${gutter}px))))`;
     const wrapper = '[class*="prc-PageLayout-PageLayoutWrapper-"]';
     const content = '[class*="prc-PageLayout-Content-"]';
+    // A branch-root tree page renders the same overview container as the
+    // repository root; nested tree/blob split panes do not expose this target.
     const overview = 'react-app[app-name="code-view"] #repos-split-pane-content > .container-xl';
     const listApp = 'react-app:is([app-name="repo"], [app-name="issues-react"])';
     const discussionList = 'main .container-xl.p-responsive:has(> .container-xl > .Layout)';
     const discussionThread = 'main .container-xl.p-responsive:has(> #discussion_bucket)';
     const targets = [
       scoped('repository', overview),
+      scoped('code', overview),
       scoped('commits', `react-app[app-name="repo"] ${wrapper}[data-width="xlarge"]`),
       scoped('branches', `react-app[app-name="repos-branches"] ${wrapper}[data-width="xlarge"]`),
       scoped('lists', `${listApp} [class*="SidebarPageLayout-module__HeaderInner__"][data-width="xlarge"]`),
@@ -129,6 +132,7 @@
     const dashboardRightRail = `${dashboard} > .feed-right-sidebar`;
     const innerCaps = [
       scoped('repository', `${overview} ${content}[data-width="large"]`),
+      scoped('code', `${overview} ${content}[data-width="large"]`),
       scoped('pull', '#diff-comparison-viewer-container [class*="Conversations-module__content__"]'),
       scoped('pull', `#diff-comparison-viewer-container [class*="Conversations-module__content__"] > ${content}`),
       scoped('discussions', `${discussionList} > .container-xl`),

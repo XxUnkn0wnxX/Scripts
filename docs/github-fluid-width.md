@@ -2,7 +2,7 @@
 
 Install the development build [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to widen selected GitHub workspaces on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
-This is an unreleased `1.0.0` development build. The raw `develop` URL is intentional: updates are available there while the script is being tested. A future release can promote the same file and documentation to `master`.
+This is an unreleased `1.0.1` development build. The raw `develop` URL is intentional: updates are available there while the script is being tested. A future release can promote the same file and documentation to `master`.
 
 ## What It Does
 
@@ -21,7 +21,7 @@ The script is intentionally scoped to the GitHub app routes and workspace select
 
 The current route set covers these page families when GitHub renders a matching capped workspace:
 
-- repository overview, commit history, and branches
+- repository overview, including branch-root URLs such as `/tree/master` and `/tree/develop`, commit history, and branches
 - pull-request and issue lists
 - pull-request conversations and issue conversations
 - Discussions lists and threads
@@ -29,7 +29,7 @@ The current route set covers these page families when GitHub renders a matching 
 - the signed-in dashboard feed
 - user profiles
 
-Repository folders, source files, rendered Markdown, pull-request files/changes, and completed Actions job logs are checked for compatibility but are not forcibly narrowed or given a second percentage cap when GitHub already supplies a fluid workspace. GitHub may canonicalize a pull-request files URL to `/changes`; both route forms remain native. The script does not inspect job state or target completed run/job routes, so those native workspaces remain unaffected. GitHub may vary the exact component markup by page or rollout; unmatched markup remains native.
+Repository folders below a branch root, source files, rendered Markdown, pull-request files/changes, and completed Actions job logs are checked for compatibility but are not forcibly narrowed or given a second percentage cap when GitHub already supplies a fluid workspace. A branch-root URL is recognized from the rendered overview container, so branch names may contain slashes without any path-segment guessing. GitHub may canonicalize a pull-request files URL to `/changes`; both route forms remain native. The script does not inspect job state or target completed run/job routes, so those native workspaces remain unaffected. GitHub may vary the exact component markup by page or rollout; unmatched markup remains native.
 
 ## Desktop and Responsive Behavior
 
@@ -77,7 +77,7 @@ The root attribute is removed for unsupported routes. Reinjection reuses the exi
 2. Open the [development raw script](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) and choose the manager's install option.
 3. Visit a supported GitHub page at a viewport width of at least `1472px`.
 
-Keep the development URL while this `1.0.0` build is being tested. After a future promotion to `master`, the script metadata and documentation can use the stable `master` URLs.
+Keep the development URL while this `1.0.1` build is being tested. After a future promotion to `master`, the script metadata and documentation can use the stable `master` URLs.
 
 ## Compatibility and Safety
 
@@ -94,10 +94,24 @@ WebDriver injecting the local userscript source into temporary profiles. This
 checks the layout and lifecycle behavior of the source; it does not install the
 script into Tampermonkey or Violentmonkey. After the development build is
 published, verify the manager's update and reload behavior separately. The
-current 35-state evidence has 33 passing states and two expected guest Actions
-access limits; the dashboard's current-source checks preserve its `312px` rail
-from `1668px` upward and keep the `100%` and over-100% variants within their
-parent bounds.
+original 35-state `1.0.0` evidence has 33 passing states and two expected guest
+Actions access limits, but did not include branch-root `/tree/<branch>` aliases.
+The focused current-source `1.0.1` browser report has 25 measurements and 45
+assertions with zero failures across signed-in and signed-out sessions. It
+covers Scripts `master`, `develop`, and query variants, plus branch roots in
+Primer React and BetterDiscord, nested tree/source workspaces, 1440px/1920px/
+2560px viewports, and 100%/125% bounds. The live report includes query
+variants; a separate local VM route regression covers trailing slashes,
+encoded refs, and slash-containing refs. The original dashboard checks preserve
+its `312px` rail from
+`1668px` upward and keep the `100%` and over-100% variants within their parent
+bounds.
+
+Visual review covered native/after screenshot pairs for all 33 accessible
+original states at `1920x1080`; the two guest Actions access screens were
+accounted for as native-only captures. Fresh branch-root and nested-page
+captures, including the `2560px`/`100%` cases, were also visually checked. This
+review covers the captured viewport, not every full-page scroll position.
 
 ## Example
 
