@@ -88,8 +88,8 @@ The global navigation drawer overlays GitHub content and does not reserve a layo
 
 ## Configuration
 
-Open **Width** at the bottom-right of a GitHub page, or choose **GitHub Fluid
-Width settings** from the userscript manager's menu. The panel provides:
+Choose **GitHub Fluid Width settings** from the userscript manager's menu.
+The panel provides:
 
 - a percentage slider and numeric input that update the current page live; the slider and numeric arrows use 1% steps, while decimals such as `95.1` can be entered manually in the numeric field
 - an **Override full-width pages** checkbox, enabled by default
@@ -141,7 +141,7 @@ events, on `popstate` and `pageshow`, and when GitHub replaces relevant document
 regions. It also hooks `pushState` and `replaceState` in its execution context;
 userscript-manager sandboxing can limit whether page-side calls reach those
 hooks, so rendered-DOM observation remains the primary navigation fallback.
-The mutation observer restores a removed settings launcher and schedules layout
+The mutation observer restores a removed settings host and schedules layout
 rescans for candidate insertions or Search sidebar removal. It does not poll,
 measure resize loops, or rewrite GitHub content.
 
@@ -180,7 +180,7 @@ The settings panel passes 38 browser assertions with mocked legacy/modern GM
 APIs and nine integrated controller tests. These cover live controls, saved
 decimal and false values, reloads, changed defaults, missing keys, and failed
 storage. Six additional browser assertions verify live reset geometry and
-recovery after removal of the settings launcher. A real-manager automation
+recovery after removal of the settings host. A real-manager automation
 attempt could install Violentmonkey in an
 isolated profile but could not reach its dashboard to import the script, so
 manager installation and update/reload behavior remain the user's final check.

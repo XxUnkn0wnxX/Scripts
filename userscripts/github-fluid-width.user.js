@@ -894,7 +894,7 @@
         menuRegistered = true;
         if (result && typeof result.catch === 'function') result.catch(() => {});
       } catch (_) {
-        // The launcher remains available if a manager declines menu access.
+        // A manager may decline the optional menu command.
       }
     }
 
@@ -907,10 +907,6 @@
       if (!settingsDocument.body) return null;
       const host = settingsDocument.createElement('div');
       host.id = 'github-fluid-width-settings-host';
-      host.style.position = 'fixed';
-      host.style.right = '16px';
-      host.style.bottom = '16px';
-      host.style.zIndex = '20';
       const shadow = typeof host.attachShadow === 'function' ? host.attachShadow({mode: 'open'}) : host;
       shadow.innerHTML = `
         <style>
@@ -918,7 +914,6 @@
           *, *::before, *::after { box-sizing: border-box; }
           button, input { font: inherit; }
           button { cursor: pointer; }
-          .launcher { border: 1px solid var(--borderColor-default, #d0d7de); border-radius: 999px; background: var(--bgColor-default, #fff); color: inherit; box-shadow: 0 2px 8px rgb(31 35 40 / 18%); padding: 5px 11px; }
           dialog { width: min(420px, calc(100vw - 32px)); max-height: min(640px, calc(100vh - 32px)); margin: auto; border: 1px solid var(--borderColor-default, #d0d7de); border-radius: 8px; background: var(--bgColor-default, #fff); color: inherit; padding: 0; box-shadow: 0 8px 32px rgb(31 35 40 / 28%); }
           dialog::backdrop { background: rgb(31 35 40 / 28%); }
           .panel { overflow: auto; max-height: min(640px, calc(100vh - 32px)); padding: 18px; }
@@ -934,7 +929,6 @@
           .actions button { border: 1px solid var(--borderColor-default, #d0d7de); border-radius: 6px; background: var(--bgColor-muted, #f6f8fa); color: inherit; padding: 5px 9px; }
           .actions .primary { background: var(--button-primary-bgColor-rest, #1f883d); border-color: var(--button-primary-bgColor-rest, #1f883d); color: #fff; }
         </style>
-        <button class="launcher" type="button" title="GitHub Fluid Width settings" aria-label="GitHub Fluid Width settings" aria-haspopup="dialog" aria-controls="github-fluid-width-settings-dialog">Width</button>
         <dialog id="github-fluid-width-settings-dialog" aria-labelledby="github-fluid-width-settings-title">
           <form class="panel">
             <h2 id="github-fluid-width-settings-title">GitHub Fluid Width</h2>
@@ -965,7 +959,6 @@
       ui = {
         host,
         shadow,
-        launcher: root.querySelector('.launcher'),
         dialog: root.querySelector('dialog'),
         range: root.querySelector('#github-fluid-width-percent-range'),
         percent: root.querySelector('#github-fluid-width-percent-number'),
@@ -984,7 +977,6 @@
 
     function bindSettingsUi() {
       if (!ui) return;
-      ui.launcher.addEventListener('click', show);
       ui.close.addEventListener('click', close);
       ui.reset.addEventListener('click', () => {
         resetDefaults();
@@ -1042,7 +1034,7 @@
     function show() {
       const mounted = ensureMounted();
       if (!mounted) return;
-      lastFocus = ui.shadow.activeElement || settingsDocument.activeElement || ui.launcher;
+      lastFocus = ui.shadow.activeElement || settingsDocument.activeElement || null;
       renderSettings();
       if (typeof ui.dialog.showModal === 'function') {
         try {
@@ -1062,7 +1054,6 @@
       if (typeof ui.dialog.close === 'function' && ui.dialog.open) ui.dialog.close();
       else ui.dialog.removeAttribute('open');
       if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
-      else if (ui.launcher && typeof ui.launcher.focus === 'function') ui.launcher.focus();
     }
 
     function renderSettings(options = {}) {

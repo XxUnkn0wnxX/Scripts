@@ -44,7 +44,7 @@ a floor, which would defeat the override.
 
 Add an on-page settings dialog with a live percentage slider, exact numeric
 input, full-width override checkbox, gutter control, and explicit reset. A
-small launcher and userscript-manager menu command open the same dialog.
+userscript-manager menu command opens the dialog, with no floating launcher.
 Use isolated styles, labelled keyboard-accessible controls, Escape/close and
 focus restoration. Settings changes must update the current layout without
 reloading or adding duplicate styles and event hooks.
@@ -530,3 +530,22 @@ gutter control's whole-number increments. Manually entered decimal percentages
 remain supported and saved without rounding. The user guide explains both
 behaviors. Metadata remains `1.0.0`. JavaScript syntax, all nine integrated
 settings tests, Markdown rendering, and whitespace checks pass.
+
+## Menu-only settings access — 2026-09-27
+
+Removed the floating **Width** launcher, its styling and positioning, and its
+event and focus fallbacks. The userscript-manager **GitHub Fluid Width settings**
+command remains the settings entry point. Closing the dialog restores the
+previous page focus when available. The guide now describes menu-only access;
+earlier launcher verification above is historical. Metadata remains `1.0.0`.
+
+Source SHA-256:
+`2bfde75012d9a4881bb79fd046e6a262cc57cfd82cdd0b9bb113c1a88f3e50ca`.
+Syntax and all nine integrated settings tests pass. A focused logged-out
+Firefox check with mocked legacy GM APIs passes seven assertions: menu opening,
+live width changes, reset, Close/Escape focus restoration, no remaining
+launcher or closed-host footprint, and no uncaught timer errors. The closed
+host measures 0×0. Report:
+`.tmp/github-fluid-width/verification/settings-menu-only/report.json`.
+This checks the menu callback in the browser, not actual manager integration.
+The isolated browser and driver stopped, and their temporary profile was removed.
