@@ -623,6 +623,7 @@ def test_selector_rejects_ambiguous_differing_urls(tmp_path: Path, ambiguous: st
     catalog = _write_catalog(tmp_path / f"ambiguous-{ambiguous}.plist", {"100-pair": _product(post_date, urls)})
     result = _select(catalog, cwd=tmp_path)
     assert result.returncode != 0
+    assert "warning:" in result.stderr.lower()
     assert len(result.stdout.splitlines()) != 5
 
 
@@ -643,6 +644,7 @@ def test_selector_rejects_ambiguous_differing_urls(tmp_path: Path, ambiguous: st
 def test_selector_rejects_missing_or_invalid_product_metadata(tmp_path: Path, products: dict[str, dict]):
     result = _select(_write_catalog(tmp_path / "invalid.plist", products), cwd=tmp_path)
     assert result.returncode != 0
+    assert "warning:" in result.stderr.lower()
 
 
 @pytest.mark.parametrize(
@@ -692,6 +694,121 @@ def test_selector_warns_when_newest_product_is_incomplete_and_uses_valid_pair(tm
                       core_url=core_url, mobile_url=mobile_url,
                       mobile_basename="MobileDeviceOnDemand.pkg")
     assert "Skipping product" in result.stderr and "new-incomplete" in result.stderr
+
+
+def test_selector_info_skips_older_unknown_mobile_package_after_newer_valid_selection(tmp_path: Path):
+    unknown_name = "MobileDeviceSU2.pkg"
+    old_date = _utc(2022, 4, 1)
+    new_date = _utc(2026, 9, 14, 17, 26, 37)
+    old_core = "https://cdn.example.invalid/old/CoreTypes.pkg"
+    new_core = "https://cdn.example.invalid/new/CoreTypes.pkg"
+    new_mobile = "https://cdn.example.invalid/new/MobileDeviceOnDemandPackage.pkg"
+    catalog = _write_catalog(
+        tmp_path / "older-unknown.plist",
+        {
+            "012-08532": _product(old_date, [old_core, f"https://cdn.example.invalid/old/{unknown_name}"]),
+            "142-23719": _product(new_date, [new_core, new_mobile]),
+        },
+    )
+    result = _select(catalog, cwd=tmp_path)
+    _assert_selection(
+        result,
+        product_id="142-23719",
+        post_date=new_date,
+        core_url=new_core,
+        mobile_url=new_mobile,
+        mobile_basename="MobileDeviceOnDemandPackage.pkg",
+    )
+    diagnostic = result.stderr.lower()
+    assert "info:" in diagnostic
+    assert unknown_name.lower() in diagnostic
+    assert "older" in diagnostic and "newer" in diagnostic
+    assert re.search(r"no action|not needed", diagnostic)
+    assert "warning:" not in diagnostic
+
+
+@pytest.mark.parametrize("unknown_date", (_utc(2026, 10, 1), _utc(2026, 9, 14, 17, 26, 37)))
+def test_selector_warns_when_unknown_mobile_package_is_newer_or_equal(
+    tmp_path: Path, unknown_date: datetime
+):
+    unknown_name = "MobileDeviceSU2.pkg"
+    valid_date = _utc(2026, 9, 14, 17, 26, 37)
+    valid_core = "https://cdn.example.invalid/valid/CoreTypes.pkg"
+    valid_mobile = "https://cdn.example.invalid/valid/MobileDeviceOnDemand.pkg"
+    catalog = _write_catalog(
+        tmp_path / "unknown-current-or-newer.plist",
+        {
+            "012-08532": _product(
+                unknown_date,
+                ["https://cdn.example.invalid/unknown/CoreTypes.pkg", f"https://cdn.example.invalid/unknown/{unknown_name}"],
+            ),
+            "142-23719": _product(valid_date, [valid_core, valid_mobile]),
+        },
+    )
+    result = _select(catalog, cwd=tmp_path)
+    _assert_selection(
+        result,
+        product_id="142-23719",
+        post_date=valid_date,
+        core_url=valid_core,
+        mobile_url=valid_mobile,
+        mobile_basename="MobileDeviceOnDemand.pkg",
+    )
+    diagnostic = result.stderr.lower()
+    assert "warning:" in diagnostic
+    assert "info:" not in diagnostic
+    assert unknown_name.lower() in diagnostic
+    assert any(term in diagnostic for term in ("newer", "latest", "potential"))
+    assert any(term in diagnostic for term in ("cannot", "unable", "may not", "not selected", "not usable"))
+
+
+def test_selector_warns_for_unknown_mobile_package_with_invalid_date(tmp_path: Path):
+    unknown_name = "MobileDeviceSU2.pkg"
+    valid_date = _utc(2026, 9, 14, 17, 26, 37)
+    valid_core = "https://cdn.example.invalid/valid/CoreTypes.pkg"
+    valid_mobile = "https://cdn.example.invalid/valid/MobileDeviceOnDemand.pkg"
+    catalog = _write_catalog(
+        tmp_path / "unknown-invalid-date.plist",
+        {
+            "012-08532": _product(
+                "not-a-date",
+                ["https://cdn.example.invalid/unknown/CoreTypes.pkg", f"https://cdn.example.invalid/unknown/{unknown_name}"],
+            ),
+            "142-23719": _product(valid_date, [valid_core, valid_mobile]),
+        },
+    )
+    result = _select(catalog, cwd=tmp_path)
+    _assert_selection(
+        result,
+        product_id="142-23719",
+        post_date=valid_date,
+        core_url=valid_core,
+        mobile_url=valid_mobile,
+        mobile_basename="MobileDeviceOnDemand.pkg",
+    )
+    diagnostic = result.stderr.lower()
+    assert "warning:" in diagnostic
+    assert "info:" not in diagnostic
+    assert "date" in diagnostic or "postdate" in diagnostic
+
+
+def test_selector_warns_and_fails_when_only_unknown_mobile_package_exists(tmp_path: Path):
+    unknown_name = "MobileDeviceSU2.pkg"
+    catalog = _write_catalog(
+        tmp_path / "only-unknown.plist",
+        {
+            "012-08532": _product(
+                _utc(2022, 4, 1),
+                ["https://cdn.example.invalid/unknown/CoreTypes.pkg", f"https://cdn.example.invalid/unknown/{unknown_name}"],
+            ),
+        },
+    )
+    result = _select(catalog, cwd=tmp_path)
+    assert result.returncode != 0
+    diagnostic = result.stderr.lower()
+    assert "warning:" in diagnostic
+    assert unknown_name.lower() in diagnostic
+    assert "info:" not in diagnostic
 
 
 def test_selector_excludes_metadata_and_applekis_and_uses_exact_path_basename(tmp_path: Path):

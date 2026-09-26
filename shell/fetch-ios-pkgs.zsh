@@ -25,9 +25,13 @@ read_catalog_data() {
   /usr/bin/osascript -l JavaScript - "$@" <<'JXA'
 ObjC.import('Foundation');
 
-function warn(message) {
+function diagnostic(level, message) {
     $.NSFileHandle.fileHandleWithStandardError.writeData(
-        $('Warning: ' + message + '\n').dataUsingEncoding($.NSUTF8StringEncoding));
+        $(level + ': ' + message + '\n').dataUsingEncoding($.NSUTF8StringEncoding));
+}
+
+function warn(message) {
+    diagnostic('Warning', message);
 }
 
 function dictionary(value) {
@@ -68,11 +72,12 @@ function run(argv) {
     var host = hostInfo(argv[2]);
     if (!host) throw new Error('Missing or invalid macOS product version.');
     if (!dictionary(root.Products)) throw new Error('Catalog has no Products dictionary.');
-    var candidates = [];
+    var candidates = [], unrecognisedProducts = [];
     Object.keys(root.Products).sort().forEach(function (id) {
         var product = root.Products[id];
         if (!dictionary(product) || !Array.isArray(product.Packages)) return;
-        var mobile = [], core = [], appleKIS = [], duplicate = false, invalid = false;
+        var mobile = [], core = [], appleKIS = [], unrecognisedMobile = [];
+        var duplicate = false, invalid = false;
         product.Packages.forEach(function (pkg) {
             if (!dictionary(pkg)) return;
             var info = urlInfo(pkg.URL);
@@ -92,6 +97,10 @@ function run(argv) {
             if (info.name === 'CoreTypes.pkg') list = core;
             else if (info.name === 'MobileDeviceOnDemand.pkg' ||
                      info.name === 'MobileDeviceOnDemandPackage.pkg') list = mobile;
+            else if (/^MobileDevice.*\.pkg$/.test(info.name)) {
+                if (unrecognisedMobile.indexOf(info.name) === -1) unrecognisedMobile.push(info.name);
+                return;
+            }
             else if (host.modern && info.name === 'AppleKIS.pkg') list = appleKIS;
             else return;
             if (list.some(function (entry) { return entry.url === info.url; })) duplicate = true;
@@ -101,10 +110,20 @@ function run(argv) {
         var reason = '';
         if (!id || /[\x00-\x1f\x7f]/.test(id)) reason = 'invalid product ID';
         else if (invalid) reason = 'invalid package URL';
-        else if (mobile.length !== 1 || core.length !== 1) reason = 'missing or ambiguous MobileDevice/CoreTypes pair';
+        else if (mobile.length > 1) reason = 'ambiguous MobileDevice package URLs';
+        else if (core.length > 1) reason = 'ambiguous CoreTypes package URLs';
         else if (host.modern && appleKIS.length > 1) reason = 'ambiguous AppleKIS package URLs';
         else if (!(product.PostDate instanceof Date) || !isFinite(product.PostDate.getTime())) {
             reason = 'missing or invalid PostDate';
+        }
+        else if (!core.length) reason = 'missing CoreTypes.pkg';
+        else if (!mobile.length) {
+            if (unrecognisedMobile.length) {
+                // Only classify this as harmless after finding a strictly newer complete product.
+                unrecognisedProducts.push({id: id, date: product.PostDate, names: unrecognisedMobile});
+                return;
+            }
+            reason = 'missing MobileDevice package';
         }
         if (reason) {
             warn('Skipping product ' + JSON.stringify(id) + ': ' + reason + '.');
@@ -114,12 +133,23 @@ function run(argv) {
         candidates.push({id: id, date: product.PostDate, core: core[0], mobile: mobile[0],
             appleKIS: appleKIS.length ? appleKIS[0] : null});
     });
-    if (!candidates.length) throw new Error('No valid MobileDevice/CoreTypes product found.');
     candidates.sort(function (a, b) {
         var delta = b.date.getTime() - a.date.getTime();
         return delta || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     });
     var selected = candidates[0];
+    unrecognisedProducts.forEach(function (product) {
+        var names = product.names.sort().map(function (name) { return JSON.stringify(name); }).join(', ');
+        if (selected && product.date.getTime() < selected.date.getTime()) {
+            diagnostic('Info', 'Skipped older package set ' + JSON.stringify(product.id) + ' (' + names +
+                '). Newer packages are available; no action is needed for this entry.');
+        } else {
+            warn('Could not use package set ' + JSON.stringify(product.id) +
+                ': unrecognised MobileDevice package filename' + (product.names.length > 1 ? 's ' : ' ') +
+                names + '.' + (selected ? ' The selected packages may not be the latest update.' : ''));
+        }
+    });
+    if (!selected) throw new Error('No valid MobileDevice/CoreTypes product found.');
     if (candidates.length > 1 && selected.date.getTime() === candidates[1].date.getTime()) {
         warn('Newest products have equal PostDate values; selected product ' + selected.id +
              ' by ascending product ID. Device applicability has not been checked.');

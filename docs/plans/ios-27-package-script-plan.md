@@ -65,7 +65,7 @@ Repository inspection on 2026-09-23 confirmed these filename assumptions in the 
 
 The implementation replaces global filename scanning with selection within each catalog product. It accepts the two known mobile-device basenames, retains the product ID and `PostDate`, and reads both download URLs from that product's `Packages` entries. It selects the newest valid product by `PostDate` without mixing URLs or dates across product boundaries.
 
-On 2026-09-26, the original selector chose product `089-04537`, dated `2026-03-04T19:36:25Z`, from the live catalog. The corrected selector and a full `--dry-run` selected product `142-23719`, dated `2026-09-14T17:26:37Z`, with `MobileDeviceOnDemandPackage.pkg` and that product's actual `CoreTypes.pkg` URL. Product `012-08532` was skipped with an incomplete/ambiguous-pair warning. Both selected package URLs returned HTTP 200 to HEAD requests; package contents were not downloaded. The seed plist's SHA-256 checksum was unchanged after the live dry run, and the isolated test home had no Downloads directory.
+On 2026-09-26, the original selector chose product `089-04537`, dated `2026-03-04T19:36:25Z`, from the live catalog. The corrected selector and a full `--dry-run` selected product `142-23719`, dated `2026-09-14T17:26:37Z`, with `MobileDeviceOnDemandPackage.pkg` and that product's actual `CoreTypes.pkg` URL. Product `012-08532`, dated 2022-06-14, contains CoreTypes and the unrecognised `MobileDeviceSU2.pkg` filename. Its initial generic warning is now informational: a newer complete package set was found, so no action is needed for that older entry. Unknown entries with equal/newer dates and genuinely missing/ambiguous packages or invalid metadata remain warnings/errors. Package eligibility is unchanged. Both selected package URLs returned HTTP 200 to HEAD requests; package contents were not downloaded. The seed plist's SHA-256 checksum was unchanged after the live dry run, and the isolated test home had no Downloads directory.
 
 ## Service-restart follow-up
 
@@ -120,7 +120,7 @@ The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/arc
 
 Parser and installation-flow tests use local fixtures and stubbed system actions. Normal execution still installs packages and attempts service recovery; use `--dry-run` for discovery without package or service actions.
 
-Final automated suite: **89 passed with each of system zsh 5.8, Homebrew zsh 5.9.2, and upstream zsh 5.3.1**, all on Intel Big Sur 11.7.11. The default invocation was `.venv/bin/python -m pytest -q tests/fetch_ios_pkgs`; other-interpreter runs set `FETCH_IOS_PKGS_ZSH` to the relevant executable path. Python compilation, all three zsh syntax checks, and diff/documentation checks passed. The original selector also failed a renamed-only regression fixture that the new selector passed.
+Final automated suite: **94 passed with each of system zsh 5.8, Homebrew zsh 5.9.2, and upstream zsh 5.3.1**, all on Intel Big Sur 11.7.11. The default invocation was `.venv/bin/python -m pytest -q tests/fetch_ios_pkgs`; other-interpreter runs set `FETCH_IOS_PKGS_ZSH` to the relevant executable path. Python compilation, all three zsh syntax checks, and diff/documentation checks passed. The original selector also failed a renamed-only regression fixture that the new selector passed.
 
 The final live `--dry-run` detected Big Sur 11.7.11 / `x86_64`, selected product `142-23719`, and displayed the MobileDevice/CoreTypes pair. It created no Downloads directory, and the seed plist's SHA-256 matched the pre-change baseline. Selection from the cached real catalog with simulated macOS 27.0 also included that product's AppleKIS URL; this was a parser check, not execution on macOS 27.
 
@@ -131,6 +131,7 @@ The compatibility interpreter was built from the upstream [zsh 5.3.1 source arch
 - [x] Reordered plist keys, package entries, and XML formatting do not change the result or associate another product's `PostDate` with a package; binary plists also pass.
 - [x] Different package URL directories and query strings prove that no sibling-path substitution remains.
 - [x] Missing CoreTypes, missing/invalid `PostDate`, ambiguous entries, malformed/empty catalogs, and no matches produce the documented rejection/error behavior.
+- [x] An otherwise valid unknown filename is informational only when strictly older than a selected complete package set; equal/newer dates, invalid metadata, and no usable selection retain warning/error severity.
 - [x] Metadata and unrelated package files are excluded from the download/install list.
 - [x] Test numeric OS ranges, Intel/native ARM/Rosetta detection, and optional AppleKIS selection without real platform changes.
 - [x] Test each seed-path fallback and missing-file failure before catalog fetch.

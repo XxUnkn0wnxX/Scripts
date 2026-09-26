@@ -44,7 +44,7 @@ Unknown architectures, an unreadable OS version, or a missing usable seed file p
 
 **Automated script tests have been performed; end-to-end runtime tests of installation, service recovery, and connected-device behavior have not.** The OS ranges and architectures above have not been fully tested on their corresponding Macs.
 
-All **89 automated tests passed with each of system zsh 5.8, Homebrew zsh 5.9.2, and a temporary upstream zsh 5.3.1 build**, on an Intel Mac running Big Sur 11.7.11. Coverage includes simulated OS ranges through 27 and 28, Intel/native ARM/Rosetta detection, seed-path fallbacks, AppleKIS selection, privilege notices, modes, failures, and service recovery. The older-interpreter run still used Big Sur's JXA/Foundation and utilities; it was not a High Sierra runtime test. The temporary interpreter was built only for compatibility testing and was not installed or made a script dependency.
+All **94 automated tests passed with each of system zsh 5.8, Homebrew zsh 5.9.2, and a temporary upstream zsh 5.3.1 build**, on an Intel Mac running Big Sur 11.7.11. Coverage includes simulated OS ranges through 27 and 28, Intel/native ARM/Rosetta detection, seed-path fallbacks, AppleKIS selection, privilege notices, diagnostic severity, modes, failures, and service recovery. The older-interpreter run still used Big Sur's JXA/Foundation and utilities; it was not a High Sierra runtime test. The temporary interpreter was built only for compatibility testing and was not installed or made a script dependency.
 
 A live `--dry-run` on Big Sur verified catalog discovery only. Downloads, installers, process signals, and launchctl actions in the automated suite are mocked. Native Apple Silicon execution, Rosetta execution, installation on the listed OS ranges, service restart permissions, and device reconnection still need validation on actual matching hardware. No script test result should be read as proof that the connected-device update prompt is resolved.
 
@@ -91,6 +91,10 @@ The two optional modes are mutually exclusive. Unknown arguments are rejected be
 Packages are saved to `~/Downloads` using their actual package basenames, without URL query strings. Every selected transfer must succeed before installation starts. Downloads are staged in a temporary directory under `~/Downloads`; a failed transfer removes partial files and preserves previously completed downloads. Successful transfers replace any existing files with the selected names.
 
 Products with an incomplete or ambiguous pair, invalid package URLs, or missing/invalid dates are skipped with a warning. Identical repeated URLs are deduplicated. Equal newest dates are resolved by ascending product ID with a warning. If no valid pair remains, the script exits unsuccessfully without installing anything. Rejected candidates mean the selected pair is the newest *valid* candidate, not proof that every catalog entry is usable.
+
+An otherwise valid entry with an unrecognised MobileDevice filename is informational when a strictly newer complete package set is available. For example: `Info: Skipped older package set "012-08532" ("MobileDeviceSU2.pkg"). Newer packages are available; no action is needed for this entry.` This describes an older catalog entry, not a problem with the Mac's installed packages.
+
+Missing packages, ambiguous URLs, invalid metadata, and unreadable catalogs remain genuine warnings or errors. An unrecognised entry with the same or a newer date stays a warning that the selected packages may not be the latest update. If no usable package set is found, discovery fails instead of reporting a harmless skip.
 
 A catalog or download failure stops before installation. An installer failure stops subsequent installation and service actions; successful earlier installations cannot be rolled back automatically if a later package fails.
 
