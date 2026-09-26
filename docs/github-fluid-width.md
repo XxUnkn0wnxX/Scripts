@@ -1,8 +1,8 @@
 # github-fluid-width.user.js
 
-Install the development build [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to widen selected GitHub workspaces on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
+Install the development build [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
-This is the `1.0.2` development build. The raw `develop` URL is intentional:
+This is the `1.0.3` development build. The raw `develop` URL is intentional:
 updates are available there while the script is being tested. A future release
 can promote the same file and documentation to `master`.
 
@@ -14,11 +14,13 @@ can promote the same file and documentation to `master`.
 - preserves native in-page rails, source trees, Symbols panels, diff/file rails, workflow navigation, and log scrolling; repository-rendered document previews fill their owning panel while retaining native padding and renderer-local behavior; the legacy Discussion thread keeps its captured `320px` metadata rail while its main column grows, and the dashboard keeps its captured `312px` right rail once its wide-shell rule activates
 - keeps Settings feature-card primary CTAs at the widened row's trailing edge without changing the button's intrinsic size
 - leaves GitHub's global navigation drawer as an overlay; opening or closing it does not switch width modes or move the page
-- keeps already-fluid code, directory, pull-request-files/changes, and Actions-log workspaces at their native fluid width
+- with `overrideFullWidthPages: true` (the default), applies the configured target to naturally fullwidth file, folder, source-code, text, rendered-document, pull-request diff, completed Actions, and search workspaces using the same sidebar-aware parent math while preserving local scrolling
+- with `overrideFullWidthPages: false`, leaves those naturally fullwidth workspaces at GitHub's native width while capped-owner expansion and nested rendered-document filling remain active
+- provides a live settings panel and saves preferences separately from the userscript source, so normal script updates retain existing choices
 - follows GitHub client-side navigation, back/forward navigation, Turbo/PJAX rendering, and document/head replacement without polling
-- makes no network requests, storage reads/writes, account-state checks, GitHub content restructuring, clicks, or GitHub job operations; it only maintains its own style and ownership markers
+- makes no network requests, account-state checks, GitHub content restructuring, or GitHub job operations; it maintains its own layout style, ownership markers, settings controls, and manager-stored preferences
 
-The 1.0.2 implementation classifies capped page owners from the rendered GitHub
+The 1.0.3 implementation identifies page workspaces from the rendered GitHub
 DOM instead of maintaining a positive URL allowlist. Settings, Security,
 Pulse, Actions, search, and other page owners are eligible
 when their live structure exposes a bounded workspace. Dialogs, drawers,
@@ -36,7 +38,8 @@ widens the outer owner once, then fills only demonstrated nested document
 surfaces. Repository README and standalone rendered documents therefore lose
 their independent `container-lg` measure, while source-code panes, diff/file
 workspaces, completed logs, and other already-fluid renderers retain native
-behavior. Where an ancestor wrapper only limits the available track, it is
+rendering and local scrolling inside their newly sized workspace. Where an
+ancestor wrapper only limits the available track, it is
 released before the selected owner is widened. The model does not depend on
 branch names or filename extensions.
 
@@ -48,7 +51,8 @@ size.
 ## Desktop and Responsive Behavior
 
 At `1472px` and wider, each eligible owning workspace uses one width
-calculation and its measured native floor. A captured `1280px` floor is a
+calculation and a minimum width. Capped workspaces use their measured native
+floor. A captured `1280px` floor is a
 representative repository-section example:
 
 ```css
@@ -63,8 +67,18 @@ to the selected owner's available workspace. Fixed rails inside that owner
 remain inside its layout and retain their native sizing; the percentage is not
 calculated from the main column alone. Remaining width is bounded by the
 parent and configured gutters. The floor prevents a lower target from shrinking
-an existing workspace, and the same hard boundary applies to `100%` and
+a capped workspace below its native measure, and the same hard boundary applies to `100%` and
 over-100% values.
+
+`overrideFullWidthPages: true` applies that bounded target to the recognized
+naturally fullwidth workspaces listed above. Set it to `false` to preserve
+GitHub's natural width for those workspaces while retaining the original capped
+workspace expansion and nested document fill. Fullwidth content tracks use a
+`1012px` minimum; Search's main results column uses `768px` because its sidebars
+occupy separate tracks. These are readability minima, not measurements of the
+current full width. A low percentage stops at that minimum. If the available
+track is narrower than the minimum, it uses the full available track instead.
+The `1472px` desktop cutoff applies to both modes.
 
 Inner caps demonstrated to belong to the same workspace are removed so nested `95%` limits do not compound. Repository-rendered document previews additionally remove only their independent `1012px` `container-lg` cap and use the available owner width; they do not receive a second percentage or viewport width rule. Native preview padding, typography, images, tables, and local scrolling remain governed by GitHub.
 
@@ -78,28 +92,62 @@ The global navigation drawer overlays GitHub content and does not reserve a layo
 
 ## Configuration
 
-Edit the `CONFIG` object near the top of the script:
+Open **Width** at the bottom-right of a GitHub page, or choose **GitHub Fluid
+Width settings** from the userscript manager's menu. The panel provides:
+
+- a percentage slider and numeric input that update the current page live
+- an **Override full-width pages** checkbox, enabled by default
+- a minimum side-gutter setting
+- **Reset defaults** to explicitly restore the current built-in defaults
+
+The slider, numeric fields, and override checkbox all update the current page
+immediately. **Reset defaults** also applies live: it restores `95%`, `32px`,
+and override enabled, then saves those choices. No page reload is needed.
+
+Changes save automatically in the userscript manager's per-script storage.
+Saved values, including a disabled override and decimal percentages, take
+precedence over defaults in later script versions. Only missing settings are
+initialized, so new settings can be added without replacing existing choices.
+Normal updates retain preferences while the script's identity and manager
+storage are retained. Resetting defaults is a user action, not an update step.
+Other open tabs load the saved values when reloaded.
+
+The script uses the manager's GM value APIs, not GitHub's `localStorage`.
+See the [Tampermonkey API documentation](https://www.tampermonkey.net/documentation.php#api:GM_setValue)
+and [Violentmonkey storage API](https://violentmonkey.github.io/api/gm/#gm_setvalue).
+If storage is unavailable or fails, the controls still work for the current
+page and the panel reports that persistence is unavailable.
+
+The `CONFIG` object supplies first-install and reset defaults:
 
 ```js
 const CONFIG = Object.freeze({
   contentWidthPercent: 95,
   minGutterPx: 32,
+  overrideFullWidthPages: true,
 });
 ```
 
-- `contentWidthPercent` controls the requested target width of a selected workspace. Values from `1` to `100` are accepted, including decimals; values above `100` are clamped to `100`, and invalid values fall back to `95`. The captured native floor prevents a low target from shrinking an existing workspace.
+- `contentWidthPercent` controls the requested target width of a selected workspace. Values from `1` to `100` are accepted, including decimals; values above `100` are clamped to `100`, and invalid values fall back to `95`. Capped workspaces retain their native minimum; naturally fullwidth content can shrink toward the percentage while retaining its documented readability minimum.
 - `minGutterPx` controls the minimum gutter on each side of a centered workspace when the parent has room to preserve both that gutter and the native floor. Values are clamped to `16..128px` and rounded; invalid values fall back to `32px`.
+- `overrideFullWidthPages` defaults to `true`. Set the boolean to `false` to keep naturally fullwidth file, folder, code, text, renderer, pull-request diff, completed Actions, and search workspaces at native width; capped expansion and nested rendered-document fill continue to apply. An omitted or non-boolean value uses the default `true` behavior.
 
-The script does not expose account-specific settings or remote configuration. Change the local values, save the edited script in the userscript manager, and reload the GitHub page for the new values to take effect. Resizing then updates the loaded layout automatically.
+Use the panel for normal customization. Editing `CONFIG` after preferences
+have been saved does not replace those saved values. Source edits made in an
+older release before persistent settings existed cannot be recovered from a
+replacement script file. Resizing automatically updates the loaded layout.
 
 ## Route and Lifecycle Safety
 
-The script stores one owned style element and owned DOM ownership markers. It
-synchronizes at startup, on DOM-ready/Turbo/PJAX render events, on `pushState`
-and `replaceState`, on `popstate` and `pageshow`, and when GitHub replaces
-relevant document regions. The mutation observer schedules rescans only for
-added candidate regions; it does not poll, measure resize loops, or rewrite
-page content.
+The script maintains one page-layout style element, owned DOM markers, and an
+isolated settings UI. It synchronizes at startup, on DOM-ready/Turbo/PJAX render
+events, on `popstate` and `pageshow`, and when GitHub replaces relevant document
+regions. It also hooks `pushState` and `replaceState` in its execution context;
+userscript-manager sandboxing can limit whether page-side calls reach those
+hooks, so rendered-DOM observation remains the primary navigation fallback.
+The mutation observer restores a removed settings launcher and schedules layout
+rescans for candidate insertions or Search sidebar removal. It does not poll,
+measure resize loops, or rewrite GitHub content.
 
 Before rescanning, the script clears only its own markers and deactivates its
 owned rules so native computed widths are used for classification. Reinjection
@@ -112,37 +160,46 @@ adding duplicate history hooks or styles.
 2. Open the [development raw script](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) and choose the manager's install option.
 3. Visit a GitHub page with a bounded workspace at a viewport width of at least `1472px`.
 
-Keep the development URL while this `1.0.2` build is being tested. After a future promotion to `master`, the script metadata and documentation can use the stable `master` URLs.
+Keep the development URL while this `1.0.3` build is being tested. After a future promotion to `master`, the script metadata and documentation can use the stable `master` URLs.
 
 ## Compatibility and Safety
 
 - no external dependencies
 - no network requests or tracking beacons
 - no cookies, account data, or authentication-state inference
-- no storage reads or writes
+- stores only its own layout preferences through the userscript manager
 - no polling, resize loops, or forced transitions
-- no GitHub content restructuring or job dispatches; the script only inserts/repairs its own style element and maintains its ownership markers
+- no GitHub content restructuring or job dispatches; only the script's own layout state and settings UI are maintained
 - native horizontal scrolling remains available for code, files, tables, and logs
 
 Browser evidence uses isolated headless Firefox sessions with WebDriver
-injecting the local userscript source into temporary profiles. That checks the
-source's layout and lifecycle behavior; it does not install the script into a
-userscript manager. The shared-layout regression covers 35 page/login states:
-33 passing native/modified pairs and two expected guest Actions access screens.
-Additional checks cover repository Actions, Security, Pulse and Settings;
-global Issues, Pull Requests, Search and account Settings; and 14 file-renderer
-cases with four resize checks. Renderers include Markdown, plain text, source
-code, CSV, PDF and an image preview. Native sidebars remain the same width at
-the same viewport size, while their position can move with a widened workspace.
+injecting the local userscript source into temporary profiles. The 1.0.3
+checks cover nine repository/file routes, signed-in and guest PR Files,
+completed Actions run/log pages, Search, and capped Issues/Settings regressions.
+They include 80%, 95%, 100% and over-100% settings, both override values,
+sidebar preservation, narrow native layouts, resizing, and local scrolling.
+Screenshots were captured for the tested page families and visually inspected
+at the recorded viewports. This does not establish every scroll position or
+every GitHub feature; unrecognized layout structures may remain native.
 
-The checks include 1440px native layouts, 1920px/2560px desktop layouts,
-3200px repository sections, bounded 100%/over-100% settings, and client-side
-repository navigation. Visual review covers captured viewports and targeted
-below-fold README/document and Settings Features regions, not every scroll
-position or every GitHub feature. Detailed source hashes, reports and earlier
-verification are recorded in the [implementation plan](plan/github-fluid-width-plan.md).
-Manager startup, update and reload behavior remains the user's final check.
+The settings panel passes 38 browser assertions with mocked legacy/modern GM
+APIs and nine integrated controller tests. These cover live controls, saved
+decimal and false values, reloads, changed defaults, missing keys, and failed
+storage. Six additional browser assertions verify live reset geometry and
+recovery after removal of the settings launcher. A real-manager automation
+attempt could install Violentmonkey in an
+isolated profile but could not reach its dashboard to import the script, so
+manager installation and update/reload behavior remain the user's final check.
+The earlier broad 1.0.2 checks are historical, not evidence of the new override
+mode. Detailed source hashes, reports, and verification limits are recorded in
+the [implementation plan](plan/github-fluid-width-plan.md).
 
 ## Example
 
-Open a repository overview or an existing pull-request conversation at a desktop viewport wider than `1472px`. The owning capped region grows toward the `95%` target of its available area while its measured native floor and rails remain in place. Even a `100%` setting stops at the parent boundary and keeps the configured gutter whenever the native floor permits. Resize below the threshold and GitHub returns to its native layout; completed Actions run/job pages remain native throughout.
+Open a repository source file at a desktop viewport wider than `1472px`.
+With `overrideFullWidthPages: true`, its content track uses the configured
+percentage even if GitHub normally fills the whole track. Its file tree keeps
+its native width. Change the percentage to `80` for a more visible difference;
+set the toggle to `false` to restore that track's native width. Even `100%`
+stops at the parent boundary and keeps the configured gutter when the minimum
+width permits. Resize below the desktop threshold to use GitHub's native layout.

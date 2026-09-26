@@ -107,7 +107,7 @@ Repo layout:
 | [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js) | Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. | [Docs](docs/stackexchange-reveal-spoilers.md) |
 | [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) | Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. | [Docs](docs/youtube-shorts-switcher.md) |
 | [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) | Applies a constrained fluid-width layout only on Reddit post/comment routes, while leaving feed and community pages at native width. | [Docs](docs/reddit-fluid-width.md) |
-| [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) | Development userscript that widens shared GitHub content containers and rendered documents on desktop while preserving native sidebars, split panes, controls, and local scrolling. | [Docs](docs/github-fluid-width.md) |
+| [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) | Controls capped and naturally full-width GitHub workspaces through live, saved settings; includes a full-width override toggle and preserves sidebars, controls, and local scrolling. | [Docs](docs/github-fluid-width.md) |
 
 ---
 

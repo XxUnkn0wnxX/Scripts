@@ -1,6 +1,66 @@
 # GitHub Fluid Width implementation plan
 
-Status: 1.0.2 implementation, documentation, and browser verification complete; publication target: `develop` only. Baseline captures and verification completed 2026-09-26.
+Status: 1.0.3 implementation, documentation, and scoped verification complete; ready for live testing. Publication target: `develop` only. Final verification completed 2026-09-27.
+
+## 1.0.3 scope correction
+
+With `overrideFullWidthPages: true` (the default), the configured percentage
+must also control workspaces that GitHub already renders at full width.
+Setting it to `false` preserves those native widths while keeping expansion
+of capped workspaces and document-panel filling enabled. The earlier default
+exemption for native fluid code, directory,
+diff, log, and search layouts is superseded. Their content must respond to the
+same setting while preserving native sidebar dimensions, renderer behavior,
+and local horizontal scrolling. Repository names, branch names, and file
+extensions must not determine eligibility.
+
+Identify the content workspace from its rendered layout, apply the percentage
+once, and retain native layout when the available space is too narrow. Do not
+use the current full-width measurement as a minimum that silently defeats the
+percentage setting. Preserve the 1472px desktop boundary, the 95%/32px defaults,
+and the parent/gutter bound at 100% and higher settings.
+
+Verify the reported `shell/audio/strip_audio_tags.zsh` file with its tree both
+open and closed, then representative folder, rendered document, text/code,
+file-preview, PR diff, completed run/log, and search workspaces. Compare 80%,
+95%, and 100%/125% settings, the toggle's true/false behavior, narrow native
+fallback, resizing without reinjection,
+and real navigation. Keep prior-version evidence below as historical results;
+do not reuse native-identical wide-page assertions for the new requirement.
+
+The new adapters run after capped-workspace classification. They select the
+remaining main content track beside existing panes, preserving earlier owner
+precedence and rejecting ancestor/descendant owner overlap. The toggle gates
+only these new adapters. A fullwidth main track uses a 1012px readability
+minimum; Search uses 768px because its results sit between two separate rails.
+Both use the existing bounded percentage formula. A low percentage stops at
+the minimum; when the available track is no wider than that minimum, the
+formula fills the track. This is distinct from using the current full width as
+a floor, which would defeat the override.
+
+Add an on-page settings dialog with a live percentage slider, exact numeric
+input, full-width override checkbox, gutter control, and explicit reset. A
+small launcher and userscript-manager menu command open the same dialog.
+Use isolated styles, labelled keyboard-accessible controls, Escape/close and
+focus restoration. Settings changes must update the current layout without
+reloading or adding duplicate styles and event hooks.
+
+Store preferences in the userscript manager's per-script GM storage, outside
+the source and GitHub's local storage. Keep the script identity and storage
+keys stable. Initialize only missing settings; retain saved values, including
+`false` and decimal percentages, when future releases change defaults or add
+new keys. Never overwrite a value merely because a storage read failed.
+Serialize asynchronous saves so an earlier slider value cannot overwrite a
+later one. Reset changes known settings only when the user selects it. If
+manager storage is unavailable or fails, keep page-local controls usable and
+report the persistence limit honestly.
+
+This settings feature supersedes the earlier `@grant none` and no-storage
+design. Add only the GM value/menu grants required by the controls; no remote
+requests, account inspection, cookie access, or GitHub form operations.
+
+The following design and verification sections record versions 1.0.0 through
+1.0.2. Their native-fullwidth exemption is superseded by the toggle above.
 
 ## Goal and defaults
 
@@ -333,3 +393,111 @@ stopped, and its temporary profile has been removed. No Actions jobs were
 triggered, rerun, or cancelled; no Settings or Security forms were submitted.
 Userscript-manager installation, update/reload behavior, and final percentage
 preferences remain the user's final checks.
+
+## Final 1.0.3 verification
+
+The layout source tested on 2026-09-27 has SHA-256
+`9ee3a030d525159a15a8521e36d9ef9a18ca712a8368a78688989e02d8f96e46`.
+It includes the full-workspace adapters, live settings controls, and persistent
+GM storage. The script name and namespace remain unchanged from 1.0.2.
+The final source has SHA-256
+`24e3b11a027e77d866f542fdbc1cb4113c9738a53ce5a3de09cb5609ec83963c`.
+Two settings-only corrections follow the layout run. Save completion updates
+only the status message, preventing a pending save from rewriting controls
+during an edit. Native timers are forwarded through `window` so Firefox keeps
+their required receiver; binding them to the controller's plain runtime object
+had thrown before a changed checkbox could be saved. The layout code is
+unchanged. The final UI run and controller regressions cover these corrections.
+
+The source-controller harness
+`.tmp/github-fluid-width/.runtime/settings-ui-integrated-smoke.test.js`
+passes nine cases using the actual integrated controller: saved decimal and
+false values survive changed defaults; only missing keys initialize after
+reads; explicit reset writes known defaults; user edits win over delayed
+initialization; failed reads do not overwrite unknown values; asynchronous
+writes finish in order with the latest value retained; delayed saves preserve
+focused numeric drafts; save completion preserves a pending checkbox toggle;
+and unavailable or failed storage leaves page controls
+usable with an honest status. These are mocked GM API tests, not a manager
+installation test. The earlier draft-controller harness also passes seven
+cases, but the integrated-source result is the release evidence.
+Its timer mocks enforce the same receiver requirement as Firefox.
+
+The final renderer report at
+`.tmp/github-fluid-width/verification/percent-contract/final/report.json`
+passes nine routes with zero failures: repository overview, branch-root
+overview, nested folder, the reported `strip_audio_tags.zsh` source file,
+rendered Markdown, plain text, CSV, PDF, and image preview. On the reported
+file at 1920px with its tree visible, 80% gives 1279px, 95% gives 1519px,
+and both 100% and 125% give 1535px. Tree toggling/restoration, responsive
+resizing, and full-workspace opt-out pass. Capped branch-root and Markdown
+owners retain capped expansion when the opt-out is selected.
+The overview and Markdown 95% screenshots were inspected. Seven additional
+native/modified pairs were captured and inspected on the final source under
+`.tmp/github-fluid-width/verification/final-source-visuals/`: all fourteen
+images are coherent and all seven cases pass. The PDF reached a stable visible
+iframe before capture; the image preserves its natural dimensions and aspect
+ratio.
+
+`.tmp/github-fluid-width/verification/full-workspace-contract/summary.json`
+covers signed-in PR Files, completed Actions run and job-log pages, and guest
+PR Files. The guest markup uses the new legacy adapter rather than Primer;
+the report's original direct-Primer diagnostics are superseded by 37 assertions
+over the captured legacy measurements in
+`.tmp/github-fluid-width/verification/full-workspace-contract/guest-legacy-recheck.json`.
+Together, the four scoped results have zero assertion failures. Guest PR Files
+at 1920px measures 1484.8px at 80%, 1763.2px at 95%, and 1792px at both 100%
+and 125%; opt-out matches native. Resizing returns native at 1440px and restores
+the percentage at 2560px. All families have viewport screenshots, with
+representative images visually inspected; rails and local scrollers remain
+contained. Initial harness exceptions and screenshot-path diagnostics were
+corrected before accepting these results; they were not source-layout failures.
+
+The final-source settings report at
+`.tmp/github-fluid-width/verification/settings-ui/report.json`
+passes all 38 browser assertions across legacy and modern GM API mocks.
+It verifies live slider/numeric changes, false-to-true checkbox layout changes,
+reset values, menu access, Escape/focus restoration, one host/style on
+reinjection, synthetic history events, narrow panel fit, reload persistence,
+and preservation of saved values when defaults change and a key is missing.
+Wide and narrow screenshots were visually inspected. These mocks exercise the
+real rendered controls and source but do not prove installation or update
+handling inside Tampermonkey or Violentmonkey. Synthetic history events are not
+evidence of an actual manager reinjecting on navigation.
+
+The final-source focused report at
+`.tmp/github-fluid-width/verification/settings-ui/live-reset-remount/report.json`
+passes six further browser assertions. Reset changes the measured source-file
+workspace live from 1279.20px at 80% back to its original 1519.03px at 95%,
+restoring 95/32/true. Removing the settings host triggers the observer to mount
+exactly one replacement with the current values, keeps one layout style, and
+allows the existing manager-menu callback to reopen it. No uncaught timer
+errors were captured. This check uses a real host removal, separate from the
+synthetic history check above.
+
+The final Search and capped-page report at
+`.tmp/github-fluid-width/verification/shared-globals-v1.0.3/run-2026-09-26T14-26-31-741Z/report.json`
+has zero failures. Search passes 80%, 95%, 100%, and 125% variants at 1920px
+and 2560px, a low-target minimum-width check, and narrow-to-wide resizing.
+At 2560px its main results lane is 1309.8px at 80%, 1555.38px at 95%, and
+1573.25px at both 100% and 125%; its native right rail remains unchanged.
+With full-width overrides disabled, capped global Issues still expands to
+2134.63px and account Settings to 2432px at 2560px. All cases have zero nested
+percentage owners and no document overflow. Final-source 2560px screenshots
+for both capped pages were additionally captured and visually inspected under
+`.tmp/github-fluid-width/verification/shared-globals-v1.0.3/capped-visuals-2026-09-26T14-30-29-163Z/`.
+
+A bounded attempt to test an actual manager installed the official
+Violentmonkey 2.49.0 extension in a separate logged-out Firefox profile. The
+extension dashboard could not be exposed to WebDriver, including through the
+documented browser-chrome test context. No userscript import or actual manager
+persistence was verified. Its helper and cleanup reports remain under
+`.tmp/github-fluid-width/violentmonkey-manager-v2490/`. The user's manager
+installation, update/reload behavior, and final percentage preferences remain
+the live-testing boundary.
+
+Final JavaScript syntax, Markdown rendering, whitespace, and published-path
+privacy checks pass. All isolated Firefox/geckodriver processes stopped and
+their temporary profiles were removed. No Actions jobs were dispatched, rerun,
+or cancelled, and no Settings or Security forms were submitted. Captures,
+cookies, and test helpers remain ignored under `.tmp/`.
