@@ -1,4 +1,8 @@
-# codex-profiles
+<a id="codex-profiles"></a>
+
+# 🧰 codex-profiles
+
+↩️ [Back to repository README](../../../../README.md)
 
 Discover Codex CLI profiles, pick one interactively, and start or resume a
 session with short Zsh commands. Profile names are completed from the files on
@@ -226,6 +230,9 @@ starts a real Codex session or writes to the installed Codex home.
 
 From the repository root, with the project's Python environment active:
 
+<details>
+<summary>🧪 Show test commands and matrix</summary>
+
 ```zsh
 python -m pytest --disable-plugin-autoload tests/codex_profiles
 python -m compileall -q tests/codex_profiles
@@ -246,6 +253,8 @@ TEST_ZSH=/bin/zsh python -m pytest --disable-plugin-autoload tests/codex_profile
 | Help and errors | Help variants, unknown profiles, unavailable executable, noninteractive invocation. |
 | Picker | Immediate selection, 1/9/10/12/100-profile boundaries, padded numbers, partial input, Backspace, invalid input and retry, cancellation, Ctrl-C/SIGINT, terminal restoration, restoration failure and shell survival. |
 | Completion and shell integration | Registered completion, refreshed candidates, real Tab keystrokes in Zsh, existing Codex completion, caller option preservation. |
+
+</details>
 
 Portability checks should run this same suite on macOS and Linux/WSL with an
 available Zsh. A successful macOS run does not establish that Linux or WSL was

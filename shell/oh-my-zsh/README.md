@@ -1,4 +1,8 @@
-# Oh My Zsh
+<a id="oh-my-zsh"></a>
+
+# 🔌 Oh My Zsh
+
+[← Back to the toolkit](../../README.md)
 
 This folder stores custom Oh My Zsh plugins used in this repo.
 

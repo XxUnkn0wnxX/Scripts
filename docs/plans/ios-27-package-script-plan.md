@@ -1,4 +1,8 @@
-# iOS 27 package script plan
+<a id="ios-27-package-script-plan"></a>
+
+# 📋 iOS 27 package script plan
+
+[← Back to the toolkit](../../README.md) · [Usage guide](../fetch-ios-pkgs.md) · [Task index](../../TODO.md)
 
 Status: **complete — implementation and automated validation passed, Big Sur runtime pass reported by the user, and promotion to `master` explicitly authorized on 2026-09-26.** Handoff recorded on 2026-09-23; implementation and runtime confirmation on 2026-09-26. Detailed runtime logs/device outcomes and testing on other OS/architecture combinations remain optional follow-up checks; completion does not imply runtime coverage of those platforms.
 
@@ -31,6 +35,9 @@ The reported symptom was that the phone could communicate with the Mac after run
 
 ## Findings to carry forward
 
+<details>
+<summary>🔎 Historical catalog evidence and source attachments</summary>
+
 These are historical findings from the conversation and its uploaded diagnostics, not a fresh check of Apple's catalog or the current Mac's installed packages.
 
 | Evidence | Recorded result |
@@ -55,7 +62,12 @@ The final conclusion superseded the chat's earlier suggestions that a separate D
 
 This observed success does not establish that every legacy macOS release will always receive applicable future packages. Keep compatibility claims tied to the hosts and catalogs actually checked.
 
+</details>
+
 ## Original defect and implemented change
+
+<details>
+<summary>🛠️ Original selector, implemented fix, and discovery results</summary>
 
 Repository inspection on 2026-09-23 confirmed these filename assumptions in the original script:
 
@@ -67,7 +79,12 @@ The implementation replaces global filename scanning with selection within each 
 
 On 2026-09-26, the original selector chose product `089-04537`, dated `2026-03-04T19:36:25Z`, from the live catalog. The corrected selector and a full `--dry-run` selected product `142-23719`, dated `2026-09-14T17:26:37Z`, with `MobileDeviceOnDemandPackage.pkg` and that product's actual `CoreTypes.pkg` URL. Product `012-08532`, dated 2022-06-14, contains CoreTypes and the unrecognised `MobileDeviceSU2.pkg` filename. Its initial generic warning is now informational: a newer complete package set was found, so no action is needed for that older entry. Unknown entries with equal/newer dates and genuinely missing/ambiguous packages or invalid metadata remain warnings/errors. Package eligibility is unchanged. Both selected package URLs returned HTTP 200 to HEAD requests; package contents were not downloaded. The seed plist's SHA-256 checksum was unchanged after the live dry run, and the isolated test home had no Downloads directory.
 
+</details>
+
 ## Service-restart follow-up
+
+<details>
+<summary>🔄 iMazing inspection and service-recovery decisions</summary>
 
 The user asked whether iMazing restarts additional mobile-device services. Static inspection of installed iMazing 3.6.5 (build 24380) traced `restartMobileDeviceServices:` to `MobileDeviceServices.restart`. It obtains administrator authorization, enumerates processes, matches `usbmuxd`, and invokes `/bin/kill` with `-9` and the matched PID. On success it launches `iMazingRelauncher` and terminates its own application. This version's path does not directly restart `AMPDevicesAgent`, `AMPDeviceDiscoveryAgent`, or `MobileDeviceUpdater`. No iMazing action or live service restart was executed during inspection.
 
@@ -77,7 +94,12 @@ The revised flow tries TERM, `kickstart -k`, a KILL fallback restricted to still
 
 Automatic device ejection was considered and omitted: neither the traced iMazing action nor Apple's documented Finder workflow establishes that ejecting before restarting guarantees reconnection. A new daemon PID does not prove a connected device has reappeared. The script advises unlocking and reconnecting the cable if needed; that outcome remains a live validation item.
 
+</details>
+
 ## Legacy macOS compatibility evidence
+
+<details>
+<summary>💻 Installation minimum, legacy commands, and evidence limits</summary>
 
 On 2026-09-26, Apple's [English distribution for product 142-23719](https://swdist.apple.com/content/downloads/34/26/142-23719-A_6Y4LUO96P3/ytfk8y0jpnp9ud3lpim9ebbts4n7qsrww8/142-23719.English.dist) defined a fatal `VolumeCheck` for macOS versions below **10.13**. This is the evidence-backed minimum for that current product through Apple's distribution. Read-only inspection of the installed MobileDevice framework and `usbmuxd` showed binary deployment minimum 10.11; do not substitute that lower number for the distribution's installation requirement.
 
@@ -85,7 +107,12 @@ The parser and restart implementation avoid dependencies newer than the 10.13 ta
 
 Direct component installation preserves the original script's behavior and does not evaluate the enclosing distribution's host/device predicates. The observed 10.13 minimum is recorded here rather than hardcoded into product selection. Newer catalog entries can change applicability; do not promise that every future package or iOS device will work on every legacy Mac. High Sierra runtime and device communication still require validation on an actual eligible host.
 
+</details>
+
 ## Newer macOS and Apple Silicon handling
+
+<details>
+<summary>🧩 Architecture detection, AppleKIS, and seed-file discovery</summary>
 
 Apple's current distribution declares `i386,x86_64,arm64` host architectures. Read-only inspection of the installed MobileDevice framework and `usbmuxd` confirmed native ARM slices alongside Intel slices. The script uses system command paths and Foundation APIs without requiring an Intel-only executable, Rosetta, or a Homebrew prefix. Actual Apple Silicon/Rosetta execution has not been tested.
 
@@ -97,7 +124,12 @@ Seed-file discovery checks the standard `Seeding.framework/Resources` path, then
 
 The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/architecture handling from test coverage. Automated script tests exercise simulated platform probes and package/service actions. A real Big Sur dry run checks discovery only; the subsequent Big Sur runtime pass was reported by the user. Other Intel/ARM and OS combinations remain untested end to end.
 
+</details>
+
 ## Implementation checklist
+
+<details>
+<summary>✅ Completed implementation checklist</summary>
 
 - [x] Re-read this plan and the current script; refresh the live catalog evidence.
 - [x] Choose a structured parser without an added runtime dependency: JXA/Foundation, available since OS X 10.10; current Apple distribution requires 10.13, and Big Sur is verified.
@@ -116,6 +148,8 @@ The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/arc
 - [x] Update [`fetch-ios-pkgs.md`](../fetch-ios-pkgs.md) for both filenames, modes, dependencies, and compatibility limits.
 - [x] Receive explicit user authorization for `master` promotion and completion of the overall iOS TODO and this plan.
 
+</details>
+
 ## Validation checklist
 
 Parser and installation-flow tests use local fixtures and stubbed system actions. Normal execution still installs packages and attempts service recovery; use `--dry-run` for discovery without package or service actions.
@@ -127,6 +161,9 @@ The final live `--dry-run` detected Big Sur 11.7.11 / `x86_64`, selected product
 On 2026-09-26, the user confirmed that the script worked and that Big Sur runtime testing passed. Record this as user-reported runtime success on the session's Intel Big Sur host. Installer logs, final receipts, restart PID evidence, device/iOS details, and a separate update-prompt result were not supplied. The package installer still uses the original `-verboseR` option with output sent directly to the terminal; curl download progress is also retained.
 
 The compatibility interpreter was built from the upstream [zsh 5.3.1 source archive](https://www.zsh.org/pub/old/zsh-5.3.1.tar.xz) in ignored temporary storage, without installation or source changes. Building with Apple clang required `CFLAGS='-O2 -std=gnu89 -Wno-error=implicit-function-declaration'` so its historical configuration probes compiled correctly, plus `--disable-dynamic --without-tcsetpgrp` for the test build. All test runs still used Big Sur's JXA/Foundation and external utilities; this is older-shell evidence, not a High Sierra system test. Test subprocesses run in isolated process groups so a timed-out shell cannot leave descendants holding the test's output pipes open.
+
+<details>
+<summary>✅ Completed automated and reported runtime checks</summary>
 
 - [x] Old-name-only fixture still selects the correct MobileDevice/CoreTypes pair.
 - [x] A fixture containing the older pair and product `142-23719` selects the newer renamed package and that product's actual CoreTypes URL.
@@ -144,6 +181,9 @@ The compatibility interpreter was built from the upstream [zsh 5.3.1 source arch
 - [x] A service-recovery warning remains nonfatal after successful installations, and output advises unlocking/reconnecting a device that does not reappear. Automatic ejection is omitted.
 - [x] Run system/Homebrew `zsh -n`, focused pytest tests, Python compilation, and final diff/documentation checks.
 - [x] User-reported Big Sur runtime pass received on 2026-09-26.
+
+</details>
+
 - [ ] When ready for live validation, compare discovery output with the actual host catalog, installer applicability, and installed receipts. Record the tested macOS version and device/iOS version.
 - [ ] During an explicitly requested installation test, record the selected product, installed receipts, and reconnect/prompt result. Fixture success alone does not prove that the iOS update prompt is resolved.
 

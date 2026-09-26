@@ -1,4 +1,8 @@
-# pyactivate
+<a id="pyactivate"></a>
+
+# 🐍 pyactivate
+
+↩️ [Back to repository README](../../../../README.md)
 
 `pyactivate` is a small Zsh helper for manual Python virtual environment switching.
 It supports multiple local venvs via interactive selection (when `fzf` is available), remembers the activated root, and auto-deactivates when you leave that root.
@@ -87,6 +91,9 @@ Without `fzf`, multi-choice paths fail fast and keep your current environment un
 
 ## Help text (current)
 
+<details>
+<summary>💬 Show current help text</summary>
+
 ```text
 Usage: pyactivate [<project-or-virtualenv-path>]
 Without an argument, activates a single local virtual environment.
@@ -96,7 +103,12 @@ Running inside a nested project switches environments and leaving the active roo
 An argument may be a project directory or an exact virtualenv path, anywhere.
 ```
 
+</details>
+
 ## Lifecycle semantics
+
+<details>
+<summary>🔁 Show lifecycle details</summary>
 
 - Same-root re-run toggles off:
   running `pyactivate` again from the currently active project root deactivates.
@@ -109,13 +121,20 @@ An argument may be a project directory or an exact virtualenv path, anywhere.
 - Selection canceled:
   interactive selection cancellation does not alter the currently active environment.
 
+</details>
+
 ## Tests
+
+<details>
+<summary>🧪 Show test command</summary>
 
 From the Scripts repository root, contributors can run:
 
 ```zsh
 python -m pytest --disable-plugin-autoload tests/pyactivate
 ```
+
+</details>
 
 ## Uninstall
 

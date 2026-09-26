@@ -71,7 +71,9 @@ The userscript finds an unambiguous `Product` entry and reads:
 - the base PlayStation product SKU
 - the published offer price and currency when available
 
-For a complete valid `lowPrice`/`highPrice` range, the card displays the higher bound. If exactly one bound is present and valid, it is normalized as both bounds. If neither bound is present, a valid `price` value is accepted. The normalized zero upper bound displays `Free`; invalid or conflicting offers display `Price unavailable`, and an invalid bound never falls back to another field. This published JSON-LD value is not a guarantee of the live amount charged by the PlayStation Store. No price is inferred from labels or from a separate network request.
+For a complete valid `lowPrice`/`highPrice` range, the card displays the higher bound. If exactly one bound is present and valid, it is normalized as both bounds. If neither bound is present, a valid `price` value is accepted.
+
+The normalized zero upper bound displays `Free`; invalid or conflicting offers display `Price unavailable`, and an invalid bound never falls back to another field. This published JSON-LD value is not a guarantee of the live amount charged by the PlayStation Store. No price is inferred from labels or from a separate network request.
 
 It validates the product ID and region against the URL, canonical link, product container, and available page-region data. It then requests the matching full regional SKU from:
 
@@ -93,7 +95,9 @@ Only successfully validated full SKUs are cached for the current page session. F
 
 ## Rendering and Timing
 
-The script starts at `document-start` to install bootstrap/cosmetic suppression and the global header badge. It defers purchase-target validation, stabilization, and replacement while the initial HTML is still being parsed; `DOMContentLoaded` schedules the normal mounting pass so parser-owned purchase children finish loading before replacement. The completed wrapper then fades into view, and later DOM, HTMX, and route changes remain event-driven. Related lazy fragments outside the validated product targets leave the checkout card intact.
+The script starts at `document-start` to install bootstrap/cosmetic suppression and the global header badge. It defers purchase-target validation, stabilization, and replacement while the initial HTML is still being parsed; `DOMContentLoaded` schedules the normal mounting pass so parser-owned purchase children finish loading before replacement.
+
+The completed wrapper then fades into view, and later DOM, HTMX, and route changes remain event-driven. Related lazy fragments outside the validated product targets leave the checkout card intact.
 
 The bottom sticky Buy Unlocked banner is suppressed by bootstrap CSS as soon as its matching `stickyReveal('#avatar-buy-block')` element is parsed. It remains `display: none` on supported avatar and theme product pages, preventing the native banner from flashing before the JavaScript mount completes.
 

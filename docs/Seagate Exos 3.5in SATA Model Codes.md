@@ -1,9 +1,16 @@
-# Seagate Exos 3.5-inch SATA Model-Code Reference
+<a id="seagate-exos-35-inch-sata-model-code-reference"></a>
+
+# 💾 Seagate Exos 3.5-inch SATA Model-Code Reference
+
+[← Back to the toolkit](../README.md)
 
 **Updated:** 7 August 2026 — factory-recertified table expanded  
 **Purpose:** Search exact Seagate Exos model codes when shopping for used, refurbished or recertified SATA drives.
 
 > `ST16000NM001G` is a **model number/model code**, not a serial number. A serial number is unique to one physical drive and cannot be used as a general shopping reference.
+
+
+**Jump to:** [Capacity lookup](#quick-capacity-lookup) · [Detailed models](#detailed-sata-table) · [Recertified models](#official-seagate-factory-recertified-c-models) · [Buying checks](#refurbished-drive-checks)
 
 ## Scope
 
@@ -43,6 +50,9 @@ Families overlapped, so the order within a capacity is an **approximate generati
 | **32TB** | `ST32000NM004K` |
 
 ## Detailed SATA table
+
+<details>
+<summary>📊 Expand the full SATA model table</summary>
 
 | Capacity | Exos family | Documentation era | Exact model code | Sector format | Variant | Notes |
 |---:|---|---:|---|---|---|---|
@@ -104,6 +114,8 @@ Families overlapped, so the order within a capacity is an **approximate generati
 | **30TB** | Exos HAMR CMR | 2025–2026 | `ST30000NM004K` | 512e | Standard / ISE |  |
 | **32TB** | Exos HAMR CMR | 2025–2026 | `ST32000NM004K` | 512e | Standard / ISE | Current CMR channel model |
 
+</details>
+
 ## Official Seagate factory-recertified `C` models
 
 This is the complete capacity range listed in Seagate's official factory-recertified Exos data sheet. These are separate `C`-suffix product SKUs rather than ordinary X16, X18, X22 or X24 retail-generation model numbers.
@@ -121,6 +133,9 @@ This is the complete capacity range listed in Seagate's official factory-recerti
 
 ### Detailed factory-recertified table
 
+<details>
+<summary>📊 Expand the factory-recertified specifications</summary>
+
 | Capacity | Product family | Exact model code | Interface | Recording technology | Sector format as shipped | FastFormat | Spindle speed | Cache | MTBF rating | Factory warranty | Notes |
 |---:|---|---|---|---|---|---|---:|---:|---:|---:|---|
 | **16TB** | Exos Factory Recertified | `ST16000NM002C` | SATA 6Gb/s | CMR | 512e | 512e → 4Kn supported | 7200 RPM | 512MB | 2.5 million hours | 6 months | Closest official `C`-model alternative to your 16TB X16 |
@@ -129,6 +144,8 @@ This is the complete capacity range listed in Seagate's official factory-recerti
 | **24TB** | Exos Factory Recertified | `ST24000NM000C` | SATA 6Gb/s | CMR | 512e | 512e → 4Kn supported | 7200 RPM | 512MB | 2.5 million hours | 6 months |  |
 | **26TB** | Exos Factory Recertified | `ST26000NM000C` | SATA 6Gb/s | CMR | 512e | 512e → 4Kn supported | 7200 RPM | 512MB | 2.5 million hours | 6 months | Official `C` model even though 26TB is absent from the normal channel-model table |
 | **28TB** | Exos Factory Recertified | `ST28000NM000C` | SATA 6Gb/s | CMR | 512e | 512e → 4Kn supported | 7200 RPM | 512MB | 2.5 million hours | 6 months | Listed separately on the following page of Seagate's data sheet |
+
+</details>
 
 **No other capacities are listed in Seagate's official `C`-model data sheet.** In particular, it does not list official `C` models for 1TB–14TB, 18TB, 30TB or 32TB.
 
@@ -190,6 +207,9 @@ Before buying, verify all of the following in the listing or with the seller:
 
 ## Official Seagate sources
 
+<details>
+<summary>📚 Data sheets, manuals, and support pages</summary>
+
 - [Exos 7E2 support](https://www.seagate.com/au/en/support/internal-hard-drives/enterprise-hard-drives/exos-7E2/)
 - [Legacy 7E8 data sheet](https://www.seagate.com/www-content/datasheets/pdfs/ent-cap-3-5-hdd-data-sheetDS1882-3-1610US-en_US.pdf)
 - [Exos 7E8 A-generation data sheet](https://www.seagate.com/www-content/datasheets/pdfs/exos-7-e8-data-sheet-DS1957-2-1904US-en_US.pdf)
@@ -199,6 +219,8 @@ Before buying, verify all of the following in the listing or with the seller:
 - [Current Exos HAMR/CMR data sheet](https://www.seagate.com/content/dam/seagate/en/content-fragments/products/datasheets/exos-m-v1-2/exos-v1-2-DS2045-4-2511-en_US.pdf)
 - [Seagate factory-recertified Exos data sheet](https://www.seagate.com/content/dam/seagate/en/content-fragments/products/datasheets/exos-recertified-drive/exos-recertified-drive-DS2045-2-2010US-October-2020-en_US.pdf)
 - [Exos 5E8 support](https://www.seagate.com/au/en/support/internal-hard-drives/enterprise-hard-drives/exos-5E/)
+
+</details>
 
 ---
 

@@ -1,4 +1,8 @@
-# pyconvert.py
+<a id="pyconvertpy"></a>
+
+# 🔢 pyconvert.py
+
+↩️ [Back to repository README](../README.md)
 
 [`pyconvert.py`](../python/pyconvert.py) converts decimal and hex values between several binary-friendly formats. It is useful when checking save-file values, memory values, or other binary data.
 
@@ -103,6 +107,9 @@ python3 python/pyconvert.py --swap 1234ABCD
 
 ## Quick Examples
 
+<details>
+<summary>🧪 Show example commands</summary>
+
 Half float:
 
 ```bash
@@ -126,6 +133,8 @@ Endianness swap:
 ```bash
 python3 python/pyconvert.py --swap DEADBEEF
 ```
+
+</details>
 
 ## Good To Know
 

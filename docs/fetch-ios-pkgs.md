@@ -1,4 +1,8 @@
-# fetch-ios-pkgs.zsh
+<a id="fetch-ios-pkgszsh"></a>
+
+# 📦 fetch-ios-pkgs.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`fetch-ios-pkgs.zsh`](../shell/fetch-ios-pkgs.zsh) finds the newest complete MobileDevice/CoreTypes pair in the Mac's DeveloperSeed catalog. On macOS 13 and later, it also selects `AppleKIS.pkg` when that product contains it. With no arguments it shows the links, downloads the selected packages, installs them, and attempts to restart `usbmuxd`.
 
@@ -124,6 +128,9 @@ Connected iOS devices are not automatically ejected. Apple's [Finder guidance](h
 
 ## Offline Tests
 
+<details>
+<summary>🧪 Show offline test details</summary>
+
 The focused pytest suite builds XML and binary plist fixtures and runs the script with mocked downloads, installers, and service actions. It exercises both package names, product boundaries, CLI modes, and failure handling without downloading real packages or changing services. Restart tests exercise the recovery sequence with simulated PID observations, signals, launchctl calls, and waits.
 
 From a development environment with pytest installed:
@@ -135,3 +142,5 @@ python -m pytest tests/fetch_ios_pkgs
 The tests require macOS for the real JXA/Foundation parser. Python and pytest are development-only dependencies. Set `FETCH_IOS_PKGS_ZSH` to an absolute zsh executable path to exercise another interpreter.
 
 The [implementation record and remaining live checks](plans/ios-27-package-script-plan.md) are kept in `docs/plans/`.
+
+</details>

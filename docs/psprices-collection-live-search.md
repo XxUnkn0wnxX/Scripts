@@ -93,11 +93,15 @@ The native PSPrices collection grid and native pagination are hidden on the cano
 
 Both avatar and theme search open with `All platforms` selected. After the current region's avatar and theme caches are both complete, an empty query shows the first `108` eligible candidates. All-platform results are grouped in `PS4`, `PS3`, then `PS5` order, with alphabetical sorting within each group. Typing in the search box or enabling platform/free filters narrows the results.
 
-Search, platform/free filters, `Show more`, the result grid, and product-page detail hydration stay locked until the current region's avatar and theme caches are both 100% complete. Nothing populates in the custom grid while the user is still waiting on those caches. If the user stays on the page, the grid automatically populates when both caches hit 100%; a refresh is not required. This lock is still region-scoped: AU unlocks only after AU avatars and AU themes finish, while another region has its own queued or paused cache state. Clearing the current region cache also clears the grid until both rebuilt caches finish.
+Search, platform/free filters, `Show more`, the result grid, and product-page detail hydration stay locked until the current region's avatar and theme caches are both 100% complete. Nothing populates in the custom grid while the user is still waiting on those caches.
+
+If the user stays on the page, the grid automatically populates when both caches hit 100%; a refresh is not required. This lock is still region-scoped: AU unlocks only after AU avatars and AU themes finish, while another region has its own queued or paused cache state. Clearing the current region cache also clears the grid until both rebuilt caches finish.
 
 Text-query changes can keep matching partial results on screen briefly while the next live result set hydrates. Platform and `Free only` changes are treated as hard filter changes: the visible grid is rebuilt from scratch, the render limit resets to `108`, and in-flight detail hydration is abandoned for the previous filter state.
 
-In `All platforms`, items matching more than one platform appear in their first matching group in `PS4`, `PS3`, then `PS5` order. Candidates with unknown platforms are checked alongside PS4 candidates before lower-priority groups fill the result window; they only appear once their details confirm the platform. Selecting a single platform uses alphabetical sorting without platform priority. Leading punctuation is ignored. Within each platform group, or a single-platform view, title order is:
+In `All platforms`, items matching more than one platform appear in their first matching group in `PS4`, `PS3`, then `PS5` order. Candidates with unknown platforms are checked alongside PS4 candidates before lower-priority groups fill the result window; they only appear once their details confirm the platform. Selecting a single platform uses alphabetical sorting without platform priority. Leading punctuation is ignored.
+
+Within each platform group, or a single-platform view, title order is:
 
 - titles beginning with `A-Z`
 - titles beginning with `0-9`
@@ -192,7 +196,11 @@ To force the legacy backend for testing, set this near the top of the userscript
 const CACHE_FORCE_LOCAL_STORAGE = true;
 ```
 
-The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script first tries to move the current region's compatible cache entries into the new backend, then purges the old backend's collection-search cache data. The old-backend purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage. Moving into localStorage only carries the compact current-region collection cache for avatars and themes; IndexedDB-only product detail metadata is not copied because the localStorage backend does not use it. If the current-region move into localStorage is incomplete because browser quota is already full, the script skips purging the old IndexedDB cache so data that did not fit is not deleted. If the storage backend changes at the same time as an incompatible `CACHE_SCHEMA_VERSION` change, the script skips moving old cache data and prefers a fresh rebuild.
+The script stores a backend marker. If the marker changes between `IndexedDB` and `localStorage`, the script first tries to move the current region's compatible cache entries into the new backend, then purges the old backend's collection-search cache data.
+
+The old-backend purge is global across regions and old versioned cache scopes, but the small cross-tab lease records remain in localStorage. Moving into localStorage only carries the compact current-region collection cache for avatars and themes; IndexedDB-only product detail metadata is not copied because the localStorage backend does not use it.
+
+If the current-region move into localStorage is incomplete because browser quota is already full, the script skips purging the old IndexedDB cache so data that did not fit is not deleted. If the storage backend changes at the same time as an incompatible `CACHE_SCHEMA_VERSION` change, the script skips moving old cache data and prefers a fresh rebuild.
 
 If IndexedDB opens but later fails a write, the script switches to localStorage fallback for the active session and copies the current region's in-memory cache snapshot into localStorage where possible. It only starts a best-effort purge of stale IndexedDB cache data if that localStorage copy completes; partial copies keep the old IndexedDB data in place. If cleanup fails, the fallback session still continues and logs the cleanup problem.
 
@@ -348,13 +356,21 @@ When a result set exceeds the hard cap, the UI reports that only part of the mat
 
 The cache keeps the stored index small. Detail hydration waits until the current region's avatar and theme caches are both 100% complete. During cache builds, the grid stays empty and no product-page URL fetches are started, avoiding extra product requests on top of collection-page cache indexing.
 
-When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked against IndexedDB detail metadata first. Product pages are fetched only when that detail metadata is missing, stale, or still incomplete. If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
+When `PS3`, `PS4`, `PS5`, or `Free only` filters are active, compact cached rows with unknown platform or price data are checked against IndexedDB detail metadata first. Product pages are fetched only when that detail metadata is missing, stale, or still incomplete.
 
-While a visible result batch is hydrating, partial re-renders keep that batch's hydration queue stable. Search text, filter, or `Show more` changes still cancel and retarget hydration so stale result details are not fetched longer than needed. When the active metadata worker batch drains, the grid is forced through one final render so completed theme details cannot stay hidden behind a pending debounce. If compact cached rows are reloaded without metadata, they can be hydrated again even when their key was fetched earlier in the same page session. If IndexedDB has fresh detail metadata, hydration can complete from cache without a product-page request.
+If the search box is empty, candidate checks are limited to the current render window, starting at `108` sorted items and expanding only when `Show more` is clicked. Once text is typed, that query builds the broad candidate pool while platform and free filters trim confirmed matches from it.
 
-Result cards use detail-confirmed rendering, including blank All platforms views, so grids fill progressively with real thumbnails, prices, and platform badges instead of painting a full page of placeholders first. All platforms is treated as a `PS3`/`PS4`/`PS5` union while compact rows are being confirmed. On collection page launch, initial hydration waits for the page `load` event and mounted userscript UI before restarting, and retries if the grid stays empty. Product detail rows that fail hydration are not rendered for avatars or themes; the status line reports how many matching rows failed metadata fetching.
+While a visible result batch is hydrating, partial re-renders keep that batch's hydration queue stable. Search text, filter, or `Show more` changes still cancel and retarget hydration so stale result details are not fetched longer than needed.
 
-While candidate hydration, same-region collection cache indexing, or queued same-region lease work is still running, the UI labels already verified matches as confirmed results and shows a small pulsing indicator beside that status. The indicator is refreshed from cache status updates as well as result renders, so the avatar page can pulse while the theme cache builds and the theme page can pulse while the avatar cache builds, including after page reloads or region navigation. Remaining undisplayed items are reported through the `Show more` button.
+When the active metadata worker batch drains, the grid is forced through one final render so completed theme details cannot stay hidden behind a pending debounce. If compact cached rows are reloaded without metadata, they can be hydrated again even when their key was fetched earlier in the same page session. If IndexedDB has fresh detail metadata, hydration can complete from cache without a product-page request.
+
+Result cards use detail-confirmed rendering, including blank All platforms views, so grids fill progressively with real thumbnails, prices, and platform badges instead of painting a full page of placeholders first. All platforms is treated as a `PS3`/`PS4`/`PS5` union while compact rows are being confirmed.
+
+On collection page launch, initial hydration waits for the page `load` event and mounted userscript UI before restarting, and retries if the grid stays empty. Product detail rows that fail hydration are not rendered for avatars or themes; the status line reports how many matching rows failed metadata fetching.
+
+While candidate hydration, same-region collection cache indexing, or queued same-region lease work is still running, the UI labels already verified matches as confirmed results and shows a small pulsing indicator beside that status. The indicator is refreshed from cache status updates as well as result renders, so the avatar page can pulse while the theme cache builds and the theme page can pulse while the avatar cache builds, including after page reloads or region navigation.
+
+Remaining undisplayed items are reported through the `Show more` button.
 
 The main controls are:
 

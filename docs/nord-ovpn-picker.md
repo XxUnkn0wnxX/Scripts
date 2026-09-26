@@ -1,4 +1,8 @@
-# Nord OVPN Picker
+<a id="nord-ovpn-picker"></a>
+
+# 🧭 Nord OVPN Picker
+
+↩️ [Back to repository README](../README.md)
 
 [`nord_ovpn_picker.py`](../python/nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the repo root itself. If you run it from anywhere else, it writes straight into your current working directory.
 
@@ -106,6 +110,9 @@ If `ping` is unavailable or blocked on the local machine, use `--no-ping`.
 
 ## How It Chooses Servers
 
+<details>
+<summary>🧭 Selection and scoring details</summary>
+
 The default flow is:
 
 1. Resolve the country from Nord's V2 metadata.
@@ -126,6 +133,8 @@ score = average_ping_ms + (load * 2)
 Lower is better.
 
 That means a slightly higher ping can still win if the load is lower enough. For example, `3.6 ms` with load `11` scores `25.6`, which still beats `3.2 ms` with load `12` scoring `27.2`.
+
+</details>
 
 ## Interactive Usage
 
@@ -179,6 +188,9 @@ For the interactive prompts, filtering follows the visible labels instead of hid
 
 ## Mode Behavior
 
+<details>
+<summary>🧩 Run modes and prompt behavior</summary>
+
 The script has three practical run styles:
 
 - Pure interactive: run `python3 python/nord_ovpn_picker.py` in a TTY and answer prompts for the full flow.
@@ -203,7 +215,12 @@ Mode notes:
 - `--advanced` controls which optional protocol/group keys appear in interactive prompts. Explicit CLI values are still accepted if Nord's live V2 metadata supports them.
 - Repo-local auth YAML detection works in both interactive runs and argument-only runs. CLI `--auth-username` and `--auth-password` are override-only flags and are not prompt-driven.
 
+</details>
+
 ## Common Usage
+
+<details>
+<summary>🧰 Common command examples</summary>
 
 Basic listing:
 
@@ -256,7 +273,12 @@ Show debug logging:
 python3 python/nord_ovpn_picker.py --country Australia --verbose
 ```
 
+</details>
+
 ## Invocation From Anywhere
+
+<details>
+<summary>📍 Alternate invocation details</summary>
 
 The script can be run directly, through an alias, by absolute path, or through a symlink. On startup it checks whether it is already running inside this repo's `.venv`; if not, it re-execs itself into that interpreter automatically.
 
@@ -281,7 +303,12 @@ Default output behavior depends on where you launch the command:
 - If your current working directory is the repo root, downloads go into `./NordOVPNs/`.
 - If you launch the script from anywhere else, downloads go directly into your current working directory with no extra `NordOVPNs/` folder.
 
+</details>
+
 ## Arguments
+
+<details>
+<summary>📋 Show all CLI arguments</summary>
 
 <table>
   <thead>
@@ -428,11 +455,16 @@ Default output behavior depends on where you launch the command:
   </tbody>
 </table>
 
+</details>
+
 If you do not pass `--no-ping`, non-interactive mode pings candidates by default.
 
 When ping testing is enabled in a TTY session, the script prints per-host ping progress and the measured average before the candidate table.
 
 ## Supported Keys
+
+<details>
+<summary>🔑 Show live-supported keys</summary>
 
 The script exposes friendly keys, but only accepts keys that Nord's live V2 metadata currently supports.
 
@@ -456,6 +488,8 @@ Without `--advanced`, the interactive prompts only show the default common choic
 
 If you request a key that is not currently supported by Nord's live metadata, the script exits with a clear error listing the currently supported values.
 
+</details>
+
 ## Download Behavior
 
 - Download URLs are built from the selected hostname and protocol.
@@ -477,6 +511,9 @@ If you request a key that is not currently supported by Nord's live metadata, th
 
 ## Caching
 
+<details>
+<summary>💾 Show cache locations and behavior</summary>
+
 The script caches Nord API responses under:
 
 ```text
@@ -492,7 +529,12 @@ Current cache behavior:
 - Default cache TTL is `6 hours`.
 - `--refresh-cache` bypasses the cache and refreshes those payloads.
 
+</details>
+
 ## Result Table
+
+<details>
+<summary>📊 Show result columns</summary>
 
 The candidate table includes:
 
@@ -507,6 +549,8 @@ The candidate table includes:
 - computed score
 - station IP
 - recommended marker
+
+</details>
 
 ## Notes
 

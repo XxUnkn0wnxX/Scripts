@@ -1,79 +1,112 @@
-# Personal Script Toolkit
+<a id="personal-script-toolkit"></a>
+
+# 🧰 Personal Script Toolkit
 
 A small collection of Python scripts, shell helpers, Cronus Zen files, and Tampermonkey userscripts I use for media work, quick automation, and a few game-specific tasks.
 
+[![Python utilities](https://img.shields.io/badge/Python-utilities-3776AB?style=flat-square&logo=python&logoColor=white)](#python-utilities) [![Shell helpers](https://img.shields.io/badge/Shell-helpers-4EAA25?style=flat-square&logo=gnubash&logoColor=white)](#shell-utilities) [![Userscripts](https://img.shields.io/badge/Userscripts-Tampermonkey-00485B?style=flat-square&logo=tampermonkey&logoColor=white)](#userscripts-tampermonkey) [![License: GPL v3](https://img.shields.io/badge/License-GPL_v3-blue?style=flat-square)](COPYING.md)
+
+**Browse:** [📚 Cheat sheets](#markdown-cheat-sheets) · [🐍 Python](#python-utilities) · [🐚 Shell](#shell-utilities) · [🎵 Audio](#audio-helpers) · [🔌 Zsh plugins](#oh-my-zsh-plugins)<br>
+[🎮 Zen scripts](#zen-scripts) · [🛠️ Tools](#tools) · [💾 References](#other) · [🌐 Userscripts](#userscripts-tampermonkey) · [📝 TODO](TODO.md)
+
 > Python dependencies: `pip install -r requirements.txt`
 
+<details>
+<summary>📂 Repo layout</summary>
+
 Repo layout:
+
 - Python CLIs live under [`python/`](python/)
 - Shell scripts live under [`shell/`](shell/)
 - Audio shell helpers live under [`shell/audio/`](shell/audio/)
 - Oh My Zsh plugins live under [`shell/oh-my-zsh/`](shell/oh-my-zsh/)
 - Downloadable tools live under [`tools/`](tools/)
 
+</details>
+
 ## Markdown Cheat Sheets
 
-- [Discord Markdown & Message Formatting Cheat Sheet](docs/discord-markdown-cheat-sheet.md) - Discord text formatting, mentions, timestamps, emoji markup, message tokens, and client-specific caveats.
-- [Markdown & GitHub Flavored Markdown Cheat Sheet](docs/md-and-gh-cheat-sheet.md) - Portable Markdown, GFM extensions, and GitHub-specific formatting with source and rendered examples.
-- [GitHub Badges & README UI Cheat Sheet](docs/github-badges-and-readme-ui.md) - Build, release, download, coverage, and custom badges plus GitHub-safe README layout elements.
+| Reference | Description |
+| --- | --- |
+| [Discord Markdown & Message Formatting Cheat Sheet](docs/discord-markdown-cheat-sheet.md) | Discord text formatting, mentions, timestamps, emoji markup, message tokens, and client-specific caveats. |
+| [Markdown & GitHub Flavored Markdown Cheat Sheet](docs/md-and-gh-cheat-sheet.md) | Portable Markdown, GFM extensions, and GitHub-specific formatting with source and rendered examples. |
+| [GitHub Badges & README UI Cheat Sheet](docs/github-badges-and-readme-ui.md) | Build, release, download, coverage, and custom badges plus GitHub-safe README layout elements. |
 
 ## [Python Utilities](python/)
 
-- [`yt-transcribe.py`](python/yt-transcribe.py) - Download YouTube captions and export them as text or DOCX. [Docs](docs/yt-transcribe.md)
-- [`pyconvert.py`](python/pyconvert.py) - Convert decimal and hex values between common numeric formats. [Docs](docs/pyconvert.md)
-- [`MediaFire.py`](python/MediaFire.py) - Combine two MediaFire quickkeys into one shareable link. [Docs](docs/mediafire.md)
-- [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) - Browse and download NordVPN OpenVPN configs. [Docs](docs/nord-ovpn-picker.md)
-- [`vpnroute.py`](python/vpnroute.py) - Turn domains or URLs into VPN route output. [Docs](docs/vpnroute.md)
-- [`safari_bookmarks_export.py`](python/safari_bookmarks_export.py) - Export selected Safari bookmark folders to Firefox/Chrome HTML. [Docs](docs/safari-bookmarks-export.md)
+| Item | Description | Docs |
+| --- | --- | --- |
+| [`yt-transcribe.py`](python/yt-transcribe.py) | Download YouTube captions and export them as text or DOCX. | [Docs](docs/yt-transcribe.md) |
+| [`pyconvert.py`](python/pyconvert.py) | Convert decimal and hex values between common numeric formats. | [Docs](docs/pyconvert.md) |
+| [`MediaFire.py`](python/MediaFire.py) | Combine two MediaFire quickkeys into one shareable link. | [Docs](docs/mediafire.md) |
+| [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) | Browse and download NordVPN OpenVPN configs. | [Docs](docs/nord-ovpn-picker.md) |
+| [`vpnroute.py`](python/vpnroute.py) | Turn domains or URLs into VPN route output. | [Docs](docs/vpnroute.md) |
+| [`safari_bookmarks_export.py`](python/safari_bookmarks_export.py) | Export selected Safari bookmark folders to Firefox/Chrome HTML. | [Docs](docs/safari-bookmarks-export.md) |
 
 ## [Shell Utilities](shell/)
 
-- [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) - Extract every attachment from each MKV in the current folder. [Docs](docs/mkv-extract-tracks.md)
-- [`mkv_mux.zsh`](shell/mkv_mux.zsh) - Interactive MKV remux and volume-boost helper. [Docs](docs/mkv-mux.md)
-- [`mkv_utils.zsh`](shell/mkv_utils.zsh) - Interactive MKV metadata, extraction, and track-edit helper. [Docs](docs/mkv-utils.md)
-- [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) - Satisfactory splitter, balancer, and compressor planner. [Docs](docs/satisfactory-balancer.md)
-- [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) - macOS-only launcher and updater wrapper for Satisfactory Modeler. [Docs](docs/satisfactory-modeler.md)
-- [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) - macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. [Docs](docs/discord-install-manager.md)
-- [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) - Compare custom tap formulas against upstream Homebrew versions. [Docs](docs/brew-custom-compare.md)
-- [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) - Download and install current Apple mobile-device support packages. [Docs](docs/fetch-ios-pkgs.md)
-- [`codex-sync-model-provider.zsh`](shell/codex-sync-model-provider.zsh) - macOS-only guarded sync of the configured Codex model provider into persisted SQLite thread and session metadata. [Docs](docs/codex-sync-model-provider.md)
+| Item | Description | Docs |
+| --- | --- | --- |
+| [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) | Extract every attachment from each MKV in the current folder. | [Docs](docs/mkv-extract-tracks.md) |
+| [`mkv_mux.zsh`](shell/mkv_mux.zsh) | Interactive MKV remux and volume-boost helper. | [Docs](docs/mkv-mux.md) |
+| [`mkv_utils.zsh`](shell/mkv_utils.zsh) | Interactive MKV metadata, extraction, and track-edit helper. | [Docs](docs/mkv-utils.md) |
+| [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) | Satisfactory splitter, balancer, and compressor planner. | [Docs](docs/satisfactory-balancer.md) |
+| [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) | macOS-only launcher and updater wrapper for Satisfactory Modeler. | [Docs](docs/satisfactory-modeler.md) |
+| [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) | macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. | [Docs](docs/discord-install-manager.md) |
+| [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) | Compare custom tap formulas against upstream Homebrew versions. | [Docs](docs/brew-custom-compare.md) |
+| [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) | Download and install current Apple mobile-device support packages. | [Docs](docs/fetch-ios-pkgs.md) |
+| [`codex-sync-model-provider.zsh`](shell/codex-sync-model-provider.zsh) | macOS-only guarded sync of the configured Codex model provider into persisted SQLite thread and session metadata. | [Docs](docs/codex-sync-model-provider.md) |
 
 ## [Audio Helpers](shell/audio/)
 
-- [`shell/audio/strip_audio_tags.zsh`](shell/audio/strip_audio_tags.zsh) - Strip metadata from `.m4a` files in the current folder. [Docs](docs/strip-audio-tags.md)
-- [`shell/audio/fix_tags.zsh`](shell/audio/fix_tags.zsh) - Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. [Docs](docs/fix-tags.md)
+| Item | Description | Docs |
+| --- | --- | --- |
+| [`shell/audio/strip_audio_tags.zsh`](shell/audio/strip_audio_tags.zsh) | Strip metadata from `.m4a` files in the current folder. | [Docs](docs/strip-audio-tags.md) |
+| [`shell/audio/fix_tags.zsh`](shell/audio/fix_tags.zsh) | Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. | [Docs](docs/fix-tags.md) |
 
 ## [Oh My Zsh Plugins](shell/oh-my-zsh/)
 
-- [`shell/oh-my-zsh/`](shell/oh-my-zsh/) - Docs index for custom Oh My Zsh plugins in this repo.
-- [`pyactivate`](shell/oh-my-zsh/plugins/pyactivate/README.md) - Multi-virtualenv selection, active-root tracking, parent/child project switching, automatic deactivation when you leave the tracked root, and optional `fzf`-based selection.
-- [`codex-profiles`](shell/oh-my-zsh/plugins/codex-profiles/README.md) - Discover and complete Codex profile names, pick a profile, and start or resume sessions with configurable launch flags.
+| Item | Description |
+| --- | --- |
+| [`shell/oh-my-zsh/`](shell/oh-my-zsh/) | Docs index for custom Oh My Zsh plugins in this repo. |
+| [`pyactivate`](shell/oh-my-zsh/plugins/pyactivate/README.md) | Multi-virtualenv selection, active-root tracking, parent/child project switching, automatic deactivation when you leave the tracked root, and optional `fzf`-based selection. |
+| [`codex-profiles`](shell/oh-my-zsh/plugins/codex-profiles/README.md) | Discover and complete Codex profile names, pick a profile, and start or resume sessions with configurable launch flags. |
 
 ## [Zen Scripts](Zen%20Scripts/)
 
-- [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc) - Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. [Docs](docs/bo3-ao-mod.md)
+| Item | Description | Docs |
+| --- | --- | --- |
+| [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc) | Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. | [Docs](docs/bo3-ao-mod.md) |
 
 ## [Tools](tools/)
 
-- [`GPC Builder by Jimmy CrakCrn.zip`](tools/GPC%20Builder%20by%20Jimmy%20CrakCrn.zip) - Portable Cronus Zen GPC scripting IDE by Jimmy CrakCrn with a code editor, validator, component builder, OLED layout designer, embedded references, and Anthropic API-powered assistance.
+| Item | Description |
+| --- | --- |
+| [`GPC Builder by Jimmy CrakCrn.zip`](tools/GPC%20Builder%20by%20Jimmy%20CrakCrn.zip) | Portable Cronus Zen GPC scripting IDE by Jimmy CrakCrn with a code editor, validator, component builder, OLED layout designer, embedded references, and Anthropic API-powered assistance. |
 
 ## Other
 
-- [Seagate Exos 3.5-inch SATA Model-Code Reference](docs/Seagate%20Exos%203.5in%20SATA%20Model%20Codes.md) - Capacity-based lookup for standard, factory-recertified, and excluded Seagate Exos SATA model codes.
+| Item | Description |
+| --- | --- |
+| [Seagate Exos 3.5-inch SATA Model-Code Reference](docs/Seagate%20Exos%203.5in%20SATA%20Model%20Codes.md) | Capacity-based lookup for standard, factory-recertified, and excluded Seagate Exos SATA model codes. |
 
 ## 📝 TODO
 
-- [Cross-platform Discord bundle downloader](TODO.md) - Planned download-only Python CLI for discovering and fetching Stable, PTB, or Canary client bundles for macOS, Linux, and Windows.
+| Planned work | Description |
+| --- | --- |
+| [Cross-platform Discord bundle downloader](TODO.md) | Planned download-only Python CLI for discovering and fetching Stable, PTB, or Canary client bundles for macOS, Linux, and Windows. |
 
 ## [Userscripts (Tampermonkey)](userscripts/)
 
-- [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) - Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. [Docs](docs/psprices-playstation-checkout-link.md)
-- [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) - Adds cached live substring search to PSPrices avatar and theme collection pages, with background region indexing, platform/free filters, and progressive result hydration. [Docs](docs/psprices-collection-live-search.md)
-- [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) - Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections and preferring it over a native SKU panel when a valid value is available. [Docs](docs/psprices-show-product-sku.md)
-- [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Steam-Reveal-Spoilers.user.js) - Automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates. [Docs](docs/steam-reveal-spoilers.md)
-- [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js) - Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. [Docs](docs/stackexchange-reveal-spoilers.md)
-- [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) - Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. [Docs](docs/youtube-shorts-switcher.md)
-- [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) - Applies a constrained fluid-width layout only on Reddit post/comment routes, while leaving feed and community pages at native width. [Docs](docs/reddit-fluid-width.md)
+| Item | Description | Docs |
+| --- | --- | --- |
+| [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) | Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts. | [Docs](docs/psprices-playstation-checkout-link.md) |
+| [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) | Adds cached live substring search to PSPrices avatar and theme collection pages, with background region indexing, platform/free filters, and progressive result hydration. | [Docs](docs/psprices-collection-live-search.md) |
+| [`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) | Displays and copies the public PlayStation product SKU on PSPrices product pages, adding a native-style SKU panel below buy, checkout, or unavailable-store sections and preferring it over a native SKU panel when a valid value is available. | [Docs](docs/psprices-show-product-sku.md) |
+| [`Steam-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Steam-Reveal-Spoilers.user.js) | Automatically reveals Steam Community spoiler text by unwrapping spoiler spans on page load and dynamic updates. | [Docs](docs/steam-reveal-spoilers.md) |
+| [`StackExchange-Reveal-Spoilers.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/StackExchange-Reveal-Spoilers.user.js) | Automatically reveals Stack Exchange spoiler blocks by applying the site's visible spoiler class to existing and dynamically added spoilers. | [Docs](docs/stackexchange-reveal-spoilers.md) |
+| [`Youtube-shorts-switcher.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/Youtube-shorts-switcher.user.js) | Adds a Shorts action-column button and configurable hotkey that open the current YouTube Short in the normal watch player. | [Docs](docs/youtube-shorts-switcher.md) |
+| [`reddit-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/reddit-fluid-width.user.js) | Applies a constrained fluid-width layout only on Reddit post/comment routes, while leaving feed and community pages at native width. | [Docs](docs/reddit-fluid-width.md) |
 
 ---
 

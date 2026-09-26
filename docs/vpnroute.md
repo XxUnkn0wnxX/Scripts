@@ -1,4 +1,8 @@
-# vpnroute
+<a id="vpnroute"></a>
+
+# 🌐 vpnroute
+
+↩️ [Back to repository README](../README.md)
 
 [`vpnroute.py`](../python/vpnroute.py) is a local CLI that converts websites/domains into OpenVPN/Viscosity route commands. Dependencies are installed from [`requirements.txt`](../requirements.txt).
 
@@ -141,6 +145,9 @@ python3 python/vpnroute.py sites.txt --iponly --no-comments
 
 ## Arguments
 
+<details>
+<summary>📋 Show all CLI arguments</summary>
+
 <table>
   <thead>
     <tr>
@@ -193,6 +200,8 @@ python3 python/vpnroute.py sites.txt --iponly --no-comments
   </tbody>
 </table>
 
+</details>
+
 ## Route output format
 
 Default output uses plain-text route lines:
@@ -228,6 +237,9 @@ With `--iponly`, the output switches from route commands to plain IPv4 lines. By
 
 ## `--netmask`, `--gateway`, and `--metric`
 
+<details>
+<summary>🧮 Show route-option details</summary>
+
 `--netmask` defaults to `255.255.255.255`, but it also accepts CIDR forms such as `32`, `/32`, `24`, or `/24`.
 
 Examples:
@@ -245,7 +257,12 @@ route 104.19.222.79 255.255.255.255 default default
 route 104.19.222.79 255.255.255.255 vpn_gateway default
 ```
 
+</details>
+
 ## `--no-comments` behavior
+
+<details>
+<summary>💬 Show comment-output details</summary>
 
 By default, comments stay enabled because they make the generated route file easier to read and debug.
 
@@ -264,7 +281,12 @@ python3 python/vpnroute.py sites.txt --nocom
 
 That removes domain headings and failed-domain comments from the output file, but failures are still shown in the terminal UI.
 
+</details>
+
 ## `--iponly` behavior
+
+<details>
+<summary>🔢 Show IP-only output details</summary>
 
 If you want only IPv4 addresses with no `route`, subnet mask, gateway, or metric fields, pass:
 
@@ -295,6 +317,8 @@ python3 python/vpnroute.py sites.txt --iponly --no-comments
 
 `--iponly` works independently of `--no-comments`. It only changes the per-line payload from route commands to raw IPs.
 
+</details>
+
 ## Output file behavior
 
 The default output file is `vpn_routes.txt`.
@@ -320,6 +344,9 @@ The route file itself stays plain text. Rich formatting is only used in the term
 DNS resolution is limited to IPv4 `A` records.
 
 ## Testing notes
+
+<details>
+<summary>🧪 Show test commands</summary>
 
 From the repository root, create and activate the required virtual environment, then install the dependencies:
 
@@ -360,6 +387,8 @@ When editing the Python sources, it is also useful to run:
 ```bash
 python -m compileall python/vpnroute.py tests/vpnroute
 ```
+
+</details>
 
 ## CDN-backed domains and DNS changes
 

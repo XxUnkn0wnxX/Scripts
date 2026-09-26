@@ -1,4 +1,8 @@
-# Complete Discord Markdown & Message Formatting Cheat Sheet
+<a id="complete-discord-markdown--message-formatting-cheat-sheet"></a>
+
+# 💬 Complete Discord Markdown & Message Formatting Cheat Sheet
+
+[⬅️ Back to README](../README.md) · [📝 Companion: Markdown & GitHub Flavored Markdown Cheat Sheet](md-and-gh-cheat-sheet.md)
 
 > **Reviewed against official Discord documentation:** 19 July 2026<br>
 > **Scope:** Discord desktop, web, and mobile message formatting, plus Discord-specific message tokens used by users, bots, and webhooks.
@@ -229,6 +233,10 @@ The text appears behind an interactive spoiler cover until the viewer reveals it
 
 # 3. Combined text styles
 
+<details>
+<summary>Show combined text-style examples</summary>
+
+
 Discord lets you nest compatible markers. Keep the opening and closing markers properly balanced.
 
 ## 3.1 Underline italic
@@ -379,7 +387,13 @@ A hidden spoiler that reveals bold and italic text when the viewer activates it.
 
 ---
 
+</details>
+
 # 4. Headers
+
+<details>
+<summary>Show header examples</summary>
+
 
 Discord supports **three** hash-style header levels. Standard Markdown can support up to six, but Discord only documents and renders `#`, `##`, and `###` as headers.
 
@@ -474,7 +488,13 @@ Text before ## Not at the start
 
 ---
 
+</details>
+
 # 5. Discord subtext
+
+<details>
+<summary>Show subtext examples</summary>
+
 
 Subtext is **unique to Discord**. It produces a smaller, dimmer line suitable for IDs, timestamps, notes, or secondary details.
 
@@ -548,7 +568,13 @@ Text before -# not at the start
 
 ---
 
+</details>
+
 # 6. Paragraphs and line breaks
+
+<details>
+<summary>Show paragraph and line-break examples</summary>
+
 
 Discord does not rely on normal Markdown “hard line break” syntax. Use the Discord editor to insert a new line.
 
@@ -580,7 +606,13 @@ New paragraph-like section
 
 ---
 
+</details>
+
 # 7. Lists
+
+<details>
+<summary>Show list examples</summary>
+
 
 Discord officially documents unordered lists using `-` or `*`, ordered lists using a number followed by `.`, and nested lists using indentation.
 
@@ -773,7 +805,10 @@ A numbered parent list with nested bullet and numbered entries.
 
 ---
 
+</details>
+
 # 8. Block quotes
+
 
 ## 8.1 Single quoted line
 
@@ -874,6 +909,10 @@ Basic inline formatting normally works inside a quoted line.
 
 # 9. Inline code
 
+<details>
+<summary>Show inline-code examples</summary>
+
+
 Inline code uses one backtick on each side.
 
 ## 9.1 Basic inline code
@@ -944,7 +983,13 @@ The inner single backticks appear as literal code characters.
 
 ---
 
+</details>
+
 # 10. Multiline code blocks
+
+<details>
+<summary>Show multiline code-block examples</summary>
+
 
 Use three backticks on their own opening and closing lines.
 
@@ -1046,7 +1091,10 @@ When writing a `.md` guide such as this one, use a longer outer fence such as fo
 
 ---
 
+</details>
+
 # 11. Code-block language tags
+
 
 The text after the opening backticks is a **language identifier** used for syntax highlighting.
 
@@ -1069,6 +1117,9 @@ Discord does **not** publish a single permanent, exhaustive, client-guaranteed l
 The tables below are a **candidate identifier reference**, not a Discord support matrix. They include familiar names and aliases from common highlighting ecosystems; some are not canonical IDs in Discord's public Arborium runtime and may produce no highlighting.
 
 For a dated implementation snapshot, Discord's public `@discord/arborium-rt` WASM package version `0.1.8` was released on 13 July 2026 with 100 bundled canonical grammar IDs. The Discord client may add aliases or special cases outside that package, and a bundled grammar does not prove that every client accepts the same code-fence tag.
+
+<details>
+<summary>Show language-tag candidates and examples</summary>
 
 ## 11.1 Common client candidates
 
@@ -1541,7 +1592,10 @@ These may work on some current or legacy Discord clients but should be tested:
 
 ---
 
+</details>
+
 # 12. Diff and ANSI colour blocks
+
 
 ## 12.1 Diff block
 
@@ -1635,6 +1689,10 @@ ESC[1;32mBold green success textESC[0m
 ---
 
 # 13. Links and embed control
+
+<details>
+<summary>Show link and embed-control examples</summary>
+
 
 ## 13.1 Raw URL
 
@@ -1764,7 +1822,13 @@ This is an API control, not text Markdown. Whether a sender can set or later cha
 
 ---
 
+</details>
+
 # 14. Spoilers
+
+<details>
+<summary>Show spoiler examples</summary>
+
 
 ## 14.1 Text spoiler
 
@@ -1882,7 +1946,13 @@ The official user-facing upload method is Discord's **Mark as Spoiler** control.
 
 ---
 
+</details>
+
 # 15. Escaping Markdown
+
+<details>
+<summary>Show Markdown-escaping examples</summary>
+
 
 A backslash before a formatting character tells Discord to display that character literally.
 
@@ -2054,7 +2124,10 @@ Use inline code or a code block.
 
 ---
 
+</details>
+
 # 16. Discord mentions and entity markup
+
 
 These are **Discord message tokens**, not standard Markdown. They are most useful in bot and webhook messages, though the Discord client normally inserts equivalent markup when you select a mention.
 
@@ -2195,6 +2268,10 @@ You can also allow specific user or role IDs. Follow the current API schema: `pa
 
 # 17. Discord timestamps
 
+<details>
+<summary>Show timestamp examples</summary>
+
+
 Discord timestamps use Unix time in **whole seconds** and display in each viewer’s local timezone and locale.
 
 ## 17.1 Basic timestamp
@@ -2291,7 +2368,13 @@ If your source produces milliseconds, divide by `1000` and use a whole integer.
 
 ---
 
+</details>
+
 # 18. Custom emoji markup
+
+<details>
+<summary>Show custom-emoji examples</summary>
+
 
 These are Discord-specific tokens.
 
@@ -2355,7 +2438,13 @@ Discord's current Developer reference says Desktop and Android use Twemoji, whil
 
 ---
 
+</details>
+
 # 19. Slash-command mentions
+
+<details>
+<summary>Show slash-command mention examples</summary>
+
 
 A valid, accessible slash-command mention can render as a clickable command reference that populates the command in a user’s message box. Invalid or inaccessible IDs may remain unresolved.
 
@@ -2417,7 +2506,13 @@ These generally require the command’s actual application-command ID.
 
 ---
 
+</details>
+
 # 20. Guild-navigation links
+
+<details>
+<summary>Show guild-navigation link examples</summary>
+
 
 Discord documents special guild-navigation tokens that link to areas of the **current server**.
 
@@ -2479,7 +2574,13 @@ Example:
 
 ---
 
+</details>
+
 # 21. Silent messages
+
+<details>
+<summary>Show silent-message examples</summary>
+
 
 > **Client-observed feature, not Markdown:** In current Discord clients, starting a user-composed message with `@silent` normally sends it with suppressed notification behaviour and may show a small bell indicator. Exact UI behaviour can vary by client. Discord does not list `@silent` in the Developer reference's message-formatting token table.
 
@@ -2515,7 +2616,13 @@ In clients that support literal `@silent`, the mention remains visible while pus
 
 ---
 
+</details>
+
 # 22. Features not documented or not reliable in Discord
+
+<details>
+<summary>Show unsupported and unreliable-feature guidance</summary>
+
 
 Discord is **not** a full CommonMark or GitHub Flavoured Markdown renderer. Discord does not publish an exhaustive negative-support matrix, so the table below means **do not rely on these features** in current Discord messages; it is not a permanent guarantee that no client will ever parse part of the syntax.
 
@@ -2595,7 +2702,13 @@ Use bold instead:
 
 ---
 
+</details>
+
 # 23. Common formatting mistakes
+
+<details>
+<summary>Show common formatting mistakes</summary>
+
 
 ## 23.1 Missing required space
 
@@ -2760,7 +2873,13 @@ These may appear literal outside Discord:
 
 ---
 
+</details>
+
 # 24. Full demonstration message
+
+<details>
+<summary>Show the full demonstration message</summary>
+
 
 ## 24.1 Template source — replace placeholders before pasting
 
@@ -2805,7 +2924,13 @@ Review the [project guide](https://example.com/guide) for more information.
 
 ---
 
+</details>
+
 # 25. Sources and maintenance notes
+
+<details>
+<summary>Show sources and maintenance notes</summary>
+
 
 ## Primary Discord sources
 
@@ -2836,6 +2961,8 @@ When maintaining this document:
 5. Keep important information understandable without colour, hover effects, or client-specific rendering.
 
 ---
+
+</details>
 
 # Compact copy/paste reference
 

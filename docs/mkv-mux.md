@@ -1,4 +1,8 @@
-# mkv_mux.zsh
+<a id="mkv_muxzsh"></a>
+
+# 🎬 mkv_mux.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`mkv_mux.zsh`](../shell/mkv_mux.zsh) is an interactive Matroska helper for quick remuxing and audio-volume jobs. It is menu-driven, so you launch it, pick an option, then follow the prompts.
 
@@ -113,6 +117,9 @@ zsh shell/mkv_mux.zsh --climit --nsafe /path/to/folder
 
 ### 1) Remux to MKV (ffmpeg)
 
+<details>
+<summary>🎬 Show ffmpeg remux details</summary>
+
 What it does:
 
 - Uses `ffmpeg` to put the selected file into an MKV container
@@ -152,7 +159,12 @@ N
 
 If you choose to replace audio tracks and launch the script with `--climit`, it asks one extra limiter prompt before the AAC re-encode starts.
 
+</details>
+
 ### 2) Remux to MKV (mkvmerge)
+
+<details>
+<summary>🎞️ Show mkvmerge remux details</summary>
 
 What it does:
 
@@ -177,7 +189,12 @@ Then choose:
 2
 ```
 
+</details>
+
 ### 3) Volume Boost
+
+<details>
+<summary>🔊 Show volume boost details</summary>
 
 What it does:
 
@@ -206,6 +223,8 @@ Example input:
 ```
 
 That creates two boosted tracks, one at `2dB` and one at `3.5dB`.
+
+</details>
 
 ## How `--climit` Works
 
@@ -291,6 +310,9 @@ If you decline an overwrite prompt, that file is skipped and the batch moves on 
 
 ## Quick Examples
 
+<details>
+<summary>🧪 Show command examples</summary>
+
 Remux an MP4 to MKV with `ffmpeg`:
 
 ```bash
@@ -331,7 +353,12 @@ Then pick:
 <press Enter>
 ```
 
+</details>
+
 ## Testing Notes
+
+<details>
+<summary>🧪 Show test commands and coverage</summary>
 
 From the repository root, create and activate the required virtual environment, then install the dependencies:
 
@@ -368,6 +395,8 @@ python -m pytest --disable-plugin-autoload
 The `mkv_mux` matrix runs a temporary copy of the script through its real interactive entry point. Controllable fake `ffmpeg`, `ffprobe`, `mkvmerge`, `mkvextract`, `fzf`, `jq`, and `rsync` commands isolate the tests from live media while recording command arguments and creating only temporary fixture outputs. The harness verifies that every required fake resolves ahead of any installed media tool.
 
 The matrix covers command-line guards and help output; automatic FDK/native AAC selection and `--debug` output; option `1` copy and AAC replacement paths; audio mapping, metadata, dispositions, limiter validation and arguments, safe output naming, non-safe overwrite refusal, filenames with spaces, and encode-failure cleanup; option `2` remux and non-video handling; and option `3` extraction, boost filters, track naming/order, safe-mode sorting, backup restoration, and controlled failure cleanup.
+
+</details>
 
 ## Troubleshooting
 

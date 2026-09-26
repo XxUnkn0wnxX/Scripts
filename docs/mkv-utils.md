@@ -1,4 +1,8 @@
-# mkv_utils.zsh
+<a id="mkv_utilszsh"></a>
+
+# 🛠️ mkv_utils.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`mkv_utils.zsh`](../shell/mkv_utils.zsh) is an interactive Matroska utility menu for metadata edits, attachment extraction, track extraction, track removal, and track reordering. It is the more power-user-oriented companion to `mkv_mux.zsh`.
 
@@ -161,6 +165,9 @@ What it does:
 - blank title removes the existing title
 - title input stays free-form
 
+<details>
+<summary>📝 Show title examples and operation results</summary>
+
 Example:
 
 ```text
@@ -210,6 +217,8 @@ Failed Files: 03
 These metadata-edit queues do not print processing times or an ETA. If multiple Track IDs are edited, a file is counted as failed when any requested edit on that file fails.
 Failed Track IDs are listed under each filename. Title edits have no Track ID, so title failures list only the filename.
 The `Failed Files` section is omitted when every selected file is edited successfully.
+
+</details>
 
 ### 6) Extract all attachments from MK files
 
@@ -361,6 +370,9 @@ Single-file runs and multi-file mode with only one selected file do not print th
 
 ## Quick Examples
 
+<details>
+<summary>🧪 Show command examples</summary>
+
 Rename one audio track:
 
 ```bash
@@ -401,7 +413,12 @@ N
 0:0,0:2,0:1
 ```
 
+</details>
+
 ## Testing Notes
+
+<details>
+<summary>🧪 Show test commands and coverage</summary>
 
 From the repository root, create and activate the required virtual environment, then install the dependencies:
 
@@ -438,6 +455,8 @@ python -m pytest --disable-plugin-autoload
 The `mkv_utils` matrix runs a temporary copy of the script through its real interactive entry point. Controllable fake `mkvmerge`, `mkvextract`, `mkvpropedit`, `fzf`, `jq`, and Python runtime commands isolate the tests from live Matroska files while recording command arguments and keeping filesystem changes inside temporary fixtures. The harness verifies that every required fake resolves ahead of any installed media tool.
 
 The matrix covers command-line and no-media guards; the track-ID conversion and metadata operations in options `1` through `5`; filenames and track names containing spaces; multi-file partial-failure summaries; attachment extraction; video removal with `.mka` conversion; remove and reorder success/failure cleanup; and extension selection for extracted tracks in options `6` through `9`.
+
+</details>
 
 ## Troubleshooting
 

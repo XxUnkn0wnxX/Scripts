@@ -1,4 +1,8 @@
-# safari_bookmarks_export.py
+<a id="safari_bookmarks_exportpy"></a>
+
+# 🔖 safari_bookmarks_export.py
+
+↩️ [Back to repository README](../README.md)
 
 [`safari_bookmarks_export.py`](../python/safari_bookmarks_export.py) exports selected folders from Safari's `$HOME/Library/Safari/Bookmarks.plist` into Netscape bookmarks HTML, which Firefox and Chrome can import.
 
@@ -105,6 +109,9 @@ python/Dev-Docs-2026-06-03_14-22-10.html
 
 ## Arguments
 
+<details>
+<summary>📋 Show all CLI arguments</summary>
+
 <table>
   <thead>
     <tr>
@@ -157,7 +164,12 @@ python/Dev-Docs-2026-06-03_14-22-10.html
   </tbody>
 </table>
 
+</details>
+
 ## Searching
+
+<details>
+<summary>🔎 Show search examples</summary>
 
 Plain searches check only the top-level folders shown by `--list`.
 Folder matching is case-insensitive. The search prefers exact matches first, then falls back to partial matches.
@@ -190,7 +202,12 @@ python3 python/safari_bookmarks_export.py --search "Dev"
 
 `--search` is discovery-only. It cannot be combined with `--export`.
 
+</details>
+
 ## Listing
+
+<details>
+<summary>🗂️ Show listing and tree examples</summary>
 
 `--list` without a value lists the top-level Safari folders:
 
@@ -228,6 +245,8 @@ Add `--export` to write that selected folder while still printing the requested 
 ```bash
 python3 python/safari_bookmarks_export.py --list FolderA / "Folder B" --all --tree --export
 ```
+
+</details>
 
 ## Importing
 

@@ -1,4 +1,8 @@
-# brew-custom-compare.zsh
+<a id="brew-custom-comparezsh"></a>
+
+# 🍺 brew-custom-compare.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`brew-custom-compare.zsh`](../shell/brew-custom-compare.zsh) compares formulas from a custom Homebrew tap against upstream Homebrew data and tells you whether your custom versions are ahead, outdated, equal, or pinned.
 

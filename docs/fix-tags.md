@@ -1,4 +1,8 @@
-# fix_tags.zsh
+<a id="fix_tagszsh"></a>
+
+# 🏷️ fix_tags.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`shell/audio/fix_tags.zsh`](../shell/audio/fix_tags.zsh) tries to repair `.m4a` metadata by exporting the tags, stripping them, then applying the clean metadata back onto the file.
 

@@ -1,4 +1,8 @@
-# satisfactory_balancer.zsh
+<a id="satisfactory_balancerzsh"></a>
+
+# ⚙️ satisfactory_balancer.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`satisfactory_balancer.zsh`](../shell/satisfactory_balancer.zsh) is a CLI helper for Satisfactory splitter and merger layouts. It mirrors the standard layouts from the official Satisfactory Balancer wiki and also supports Nico-style complex ratios.
 
@@ -73,6 +77,9 @@ What it does:
 - rounds non-clean sizes up to the next clean split where needed
 - reports loop-back lanes when a perfect clean split is not possible
 
+<details>
+<summary>🧪 Show LOAD-BALANCER example</summary>
+
 Example:
 
 ```bash
@@ -82,6 +89,8 @@ zsh shell/satisfactory_balancer.zsh 1:48
 Meaning:
 
 - `1:48` gives you a LOAD-BALANCER blueprint for a clean `1 -> 48` split
+
+</details>
 
 ### BELT-BALANCER
 
@@ -95,6 +104,9 @@ What it does:
 - describes merge stages per output
 - reports loop-back and padding information when needed
 
+<details>
+<summary>🧪 Show BELT-BALANCER example</summary>
+
 Example:
 
 ```bash
@@ -104,6 +116,8 @@ zsh shell/satisfactory_balancer.zsh 4:7
 Meaning:
 
 - `4:7` gives you a BELT-BALANCER plan showing split layers, merge layers, lane budgets, and loop-back counts
+
+</details>
 
 ### BELT-COMPRESSOR
 
@@ -117,6 +131,9 @@ What it does:
 - shows explicit lane budgets
 - shows priority-chain behavior such as `O1 -> O2`
 
+<details>
+<summary>🧪 Show BELT-COMPRESSOR example</summary>
+
 Example:
 
 ```bash
@@ -126,6 +143,8 @@ zsh shell/satisfactory_balancer.zsh 5:2
 Meaning:
 
 - `5:2` gives you a BELT-COMPRESSOR plan with pack-first priority notes like `O1 -> O2`
+
+</details>
 
 ### NICO
 
@@ -140,6 +159,9 @@ What it does:
 - reuses the clean `1 -> N` planner internally
 - prints a lane allocation table in the NicoBuilds style
 
+<details>
+<summary>🧪 Show NICO example</summary>
+
 Example:
 
 ```bash
@@ -149,6 +171,8 @@ zsh shell/satisfactory_balancer.zsh 1:44:8
 Meaning:
 
 - `1:44:8` gives you a Nico-style split that divides `54` clean lanes into `44:8` plus loop-back
+
+</details>
 
 ## Quick Examples
 

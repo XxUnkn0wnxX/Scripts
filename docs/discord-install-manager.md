@@ -1,4 +1,8 @@
-# discord_install_manager.zsh
+<a id="discord_install_managerzsh"></a>
+
+# 💬 discord_install_manager.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`discord_install_manager.zsh`](../shell/discord_install_manager.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
 
@@ -161,6 +165,9 @@ zsh shell/discord_install_manager.zsh --channel canary --update-select --OS 11
 zsh shell/discord_install_manager.zsh --channel canary --update-select 1215-1201 --OS 11
 ```
 
+<details>
+<summary>🔎 Show update-selection details</summary>
+
 Discord's CDN does not expose a browsable directory index for these builds. Bare `--update-select` reads the channel's current update manifest, probes a bounded window above it, and prints only the highest DMG artifact found. This catches newer CDN builds that Discord has uploaded without advertising through the manifest. If a minimum version is provided, the scan starts from the manifest version and stops at the requested floor; a floor newer than the manifest is clamped to the manifest version. If an explicit range is provided, both endpoints are honored exactly—even when the range is newer than the manifest—and the scan stops at the second version inclusively whether or not that lower bound exists on the CDN.
 
 Bare `--update-select --OS <version>` starts at that highest direct CDN artifact, scans downward in version order, and prints only the first matching `LSMinimumSystemVersion` build. With a floor or explicit range, it prints every matching build in that requested interval, still newest to oldest. Builds with missing or invalid metadata appear as `[unknown]` during an ordinary selector scan but never qualify for an OS-filtered result.
@@ -219,6 +226,8 @@ zsh shell/discord_install_manager.zsh --channel canary --update-select --OS 11
 Because Discord exposes no CDN directory index or dependable historical manifest lookup, this is a bounded latest-first search. The command reports its exact scan interval and fails rather than choosing an unverified or mismatched build when no match is found. Increase the OS scan limit when a compatible build may be further behind the current artifact.
 
 Range scanning is limited to 100 version steps (101 inclusive builds), accepts floor-only or explicit descending ranges, and prints a usage error when the span is exceeded.
+
+</details>
 
 It does not clean, update, inject OpenAsar, or relaunch Discord.
 
@@ -489,6 +498,9 @@ Notes:
 
 ## Examples
 
+<details>
+<summary>🧪 Show command examples</summary>
+
 Show help:
 
 ```bash
@@ -629,7 +641,12 @@ Download, replace, inject OpenAsar, and clean all channels:
 zsh shell/discord_install_manager.zsh --channel all --update --openasar
 ```
 
+</details>
+
 ## Testing Notes
+
+<details>
+<summary>🧪 Show test commands and coverage</summary>
 
 From the repository root, create and activate the required virtual environment, then install the dependencies:
 
@@ -670,6 +687,8 @@ export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 python -m pytest tests/discord_install_manager
 python -m pytest
 ```
+
+</details>
 
 ## Safety Guards
 

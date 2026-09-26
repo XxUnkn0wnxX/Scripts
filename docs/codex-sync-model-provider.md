@@ -1,4 +1,8 @@
-# codex-sync-model-provider.zsh
+<a id="codex-sync-model-providerzsh"></a>
+
+# 🔄 codex-sync-model-provider.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`codex-sync-model-provider.zsh`](../shell/codex-sync-model-provider.zsh) is a macOS-only utility that synchronizes the root-level Codex `model_provider` setting into persisted thread and session metadata.
 
@@ -166,6 +170,9 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
 
 ### `--dry-run`
 
+<details>
+<summary>🧪 Show dry-run behavior</summary>
+
 - Syntax: `codex-sync --dry-run`
 - Exact effect:
   - Full read-only plan is executed.
@@ -184,7 +191,12 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - `--yes` has no extra effect in dry-run mode.
   - `--force` still queues overwrite logic, but still performs no writes.
 
+</details>
+
 ### `--yes`
+
+<details>
+<summary>✅ Show confirmation behavior</summary>
 
 - Syntax: `codex-sync --yes`
 - Exact effect:
@@ -199,7 +211,12 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - Does not relax preflight, schema checks, signal policy, or recovery handling.
   - Does not allow positional arguments.
 
+</details>
+
 ### `--force`
+
+<details>
+<summary>🧱 Show forced rewrite behavior</summary>
 
 - Syntax: `codex-sync --yes --force`
 - Exact effect:
@@ -214,7 +231,12 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - Missing and changed values already follow the same preflight validation and queueing rules without `--force`.
   - Without `--force`, DB work is limited to missing/mismatched provider rows. Session work can still include missing/mismatched providers, guarded legacy metadata repair, or padding preparation.
 
+</details>
+
 ### `--skip-backup`
+
+<details>
+<summary>💾 Show backup and interruption behavior</summary>
 
 - Syntax: `codex-sync --yes --skip-backup`
 - Exact effect:
@@ -230,7 +252,12 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - No restore marker or archive is produced.
   - Nonrecoverable events can leave partial writes: `SIGKILL`, `SIGSTOP`, crash, power loss, disk failure, or write errors.
 
+</details>
+
 ### `--no-prepare-bucket`
+
+<details>
+<summary>🪣 Show padding preparation behavior</summary>
 
 - Syntax: `codex-sync --yes --no-prepare-bucket`
 - Exact effect:
@@ -242,7 +269,12 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - `--padding-bytes N` has no effect when this flag is set.
   - The flag does not proactively strip existing padding. A provider rewrite can still change the available trailing room when the new compact JSON needs a different number of bytes.
 
+</details>
+
 ### `--padding-bytes N`
+
+<details>
+<summary>📏 Show first-line padding behavior</summary>
 
 - Syntax: `codex-sync --padding-bytes 512`
 - Exact effect:
@@ -263,6 +295,8 @@ Each option below includes scope, exact effect, non-effects, caveats, and valida
   - Repeated values are allowed; the last value wins.
   - No effect when `--no-prepare-bucket` is active.
   - No effect on paginated first-line growth.
+
+</details>
 
 ### `-h`, `--help`
 
@@ -360,6 +394,9 @@ During a backed run:
 
 ## Progress output
 
+<details>
+<summary>📊 Show progress output details</summary>
+
 Live runs report the current stage without changing the data being processed:
 
 ```text
@@ -378,6 +415,8 @@ tracked. The ETA is an estimate derived from elapsed time and the reported
 percentage, so it can move as compression speed changes. On an interactive
 terminal the status updates in place; redirected output is rate-limited to
 roughly one line per second.
+
+</details>
 
 ## Live `--skip-backup`
 
@@ -412,6 +451,9 @@ Before writing, the script:
 Progress is shown for preflight, backup, session writes, database updates, and restoration.
 
 ## Common combinations
+
+<details>
+<summary>🧭 Show common command combinations</summary>
 
 - Preview only:
 
@@ -469,6 +511,8 @@ codex-sync --yes --no-prepare-bucket
 codex-sync --yes --padding-bytes 512
 ```
 
+</details>
+
 ## Quick reference
 
 | Option | Meaning |
@@ -483,6 +527,9 @@ codex-sync --yes --padding-bytes 512
 | `-h`, `--help` | Display built-in usage and exit. |
 
 ## Testing Notes
+
+<details>
+<summary>🧪 Show test commands and coverage</summary>
 
 The repository requires `pytest>=8.4`. From the repository root, create and
 activate a virtual environment, then install the declared dependencies:
@@ -505,3 +552,5 @@ python -m pytest --disable-plugin-autoload
 The focused tests execute a copied script against a synthetic temporary Codex
 root, fake `ps`/`lsof`, and disposable child processes where needed. They never
 read or write the real `$HOME/.codex` and never signal real Codex PIDs.
+
+</details>

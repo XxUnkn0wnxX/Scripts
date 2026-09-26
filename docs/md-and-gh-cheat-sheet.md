@@ -1,4 +1,8 @@
-# Complete Markdown & GitHub Flavored Markdown Cheat Sheet
+<a id="complete-markdown--github-flavored-markdown-cheat-sheet"></a>
+
+# 📝 Complete Markdown & GitHub Flavored Markdown Cheat Sheet
+
+[⬅️ Back to README](../README.md) · [🏷️ Companion: GitHub Badges & README UI Cheat Sheet](github-badges-and-readme-ui.md)
 
 > **Reviewed:** 19 July 2026<br>
 > **Baseline:** CommonMark 0.31.2, GFM 0.29-gfm, and current GitHub.com documentation and rendering behaviour.
@@ -89,6 +93,9 @@ Nothing in the portable core is “Markdown-only but not GitHub”; GitHub also 
 
 ## 2. Paragraphs and line breaks
 
+<details>
+<summary>Show paragraph and line-break examples</summary>
+
 ### 2.1 Paragraphs
 
 **Availability:** Portable Markdown + GitHub (CommonMark)
@@ -163,7 +170,13 @@ In the first source example, `␠␠` represents two literal space characters im
 
 ---
 
+</details>
+
 ## 3. Headings and section links
+
+<details>
+<summary>Show heading and section-link examples</summary>
+
 
 ### 3.1 ATX headings
 
@@ -251,7 +264,13 @@ Custom anchors work on GitHub but do not appear in the automatic document outlin
 
 ---
 
+</details>
+
 ## 4. Text styles
+
+<details>
+<summary>Show text-style examples</summary>
+
 
 ### 4.1 Core styles
 
@@ -295,7 +314,13 @@ Markdown has no portable built-in syntax for underline, subscript, superscript, 
 
 ---
 
+</details>
+
 ## 5. Horizontal rules
+
+<details>
+<summary>Show horizontal-rule examples</summary>
+
 
 **Availability:** Portable Markdown + GitHub (CommonMark)
 
@@ -319,7 +344,13 @@ Avoid placing `---` directly beneath ordinary text unless you intend to create a
 
 ---
 
+</details>
+
 ## 6. Block quotes
+
+<details>
+<summary>Show block-quote examples</summary>
+
 
 ### 6.1 Basic quote
 
@@ -359,7 +390,13 @@ Avoid placing `---` directly beneath ordinary text unless you intend to create a
 
 ---
 
+</details>
+
 ## 7. Lists
+
+<details>
+<summary>Show list examples</summary>
+
 
 ### 7.1 Unordered lists
 
@@ -449,7 +486,13 @@ Indent continuation text and nested blocks far enough to belong to the item.
 
 ---
 
+</details>
+
 ## 8. Task lists
+
+<details>
+<summary>Show task-list examples</summary>
+
 
 **Availability:** GFM + GitHub
 
@@ -479,7 +522,13 @@ If an item begins with parentheses, escape the opening parenthesis:
 
 ---
 
+</details>
+
 ## 9. Inline code and code blocks
+
+<details>
+<summary>Show code examples</summary>
+
 
 ### 9.1 Inline code
 
@@ -583,7 +632,13 @@ literal fenced block
 
 ---
 
+</details>
+
 ## 10. Links
+
+<details>
+<summary>Show link examples</summary>
+
 
 ### 10.1 Inline links and titles
 
@@ -666,7 +721,13 @@ Relative links follow the branch or commit currently being viewed. They remain r
 
 ---
 
+</details>
+
 ## 11. Images
+
+<details>
+<summary>Show image examples</summary>
+
 
 ### 11.1 Basic image
 
@@ -790,7 +851,13 @@ Each valid accessible image renders inline at its intrinsic dimensions unless HT
 
 ---
 
+</details>
+
 ## 12. Tables
+
+<details>
+<summary>Show table examples</summary>
+
 
 Include a blank line before a table. GitHub's documented style uses at least three hyphens per delimiter cell; the formal GFM grammar and current GitHub parser accept one or more. Three is the clearest and most portable choice.
 
@@ -860,7 +927,13 @@ Tables do not support multi-line or block-level content reliably. Use HTML or re
 
 ---
 
+</details>
+
 ## 13. Escaping and literal text
+
+<details>
+<summary>Show escaping and literal-text examples</summary>
+
 
 ### 13.1 Backslash escapes
 
@@ -910,7 +983,10 @@ Use inline code or a fenced code block for complex source that must remain uncha
 
 ---
 
+</details>
+
 ## 14. HTML and hidden comments
+
 
 ### 14.1 Hidden comments
 
@@ -935,6 +1011,9 @@ Visible before.
 Visible after.
 
 Do not place secrets in comments. Hidden comments remain visible in the raw file and Git history.
+
+<details>
+<summary>Show additional HTML examples and compatibility notes</summary>
 
 ### 14.2 Raw HTML limits
 
@@ -1298,7 +1377,13 @@ Markdown inside an ordinary block-level HTML element may remain literal. GitHub 
 
 ---
 
+</details>
+
 ## 15. Footnotes
+
+<details>
+<summary>Show footnote examples</summary>
+
 
 **Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
@@ -1320,7 +1405,10 @@ Footnotes render at the bottom of the document regardless of where their definit
 
 ---
 
+</details>
+
 ## 16. GitHub alerts
+
 
 **Availability:** GitHub-specific extension; not CommonMark or formal GFM
 
@@ -1368,6 +1456,10 @@ Alerts cannot be nested inside other elements. GitHub recommends using them spar
 
 ## 17. Collapsible sections
 
+<details>
+<summary>Show collapsible-section examples</summary>
+
+
 **Availability:** HTML-dependent; documented for GitHub.com
 
 Use GitHub-supported HTML. Leave blank lines around Markdown inside the block.
@@ -1406,7 +1498,13 @@ Add the `open` attribute to expand it initially:
 
 ---
 
+</details>
+
 ## 18. Mentions, references, and autolinks
+
+<details>
+<summary>Show mentions, references, and autolink examples</summary>
+
 
 These are GitHub.com features, not portable GFM syntax.
 
@@ -1481,7 +1579,13 @@ A same-repository label URL can render as a label. Repository administrators can
 
 ---
 
+</details>
+
 ## 19. Emoji
+
+<details>
+<summary>Show emoji examples</summary>
+
 
 **Availability:** Mixed — Unicode emoji are portable text; `:shortcode:` names are GitHub-specific
 
@@ -1501,7 +1605,13 @@ Emoji shortcode support is a GitHub feature rather than portable CommonMark.
 
 ---
 
+</details>
+
 ## 20. Colour previews
+
+<details>
+<summary>Show colour-preview examples</summary>
+
 
 **Availability:** GitHub context-dependent; issues, pull requests, and discussions only
 
@@ -1521,7 +1631,10 @@ Each value receives a small colour preview in supported conversation contexts. C
 
 ---
 
+</details>
+
 ## 21. Mathematical expressions
+
 
 GitHub uses MathJax to render LaTeX-style mathematics in issues, discussions, pull requests, wikis, and Markdown files.
 
@@ -1590,6 +1703,10 @@ Literal dollar signs on a line containing math may need escaping or HTML wrappin
 ---
 
 ## 22. Diagrams, maps, and 3D models
+
+<details>
+<summary>Show diagrams, maps, and 3D model examples</summary>
+
 
 GitHub renders special fenced blocks in issues, discussions, pull requests, wikis, and Markdown files.
 
@@ -1713,7 +1830,13 @@ endsolid triangle
 
 ---
 
+</details>
+
 ## 23. Common mistakes and portability limits
+
+<details>
+<summary>Show mistakes and portability guidance</summary>
+
 
 | Mistake | Result | Fix |
 |---|---|---|
@@ -1758,7 +1881,13 @@ Do not assume these common extensions work on GitHub:
 
 ---
 
+</details>
+
 ## 24. Sources and maintenance notes
+
+<details>
+<summary>Show sources and maintenance notes</summary>
+
 
 ### Specifications
 
@@ -1783,6 +1912,8 @@ Do not assume these common extensions work on GitHub:
 The formal GFM specification and GitHub.com's current feature set are related but not identical. Re-check current GitHub documentation when maintaining alerts, math, diagrams, HTML support, autolinks, or other site-specific behaviour.
 
 ---
+
+</details>
 
 ## Compact copy/paste reference
 

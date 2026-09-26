@@ -1,4 +1,8 @@
-# yt-transcribe.py
+<a id="yt-transcribepy"></a>
+
+# 🎬 yt-transcribe.py
+
+↩️ [Back to repository README](../README.md)
 
 [`yt-transcribe.py`](../python/yt-transcribe.py) downloads YouTube captions and saves them as plain text or DOCX. It is meant for quick transcript export without having to manually copy captions from the browser.
 
@@ -102,6 +106,9 @@ python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --tim
 
 ## Quick Examples
 
+<details>
+<summary>🧪 Show example commands</summary>
+
 Plain text export:
 
 ```bash
@@ -131,6 +138,8 @@ Write to a specific file:
 ```bash
 python3 python/yt-transcribe.py 'https://www.youtube.com/watch?v=VIDEO_ID' --out transcript.txt
 ```
+
+</details>
 
 ## Good To Know
 

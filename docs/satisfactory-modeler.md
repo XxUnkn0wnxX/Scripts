@@ -1,4 +1,8 @@
-# satisfactory-modeler.zsh
+<a id="satisfactory-modelerzsh"></a>
+
+# 🧱 satisfactory-modeler.zsh
+
+[← Back to the toolkit](../README.md)
 
 [`satisfactory-modeler.zsh`](../shell/satisfactory-modeler.zsh) is a macOS-only launcher and updater wrapper for [Satisfactory Modeler](https://satisfactorymodeler.itch.io/satisfactorymodeler). It keeps the unpacked app files in `shell/modeler/`, resolves a local Java JDK, and starts the app with sensible defaults.
 
@@ -149,6 +153,9 @@ zsh shell/satisfactory-modeler.zsh --fupdate
 
 ## Quick Examples
 
+<details>
+<summary>🧪 Show environment examples</summary>
+
 Pin a specific Java version:
 
 ```bash
@@ -166,6 +173,8 @@ Force four visible CPUs:
 ```bash
 MODEL_CPU_LIMIT=4 zsh shell/satisfactory-modeler.zsh --debug
 ```
+
+</details>
 
 ## Files It Creates
 

@@ -1,4 +1,8 @@
-# BO3 AO-Mod (Version 2.4c) [ZEN].md
+<a id="bo3-ao-mod-version-24c-zenmd"></a>
+
+# 🎮 BO3 AO-Mod (Version 2.4c) [ZEN].md
+
+[← Back to the toolkit](../README.md)
 
 This is the docs copy of the original BO3 AO-Mod guide for the Zen script:
 
@@ -42,6 +46,7 @@ These are the bindings the script actually uses. Make sure your in-game layout m
 - Drop Shot ↔ Side Shot.
 
 ## In-game toggles (what toggles what)
+
 ### SYSTEM
 - **L3 + R3 hold 6000ms: ZMode ON/OFF**
   - ON: double rumble + red blink (4x), stays red.
@@ -59,6 +64,10 @@ These are the bindings the script actually uses. Make sure your in-game layout m
 - **ZMode = FALSE (Multiplayer):** OFF/blocked: ZAim. All other mods behave normally.
 
 ### ADS + D-PAD
+
+<details>
+<summary>🎮 Show ADS toggle group</summary>
+
 - **ADS + LEFT: Rapid Fire ON/OFF**
   - ON: green LED + single rumble; forces Jitter OFF, Quick Scope OFF.
   - OFF: blue LED + double rumble.
@@ -89,6 +98,8 @@ These are the bindings the script actually uses. Make sure your in-game layout m
   - Enabling Akimbo forces Drop Shot mode to 2 (ADS allowed). Disabling Akimbo resets Drop Shot mode to 1.
   > Disables: Jitter, HLX Bypass, ZAim, ADS Fire, Quick Scope; sets Drop Shot mode to 2 (resets to 1 when OFF).
 
+</details>
+
 ### TACTICAL + D-PAD
 - **L1 + RIGHT: Rapid Fire slow presets (only if RapidFireON is already ON)**
   - Preset Slow 1-7:
@@ -98,6 +109,10 @@ These are the bindings the script actually uses. Make sure your in-game layout m
   > Changes Rapid Fire slow preset only.
 
 ### CROUCH + D-PAD
+
+<details>
+<summary>🎮 Show CROUCH toggle group</summary>
+
 - **CROUCH + UP: Quick Scope ON/OFF**
   - ON: cyan LED + single rumble; disables Rapid Fire, Anti-Recoil, and Akimbo.
   - OFF: blue LED + double rumble.
@@ -116,7 +131,13 @@ These are the bindings the script actually uses. Make sure your in-game layout m
   - OFF: blue lightbar + double rumble.
   > No other mods affected.
 
+</details>
+
 ### GRENADE + D-PAD
+
+<details>
+<summary>🎮 Show GRENADE toggle group</summary>
+
 - **GRENADE + DOWN: Side Shot ON/OFF**
   - ON: orange LED + single rumble.
   - OFF: blue LED + double rumble.
@@ -143,7 +164,13 @@ These are the bindings the script actually uses. Make sure your in-game layout m
   - OFF: blue LED + double rumble.
   > No other mods affected.
 
+</details>
+
 ### D-PAD DOWN + BUTTONS
+
+<details>
+<summary>🎮 Show D-PAD DOWN toggle group</summary>
+
 - **D-PAD DOWN + single-tap RELOAD: HLX Recharge Bypass ON/OFF (ZMode OFF only)**
   - ON: magenta LED + single rumble.
   - OFF: blue LED + double rumble.
@@ -161,6 +188,8 @@ These are the bindings the script actually uses. Make sure your in-game layout m
   - Requires ZMode = TRUE (ZAim is disabled when ZMode = FALSE).
   - Enabling ZAim forces Akimbo OFF.
   > Disables: Akimbo.
+
+</details>
 
 ### ZMode D-PAD
 - **D-PAD DOWN double-tap: GobbleGum one-shot**
@@ -187,6 +216,10 @@ These are the bindings the script actually uses. Make sure your in-game layout m
 - Akimbo: adds ADS presses whenever SHOOT is active (including Rapid Fire/Burst Fire).
 
 ## Config values (edit in script)
+
+<details>
+<summary>⚙️ Show script configuration values</summary>
+
 These values are not toggleable in-game; change them in the script if needed.
 
 - ZMode (manual or in-game toggle):
@@ -234,6 +267,8 @@ These values are not toggleable in-game; change them in the script if needed.
 - RapidFireCounterSlow:
   - Preset selector (1-7) used by L1 + RIGHT (Preset Slow 1-7).
 
+</details>
+
 ## Optional features
 These exist in the script but are optional toggles.
 - INFNade master (default FALSE) enables LEFT-hold (no modifiers) to toggle unlimited grenades (hold 500ms). Single rumble = ON, double rumble = OFF.
@@ -245,6 +280,10 @@ These exist in the script but are optional toggles.
 - INF_NADE_HOLD_MS = hold time for LEFT (no modifiers) before toggling.
 
 ## Internal variables (auto-managed; do not edit)
+
+<details>
+<summary>🧩 Show auto-managed runtime variables</summary>
+
 These exist in the script but are runtime state/flags, not user-facing settings.
 - ADSModReady, CrouchModReady, GrenadeModReady, TacticalModReady, DpadDownModReady
 - AkimboON, AkimboTapPending, AkimboHoldArmed, AkimboHoldLatch
@@ -255,6 +294,8 @@ These exist in the script but are runtime state/flags, not user-facing settings.
 - ZModeHoldLatch, CurrentLEDColor, Counter, LastPresetSet
 - anti_recoil, anti_recoil_left, anti_recoil_right
 - SPRINT_EXO, LX, LY
+
+</details>
 
 ## Lightbar color map used by this script
 - Blue (1): default/off
