@@ -17,16 +17,16 @@
 <p><a href="../.images/nord_ovpn_picker/01-country-selector.png"><img src="../.images/nord_ovpn_picker/01-country-selector.png" alt="Country selector with Australia highlighted in the available country list" width="900"></a></p>
 
 <p><strong>2. Country search</strong></p>
-<p><a href="../.images/nord_ovpn_picker/02-country-selector-search.png"><img src="../.images/nord_ovpn_picker/02-country-selector-search.png" alt="Country selector showing filtered matches while typing Au" width="900"></a></p>
+<p><a href="../.images/nord_ovpn_picker/02-country-selector-search.png"><img src="../.images/nord_ovpn_picker/02-country-selector-search.png" alt="Country selector showing filtered matches while typing Uni" width="900"></a></p>
 
-<p><strong>3. City selector</strong></p>
-<p><a href="../.images/nord_ovpn_picker/03-city-selector.png"><img src="../.images/nord_ovpn_picker/03-city-selector.png" alt="City selector listing Australian cities with Perth highlighted" width="900"></a></p>
+<p><strong>3. City search</strong></p>
+<p><a href="../.images/nord_ovpn_picker/03-city-selector-search.png"><img src="../.images/nord_ovpn_picker/03-city-selector-search.png" alt="United States cities filtered while typing lo" width="900"></a></p>
 
-<p><strong>4. Server results and download selector</strong></p>
-<p><a href="../.images/nord_ovpn_picker/04-server-results-and-download-selector.png"><img src="../.images/nord_ovpn_picker/04-server-results-and-download-selector.png" alt="Ping results, ranked Perth servers, and the prompt for choosing configs to download" width="900"></a></p>
+<p><strong>4. City selector</strong></p>
+<p><a href="../.images/nord_ovpn_picker/04-city-selector.png"><img src="../.images/nord_ovpn_picker/04-city-selector.png" alt="City selector with Los Angeles highlighted" width="900"></a></p>
 
-<p><strong>5. Downloaded configs</strong></p>
-<p><a href="../.images/nord_ovpn_picker/05-downloaded-configs.png"><img src="../.images/nord_ovpn_picker/05-downloaded-configs.png" alt="Completed download selection for results 1, 3, and 7 with the saved config paths" width="900"></a></p>
+<p><strong>5. Server results and downloaded configs</strong></p>
+<p><a href="../.images/nord_ovpn_picker/05-server-results-and-downloaded-configs.png"><img src="../.images/nord_ovpn_picker/05-server-results-and-downloaded-configs.png" alt="Ping results, ranked Los Angeles servers, and downloads of results 1, 4, and 7" width="900"></a></p>
 
 </details>
 
