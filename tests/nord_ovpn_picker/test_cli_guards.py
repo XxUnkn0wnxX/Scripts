@@ -1,9 +1,14 @@
+import os
+import select
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
+from prompt_toolkit.input import create_pipe_input
+from prompt_toolkit.output import DummyOutput
 
 import nord_ovpn_picker as picker
 from nord_ovpn_picker import (
@@ -70,6 +75,225 @@ def test_parse_args_rejects_non_positive_numeric_values(argv: list[str]) -> None
 def test_parse_args_rejects_conflicting_download_flags() -> None:
     with pytest.raises(SystemExit):
         parse_args(["--download-best", "--download-top", "2"])
+
+
+@pytest.mark.parametrize(
+    ("factory_name", "prompt_action"),
+    [
+        (
+            "autocomplete",
+            lambda: picker.ask_autocomplete(
+                "Country",
+                [picker.AutocompleteOption("Australia", "AU", ())],
+                lambda value: value,
+            ),
+        ),
+        ("text", picker.interactive_limit_prompt),
+        ("confirm", picker.interactive_ping_prompt),
+        ("confirm", lambda: picker.maybe_warn_obfuscated("obfuscated", "udp", True)),
+        ("text", lambda: picker.pick_interactive_selection([make_candidate("au001.nordvpn.com")])),
+    ],
+    ids=["autocomplete", "result-limit", "ping-confirmation", "obfuscated-confirmation", "selection"],
+)
+def test_questionary_prompt_cancellation_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+    factory_name: str,
+    prompt_action,
+) -> None:
+    with create_pipe_input() as pipe_input:
+        pipe_input.send_text("\x03")
+        prompt_factory = getattr(picker.questionary, factory_name)
+
+        def factory_with_test_io(*args, **kwargs):
+            kwargs["input"] = pipe_input
+            kwargs["output"] = DummyOutput()
+            return prompt_factory(*args, **kwargs)
+
+        monkeypatch.setattr(picker.questionary, factory_name, factory_with_test_io)
+
+        with pytest.raises(KeyboardInterrupt):
+            prompt_action()
+
+
+@pytest.mark.parametrize(
+    ("factory_name", "prompt_action", "expected"),
+    [
+        (
+            "autocomplete",
+            lambda: picker.interactive_city_prompt(
+                picker.Country(id=13, name="Australia", code="AU"),
+                [picker.City(id=1001, name="Melbourne", country_id=13), picker.City(id=1002, name="Sydney", country_id=13)],
+            ),
+            None,
+        ),
+        ("autocomplete", lambda: picker.interactive_protocol_prompt(["udp", "tcp"]), "udp"),
+        ("autocomplete", lambda: picker.interactive_group_prompt(["standard", "p2p"]), "standard"),
+        ("text", picker.interactive_limit_prompt, picker.DEFAULT_LIMIT),
+        ("confirm", picker.interactive_ping_prompt, True),
+    ],
+    ids=["blank-city", "default-protocol", "default-group", "default-limit", "default-ping"],
+)
+def test_questionary_blank_input_and_defaults_still_work(
+    monkeypatch: pytest.MonkeyPatch,
+    factory_name: str,
+    prompt_action,
+    expected,
+) -> None:
+    with create_pipe_input() as pipe_input:
+        pipe_input.send_text("\r")
+        prompt_factory = getattr(picker.questionary, factory_name)
+
+        def factory_with_test_io(*args, **kwargs):
+            kwargs["input"] = pipe_input
+            kwargs["output"] = DummyOutput()
+            return prompt_factory(*args, **kwargs)
+
+        monkeypatch.setattr(picker.questionary, factory_name, factory_with_test_io)
+
+        assert prompt_action() == expected
+
+
+def test_overwrite_prompt_cancellation_propagates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    candidate = make_candidate("au001.nordvpn.com")
+    destination = tmp_path / picker.format_output_filename(candidate.server, candidate.protocol, candidate.group)
+    destination.write_text("existing", encoding="utf-8")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    with create_pipe_input() as pipe_input:
+        pipe_input.send_text("\x03")
+        prompt_factory = picker.questionary.confirm
+
+        def confirm_with_test_io(*args, **kwargs):
+            kwargs["input"] = pipe_input
+            kwargs["output"] = DummyOutput()
+            return prompt_factory(*args, **kwargs)
+
+        monkeypatch.setattr(picker.questionary, "confirm", confirm_with_test_io)
+
+        with pytest.raises(KeyboardInterrupt):
+            picker.download_candidate(
+                client=None,  # type: ignore[arg-type]
+                candidate=candidate,
+                output_dir=tmp_path,
+                force=False,
+                dry_run=True,
+            )
+
+    assert destination.read_text(encoding="utf-8") == "existing"
+    assert list(tmp_path.iterdir()) == [destination]
+
+
+def test_city_prompt_cancellation_stops_filter_gathering(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    args = picker.argparse.Namespace(
+        country="Australia",
+        city=None,
+        protocol=None,
+        group=None,
+        limit=None,
+        no_ping=False,
+    )
+    countries = [picker.Country(id=13, name="Australia", code="AU")]
+    cities = [picker.City(id=1001, name="Melbourne", country_id=13), picker.City(id=1002, name="Sydney", country_id=13)]
+    autocomplete_calls = 0
+
+    with create_pipe_input() as pipe_input:
+        pipe_input.send_text("\x03")
+        prompt_factory = picker.questionary.autocomplete
+
+        def autocomplete_with_test_io(*prompt_args, **kwargs):
+            nonlocal autocomplete_calls
+            autocomplete_calls += 1
+            if autocomplete_calls > 1:
+                raise AssertionError("filter gathering continued after city cancellation")
+            kwargs["input"] = pipe_input
+            kwargs["output"] = DummyOutput()
+            return prompt_factory(*prompt_args, **kwargs)
+
+        monkeypatch.setattr(picker.questionary, "autocomplete", autocomplete_with_test_io)
+
+        with pytest.raises(KeyboardInterrupt):
+            picker.gather_filters(
+                args,
+                countries,
+                {13: cities},
+                prompt_protocol_keys=["udp", "tcp"],
+                prompt_group_keys=["standard", "p2p"],
+                allowed_protocol_keys=["udp", "tcp"],
+                allowed_group_keys=["standard", "p2p"],
+            )
+
+    assert autocomplete_calls == 1
+
+
+def test_main_keyboard_interrupt_exits_130_once_without_later_prompts(tmp_path: Path) -> None:
+    if os.name != "posix":
+        pytest.skip("PTY-based prompt integration test requires a POSIX host")
+    import pty
+
+    home = tmp_path / "home"
+    env = os.environ.copy()
+    env["HOME"] = str(home)
+    env["XDG_CACHE_HOME"] = str(home / ".cache")
+    env["TERM"] = "dumb"
+    cache_dir = picker.get_cache_dir(home=home, platform=sys.platform, environ=env)
+    cache_dir.mkdir(parents=True)
+    fixture_path = Path(__file__).resolve().parent / "fixtures" / "v2_servers.json"
+    (cache_dir / "v2_servers.json").write_bytes(fixture_path.read_bytes())
+
+    master_fd, slave_fd = pty.openpty()
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            str(picker.SCRIPT_PATH),
+            "--country",
+            "Australia",
+            "--full-data",
+            "--no-ping",
+            "--dry-run",
+            "--auth-username",
+            "fixture-user",
+            "--auth-password",
+            "fixture-password",
+        ],
+        cwd=tmp_path,
+        env=env,
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    output = bytearray()
+    sent_interrupt = False
+    deadline = time.monotonic() + 10
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master_fd], [], [], 0.1)
+            if ready:
+                try:
+                    output.extend(os.read(master_fd, 4096))
+                except OSError:
+                    break
+            if not sent_interrupt and b"City (blank for best country-wide recommendation)" in output:
+                os.write(master_fd, b"\x03")
+                sent_interrupt = True
+            if process.poll() is not None and not ready:
+                break
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=2)
+        os.close(master_fd)
+
+    rendered_output = output.decode("utf-8", errors="replace")
+    assert sent_interrupt
+    assert process.returncode == 130
+    assert rendered_output.count("Cancelled by user") == 1
+    assert "Protocol (blank" not in rendered_output
+    assert "Server group (blank" not in rendered_output
+    assert "Result limit" not in rendered_output
+    assert "DRY RUN" not in rendered_output
 
 
 def test_download_selected_candidates_continues_after_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

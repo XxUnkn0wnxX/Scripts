@@ -1063,7 +1063,7 @@ def ask_autocomplete(
             current_buffer.cancel_completion()
 
     buffer.on_text_changed += refresh_completion
-    answer = prompt.ask()
+    answer = prompt.unsafe_ask()
     if answer is None:
         return None
     stripped = answer.strip()
@@ -1305,7 +1305,7 @@ def pick_interactive_selection(candidates: Sequence[CandidateScore]) -> list[int
             "Download which config(s)? Examples: 1, 1-5, 1,3-7,10, all (blank = skip)",
             default="",
             style=PROMPT_STYLE,
-        ).ask()
+        ).unsafe_ask()
         if answer is None:
             return []
         try:
@@ -1333,7 +1333,7 @@ def download_candidate(
                 f"{destination.name} already exists. Overwrite?",
                 default=False,
                 style=PROMPT_STYLE,
-            ).ask()
+            ).unsafe_ask()
             if not overwrite:
                 raise CliError(f"Skipped existing file: {destination.name}")
         else:
@@ -1449,7 +1449,7 @@ def interactive_group_prompt(group_keys: Sequence[str]) -> str:
 
 def interactive_limit_prompt() -> int:
     while True:
-        answer = questionary.text("Result limit", default=str(DEFAULT_LIMIT), style=PROMPT_STYLE).ask()
+        answer = questionary.text("Result limit", default=str(DEFAULT_LIMIT), style=PROMPT_STYLE).unsafe_ask()
         if answer is None or not answer.strip():
             return DEFAULT_LIMIT
         try:
@@ -1459,7 +1459,7 @@ def interactive_limit_prompt() -> int:
 
 
 def interactive_ping_prompt() -> bool:
-    answer = questionary.confirm("Run ping test on the top candidates?", default=True, style=PROMPT_STYLE).ask()
+    answer = questionary.confirm("Run ping test on the top candidates?", default=True, style=PROMPT_STYLE).unsafe_ask()
     return bool(answer)
 
 
@@ -1472,7 +1472,7 @@ def maybe_warn_obfuscated(group_key: str, protocol_key: str, interactive: bool) 
     )
     console.print(Panel(message, title="Obfuscated warning", border_style="yellow"))
     if interactive:
-        proceed = questionary.confirm("Continue?", default=True, style=PROMPT_STYLE).ask()
+        proceed = questionary.confirm("Continue?", default=True, style=PROMPT_STYLE).unsafe_ask()
         if not proceed:
             raise CliError("Cancelled after obfuscated warning.")
 
