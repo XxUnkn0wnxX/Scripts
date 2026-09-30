@@ -6,6 +6,30 @@
 
 [`nord_ovpn_picker.py`](../python/nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the repo root itself. If you run it from anywhere else, it writes straight into your current working directory.
 
+## Screenshots
+
+<details>
+<summary>📸 View the selector process</summary>
+
+<p>Click a screenshot to open the full-size image.</p>
+
+<p><strong>1. Country selector</strong></p>
+<p><a href="../.images/nord_ovpn_picker/01-country-selector.png"><img src="../.images/nord_ovpn_picker/01-country-selector.png" alt="Country selector with Australia highlighted in the available country list" width="900"></a></p>
+
+<p><strong>2. Country search</strong></p>
+<p><a href="../.images/nord_ovpn_picker/02-country-selector-search.png"><img src="../.images/nord_ovpn_picker/02-country-selector-search.png" alt="Country selector showing filtered matches while typing Au" width="900"></a></p>
+
+<p><strong>3. City selector</strong></p>
+<p><a href="../.images/nord_ovpn_picker/03-city-selector.png"><img src="../.images/nord_ovpn_picker/03-city-selector.png" alt="City selector listing Australian cities with Perth highlighted" width="900"></a></p>
+
+<p><strong>4. Server results and download selector</strong></p>
+<p><a href="../.images/nord_ovpn_picker/04-server-results-and-download-selector.png"><img src="../.images/nord_ovpn_picker/04-server-results-and-download-selector.png" alt="Ping results, ranked Perth servers, and the prompt for choosing configs to download" width="900"></a></p>
+
+<p><strong>5. Downloaded configs</strong></p>
+<p><a href="../.images/nord_ovpn_picker/05-downloaded-configs.png"><img src="../.images/nord_ovpn_picker/05-downloaded-configs.png" alt="Completed download selection for results 1, 3, and 7 with the saved config paths" width="900"></a></p>
+
+</details>
+
 ## Features
 
 - Interactive mode when you run the script with no filter arguments.
