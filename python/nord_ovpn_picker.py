@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import email.utils
 import hashlib
+import heapq
 import json
 import logging
 import os
@@ -23,6 +25,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Optional, Sequence
 
@@ -151,6 +154,11 @@ API_V1_RECOMMENDATIONS = "https://api.nordvpn.com/v1/servers/recommendations"
 API_V2_SERVERS = "https://api.nordvpn.com/v2/servers"
 DOWNLOAD_BASE = "https://downloads.nordcdn.com/configs/files"
 HTTP_TIMEOUT = 10
+HTTP_RETRY_ATTEMPTS = 2
+HTTP_RETRY_TIMEOUT = 3
+HTTP_RETRY_DELAY = 0.25
+HTTP_MAX_RETRY_AFTER = 1.0
+TRANSIENT_HTTP_STATUSES = {429, 500, 502, 503, 504}
 
 console = Console()
 logger = logging.getLogger(APP_NAME)
@@ -352,22 +360,55 @@ def ensure_cache_dir() -> None:
 
 
 def load_json_cache(cache_name: str, ttl_seconds: int, refresh: bool) -> Optional[Any]:
-    ensure_cache_dir()
+    if refresh:
+        return None
     cache_path = CACHE_DIR / cache_name
-    if refresh or not cache_path.exists():
+    try:
+        stat_result = cache_path.stat()
+    except FileNotFoundError:
         return None
-    if time.time() - cache_path.stat().st_mtime > ttl_seconds:
+    except OSError as exc:
+        logger.warning("Could not inspect cache %s: %s", cache_path, exc)
         return None
-    with cache_path.open("r", encoding="utf-8") as handle:
-        logger.debug("Using cached payload: %s", cache_path)
-        return json.load(handle)
+    try:
+        if time.time() - stat_result.st_mtime > ttl_seconds:
+            return None
+        with cache_path.open("r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        logger.warning("Could not read cache %s: %s", cache_path, exc)
+        return None
+    logger.debug("Using cached payload: %s", cache_path)
+    return payload
 
 
 def save_json_cache(cache_name: str, payload: Any) -> None:
-    ensure_cache_dir()
     cache_path = CACHE_DIR / cache_name
-    with cache_path.open("w", encoding="utf-8") as handle:
-        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    try:
+        ensure_cache_dir()
+        write_text_atomic(
+            cache_path,
+            json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        logger.warning("Could not write cache %s: %s", cache_path, exc)
+
+
+def _valid_hostname(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip()) and not any(char.isspace() for char in value)
+
+
+def valid_recommendations_payload(payload: Any) -> bool:
+    return isinstance(payload, list) and all(
+        isinstance(item, dict) and _valid_hostname(item.get("hostname")) for item in payload
+    )
+
+
+def valid_v2_payload(payload: Any) -> bool:
+    return isinstance(payload, dict) and all(
+        isinstance(payload.get(key), list) for key in ("servers", "groups", "locations", "technologies")
+    )
 
 
 def sanitize_filename(value: str) -> str:
@@ -541,13 +582,73 @@ class NordApiClient:
             }
         )
 
-    def get_json(self, url: str, params: Optional[dict[str, Any]] = None) -> Any:
-        logger.debug("HTTP GET %s params=%s", url, params)
+    @staticmethod
+    def _retry_after_seconds(response: requests.Response) -> Optional[float]:
+        value = response.headers.get("Retry-After")
+        if value is None:
+            return None
         try:
-            response = self.session.get(url, params=params, timeout=self.timeout)
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise CliError(f"Request failed for {url}: {exc}") from exc
+            return max(0.0, float(value))
+        except ValueError:
+            try:
+                retry_at = email.utils.parsedate_to_datetime(value)
+            except (TypeError, ValueError, OverflowError):
+                return None
+            if retry_at.tzinfo is None:
+                retry_at = retry_at.replace(tzinfo=timezone.utc)
+            return max(0.0, (retry_at - datetime.now(timezone.utc)).total_seconds())
+
+    def _get_response(
+        self,
+        url: str,
+        params: Optional[dict[str, Any]] = None,
+        *,
+        retries: bool = True,
+    ) -> requests.Response:
+        attempts = HTTP_RETRY_ATTEMPTS if retries else 1
+        for attempt in range(attempts):
+            timeout = self.timeout if attempt == 0 else min(self.timeout, HTTP_RETRY_TIMEOUT)
+            try:
+                response = self.session.get(url, params=params, timeout=timeout)
+            except requests.RequestException as exc:
+                retryable = isinstance(exc, (requests.ConnectionError, requests.Timeout)) and not isinstance(
+                    exc, requests.exceptions.SSLError
+                )
+                if retryable and attempt + 1 < attempts:
+                    time.sleep(HTTP_RETRY_DELAY)
+                    continue
+                raise CliError(f"Request failed for {url}: {exc}") from exc
+
+            if response.status_code in TRANSIENT_HTTP_STATUSES and attempt + 1 < attempts:
+                retry_after = self._retry_after_seconds(response)
+                if retry_after is None:
+                    delay = HTTP_RETRY_DELAY
+                elif retry_after > HTTP_MAX_RETRY_AFTER:
+                    delay = None
+                else:
+                    delay = retry_after
+                if delay is not None:
+                    response.close()
+                    if delay > 0:
+                        time.sleep(delay)
+                    continue
+            try:
+                response.raise_for_status()
+            except requests.RequestException as exc:
+                response.close()
+                raise CliError(f"Request failed for {url}: {exc}") from exc
+            return response
+        raise CliError(f"Request failed for {url}: retry limit reached")
+
+    def get_json(
+        self,
+        url: str,
+        params: Optional[dict[str, Any]] = None,
+        *,
+        retries: bool = True,
+    ) -> Any:
+        logger.debug("HTTP GET %s params=%s", url, params)
+        response = self._get_response(url, params=params, retries=retries)
         try:
             return response.json()
         except json.JSONDecodeError as exc:
@@ -555,12 +656,7 @@ class NordApiClient:
 
     def get_text(self, url: str) -> str:
         logger.debug("HTTP GET %s", url)
-        try:
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-        except requests.RequestException as exc:
-            raise CliError(f"Request failed for {url}: {exc}") from exc
-        return response.text
+        return self._get_response(url).text
 
     def get_recommendations(
         self,
@@ -581,17 +677,25 @@ class NordApiClient:
         digest = hashlib.sha1(json.dumps(params, sort_keys=True).encode("utf-8")).hexdigest()[:12]
         cache_name = f"recommendations_{digest}.json"
         cached = load_json_cache(cache_name, DEFAULT_CACHE_TTL, refresh)
-        if cached is not None:
+        if valid_recommendations_payload(cached):
             return cached
-        payload = self.get_json(API_V1_RECOMMENDATIONS, params=params)
+        if cached is not None:
+            logger.warning("Ignoring invalid recommendations cache payload: %s", cache_name)
+        payload = self.get_json(API_V1_RECOMMENDATIONS, params=params, retries=False)
+        if not valid_recommendations_payload(payload):
+            raise CliError("Unexpected recommendations payload from NordVPN API")
         save_json_cache(cache_name, payload)
         return payload
 
     def get_v2_dataset(self, refresh: bool = False) -> dict[str, Any]:
         cached = load_json_cache("v2_servers.json", DEFAULT_CACHE_TTL, refresh)
-        if cached is not None:
+        if valid_v2_payload(cached):
             return cached
+        if cached is not None:
+            logger.warning("Ignoring invalid V2 server cache payload")
         payload = self.get_json(API_V2_SERVERS, params={"limit": 16384})
+        if not valid_v2_payload(payload):
+            raise CliError("Unexpected V2 server payload from NordVPN API")
         save_json_cache("v2_servers.json", payload)
         return payload
 
@@ -667,54 +771,85 @@ def recommendation_to_server(item: dict[str, Any]) -> NordServer:
         city_id=int(city["id"]) if city.get("id") is not None else None,
         group_identifiers=[group.get("identifier") for group in item.get("groups", []) if group.get("identifier")],
         technology_identifiers=[
-            tech.get("identifier") for tech in item.get("technologies", []) if tech.get("identifier")
+            tech.get("identifier")
+            for tech in item.get("technologies", [])
+            if tech.get("identifier")
+            and technology_status_available(
+                (tech.get("pivot") or {}).get("status", tech.get("status"))
+            )
         ],
         status=item.get("status"),
     )
 
 
-def normalize_v2_servers(payload: dict[str, Any]) -> list[NordServer]:
+def technology_status_available(status: Any) -> bool:
+    return status is None or (isinstance(status, str) and status.strip().casefold() == "online")
+
+
+def _iter_v2_servers(
+    payload: dict[str, Any],
+    *,
+    country_id: int = 0,
+    city_id: Optional[int] = None,
+    group_identifier: Optional[str] = None,
+    technology_identifier: Optional[str] = None,
+    exclude_offline: bool = False,
+) -> Iterable[NordServer]:
     groups_by_id = {int(group["id"]): group for group in payload.get("groups", [])}
     technologies_by_id = {int(tech["id"]): tech for tech in payload.get("technologies", [])}
     locations_by_id = {int(location["id"]): location for location in payload.get("locations", [])}
-    normalized: list[NordServer] = []
 
     for item in payload.get("servers", []):
+        server_status = item.get("status")
+        if exclude_offline and server_status and server_status != "online":
+            continue
         location_id = next(iter(item.get("location_ids") or []), None)
         location = locations_by_id.get(int(location_id)) if location_id is not None else None
         country = (location or {}).get("country") or {}
         city = country.get("city") or {}
+        parsed_country_id = int(country.get("id", 0))
+        parsed_city_id = int(city["id"]) if city.get("id") is not None else None
+        if country_id and parsed_country_id != country_id:
+            continue
+        if city_id is not None and parsed_city_id != city_id:
+            continue
         group_identifiers = [
             groups_by_id[group_id]["identifier"]
             for group_id in item.get("group_ids", []) or []
             if group_id in groups_by_id and groups_by_id[group_id].get("identifier")
         ]
+        if group_identifier is not None and group_identifier not in group_identifiers:
+            continue
         technology_identifiers = []
         for tech_entry in item.get("technologies", []) or []:
             tech_id = tech_entry.get("id")
             if tech_id in technologies_by_id:
+                if not technology_status_available(tech_entry.get("status")):
+                    continue
                 identifier = technologies_by_id[tech_id].get("identifier")
                 if identifier:
                     technology_identifiers.append(identifier)
+        if technology_identifier is not None and technology_identifier not in technology_identifiers:
+            continue
 
-        normalized.append(
-            NordServer(
-                hostname=item["hostname"],
-                name=item.get("name"),
-                load=item.get("load"),
-                station=item.get("station"),
-                country_name=country.get("name", "Unknown"),
-                country_code=country.get("code"),
-                country_id=int(country.get("id", 0)),
-                city_name=city.get("name"),
-                city_id=int(city["id"]) if city.get("id") is not None else None,
-                group_identifiers=group_identifiers,
-                technology_identifiers=technology_identifiers,
-                status=item.get("status"),
-            )
+        yield NordServer(
+            hostname=item["hostname"],
+            name=item.get("name"),
+            load=item.get("load"),
+            station=item.get("station"),
+            country_name=country.get("name", "Unknown"),
+            country_code=country.get("code"),
+            country_id=parsed_country_id,
+            city_name=city.get("name"),
+            city_id=parsed_city_id,
+            group_identifiers=group_identifiers,
+            technology_identifiers=technology_identifiers,
+            status=server_status,
         )
 
-    return normalized
+
+def normalize_v2_servers(payload: dict[str, Any]) -> list[NordServer]:
+    return list(_iter_v2_servers(payload))
 
 
 def supported_protocol_keys(payload: dict[str, Any], include_advanced: bool) -> list[str]:
@@ -1405,35 +1540,52 @@ def fetch_candidates(
 ) -> list[NordServer]:
     protocol = PROTOCOLS[protocol_key]
     group = GROUPS[group_key]
-    recommendation_limit = max(DEFAULT_FETCH_LIMIT, min(max(limit * 5, DEFAULT_FETCH_LIMIT), 2500))
-    recommended_raw = client.get_recommendations(
-        country_id=country.id,
-        group_identifier=group.identifier,
-        technology_identifier=protocol.technology,
-        limit=recommendation_limit,
-        refresh=refresh_cache,
-    )
-    recommended_servers = filter_servers(
-        [recommendation_to_server(item) for item in recommended_raw],
-        country_id=country.id,
-        city_id=city.id if city else None,
-        group_identifier=group.identifier,
-        technology_identifier=protocol.technology,
-    )
-    recommended_servers = dedupe_servers(recommended_servers)
-    if recommended_servers and not full_data and (city is None or len(recommended_servers) >= min(limit, 3)):
-        return recommended_servers[:limit]
+    recommended_servers: list[NordServer] = []
+    if not full_data:
+        recommendation_limit = max(DEFAULT_FETCH_LIMIT, min(max(limit * 5, DEFAULT_FETCH_LIMIT), 2500))
+        try:
+            recommended_raw = client.get_recommendations(
+                country_id=country.id,
+                group_identifier=group.identifier,
+                technology_identifier=protocol.technology,
+                limit=recommendation_limit,
+                refresh=refresh_cache,
+            )
+            recommended_servers = dedupe_servers(
+                filter_servers(
+                    [recommendation_to_server(item) for item in recommended_raw],
+                    country_id=country.id,
+                    city_id=city.id if city else None,
+                    group_identifier=group.identifier,
+                    technology_identifier=protocol.technology,
+                )
+            )
+        except (CliError, KeyError, TypeError, ValueError, AttributeError) as exc:
+            logger.warning("Could not use NordVPN recommendations; using V2 data: %s", exc)
+            recommended_servers = []
 
-    normalized_v2 = normalize_v2_servers(v2_payload)
-    fallback_servers = filter_servers(
-        normalized_v2,
-        country_id=country.id,
-        city_id=city.id if city else None,
-        group_identifier=group.identifier,
-        technology_identifier=protocol.technology,
+        if len(recommended_servers) >= limit:
+            return recommended_servers[:limit]
+
+    selected_hostnames = {server.hostname for server in recommended_servers}
+    fallback_servers = dedupe_servers(
+        _iter_v2_servers(
+            v2_payload,
+            country_id=country.id,
+            city_id=city.id if city else None,
+            group_identifier=group.identifier,
+            technology_identifier=protocol.technology,
+            exclude_offline=True,
+        )
     )
-    fallback_servers = dedupe_servers(fallback_servers)
-    return fallback_servers[:limit]
+    fallback_servers = [server for server in fallback_servers if server.hostname not in selected_hostnames]
+    fallback_count = max(0, limit - len(recommended_servers))
+    fallback_servers = heapq.nsmallest(
+        fallback_count,
+        fallback_servers,
+        key=lambda item: (item.load is None, item.load if item.load is not None else 9999, item.hostname),
+    )
+    return recommended_servers[:limit] + fallback_servers
 
 
 def download_selected_candidates(

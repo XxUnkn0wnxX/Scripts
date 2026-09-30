@@ -13,7 +13,7 @@
 - Non-interactive CLI mode for direct scripted use.
 - V2-backed metadata for countries, cities, groups, and technologies.
 - Recommendation-first server selection using Nord's recommendation API.
-- Automatic fallback to Nord's V2 dataset when recommendations are not enough or `--full-data` is used.
+- Automatic fallback to Nord's V2 dataset when recommendations fail or do not provide enough matches. `--full-data` uses V2 directly without requesting recommendations.
 - Optional ping scoring for the top candidates.
 - Rich results table with hostname, location, protocol, group, load, ping, score, station IP, and the recommended marker.
 - Visible per-host ping progress in TTY sessions before the final ranked table.
@@ -528,6 +528,8 @@ Current cache behavior:
 - The V2 metadata and server dataset are cached together in the V2 payload cache.
 - Default cache TTL is `6 hours`.
 - `--refresh-cache` bypasses the cache and refreshes those payloads.
+- Damaged, unreadable, or incorrectly shaped cached payloads are ignored and fetched again.
+- Cache updates are atomic. A cache-write failure does not prevent use of a successful API response.
 
 </details>
 
@@ -555,6 +557,8 @@ The candidate table includes:
 ## Notes
 
 - Live supported groups and OpenVPN protocol identifiers are derived from Nord's current V2 metadata instead of being hard-coded from older examples.
+- Server selection excludes explicitly unavailable protocols while retaining compatibility with responses that omit individual protocol status.
+- V2 API requests and config downloads retry at most once for transient failures. The retry uses a timeout of at most three seconds, and the script declines retries requiring a wait longer than one second. Recommendation failures use the already-loaded V2 data immediately.
 - In non-interactive mode, `--country` is required unless you are using one of the pure listing commands.
 - `--list-cities` requires `--country`.
 - If you run in a non-TTY context without `--download-best` or `--download-top`, the script prints the candidate table and exits without downloading anything.
