@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.2
+// @version      1.0.3
 // @description  Controls GitHub workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -194,11 +194,21 @@
     const active = `html[${ACTIVE_ATTR}]`;
     return `
 ${HideIssuePRHeader ? `
-/* Hide only the floating title copies; the shared sticky class also belongs
-   to PR file controls. Keep regular headings and those controls intact. */
+/* Hide floating issue/PR title copies and their repeated Changes toolbar
+   clones; preserve regular headings, controls, and the normal commit selector. */
 ${active} #issue-viewer-sticky-header,
-${active} [class*="StickyPullRequestHeader-module__prHeader__"] {
+${active} [class*="StickyPullRequestHeader-module__prHeader__"],
+${active} [class*="PullRequestFilesToolbar-module__toolbar__"] [class*="PullRequestFilesToolbar-module__show-when-stuck__"],
+${active} .pr-toolbar .diffbar .show-if-stuck {
   display: none !important;
+}
+
+/* The repeated title wrapper also contains a duplicate commit selector.
+   Keep its normal copy visible on wide Changes pages after the clone is hidden. */
+@container (min-width: 768px) {
+  ${active} [class*="PullRequestFilesToolbar-module__toolbar__"][class*="PullRequestFilesToolbar-module__is-stuck__"] [class*="PullRequestFilesToolbar-module__hide-when-stuck-large__"] {
+    display: block !important;
+  }
 }
 
 /* GitHub offsets the issue copy's 56px height with a -56px metadata margin. */

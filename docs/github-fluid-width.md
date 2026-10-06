@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.2`.
+Current documented release: `1.0.3`.
 
 ## Screenshots
 
@@ -141,7 +141,7 @@ The panel provides:
 
 - a percentage slider and numeric input that update the current page live; the slider and numeric arrows use 1% steps, while decimals such as `95.1` can be entered manually in the numeric field
 - an **Override full-width pages** checkbox, enabled by default
-- a **Hide PR & Issue Headers** checkbox, disabled by default; it hides the floating issue and pull-request title headers at every viewport width
+- a **Hide PR & Issue Headers** checkbox, disabled by default; it hides floating issue and pull-request title copies, including repeated titles on Changes and legacy Files changed pages
 - a minimum side-gutter setting
 - **Reset defaults** to explicitly restore the current built-in defaults
 
@@ -153,15 +153,18 @@ immediately. **Reset defaults** also applies live: it restores `95%`, `32px`,
 override enabled, and **Hide PR & Issue Headers** disabled, then saves those
 choices. No page reload is needed.
 
-**Hide PR & Issue Headers** hides the floating title clones used on issue and
-pull-request pages. On issue pages it also cancels GitHub's `-56px` bottom-margin
+**Hide PR & Issue Headers** hides floating issue titles and pull-request title
+copies, including the repeated status and title/merge metadata shown in the
+Changes (`/pull/.../changes`) toolbar and the legacy Files changed (`/pull/.../files`)
+toolbar. On issue pages it also cancels GitHub's `-56px` bottom-margin
 compensation on the regular metadata header, preserving the content position.
 Turning the option off restores the floating headers immediately, without a
-page refresh.
-Regular issue and pull-request headings stay visible. This option applies at
-all viewport widths; the width rules described above remain limited to desktop
-screens. It does not restore GitHub's old application view, and it leaves wikis,
-discussions, and toolbars untouched.
+page refresh. Regular issue and pull-request headings stay visible. The Changes
+toolbar's file, review, and other controls remain available, along with its
+normal commit selector on wide layouts. This option applies at all viewport
+widths; the width rules described above remain limited to desktop screens. It
+does not restore GitHub's old application view, and it leaves wikis and
+discussions untouched.
 
 Changes save automatically in the userscript manager's per-script storage.
 Saved values, including a disabled override and decimal percentages, take
@@ -191,7 +194,7 @@ const CONFIG = Object.freeze({
 - `contentWidthPercent` controls the requested target width of a selected workspace. Values from `1` to `100` are accepted, including decimals; values above `100` are clamped to `100`, and invalid values fall back to `95`. Capped workspaces retain their native minimum; naturally fullwidth content can shrink toward the percentage while retaining its documented readability minimum.
 - `minGutterPx` controls the minimum gutter on each side of a centered workspace when the parent has room to preserve both that gutter and the native floor. Values are clamped to `16..128px` and rounded; invalid values fall back to `32px`.
 - `overrideFullWidthPages` defaults to `true`. Set the boolean to `false` to keep naturally fullwidth file, folder, code, text, renderer, pull-request diff, completed Actions, and search workspaces at native width; capped expansion and nested rendered-document fill continue to apply. An omitted or non-boolean value uses the default `true` behavior.
-- `HideIssuePRHeader` defaults to `false`. Set it to the boolean `true` to hide the floating issue and pull-request title clones at every viewport width, while keeping regular page headings visible. Reset defaults restores it to `false`.
+- `HideIssuePRHeader` defaults to `false`. Set it to the boolean `true` to hide floating issue and pull-request title copies, including repeated titles in the Changes and legacy Files changed toolbars, at every viewport width. Regular page headings and toolbar controls remain visible. Reset defaults restores it to `false`.
 
 Use the panel for normal customization. Editing `CONFIG` after preferences
 have been saved does not replace those saved values. Source edits made in an
