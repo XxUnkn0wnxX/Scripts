@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1
+// @version      1.0.2
 // @description  Controls GitHub workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -46,6 +46,7 @@
     contentWidthPercent: 95,
     minGutterPx: 32,
     overrideFullWidthPages: true,
+    legacyIssuePrRendering: false,
   });
 
   const SETTINGS_SCHEMA_VERSION = 1;
@@ -54,12 +55,14 @@
     contentWidthPercent: 'github-fluid-width.contentWidthPercent',
     minGutterPx: 'github-fluid-width.minGutterPx',
     overrideFullWidthPages: 'github-fluid-width.overrideFullWidthPages',
+    legacyIssuePrRendering: 'github-fluid-width.legacyIssuePrRendering',
     schemaVersion: 'github-fluid-width.schemaVersion',
   });
   const SETTINGS_CONFIG_KEYS = Object.freeze([
     'contentWidthPercent',
     'minGutterPx',
     'overrideFullWidthPages',
+    'legacyIssuePrRendering',
   ]);
 
   // These are GitHub layout primitives, rather than a list of URL routes. The
@@ -128,6 +131,7 @@
   let percent = finiteClamp(CONFIG.contentWidthPercent, 95, 1, 100);
   let gutter = Math.round(finiteClamp(CONFIG.minGutterPx, 32, 16, 128));
   let overrideFullWidthPages = CONFIG.overrideFullWidthPages !== false;
+  let legacyIssuePrRendering = CONFIG.legacyIssuePrRendering === true;
   const desktopQuery = window.matchMedia(`(min-width: ${MIN_VIEWPORT_PX}px)`);
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -161,6 +165,7 @@
     percent = finiteClamp(next.contentWidthPercent, 95, 1, 100);
     gutter = Math.round(finiteClamp(next.minGutterPx, 32, 16, 128));
     overrideFullWidthPages = next.overrideFullWidthPages !== false;
+    legacyIssuePrRendering = next.legacyIssuePrRendering === true;
     style.textContent = buildStyles();
     scheduleSync();
   }
@@ -188,6 +193,19 @@
     const searchWidthWithoutSidebar = searchWidth(100, 0);
     const active = `html[${ACTIVE_ATTR}]`;
     return `
+${legacyIssuePrRendering ? `
+/* Hide only the floating title copies; the shared sticky class also belongs
+   to PR file controls. Keep regular headings and those controls intact. */
+${active} #issue-viewer-sticky-header,
+${active} [class*="StickyPullRequestHeader-module__prHeader__"] {
+  display: none !important;
+}
+
+/* GitHub offsets the issue copy's 56px height with a -56px metadata margin. */
+${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
+  margin-bottom: 0 !important;
+}
+` : ''}
 @media (min-width: ${MIN_VIEWPORT_PX}px) {
   ${active} [${OWNER_ATTR}] {
     width: ${width} !important;
@@ -1139,6 +1157,11 @@
               <input id="github-fluid-width-override" type="checkbox">
               <span>Override full-width pages</span>
             </label>
+            <label class="check" for="github-fluid-width-legacy-issue-pr">
+              <input id="github-fluid-width-legacy-issue-pr" type="checkbox" aria-describedby="github-fluid-width-legacy-issue-pr-hint">
+              <span>Legecy (IS,PR) rendering</span>
+            </label>
+            <p class="hint" id="github-fluid-width-legacy-issue-pr-hint">Hides GitHub's floating issue and pull request title headers at any viewport width. Regular page headings remain visible.</p>
             <p class="status" role="status" aria-live="polite"></p>
             <div class="actions">
               <button type="button" data-reset>Reset defaults</button>
@@ -1156,6 +1179,7 @@
         percent: root.querySelector('#github-fluid-width-percent-number'),
         gutter: root.querySelector('#github-fluid-width-gutter'),
         override: root.querySelector('#github-fluid-width-override'),
+        legacyIssuePr: root.querySelector('#github-fluid-width-legacy-issue-pr'),
         status: root.querySelector('.status'),
         reset: root.querySelector('[data-reset]'),
         close: root.querySelector('[data-close]'),
@@ -1198,6 +1222,10 @@
       ui.range.addEventListener('change', () => flushSettings().catch(() => {}));
       ui.override.addEventListener('change', () => {
         setConfig({overrideFullWidthPages: ui.override.checked});
+        flushSettings().catch(() => {});
+      });
+      ui.legacyIssuePr.addEventListener('change', () => {
+        setConfig({legacyIssuePrRendering: ui.legacyIssuePr.checked});
         flushSettings().catch(() => {});
       });
       ui.dialog.addEventListener('cancel', (event) => {
@@ -1318,6 +1346,7 @@
       if (forceNumbers || active !== ui.percent) ui.percent.value = String(current.contentWidthPercent);
       if (forceNumbers || active !== ui.gutter) ui.gutter.value = String(current.minGutterPx);
       ui.override.checked = current.overrideFullWidthPages;
+      ui.legacyIssuePr.checked = current.legacyIssuePrRendering;
       ui.status.textContent = storageError && storageState === 'write-error'
         ? storageError.message || statusText(storageState)
         : statusText(storageState);
@@ -1331,6 +1360,7 @@
     if (key === 'contentWidthPercent') return finiteClamp(value, fallback, 1, 100);
     if (key === 'minGutterPx') return Math.round(finiteClamp(value, fallback, 16, 128));
     if (key === 'overrideFullWidthPages') return value !== false;
+    if (key === 'legacyIssuePrRendering') return value === true;
     return value;
   }
 
@@ -1339,6 +1369,7 @@
       contentWidthPercent: normalizeSettingValue('contentWidthPercent', values.contentWidthPercent, SETTINGS_DEFAULTS.contentWidthPercent),
       minGutterPx: normalizeSettingValue('minGutterPx', values.minGutterPx, SETTINGS_DEFAULTS.minGutterPx),
       overrideFullWidthPages: normalizeSettingValue('overrideFullWidthPages', values.overrideFullWidthPages, SETTINGS_DEFAULTS.overrideFullWidthPages),
+      legacyIssuePrRendering: normalizeSettingValue('legacyIssuePrRendering', values.legacyIssuePrRendering, SETTINGS_DEFAULTS.legacyIssuePrRendering),
     };
   }
 
@@ -1347,6 +1378,7 @@
       contentWidthPercent: values.contentWidthPercent,
       minGutterPx: values.minGutterPx,
       overrideFullWidthPages: values.overrideFullWidthPages,
+      legacyIssuePrRendering: values.legacyIssuePrRendering,
     };
   }
 

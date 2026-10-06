@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.1`.
+Current documented release: `1.0.2`.
 
 ## Screenshots
 
@@ -23,7 +23,7 @@ Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/
 
 ## What It Does
 
-- activates only at viewport widths of at least `1472px`
+- activates width overrides only at viewport widths of at least `1472px`
 - widens capped GitHub regions to the configured percentage of their available parent area
 - keeps the captured native workspace floor while it fits inside the available parent, and otherwise fills that parent without overflow
 - preserves native in-page rails, source trees, Symbols panels, diff/file rails, workflow navigation, and log scrolling; repository-rendered document previews fill their owning panel while retaining native padding and renderer-local behavior; the legacy Discussion thread keeps its captured `320px` metadata rail while its main column grows, and the dashboard keeps its captured `312px` right rail once its wide-shell rule activates
@@ -32,6 +32,7 @@ Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/
 - with `overrideFullWidthPages: true` (the default), applies the configured target to naturally fullwidth file, folder, source-code, text, rendered-document, pull-request diff, completed Actions, and search workspaces using the same sidebar-aware parent math while preserving local scrolling
 - with `overrideFullWidthPages: false`, leaves those naturally fullwidth workspaces at GitHub's native width while capped-owner expansion and nested rendered-document filling remain active
 - provides a live settings panel and saves preferences separately from the userscript source, so normal script updates retain existing choices
+- optionally hides only GitHub's floating issue and pull-request title headers; regular page headings remain visible
 - follows GitHub client-side navigation, back/forward navigation, Turbo/PJAX rendering, and document/head replacement without polling
 - makes no network requests, account-state checks, GitHub content restructuring, or GitHub job operations; it maintains its own layout style, ownership markers, settings controls, and manager-stored preferences
 
@@ -137,12 +138,24 @@ The panel provides:
 
 - a percentage slider and numeric input that update the current page live; the slider and numeric arrows use 1% steps, while decimals such as `95.1` can be entered manually in the numeric field
 - an **Override full-width pages** checkbox, enabled by default
+- a **Legecy (IS,PR) rendering** checkbox, disabled by default; it hides the floating issue and pull-request title headers at every viewport width
 - a minimum side-gutter setting
 - **Reset defaults** to explicitly restore the current built-in defaults
 
-The slider, numeric fields, and override checkbox all update the current page
+The slider, numeric fields, and both checkboxes all update the current page
 immediately. **Reset defaults** also applies live: it restores `95%`, `32px`,
-and override enabled, then saves those choices. No page reload is needed.
+override enabled, and **Legecy (IS,PR) rendering** disabled, then saves those
+choices. No page reload is needed.
+
+**Legecy (IS,PR) rendering** hides the floating title clones used on issue and
+pull-request pages. On issue pages it also cancels GitHub's `-56px` bottom-margin
+compensation on the regular metadata header, preserving the content position.
+Turning the option off restores the floating headers immediately, without a
+page refresh.
+Regular issue and pull-request headings stay visible. This option applies at
+all viewport widths; the width rules described above remain limited to desktop
+screens. It does not restore GitHub's old application view, and it leaves wikis,
+discussions, and toolbars untouched.
 
 Changes save automatically in the userscript manager's per-script storage.
 Saved values, including a disabled override and decimal percentages, take
@@ -165,12 +178,14 @@ const CONFIG = Object.freeze({
   contentWidthPercent: 95,
   minGutterPx: 32,
   overrideFullWidthPages: true,
+  legacyIssuePrRendering: false,
 });
 ```
 
 - `contentWidthPercent` controls the requested target width of a selected workspace. Values from `1` to `100` are accepted, including decimals; values above `100` are clamped to `100`, and invalid values fall back to `95`. Capped workspaces retain their native minimum; naturally fullwidth content can shrink toward the percentage while retaining its documented readability minimum.
 - `minGutterPx` controls the minimum gutter on each side of a centered workspace when the parent has room to preserve both that gutter and the native floor. Values are clamped to `16..128px` and rounded; invalid values fall back to `32px`.
 - `overrideFullWidthPages` defaults to `true`. Set the boolean to `false` to keep naturally fullwidth file, folder, code, text, renderer, pull-request diff, completed Actions, and search workspaces at native width; capped expansion and nested rendered-document fill continue to apply. An omitted or non-boolean value uses the default `true` behavior.
+- `legacyIssuePrRendering` defaults to `false`. Set it to the boolean `true` to hide the floating issue and pull-request title clones at every viewport width, while keeping regular page headings visible. Reset defaults restores it to `false`.
 
 Use the panel for normal customization. Editing `CONFIG` after preferences
 have been saved does not replace those saved values. Source edits made in an
