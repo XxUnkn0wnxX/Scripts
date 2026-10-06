@@ -731,7 +731,9 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
         style.id = ROOT_LOCK_STYLE_ID;
         style.textContent = `
           :root[${ROOT_LOCK_ATTRIBUTE}] { scrollbar-gutter: stable !important; overflow: hidden !important; overscroll-behavior: none !important; }
-          :root[${ROOT_LOCK_ATTRIBUTE}] body { overflow: hidden !important; overscroll-behavior: none !important; }
+          /* Clip the body without creating a scroll container that unsticks
+             GitHub's floating headers. The root still locks page scrolling. */
+          :root[${ROOT_LOCK_ATTRIBUTE}] body { overflow: clip !important; overscroll-behavior: none !important; }
         `;
         parent.appendChild(style);
       }
@@ -1153,15 +1155,16 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
               <label for="github-fluid-width-gutter">Minimum gutter (px)</label>
               <input id="github-fluid-width-gutter" type="number" min="16" max="128" step="1">
             </div>
-            <label class="check" for="github-fluid-width-override">
-              <input id="github-fluid-width-override" type="checkbox">
+            <label class="check" for="github-fluid-width-override" title="Apply your width setting to full-width pages.">
+              <input id="github-fluid-width-override" type="checkbox" aria-describedby="github-fluid-width-override-hint">
               <span>Override full-width pages</span>
             </label>
-            <label class="check" for="github-fluid-width-legacy-issue-pr">
+            <p id="github-fluid-width-override-hint" hidden>Apply your width setting to full-width pages.</p>
+            <label class="check" for="github-fluid-width-legacy-issue-pr" title="Hide floating issue and PR title headers.">
               <input id="github-fluid-width-legacy-issue-pr" type="checkbox" aria-describedby="github-fluid-width-legacy-issue-pr-hint">
               <span>Legecy (IS,PR) rendering</span>
             </label>
-            <p class="hint" id="github-fluid-width-legacy-issue-pr-hint">Hides GitHub's floating issue and pull request title headers at any viewport width. Regular page headings remain visible.</p>
+            <p id="github-fluid-width-legacy-issue-pr-hint" hidden>Hide floating issue and PR title headers.</p>
             <p class="status" role="status" aria-live="polite"></p>
             <div class="actions">
               <button type="button" data-reset>Reset defaults</button>

@@ -117,6 +117,9 @@ Changes already made remain applied and saved.
 While the panel is open, the background page cannot be clicked, hovered, focused,
 or scrolled. Long settings content scrolls inside the panel; closing restores
 normal page interaction without activating anything under the dismissal click.
+Opening the panel preserves floating headers behind the translucent backdrop
+when **Legecy (IS,PR) rendering** is off. The checkbox hides and restores them
+live while the panel remains open.
 
 Opening settings does not preselect a button, slider, or field. Keyboard focus
 starts on the panel heading; press Tab to move to the first control, or
@@ -141,6 +144,9 @@ The panel provides:
 - a **Legecy (IS,PR) rendering** checkbox, disabled by default; it hides the floating issue and pull-request title headers at every viewport width
 - a minimum side-gutter setting
 - **Reset defaults** to explicitly restore the current built-in defaults
+
+Hover either checkbox or its label for a brief tooltip. The same description is
+available to screen readers without adding visible text beneath the controls.
 
 The slider, numeric fields, and both checkboxes all update the current page
 immediately. **Reset defaults** also applies live: it restores `95%`, `32px`,
