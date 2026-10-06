@@ -1162,7 +1162,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
             <p id="github-fluid-width-override-hint" hidden>Apply your width setting to full-width pages.</p>
             <label class="check" for="github-fluid-width-legacy-issue-pr" title="Hide floating issue and PR title headers.">
               <input id="github-fluid-width-legacy-issue-pr" type="checkbox" aria-describedby="github-fluid-width-legacy-issue-pr-hint">
-              <span>Legecy (IS,PR) rendering</span>
+              <span>Hide PR &amp; Issue Headers</span>
             </label>
             <p id="github-fluid-width-legacy-issue-pr-hint" hidden>Hide floating issue and PR title headers.</p>
             <p class="status" role="status" aria-live="polite"></p>

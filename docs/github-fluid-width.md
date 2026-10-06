@@ -118,7 +118,7 @@ While the panel is open, the background page cannot be clicked, hovered, focused
 or scrolled. Long settings content scrolls inside the panel; closing restores
 normal page interaction without activating anything under the dismissal click.
 Opening the panel preserves floating headers behind the translucent backdrop
-when **Legecy (IS,PR) rendering** is off. The checkbox hides and restores them
+when **Hide PR & Issue Headers** is off. The checkbox hides and restores them
 live while the panel remains open.
 
 Opening settings does not preselect a button, slider, or field. Keyboard focus
@@ -141,7 +141,7 @@ The panel provides:
 
 - a percentage slider and numeric input that update the current page live; the slider and numeric arrows use 1% steps, while decimals such as `95.1` can be entered manually in the numeric field
 - an **Override full-width pages** checkbox, enabled by default
-- a **Legecy (IS,PR) rendering** checkbox, disabled by default; it hides the floating issue and pull-request title headers at every viewport width
+- a **Hide PR & Issue Headers** checkbox, disabled by default; it hides the floating issue and pull-request title headers at every viewport width
 - a minimum side-gutter setting
 - **Reset defaults** to explicitly restore the current built-in defaults
 
@@ -150,10 +150,10 @@ available to screen readers without adding visible text beneath the controls.
 
 The slider, numeric fields, and both checkboxes all update the current page
 immediately. **Reset defaults** also applies live: it restores `95%`, `32px`,
-override enabled, and **Legecy (IS,PR) rendering** disabled, then saves those
+override enabled, and **Hide PR & Issue Headers** disabled, then saves those
 choices. No page reload is needed.
 
-**Legecy (IS,PR) rendering** hides the floating title clones used on issue and
+**Hide PR & Issue Headers** hides the floating title clones used on issue and
 pull-request pages. On issue pages it also cancels GitHub's `-56px` bottom-margin
 compensation on the regular metadata header, preserving the content position.
 Turning the option off restores the floating headers immediately, without a
