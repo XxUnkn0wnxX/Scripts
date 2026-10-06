@@ -184,14 +184,14 @@ const CONFIG = Object.freeze({
   contentWidthPercent: 95,
   minGutterPx: 32,
   overrideFullWidthPages: true,
-  legacyIssuePrRendering: false,
+  HideIssuePRHeader: false,
 });
 ```
 
 - `contentWidthPercent` controls the requested target width of a selected workspace. Values from `1` to `100` are accepted, including decimals; values above `100` are clamped to `100`, and invalid values fall back to `95`. Capped workspaces retain their native minimum; naturally fullwidth content can shrink toward the percentage while retaining its documented readability minimum.
 - `minGutterPx` controls the minimum gutter on each side of a centered workspace when the parent has room to preserve both that gutter and the native floor. Values are clamped to `16..128px` and rounded; invalid values fall back to `32px`.
 - `overrideFullWidthPages` defaults to `true`. Set the boolean to `false` to keep naturally fullwidth file, folder, code, text, renderer, pull-request diff, completed Actions, and search workspaces at native width; capped expansion and nested rendered-document fill continue to apply. An omitted or non-boolean value uses the default `true` behavior.
-- `legacyIssuePrRendering` defaults to `false`. Set it to the boolean `true` to hide the floating issue and pull-request title clones at every viewport width, while keeping regular page headings visible. Reset defaults restores it to `false`.
+- `HideIssuePRHeader` defaults to `false`. Set it to the boolean `true` to hide the floating issue and pull-request title clones at every viewport width, while keeping regular page headings visible. Reset defaults restores it to `false`.
 
 Use the panel for normal customization. Editing `CONFIG` after preferences
 have been saved does not replace those saved values. Source edits made in an

@@ -46,7 +46,7 @@
     contentWidthPercent: 95,
     minGutterPx: 32,
     overrideFullWidthPages: true,
-    legacyIssuePrRendering: false,
+    HideIssuePRHeader: false,
   });
 
   const SETTINGS_SCHEMA_VERSION = 1;
@@ -55,14 +55,14 @@
     contentWidthPercent: 'github-fluid-width.contentWidthPercent',
     minGutterPx: 'github-fluid-width.minGutterPx',
     overrideFullWidthPages: 'github-fluid-width.overrideFullWidthPages',
-    legacyIssuePrRendering: 'github-fluid-width.legacyIssuePrRendering',
+    HideIssuePRHeader: 'github-fluid-width.HideIssuePRHeader',
     schemaVersion: 'github-fluid-width.schemaVersion',
   });
   const SETTINGS_CONFIG_KEYS = Object.freeze([
     'contentWidthPercent',
     'minGutterPx',
     'overrideFullWidthPages',
-    'legacyIssuePrRendering',
+    'HideIssuePRHeader',
   ]);
 
   // These are GitHub layout primitives, rather than a list of URL routes. The
@@ -131,7 +131,7 @@
   let percent = finiteClamp(CONFIG.contentWidthPercent, 95, 1, 100);
   let gutter = Math.round(finiteClamp(CONFIG.minGutterPx, 32, 16, 128));
   let overrideFullWidthPages = CONFIG.overrideFullWidthPages !== false;
-  let legacyIssuePrRendering = CONFIG.legacyIssuePrRendering === true;
+  let HideIssuePRHeader = CONFIG.HideIssuePRHeader === true;
   const desktopQuery = window.matchMedia(`(min-width: ${MIN_VIEWPORT_PX}px)`);
   const style = document.createElement('style');
   style.id = STYLE_ID;
@@ -165,7 +165,7 @@
     percent = finiteClamp(next.contentWidthPercent, 95, 1, 100);
     gutter = Math.round(finiteClamp(next.minGutterPx, 32, 16, 128));
     overrideFullWidthPages = next.overrideFullWidthPages !== false;
-    legacyIssuePrRendering = next.legacyIssuePrRendering === true;
+    HideIssuePRHeader = next.HideIssuePRHeader === true;
     style.textContent = buildStyles();
     scheduleSync();
   }
@@ -193,7 +193,7 @@
     const searchWidthWithoutSidebar = searchWidth(100, 0);
     const active = `html[${ACTIVE_ATTR}]`;
     return `
-${legacyIssuePrRendering ? `
+${HideIssuePRHeader ? `
 /* Hide only the floating title copies; the shared sticky class also belongs
    to PR file controls. Keep regular headings and those controls intact. */
 ${active} #issue-viewer-sticky-header,
@@ -1160,11 +1160,11 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
               <span>Override full-width pages</span>
             </label>
             <p id="github-fluid-width-override-hint" hidden>Apply your width setting to full-width pages.</p>
-            <label class="check" for="github-fluid-width-legacy-issue-pr" title="Hide floating issue and PR title headers.">
-              <input id="github-fluid-width-legacy-issue-pr" type="checkbox" aria-describedby="github-fluid-width-legacy-issue-pr-hint">
+            <label class="check" for="github-fluid-width-hide-issue-pr-header" title="Hide floating issue and PR title headers.">
+              <input id="github-fluid-width-hide-issue-pr-header" type="checkbox" aria-describedby="github-fluid-width-hide-issue-pr-header-hint">
               <span>Hide PR &amp; Issue Headers</span>
             </label>
-            <p id="github-fluid-width-legacy-issue-pr-hint" hidden>Hide floating issue and PR title headers.</p>
+            <p id="github-fluid-width-hide-issue-pr-header-hint" hidden>Hide floating issue and PR title headers.</p>
             <p class="status" role="status" aria-live="polite"></p>
             <div class="actions">
               <button type="button" data-reset>Reset defaults</button>
@@ -1182,7 +1182,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
         percent: root.querySelector('#github-fluid-width-percent-number'),
         gutter: root.querySelector('#github-fluid-width-gutter'),
         override: root.querySelector('#github-fluid-width-override'),
-        legacyIssuePr: root.querySelector('#github-fluid-width-legacy-issue-pr'),
+        hideIssuePrHeader: root.querySelector('#github-fluid-width-hide-issue-pr-header'),
         status: root.querySelector('.status'),
         reset: root.querySelector('[data-reset]'),
         close: root.querySelector('[data-close]'),
@@ -1227,8 +1227,8 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
         setConfig({overrideFullWidthPages: ui.override.checked});
         flushSettings().catch(() => {});
       });
-      ui.legacyIssuePr.addEventListener('change', () => {
-        setConfig({legacyIssuePrRendering: ui.legacyIssuePr.checked});
+      ui.hideIssuePrHeader.addEventListener('change', () => {
+        setConfig({HideIssuePRHeader: ui.hideIssuePrHeader.checked});
         flushSettings().catch(() => {});
       });
       ui.dialog.addEventListener('cancel', (event) => {
@@ -1349,7 +1349,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
       if (forceNumbers || active !== ui.percent) ui.percent.value = String(current.contentWidthPercent);
       if (forceNumbers || active !== ui.gutter) ui.gutter.value = String(current.minGutterPx);
       ui.override.checked = current.overrideFullWidthPages;
-      ui.legacyIssuePr.checked = current.legacyIssuePrRendering;
+      ui.hideIssuePrHeader.checked = current.HideIssuePRHeader;
       ui.status.textContent = storageError && storageState === 'write-error'
         ? storageError.message || statusText(storageState)
         : statusText(storageState);
@@ -1363,7 +1363,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
     if (key === 'contentWidthPercent') return finiteClamp(value, fallback, 1, 100);
     if (key === 'minGutterPx') return Math.round(finiteClamp(value, fallback, 16, 128));
     if (key === 'overrideFullWidthPages') return value !== false;
-    if (key === 'legacyIssuePrRendering') return value === true;
+    if (key === 'HideIssuePRHeader') return value === true;
     return value;
   }
 
@@ -1372,7 +1372,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
       contentWidthPercent: normalizeSettingValue('contentWidthPercent', values.contentWidthPercent, SETTINGS_DEFAULTS.contentWidthPercent),
       minGutterPx: normalizeSettingValue('minGutterPx', values.minGutterPx, SETTINGS_DEFAULTS.minGutterPx),
       overrideFullWidthPages: normalizeSettingValue('overrideFullWidthPages', values.overrideFullWidthPages, SETTINGS_DEFAULTS.overrideFullWidthPages),
-      legacyIssuePrRendering: normalizeSettingValue('legacyIssuePrRendering', values.legacyIssuePrRendering, SETTINGS_DEFAULTS.legacyIssuePrRendering),
+      HideIssuePRHeader: normalizeSettingValue('HideIssuePRHeader', values.HideIssuePRHeader, SETTINGS_DEFAULTS.HideIssuePRHeader),
     };
   }
 
@@ -1381,7 +1381,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
       contentWidthPercent: values.contentWidthPercent,
       minGutterPx: values.minGutterPx,
       overrideFullWidthPages: values.overrideFullWidthPages,
-      legacyIssuePrRendering: values.legacyIssuePrRendering,
+      HideIssuePRHeader: values.HideIssuePRHeader,
     };
   }
 
