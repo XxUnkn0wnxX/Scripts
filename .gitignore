@@ -16,6 +16,7 @@ Backup/
 
 # Local agent and environment files
 AGENTS.md
+!/AGENTS.md
 .venv/
 __pycache__/
 .pytest_cache/
