@@ -21,6 +21,10 @@ The scope is **all currently supported Matroska files: `.mkv`, `.mka`, `.mks`,
 and `.mk3d`**. This applies to file discovery, single actions, batch configuration,
 previews, execution, and validation. Keep the existing `mkvutil` command name;
 use Matroska category labels so the interface does not imply video-only support.
+Keep the utility self-contained in `shell/mkv_utils.zsh`: shared definitions,
+configuration, planners, and executors live inside that one script. Do not split
+runtime helpers into additional `.zsh` dependencies; existing test helpers remain
+separate test infrastructure.
 
 The main performance goal is **one full remux per file** when removing and
 reordering tracks together. Names, languages, flags, and titles should join the
@@ -283,12 +287,13 @@ remux actions to it.
   collisions across the queue, including `.mkv` to `.mka` name collisions.
   Jobs without removal retain the input's `.mkv`, `.mka`, `.mks`, or `.mk3d`
   extension. Jobs containing removal use the agreed removal output-naming policy.
-  Current choice 7 chooses `.mka` whenever no video remains; preserve its
-  established conversions during migration. Before implementing removal,
-  explicitly settle consistent single/batch output naming for audio-only,
-  subtitle-only, and 3D results, including this existing `.mka` rule. Do not
-  silently force every new batch output to `.mkv` or assume every no-video
-  result contains audio.
+  The user approved retained-content naming for both single and batch removal:
+  video results retain an existing `.mkv` or `.mk3d` extension (otherwise use
+  `.mkv`); no-video results with audio use `.mka`; subtitle-only results use
+  `.mks`. This deliberately refines choice 7's old blanket no-video `.mka` rule
+  while preserving its audio conversion. Reject empty or unsupported retained
+  layouts rather than guessing an extension. Preview the final destination and
+  preflight collisions before execution.
 - Recheck source identity, size, and modification time before mutation and
   promotion to detect a changed input since preflight.
 - Validate the staged result against expected tracks/order/metadata before
@@ -330,7 +335,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
 | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
-| T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
+| T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
 | T01.03 | Adapt existing actions into category submenus; implement single/comma/range selections, one target selection, per-file planning, conflicts, optional Mux metadata, and complete track/output previews. Wire the actual configuration consumers without media mutation. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, invalid/cancel/EOF behavior, all-format planning, settled output names, and no-write configuration/cancellation evidence. |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
@@ -388,8 +393,8 @@ Before implementation, inspect the selected target's prerequisite closure and
 shared surfaces. Where these materially affect scope/order, present A (smallest
 independently completable ready tasks) and B (minimal coordinated dependency/
 overlap batch), then record the selected route and ownership in the handoff.
-The current authorization to restructure these documents and run parallel
-reviews does not select or authorize an implementation package.
+The handoff records the selected route and current implementation authorization;
+dependency structure and review verdicts do not themselves authorize a package.
 
 Saved presets and noninteractive CLI operation are possible later extensions of
 the internal job plans. They are not requirements for the first completed rework.

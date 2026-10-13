@@ -371,6 +371,615 @@ collect_tracks_for_remux() {
   print -r -- "$track_rows"
 }
 
+# Pure planning state shared by the rework helpers. These values describe the
+# original Matroska track IDs and listing positions; they never address UIDs.
+typeset -ga MKVUTIL_INPUT_IDS=()
+typeset -ga MKVUTIL_RETAINED_IDS=()
+typeset -gA MKVUTIL_TRACK_TYPES=()
+typeset -gA MKVUTIL_PROPEDIT_SELECTORS=()
+typeset -g MKVUTIL_TRACK_ORDER=""
+typeset -g MKVUTIL_OUTPUT_EXTENSION=""
+
+_mkvutil_canonical_id() {
+  local value="${1//[[:space:]]/}"
+  [[ "$value" == <-> ]] || return 1
+  while [[ ${#value} -gt 1 && "$value" == 0* ]]; do
+    value="${value#0}"
+  done
+  REPLY="$value"
+}
+
+_mkvutil_compare_ids() {
+  local left="$1" right="$2"
+  if (( ${#left} < ${#right} )); then
+    REPLY=-1
+  elif (( ${#left} > ${#right} )); then
+    REPLY=1
+  elif [[ "$left" == "$right" ]]; then
+    REPLY=0
+  elif [[ "$left" < "$right" ]]; then
+    REPLY=-1
+  else
+    REPLY=1
+  fi
+}
+
+_mkvutil_decimal_successor() {
+  local value="$1" digit="" next_digit="" result="" carry=1 i=0
+  for (( i = ${#value}; i >= 1; i-- )); do
+    digit="${value[$i]}"
+    if (( carry )); then
+      case "$digit" in
+        9) next_digit=0 ;;
+        *) next_digit=$(( digit + 1 )); carry=0 ;;
+      esac
+    else
+      next_digit="$digit"
+    fi
+    result="$next_digit$result"
+  done
+  (( carry )) && result="1$result"
+  REPLY="$result"
+}
+
+# Expand menu selections against an explicit ID domain. The range walk is
+# bounded by that domain, even when the requested endpoints are enormous.
+mkvutil_expand_ids() {
+  local selection="${1-}" allowed_csv="${2-}" token="" start="" end=""
+  local candidate="" key="" output="" successor=""
+  local i=0 j=0
+  local -a allowed_ids=() tokens=() range_ids=() selected_ids=()
+  local -A allowed_set=() selected_set=()
+
+  for token in "${(@s:,:)allowed_csv}"; do
+    token="${token//[[:space:]]/}"
+    [[ -n "$token" ]] || return 1
+    _mkvutil_canonical_id "$token" || return 1
+    candidate="$REPLY"
+    [[ -z "${allowed_set[$candidate]-}" ]] || return 1
+    allowed_set[$candidate]=1
+    allowed_ids+=("$candidate")
+  done
+  (( ${#allowed_ids} > 0 )) || return 1
+
+  selection="${selection//[[:space:]]/}"
+  [[ -n "$selection" ]] || return 1
+  tokens=("${(@s:,:)selection}")
+  for token in "${tokens[@]}"; do
+    [[ -n "$token" ]] || return 1
+    if [[ "$token" == *-* ]]; then
+      [[ "$token" != -* && "$token" != *- && "${token#*-}" != *-* ]] || return 1
+      start="${token%%-*}"
+      end="${token#*-}"
+      _mkvutil_canonical_id "$start" || return 1
+      start="$REPLY"
+      _mkvutil_canonical_id "$end" || return 1
+      end="$REPLY"
+      [[ -n "${allowed_set[$start]-}" && -n "${allowed_set[$end]-}" ]] || return 1
+      _mkvutil_compare_ids "$start" "$end"
+      (( REPLY <= 0 )) || return 1
+
+      range_ids=()
+      for candidate in "${allowed_ids[@]}"; do
+        _mkvutil_compare_ids "$candidate" "$start"
+        (( REPLY >= 0 )) || continue
+        _mkvutil_compare_ids "$candidate" "$end"
+        (( REPLY <= 0 )) && range_ids+=("$candidate")
+      done
+      (( ${#range_ids} > 0 )) || return 1
+
+      # A range means ascending numeric selection order, independent of the
+      # ordering of the allowed-domain CSV.
+      for (( i = 2; i <= ${#range_ids}; i++ )); do
+        key="${range_ids[$i]}"
+        j=$(( i - 1 ))
+        while (( j >= 1 )); do
+          _mkvutil_compare_ids "${range_ids[$j]}" "$key"
+          (( REPLY <= 0 )) && break
+          range_ids[$(( j + 1 ))]="${range_ids[$j]}"
+          (( j-- ))
+        done
+        range_ids[$(( j + 1 ))]="$key"
+      done
+
+      for (( i = 2; i <= ${#range_ids}; i++ )); do
+        _mkvutil_decimal_successor "${range_ids[$(( i - 1 ))]}"
+        successor="$REPLY"
+        [[ "$successor" == "${range_ids[$i]}" ]] || return 1
+      done
+
+      for candidate in "${range_ids[@]}"; do
+        if [[ -z "${selected_set[$candidate]-}" ]]; then
+          selected_set[$candidate]=1
+          selected_ids+=("$candidate")
+        fi
+      done
+    else
+      _mkvutil_canonical_id "$token" || return 1
+      candidate="$REPLY"
+      [[ -n "${allowed_set[$candidate]-}" ]] || return 1
+      if [[ -z "${selected_set[$candidate]-}" ]]; then
+        selected_set[$candidate]=1
+        selected_ids+=("$candidate")
+      fi
+    fi
+  done
+
+  (( ${#selected_ids} > 0 )) || return 1
+  output="${(j:,:)selected_ids}"
+  print -r -- "$output"
+}
+
+_mkvutil_plan_layout_build() {
+  local rows="${1-}" removed_input="${2-}" order_input="${3-}" input_extension="${4-}"
+  local row="" track_type="" raw_id="" track_id="" removed_ids="" order=""
+  local order_item="" order_id="" extension="" selector="" output_order=""
+  local position=0 retained_count=0 has_video=0 has_audio=0 has_subtitles=0
+  local -a ordered_ids=() final_ids=()
+  local -A input_set=() removed_set=() order_set=()
+
+  MKVUTIL_INPUT_IDS=()
+  MKVUTIL_RETAINED_IDS=()
+  MKVUTIL_TRACK_TYPES=()
+  MKVUTIL_PROPEDIT_SELECTORS=()
+  MKVUTIL_TRACK_ORDER=""
+  MKVUTIL_OUTPUT_EXTENSION=""
+
+  [[ -n "$rows" ]] || return 1
+  while IFS= read -r row || [[ -n "$row" ]]; do
+    [[ -n "$row" && "$row" == *$'\t'* ]] || return 1
+    track_type="${row%%$'\t'*}"
+    raw_id="${row#*$'\t'}"
+    [[ "$raw_id" != *$'\t'* ]] || return 1
+    [[ "$track_type" == video || "$track_type" == audio || "$track_type" == subtitles ]] || return 1
+    _mkvutil_canonical_id "$raw_id" || return 1
+    track_id="$REPLY"
+    [[ -z "${input_set[$track_id]-}" ]] || return 1
+
+    input_set[$track_id]=1
+    MKVUTIL_INPUT_IDS+=("$track_id")
+    MKVUTIL_TRACK_TYPES[$track_id]="$track_type"
+    (( position++ ))
+    selector="track:$position"
+    MKVUTIL_PROPEDIT_SELECTORS[$track_id]="$selector"
+  done <<< "$rows"
+  (( ${#MKVUTIL_INPUT_IDS} > 0 )) || return 1
+
+  removed_input="${removed_input//[[:space:]]/}"
+  if [[ -n "$removed_input" ]]; then
+    removed_ids="$(mkvutil_expand_ids "$removed_input" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
+    for track_id in "${(@s:,:)removed_ids}"; do
+      removed_set[$track_id]=1
+    done
+  fi
+
+  for track_id in "${MKVUTIL_INPUT_IDS[@]}"; do
+    [[ -z "${removed_set[$track_id]-}" ]] || continue
+    MKVUTIL_RETAINED_IDS+=("$track_id")
+  done
+  (( ${#MKVUTIL_RETAINED_IDS} > 0 )) || return 1
+
+  order="${order_input//[[:space:]]/}"
+  if [[ -n "$order" ]]; then
+    local -a order_items=("${(@s:,:)order}")
+    for order_item in "${order_items[@]}"; do
+      [[ "$order_item" == 0:* ]] || return 1
+      order_id="${order_item#0:}"
+      _mkvutil_canonical_id "$order_id" || return 1
+      order_id="$REPLY"
+      [[ -n "${input_set[$order_id]-}" ]] || return 1
+      [[ -z "${removed_set[$order_id]-}" ]] || return 1
+      [[ -z "${order_set[$order_id]-}" ]] || return 1
+      order_set[$order_id]=1
+      ordered_ids+=("$order_id")
+    done
+  fi
+
+  final_ids=("${ordered_ids[@]}")
+  for track_id in "${MKVUTIL_RETAINED_IDS[@]}"; do
+    [[ -n "${order_set[$track_id]-}" ]] || final_ids+=("$track_id")
+  done
+  for track_id in "${final_ids[@]}"; do
+    (( retained_count++ ))
+    case "${MKVUTIL_TRACK_TYPES[$track_id]}" in
+      video) has_video=1 ;;
+      audio) has_audio=1 ;;
+      subtitles) has_subtitles=1 ;;
+    esac
+    [[ -n "$output_order" ]] && output_order+=","
+    output_order+="0:$track_id"
+  done
+  (( retained_count > 0 )) || return 1
+
+  extension="${input_extension#.}"
+  extension="${extension:l}"
+  case "$extension" in
+    mkv|mka|mks|mk3d) ;;
+    *) return 1 ;;
+  esac
+
+  if (( ${#removed_set} == 0 )); then
+    MKVUTIL_OUTPUT_EXTENSION="$extension"
+  elif (( has_video )); then
+    if [[ "$extension" == mk3d ]]; then
+      MKVUTIL_OUTPUT_EXTENSION="mk3d"
+    else
+      MKVUTIL_OUTPUT_EXTENSION="mkv"
+    fi
+  elif (( has_audio )); then
+    MKVUTIL_OUTPUT_EXTENSION="mka"
+  elif (( has_subtitles )); then
+    MKVUTIL_OUTPUT_EXTENSION="mks"
+  else
+    return 1
+  fi
+
+  MKVUTIL_RETAINED_IDS=("${final_ids[@]}")
+  MKVUTIL_TRACK_ORDER="$output_order"
+}
+
+_mkvutil_clear_plan_layout() {
+  MKVUTIL_INPUT_IDS=()
+  MKVUTIL_RETAINED_IDS=()
+  MKVUTIL_TRACK_TYPES=()
+  MKVUTIL_PROPEDIT_SELECTORS=()
+  MKVUTIL_TRACK_ORDER=""
+  MKVUTIL_OUTPUT_EXTENSION=""
+}
+
+mkvutil_plan_layout() {
+  local result=0
+  _mkvutil_clear_plan_layout
+  _mkvutil_plan_layout_build "$@" || result=$?
+  if (( result != 0 )); then
+    _mkvutil_clear_plan_layout
+    return "$result"
+  fi
+  return 0
+}
+
+# Shared metadata foundation. Definitions are the sole source of menu order,
+# prompts, defaults, validators and both tool mappings. No helper in this
+# section edits media or invokes mkvmerge/mkvpropedit.
+typeset -ga MKVUTIL_METADATA_IDS=()
+typeset -gA MKVUTIL_METADATA_REGISTRY=()
+# Keys are CHOICE:ORIGINAL_TID; container settings use CHOICE:info. An existing
+# key with an empty value explicitly clears a name/title; a missing key is idle.
+typeset -gA MKVUTIL_METADATA_SETTINGS=()
+typeset -gA MKVUTIL_SOURCE_FLAGS=()
+typeset -g MKVUTIL_FLAG_LAYOUT=""
+typeset -ga MKVUTIL_PROPEDIT_ARGS=()
+typeset -ga MKVUTIL_MERGE_METADATA_ARGS=()
+
+_mkvutil_metadata_define() {
+  (( $# == 9 )) || return 1
+  local choice="$1" field="" key="" i=0
+  local -a fields=(label scope prompt default validator property merge snapshot)
+  _mkvutil_canonical_id "$choice" || return 1
+  choice="$REPLY"
+  [[ "$choice" != 0 ]] || return 1
+  (( ${MKVUTIL_METADATA_IDS[(Ie)$choice]} == 0 )) || return 1
+  MKVUTIL_METADATA_IDS+=("$choice")
+  for (( i = 1; i <= ${#fields}; i++ )); do
+    field="${fields[$i]}"
+    key="${choice}:$field"
+    MKVUTIL_METADATA_REGISTRY[$key]="${argv[$(( i + 1 ))]}"
+  done
+}
+
+_mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Flag-forced (1 or 0) [0]: ' 0 boolean flag-forced --forced-display-flag forced_track
+_mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Flag-default (1 or 0) [1]: ' 1 boolean flag-default --default-track-flag default_track
+_mkvutil_metadata_define 3 'Set language for tracks' track 'Language: ' '' language language --language ''
+_mkvutil_metadata_define 4 'Set name for tracks' track 'Name: ' '' text name --track-name ''
+_mkvutil_metadata_define 5 'Set title for MK file' container 'Title (empty to unset): ' '' text title --title ''
+
+# BCP 47 structural syntax plus grandfathered tags; this deliberately does not
+# assert IANA/ISO membership or tool acceptance. Preserve the user's spelling.
+_mkvutil_metadata_language_valid() {
+  local value="$1" language='([A-Za-z]{2,3}(-[A-Za-z]{3}){0,3}|[A-Za-z]{4}|[A-Za-z]{5,8})'
+  local script='(-[A-Za-z]{4})?' region='(-([A-Za-z]{2}|[0-9]{3}))?'
+  local variants='(-([A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*'
+  local extensions='(-[0-9A-WY-Za-wy-z](-[A-Za-z0-9]{2,8})+)*'
+  local private='(-[xX](-[A-Za-z0-9]{1,8})+)?' pattern=""
+  local subtag="" in_extension=0 i=0
+  local -a subtags=()
+  local -A seen_variants=() seen_extensions=()
+  case "${value:l}" in
+    en-gb-oed|i-ami|i-bnn|i-default|i-enochian|i-hak|i-klingon|i-lux|i-mingo|i-navajo|i-pwn|i-tao|i-tay|i-tsu|sgn-be-fr|sgn-be-nl|sgn-ch-de|art-lojban|cel-gaulish|no-bok|no-nyn|zh-guoyu|zh-hakka|zh-min|zh-min-nan|zh-xiang) return 0 ;;
+  esac
+  pattern="^($language$script$region$variants$extensions$private|[xX](-[A-Za-z0-9]{1,8})+)$"
+  [[ "$value" =~ "$pattern" ]] || return 1
+  value="${value:l}"
+  [[ "$value" != x-* ]] || return 0
+  subtags=("${(@s:-:)value}")
+  for (( i = 2; i <= ${#subtags}; i++ )); do
+    subtag="${subtags[$i]}"
+    [[ "$subtag" != x ]] || break
+    if (( ${#subtag} == 1 )); then
+      (( ! ${+seen_extensions[$subtag]} )) || return 1
+      seen_extensions[$subtag]=1
+      in_extension=1
+    elif (( ! in_extension )) && [[ "$subtag" =~ '^([a-z0-9]{5,8}|[0-9][a-z0-9]{3})$' ]]; then
+      (( ! ${+seen_variants[$subtag]} )) || return 1
+      seen_variants[$subtag]=1
+    fi
+  done
+  return 0
+}
+
+_mkvutil_metadata_value_valid() {
+  case "$1" in
+    boolean) [[ "$2" == 0 || "$2" == 1 ]] ;;
+    language) _mkvutil_metadata_language_valid "$2" ;;
+    text) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+mkvutil_metadata_validate_registry() {
+  local choice="" field="" key="" scope="" validator="" snapshot="" value=""
+  local -A seen=()
+  (( ${#MKVUTIL_METADATA_IDS} > 0 )) || return 1
+  for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+    _mkvutil_canonical_id "$choice" || return 1
+    [[ "$choice" == "$REPLY" && "$choice" != 0 && -z "${seen[$choice]-}" ]] || return 1
+    seen[$choice]=1
+    for field in label scope prompt default validator property merge snapshot; do
+      key="${choice}:$field"
+      (( ${+MKVUTIL_METADATA_REGISTRY[$key]} )) || return 1
+      case "$field" in
+        default|snapshot) ;;
+        *) [[ -n "${MKVUTIL_METADATA_REGISTRY[$key]}" ]] || return 1 ;;
+      esac
+    done
+    scope="${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}"
+    validator="${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}"
+    snapshot="${MKVUTIL_METADATA_REGISTRY[${choice}:snapshot]}"
+    [[ "$scope" == track || "$scope" == container ]] || return 1
+    [[ "$validator" == boolean || "$validator" == language || "$validator" == text ]] || return 1
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:property]}" =~ '^[a-z][a-z0-9-]*$' ]] || return 1
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:merge]}" =~ '^--[a-z][a-z0-9-]*$' ]] || return 1
+    value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
+    if [[ "$validator" == boolean || -n "$value" ]]; then
+      _mkvutil_metadata_value_valid "$validator" "$value" || return 1
+    fi
+    if [[ -n "$snapshot" ]]; then
+      [[ "$scope" == track && "$validator" == boolean && "$snapshot" =~ '^[a-z][a-z_]*$' ]] || return 1
+    fi
+  done
+  return 0
+}
+
+mkvutil_metadata_menu() {
+  local choice=""
+  mkvutil_metadata_validate_registry || return 1
+  for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+    print -r -- "$choice) ${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
+  done
+}
+
+mkvutil_metadata_reset() {
+  MKVUTIL_METADATA_SETTINGS=()
+  MKVUTIL_SOURCE_FLAGS=()
+  MKVUTIL_FLAG_LAYOUT=""
+  MKVUTIL_PROPEDIT_ARGS=()
+  MKVUTIL_MERGE_METADATA_ARGS=()
+}
+
+_mkvutil_metadata_target_valid() {
+  local choice="$1" target="$2"
+  (( ${MKVUTIL_METADATA_IDS[(Ie)$choice]} > 0 )) || return 1
+  if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == container ]]; then
+    [[ "$target" == info ]] || return 1
+  else
+    _mkvutil_canonical_id "$target" || return 1
+    [[ "$target" == "$REPLY" ]] || return 1
+    (( ${MKVUTIL_RETAINED_IDS[(Ie)$target]} > 0 && ${MKVUTIL_INPUT_IDS[(Ie)$target]} > 0 )) || return 1
+    [[ -n "${MKVUTIL_TRACK_TYPES[$target]-}" && -n "${MKVUTIL_PROPEDIT_SELECTORS[$target]-}" ]] || return 1
+  fi
+  return 0
+}
+
+# Pure setter: mkvutil_metadata_set CHOICE ORIGINAL_TID_OR_info VALUE.
+mkvutil_metadata_set() {
+  MKVUTIL_PROPEDIT_ARGS=()
+  MKVUTIL_MERGE_METADATA_ARGS=()
+  (( $# == 3 )) || return 1
+  local choice="$1" target="$2" value="$3"
+  mkvutil_metadata_validate_registry || return 1
+  _mkvutil_canonical_id "$choice" || return 1
+  choice="$REPLY"
+  if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]-}" == track ]]; then
+    _mkvutil_canonical_id "$target" || return 1
+    target="$REPLY"
+  fi
+  _mkvutil_metadata_target_valid "$choice" "$target" || return 1
+  _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "$value" || return 1
+  MKVUTIL_METADATA_SETTINGS[${choice}:$target]="$value"
+}
+
+_mkvutil_metadata_collect() {
+  local choices="" choice="" selection="" targets_csv="" target="" value=""
+  local -a chosen_targets=()
+  mkvutil_metadata_validate_registry || return 1
+  choices="$(mkvutil_expand_ids "$1" "${(j:,:)MKVUTIL_METADATA_IDS}")" || return 1
+  for choice in "${(@s:,:)choices}"; do
+    chosen_targets=(info)
+    if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
+      printf '%s — Track IDs (comma/range; cancel to return): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
+      IFS= read -r selection || return 2
+      [[ "$selection" != cancel ]] || return 2
+      targets_csv="$(mkvutil_expand_ids "$selection" "${(j:,:)MKVUTIL_RETAINED_IDS}")" || return 1
+      chosen_targets=("${(@s:,:)targets_csv}")
+    fi
+    for target in "${chosen_targets[@]}"; do
+      [[ "$target" == info ]] || printf 'Track ID %s — ' "$target" >&2
+      printf '%s' "${MKVUTIL_METADATA_REGISTRY[${choice}:prompt]}" >&2
+      IFS= read -r value || return 2
+      [[ -n "$value" ]] || value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
+      mkvutil_metadata_set "$choice" "$target" "$value" || return 1
+    done
+  done
+  return 0
+}
+
+# Collect once, before execution. EOF/cancel returns 2; invalid input returns 1.
+# A failed/cancelled collection leaves no partial settings or argument arrays.
+mkvutil_metadata_configure() {
+  local result=0
+  mkvutil_metadata_reset
+  _mkvutil_metadata_collect "${1-}" || result=$?
+  if (( result != 0 )); then
+    mkvutil_metadata_reset
+    return "$result"
+  fi
+  return 0
+}
+
+_mkvutil_metadata_validate_settings() {
+  local key="" choice="" target=""
+  mkvutil_metadata_validate_registry || return 1
+  (( ${#MKVUTIL_INPUT_IDS} > 0 && ${#MKVUTIL_RETAINED_IDS} > 0 )) || return 1
+  for key in "${(@k)MKVUTIL_METADATA_SETTINGS}"; do
+    [[ "$key" == *:* ]] || return 1
+    choice="${key%%:*}"
+    target="${key#*:}"
+    _mkvutil_metadata_target_valid "$choice" "$target" || return 1
+    _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "${MKVUTIL_METADATA_SETTINGS[$key]}" || return 1
+  done
+  return 0
+}
+
+_mkvutil_metadata_layout_rows() {
+  local track_id=""
+  for track_id in "${MKVUTIL_INPUT_IDS[@]}"; do
+    print -r -- "$track_id"$'\t'"${MKVUTIL_TRACK_TYPES[$track_id]}"
+  done
+}
+
+# Accept already-identified JSON; jq is the only subprocess. Check the current
+# original listing and snapshot boolean fields for retained tracks, including
+# explicit false. Never infer defaults from absent/null/non-boolean properties.
+mkvutil_metadata_snapshot_flags() {
+  local json="${1-}" choice="" field="" definitions="" expected="" rows=""
+  local track_id="" value="" key=""
+  local -A flags=()
+  MKVUTIL_SOURCE_FLAGS=()
+  MKVUTIL_FLAG_LAYOUT=""
+  MKVUTIL_MERGE_METADATA_ARGS=()
+  _mkvutil_metadata_validate_settings || return 1
+  expected="$(_mkvutil_metadata_layout_rows)" || return 1
+  for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+    field="${MKVUTIL_METADATA_REGISTRY[${choice}:snapshot]}"
+    [[ -n "$field" ]] || continue
+    [[ -z "$definitions" ]] || definitions+=$'\n'
+    definitions+="$choice"$'\t'"$field"
+  done
+  rows="$(jq -er --arg expected "$expected" --arg definitions "$definitions" \
+    --arg retained "${(j:,:)MKVUTIL_RETAINED_IDS}" '
+    .tracks as $tracks |
+    if ($tracks | type) != "array" or
+       any($tracks[]; (.id | type) != "number" or .id < 0 or .id != (.id | floor))
+    then error("invalid original track listing") else . end |
+    if ($tracks | map([(.id | tostring), .type] | @tsv) | join("\n")) != $expected
+    then error("snapshot/layout mismatch") else . end |
+    ($retained | split(",")) as $keep |
+    ($definitions | split("\n") | map(select(length > 0) | split("\t"))) as $fields |
+    $tracks[] | (.id | tostring) as $id | select($keep | index($id)) |
+    .properties as $properties | $fields[] |
+    .[0] as $choice | .[1] as $field | $properties[$field] as $value |
+    if ($value | type) != "boolean" then error("invalid preserved flag")
+    else [$choice, $id, (if $value then "1" else "0" end)] | @tsv end
+    ' <<< "$json")" || return 1
+  while IFS=$'\t' read -r choice track_id value; do
+    [[ -n "$choice" && -n "$track_id" && ( "$value" == 0 || "$value" == 1 ) ]] || return 1
+    key="${choice}:$track_id"
+    (( ! ${+flags[$key]} )) || return 1
+    flags[$key]="$value"
+  done <<< "$rows"
+  MKVUTIL_SOURCE_FLAGS=("${(@kv)flags}")
+  MKVUTIL_FLAG_LAYOUT="$expected|${(j:,:)MKVUTIL_RETAINED_IDS}"
+  return 0
+}
+
+# Build one grouped mkvpropedit argv suffix in MKVUTIL_PROPEDIT_ARGS. Original
+# listing-position selectors are independent of reordered output positions.
+mkvutil_build_propedit_args() {
+  local track_id="" choice="" key="" property="" value=""
+  local -a args=() changes=()
+  MKVUTIL_PROPEDIT_ARGS=()
+  _mkvutil_metadata_validate_settings || return 1
+  for track_id in "${MKVUTIL_INPUT_IDS[@]}"; do
+    changes=()
+    for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+      [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]] || continue
+      key="${choice}:$track_id"
+      (( ${+MKVUTIL_METADATA_SETTINGS[$key]} )) || continue
+      property="${MKVUTIL_METADATA_REGISTRY[${choice}:property]}"
+      changes+=(--set "$property=${MKVUTIL_METADATA_SETTINGS[$key]}")
+    done
+    (( ${#changes} > 0 )) || continue
+    args+=(--edit "${MKVUTIL_PROPEDIT_SELECTORS[$track_id]}" "${changes[@]}")
+  done
+  changes=()
+  for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == container ]] || continue
+    key="${choice}:info"
+    (( ${+MKVUTIL_METADATA_SETTINGS[$key]} )) || continue
+    property="${MKVUTIL_METADATA_REGISTRY[${choice}:property]}"
+    value="${MKVUTIL_METADATA_SETTINGS[$key]}"
+    if [[ -z "$value" ]]; then
+      changes+=(--delete "$property")
+    else
+      changes+=(--set "$property=$value")
+    fi
+  done
+  (( ${#changes} == 0 )) || args+=(--edit info "${changes[@]}")
+  MKVUTIL_PROPEDIT_ARGS=("${args[@]}")
+  return 0
+}
+
+# Build metadata-only mkvmerge argv in MKVUTIL_MERGE_METADATA_ARGS. The caller
+# must place this complete array BEFORE its source filename. Emit one resolved
+# flag per retained original TID; untouched languages/names remain untouched.
+mkvutil_build_merge_metadata_args() {
+  local track_id="" choice="" key="" value="" option="" expected=""
+  local -a args=()
+  MKVUTIL_MERGE_METADATA_ARGS=()
+  _mkvutil_metadata_validate_settings || return 1
+  expected="$(_mkvutil_metadata_layout_rows)|${(j:,:)MKVUTIL_RETAINED_IDS}"
+  for track_id in "${MKVUTIL_RETAINED_IDS[@]}"; do
+    for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+      [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]] || continue
+      key="${choice}:$track_id"
+      if (( ${+MKVUTIL_METADATA_SETTINGS[$key]} )); then
+        value="${MKVUTIL_METADATA_SETTINGS[$key]}"
+      elif [[ -n "${MKVUTIL_METADATA_REGISTRY[${choice}:snapshot]}" ]]; then
+        [[ "$MKVUTIL_FLAG_LAYOUT" == "$expected" ]] || return 1
+        (( ${+MKVUTIL_SOURCE_FLAGS[$key]} )) || return 1
+        value="${MKVUTIL_SOURCE_FLAGS[$key]}"
+        [[ "$value" == 0 || "$value" == 1 ]] || return 1
+      else
+        continue
+      fi
+      option="${MKVUTIL_METADATA_REGISTRY[${choice}:merge]}"
+      args+=("$option" "${track_id}:$value")
+    done
+  done
+  for choice in "${MKVUTIL_METADATA_IDS[@]}"; do
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == container ]] || continue
+    key="${choice}:info"
+    (( ${+MKVUTIL_METADATA_SETTINGS[$key]} )) || continue
+    value="${MKVUTIL_METADATA_SETTINGS[$key]}"
+    # mkvmerge interprets an argument starting @ as an option file. Escape only
+    # this emitted literal; canonical configuration and preview stay unchanged.
+    [[ "$value" != @* ]] || value="@$value"
+    args+=("${MKVUTIL_METADATA_REGISTRY[${choice}:merge]}" "$value")
+  done
+  MKVUTIL_MERGE_METADATA_ARGS=("${args[@]}")
+  return 0
+}
+
 # Function to rename tracks using mkvpropedit
 rename_tracks() {
   local track_ids="$1"
@@ -677,6 +1286,8 @@ Notes:
 EOF
 }
 
+# Sourcing this file defines its helpers without entering the interactive CLI.
+if [[ "$ZSH_EVAL_CONTEXT" != *:file ]]; then
 display_dir="$(pwd)"
 working_dir_set=false
 
@@ -1307,4 +1918,5 @@ elif [ "$choice" = "4" ]; then
 
 else
   echo "Invalid choice."
+fi
 fi

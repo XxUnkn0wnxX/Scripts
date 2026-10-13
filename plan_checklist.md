@@ -18,7 +18,7 @@ or passing diagnostic check does not establish implementation acceptance.
 Evidence: the current parent session reviewed the source and test harness,
 verified the v93.0 binaries and bundled documentation, and completed selective
 Astra audits. Commit `e3cb187975d524087e70ad7ce1e48894c21f0d65` contains the
-approved plan. Implementation and automated/real-media validation have not run.
+approved plan. At that planning checkpoint, implementation and automated/real-media validation had not run.
 
 ## Main-goal acceptance
 
@@ -37,8 +37,8 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 | Accepted | Task ID | Required result (mirror plan) | Required evidence / current status | Hard prerequisites | Shared/overlap |
 | --- | --- | --- | --- | --- | --- |
-| [ ] | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | Required: Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. Status: not started; no acceptance evidence. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures |
-| [ ] | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | Required: Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. Status: not started; no acceptance evidence. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders |
+| [x] | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | Required: Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. Status: accepted after parent review of the original-ID/output contract and source guard; focused pure-contract plus three baseline journeys passed (4 passed, 25 deselected in 2.70s), with syntax/whitespace checks. Consumer wiring remains T01.03. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures |
+| [x] | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | Required: Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. Status: accepted after parent source/contract review; five pure foundation/config/argv cases passed in 0.39s, and small native v93 builder integration passed. Shared consumers remain T01.03; full language registry/tool acceptance remains a later preflight/executor check. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders |
 | [ ] | T01.03 | Adapt existing actions into category submenus; implement single/comma/range selections, one target selection, per-file planning, conflicts, optional Mux metadata, and complete track/output previews. Wire the actual configuration consumers without media mutation. | Required: Real entrypoint/configuration wiring, invalid/cancel/EOF behavior, all-format planning, settled output names, and no-write configuration/cancellation evidence. Status: not started; no acceptance evidence. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
@@ -64,9 +64,10 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 ### Current readiness and acceptance limits
 
-- T01.01's removal output-naming contract remains unresolved. Baseline evidence
-  can be gathered under the appropriate authorization, but the contract and
-  complete T01.03 previews cannot be accepted while filenames are provisional.
+- T01.01's removal naming policy is user-approved: retained video keeps an
+  existing `.mkv`/`.mk3d`, audio without video uses `.mka`, and subtitle-only
+  uses `.mks`. Baseline/contract implementation evidence remains pending;
+  naming approval alone does not accept T01.01 or T01.03 previews.
 - T01.02 completion establishes the shared foundation, not acceptance of Edit,
   Mux, or Extract consumers. T01.03 requires actual configuration wiring and
   configuration/cancellation nonmutation evidence.
@@ -125,5 +126,4 @@ All [track identity](plan.md#track-identity-and-preview),
 [file safety](plan.md#file-safety-and-queue-reporting), format, and acceptance
 contracts remain those in the authoritative plan.
 
-**Implementation tasks accepted: 0 / 9. Main goals/checkpoints accepted: 0 / 4.** No automated, interactive,
-real-media, or CI result has been credited as completed implementation.
+**Implementation tasks accepted: 2 / 9. Main goals/checkpoints accepted: 0 / 4.** T01.01 and T01.02 are accepted; category consumers, executors, integrated campaign, and final gates remain pending.
