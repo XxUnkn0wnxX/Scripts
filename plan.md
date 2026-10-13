@@ -351,7 +351,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T04.01 | Verify every adapted single/batch action and shared metadata path together; consolidate task-level receipts and complete all six existing validation groups, including the small real-v93 and all-format integration evidence. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
+| T04.01 | Verify every adapted single/batch action and shared metadata path together; consolidate task-level receipts and complete all six existing validation groups, including the small real-v93 and all-format integration evidence, plus the user-requested near-end interactive rehearsal with disposable `.tmp` fixtures. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
 | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | T04.01 | none | Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. |
 
 ### Foundations, stage gates, and shared ownership
@@ -428,6 +428,44 @@ host; reuse fixtures instead of adding a large permutation matrix.
 6. Run syntax/static checks and all affected MKV test groups once the integrated
    change is ready. Broaden only when shared code changes or discovered failures
    justify it; unrelated repository suites are not automatic requirements.
+
+### Near-end interactive rehearsal
+
+At T04.01, after the runtime tasks are integrated and before final help/docs
+acceptance, apply `zr0-interactive-testing` to a bounded rehearsal of the actual
+`mkvutil` entrypoint. This is the user's requested addition to the integration
+checkpoint; the six validation groups and earlier task-level proof remain
+required.
+
+- Reuse `tests/mkv_tools/_mkv_helpers.py` and the existing utility tests. They
+  already copy the current script, drive its menus through controlled stdin and
+  fake `fzf` selections, isolate command resolution, record arguments/output,
+  and stop timed-out runs. Adapt their navigation and assertions to the new
+  categories and batches rather than creating a second test framework.
+- Generate fresh, small, valid `.mkv`, `.mka`, `.mks`, and `.mk3d` fixtures under
+  an owned `.tmp/mkvutil-rework/interactive/<run-id>/` directory. Include
+  different track layouts, names/paths with spaces, metadata, chapters, and
+  attachments where applicable. Reuse tiny source streams; do not treat a renamed
+  extension or the existing text placeholders as real format validation.
+  Keep originals, operation copies, outputs, and evidence within that run root.
+- Cover help/exit, each adapted single action, representative comma/range
+  batches, and the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. Exercise
+  invalid selections, defaults, cancellation/EOF, interruption, collisions, and
+  partial failures through controlled cases rather than every permutation.
+- Use mocked tool boundaries for deterministic menu/failure churn, then a few
+  serial installed-v93 journeys for real output and retained-property checks.
+  Verify combined Mux jobs produce one remux per file and no `mkvpropedit` call.
+  If terminal-specific selector behavior needs proof, use a small PTY journey
+  with real `fzf`; scripted fake selections alone do not establish that proof.
+- Keep setup and runs bounded for Big Sur, with timeouts and no user-media
+  changes or tool upgrades. Use fresh per-run fixture directories; any pytest
+  `--basetemp` must target a disposable owned child, never the whole `.tmp`
+  directory or durable planning records. Add a small fixture helper at the
+  existing test location only if the current harness lacks what is needed.
+- Before the broad rehearsal runs, verify or obtain one bounded project-wide
+  campaign approval and record its scope in the handoff. The current request
+  schedules the rehearsal; it does not start it. Record the exact candidate
+  revision, journeys, outcomes, and mocked versus real-tool/TTY evidence.
 
 Acceptance requires category single actions and multi-selection batches to work,
 optional Mux metadata to be configurable before processing and applied in the

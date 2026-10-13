@@ -59,7 +59,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 | Accepted | Task ID | Required result (mirror plan) | Required evidence / current status | Hard prerequisites | Shared/overlap |
 | --- | --- | --- | --- | --- | --- |
-| [ ] | T04.01 | Verify every adapted single/batch action and shared metadata path together; consolidate task-level receipts and complete all six existing validation groups, including the small real-v93 and all-format integration evidence. | Required: Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. Status: not started; no acceptance evidence. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures |
+| [ ] | T04.01 | Verify every adapted single/batch action and shared metadata path together; consolidate task-level receipts and complete all six existing validation groups, including the small real-v93 and all-format integration evidence, plus the user-requested near-end interactive rehearsal with disposable `.tmp` fixtures. | Required: Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. Status: not started; no acceptance evidence. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures |
 | [ ] | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | Required: Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. Status: not started; no acceptance evidence. | T04.01 | none |
 
 ### Current readiness and acceptance limits
@@ -106,6 +106,19 @@ with their acceptance still pending:
 6. [ ] Run syntax/static checks and all affected MKV test groups once the
    integrated change is ready; broaden only for shared changes or discovered
    failures. Unrelated repository suites are not automatic requirements.
+
+### User-requested near-end interactive rehearsal
+
+- [ ] Reuse and adapt the existing menu harness for category single actions,
+  representative batches, optional Mux metadata, and controlled input/failure
+  journeys; avoid a duplicate test framework.
+- [ ] Generate small valid fixtures for all four formats in an owned per-run
+  `.tmp` directory, and verify a few real-v93 workflows alongside mocked churn.
+- [ ] Verify the campaign's bounded approval before execution; record exact
+  candidate revision and distinguish mocked, real-tool, and terminal evidence.
+
+These items mirror [the plan's rehearsal](plan.md#near-end-interactive-rehearsal)
+within T04.01. They are pending and do not defer earlier task acceptance gates.
 
 All [track identity](plan.md#track-identity-and-preview),
 [metadata](plan.md#metadata-contracts),

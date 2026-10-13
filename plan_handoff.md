@@ -12,9 +12,11 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 ## Current state and safe restart point
 
 - Branch: `feature/mkvutil-rework`.
-- Committed baseline before publishing this documentation revision:
-  `e3cb187975d524087e70ad7ce1e48894c21f0d65`
-  (`docs: plan mkvutil category and batch rework`), with a verified signature.
+- Verified publication baseline before the rehearsal-planning amendment:
+  `b468c0b90c655906083eac0d0fcb6351398d605d`
+  (`docs: structure mkvutil goals and continuity records`), with a verified
+  signature. Local HEAD and `origin/feature/mkvutil-rework` matched this SHA;
+  the worktree was clean before the rehearsal-planning amendment below.
 - The committed plan is complete as a planning document. All four
   implementation checkpoints remain open; source, tests, and end-user guide
   have not been modified for this rework.
@@ -22,12 +24,16 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   checkpoints, with nine task IDs and a mirrored acceptance checklist.
   The reviewed dependency/readiness model is recorded in the plan. Companion
   links and local instructions remain in place.
-- The user subsequently instructed **"you can also push those changes"**.
-  Commit and push the three planning records on `feature/mkvutil-rework` and
-  verify the local/remote refs. This snapshot is prepared before publication;
-  actual Git refs are the publication receipt and must be checked on resumption.
-- Current scope is planning records and their authorized branch publication.
-  Starting implementation or changing acceptance requirements is not authorized.
+- The authorized structural documentation publication is complete. Verify live
+  refs on resumption; this historical receipt does not imply later edits were
+  published.
+- The user subsequently requested a near-end `zr0-interactive-testing` rehearsal
+  with custom `.tmp` files and reuse of existing tests/helpers. This amendment
+  is recorded in T04.01 and its mirrored checklist. It is prepared for the same
+  authorized feature-branch documentation publication; verify actual Git refs
+  and worktree/index state for its publication status.
+- Current scope remains planning. No utility/test implementation or interactive
+  campaign has started; unrelated acceptance-contract changes need approval.
 
 ## Artifacts and approved repository policy
 
@@ -47,10 +53,10 @@ The local AGENTS file does not accompany a fresh clone; the tracked plan and
 published companions provide the portable restart record after ref verification.
 
 The previous user instruction to commit `plan.md` was fulfilled by `e3cb187`.
-The later explicit push instruction authorizes committing and pushing the
-current three-record change set to the feature branch. Future checkpoints must
-refresh the actual commit, remote ref, and worktree/index state rather than
-treating this pre-publication snapshot as permanently current.
+The later explicit push instruction covers the ongoing feature-branch planning
+updates; the structural publication was verified at `b468c0b`. Future checkpoints
+must refresh the actual commit, remote ref, and worktree/index state rather than
+using a pre-publication handoff as proof that an amendment has been pushed.
 
 ## Preserved design and decisions
 
@@ -117,9 +123,9 @@ The review wave stops after integrated planning records and structural checks.
 
 1. On resumption, read all three planning records and applicable instructions;
    verify branch, HEAD, worktree/index, pending approvals, and any live agents.
-2. Verify completion of the authorized documentation publication from actual
-   Git refs; finish it if still pending. Keep the planning boundary until the
-   user requests implementation.
+2. Verify the published structural checkpoint and subsequent rehearsal-planning
+   amendment from actual Git state. Keep the planning boundary until the user
+   requests implementation.
 3. When implementation is authorized, start with T01.01's baseline and original
    file/job/output contract, including the naming decision; then T01.02's shared
    metadata foundation and T01.03's real configuration consumers. Inspect the
@@ -159,14 +165,34 @@ packages are complete; no media operations, product tests, or CI jobs were run.
 - The existing pytest harness and small real-v93 fixtures remain the planned
   verification route. Use the approved plan's affected-group gates; do not
   invent a full-suite run per edit or claim historic passes as current proof.
-- No interactive campaign approval is recorded. Ordinary static/code checks
-  retain their permissions. Notify before light isolated interactive probes;
-  seek one scoped approval before substantial interactive menu campaigns.
+- The current read-only inspection confirmed the shared helper drives copied
+  script entrypoints with stdin, fake `fzf`, isolated executables, argument logs,
+  and a 20-second timeout. Existing utility tests use text `payload` placeholders
+  rather than valid media. No maintained real-media fixture/churn launcher was
+  identified in the inspected test/helper and shell locations; do not use old
+  pytest copies under `.tmp` as the current driver.
+- T04.01 now records the requested near-end rehearsal: adapt the maintained
+  harness, generate fresh small all-format fixtures in an owned `.tmp` run
+  directory, and keep mocked, real-v93, and terminal evidence distinct. Earlier
+  focused executor proofs remain required before accepting their tasks.
 - This documentation checkpoint requires link, requirement-mirroring,
   whitespace, privacy, and actual Git-visibility checks, not a media test run.
 - Document links/anchors, checkpoint identity parity, personal-path checks,
   whitespace/final newlines, and actual Git visibility passed for these records.
-  The index and utility source remain unchanged.
+  The index, utility source, and test files remain unchanged.
+
+### Interactive-testing permission
+
+- Status: no broad-campaign execution grant recorded.
+- Source: the 2026-10-14 user request schedules `zr0-interactive-testing` near
+  the end of the project with custom `.tmp` files and existing tests/helpers.
+  It authorizes this planning amendment, not immediate campaign execution.
+- Planned scope: T04.01's representative single/batch menu journeys, controlled
+  failure cases, and a few serial real-v93 fixture journeys on this Big Sur host;
+  no real user files, upgrades, or external effects.
+- Before the first broad run, verify or obtain one bounded project grant and
+  retain its actual source, limits, and active/revoked state here. Notify before
+  light isolated probes; ordinary static/code checks retain their permissions.
 
 ### Structural validation receipt
 
@@ -193,6 +219,15 @@ rediscover it from the active catalogue in future sessions.
   privacy, whitespace, code fences, unchanged source/index, and trackability
   checks passed. Both review agents completed; no review job remains active.
 
+For the subsequent rehearsal-planning amendment, the validators were rerun at
+HEAD `b468c0b90c655906083eac0d0fcb6351398d605d` before committing the new records:
+integrity PASS (nine tasks, four goals, zero accepted) and dependencies PASS
+with `--target G04` (no dangling references/cycles, existing sequence preserved).
+Exact task-contract/evidence mirroring, local links, privacy, whitespace, and
+fences passed. The original six validation groups are preserved. Only the three
+planning records changed; no product tests, interactive journeys, or real-media
+processing ran for this documentation amendment.
+
 ## Approval boundaries
 
 The user approved project-instruction creation and trackable repository planning
@@ -201,7 +236,8 @@ authorized concurrent agents for the current task/session. The four checkpoint
 requirements and six validation groups are preserved; no gate was waived.
 Future sessions must recheck concurrency consent. Any agent-proposed contract change
 requires a concrete user-approved proposal before editing plan/checklist rules.
-New unrelated AGENTS edits require their own authorization. Commit/push of these
-three records to `feature/mkvutil-rework` is explicitly authorized. Deployment,
+New unrelated AGENTS edits require their own authorization. The user's existing
+commit/push authorization covers these feature-branch planning records; the
+subsequent request adds the future rehearsal within that scope. Deployment,
 dependency installation, real user-media mutation, implementation, and broad
 interactive campaigns remain outside the recorded authorization.
