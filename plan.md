@@ -358,9 +358,14 @@ remux actions to it.
 - Preserve filename reporting and multi-file progress, elapsed time, average ETA,
   and failed-file summaries. Count success only after the complete configured
   file job succeeds. Report warning, failed, and partially completed jobs clearly.
-  Keep the familiar between-file elapsed/count/ETA block for longer Mux jobs.
-  Fast standalone Edit jobs can use the final report by default, with warnings
-  or failures visible when they occur; still record their file outcomes/timing.
+  Mux jobs show the familiar between-file elapsed/count/ETA block. Standalone
+  Edit jobs use the final report without between-file elapsed blocks, with
+  warnings or failures visible when they occur; still record their outcomes.
+  Extract attachment-only and track jobs also show between-file elapsed/count/
+  ETA. For a combined attachment-and-track Extract job, that display times the
+  track-extraction stage only. The final report covers the complete configured
+  batch. The Edit final-report-only rule applies to every single or batched
+  Edit choice.
 - Include the input directory's basename and category-specific action numbers
   in the final report, alongside completed/skipped/failed/partial outcomes and
   elapsed time. A single selection shows one
@@ -371,6 +376,10 @@ remux actions to it.
   partial jobs must not be presented as fully completed actions. The directory
   label is the resolved source directory's name, including when invoked with
   a relative or absolute directory argument, rather than its full path.
+  Use one shared final-report format across Edit, Mux and Extract. T02.03 owns
+  that reporting foundation; T03.01 reuses and verifies it for Extract, after
+  the existing G02 gate. This does not require Extract execution before G02
+  can be accepted.
 - Continue with other independent files after a file failure. The batch's exit
   status must reflect incomplete required jobs rather than always returning zero.
 - Report removal mismatch skips separately and preserve their exact source
@@ -405,13 +414,13 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | --- | --- | --- | --- | --- |
 | T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
 | T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
-| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each continuation attributed to its own choices. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | T02.01, T02.02 | T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, final action/directory reporting for single/batch/continuation scopes, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
+| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each continuation attributed to its own choices. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, final action/directory reporting for single/batch/continuation scopes, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
 
 ### G03 — Checkpoint 3: extraction integration
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, collision handling, and partial-failure reporting without changing source media or claiming sidecar rollback. | T01.01, T01.03, G02 | T02.02, T04.01; common source/output checks and extraction test fixtures | Affected extraction tests across applicable formats, source-preservation/collision/failure evidence, and selected-source real extraction proof. |
+| T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, collision handling, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures | Affected extraction tests across applicable formats, source-preservation/collision/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. |
 
 ### G04 — Checkpoint 4: integration and documentation
 

@@ -205,7 +205,7 @@ reject mkvutil_metadata_validate_registry
 MKVUTIL_METADATA_REGISTRY[1:default]=0
 
 # One new definition participates in both generic builders without dispatch.
-_mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag ''
+_mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag '' flag_commentary ''
 mkvutil_metadata_validate_registry || fail 'new complete definition rejected'
 mkvutil_plan_layout $'audio\t11' '' '' mka
 mkvutil_metadata_set 1 11 0
@@ -415,7 +415,7 @@ def test_mkv_utils_category_job_roundtrip_and_per_file_flags(env: dict[str, Path
     first_json = _source_json(tracks)
     second_json = _source_json([(tid, kind, codec, True) for tid, kind, codec, _ in tracks])
     result = _run_planning_contract(env, r'''
-_mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag ''
+_mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag '' flag_commentary ''
 first="$(mkvutil_capture_source "$PWD/First file.mkv")"
 second="$(mkvutil_capture_source "$PWD/Second file.mk3d")"
 settings="$(_mkvutil_json_map '4:11' $'@name $cash: "quoted" \\literal\n\n' '3:11' fr-CA '5:info' '' '6:11' 0)"
@@ -737,6 +737,340 @@ done
     assert all("--multi" in call and "--read0" in call and "--print0" in call for call in calls)
 
 
+
+def _executor_document():
+    document = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (11, "audio", "A_PCM/INT/LIT", False), (12, "audio", "A_PCM/INT/LIT", True)])
+    for position, track in enumerate(document["tracks"]):
+        track["properties"]["uid"] = 18446744073709551000 + position
+        track["properties"]["track_name"] = f"Original {position}"
+    document["tracks"][0]["properties"]["stereo_mode"] = 1
+    return document
+
+
+def _run_executor_contract(env, body, manifest, *, fault=""):
+    manifest_path = env["fake_state"] / "execution.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_env = os.environ.copy()
+    run_env.update({
+        "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq",
+        "TEST_REAL_PYTHON": sys.executable, "TEST_USE_REAL_JSON": "1",
+        "TEST_COMMAND_LOG": str(env["command_log"]), "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
+        "TEST_FAKE_STATE_DIR": str(env["fake_state"]), "TEST_FAKE_EXECUTION_JSON": str(manifest_path),
+        "PYTHONDONTWRITEBYTECODE": "1",
+    })
+    if fault:
+        fault_dir = env["fake_state"] / "faults"
+        fault_dir.mkdir()
+        (fault_dir / "sitecustomize.py").write_text(_EXECUTOR_FAULTS)
+        run_env.update(PYTHONPATH=str(fault_dir), TEST_EXECUTOR_FAULT=fault)
+    result = subprocess.run(
+        ["/usr/local/bin/zsh", "-f", "-c", r'''
+source "$1"
+setopt errexit
+fail() { print -u2 -r -- "executor contract failure: $1"; return 1; }
+eq() { [[ "$1" == "$2" ]] || fail "$3: expected '$2', got '$1'"; }
+_mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag '' flag_commentary ''
+record="$(mkvutil_capture_source "$PWD/source.mk3d")"
+config='{"category":"mux","operations":["1","2"],"removed_ids":["0"],"order":"0:12","order_ids":["12"],"metadata":"1-6","settings":{"1:11":"0","1:12":"0","2:11":"0","2:12":"0","3:11":"fr-CA","4:11":"@literal $cash: \"quote\"\n\n","5:info":"","6:11":"1"},"expected_types":{"0":"video","11":"audio","12":"audio"},"extract_ids":[]}'
+config="$(jq --arg reference "$PWD/source.mk3d" --argjson signatures "$(mkvutil_removal_signatures "$record" 0)" '.+{reference:$reference,removal_signatures:$signatures}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+''' + body, "executor-contract", str(env["mkv_utils_script"])],
+        cwd=env["workdir"], env=run_env, text=True, capture_output=True, timeout=35,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result
+
+
+_EXECUTOR_FAULTS = r'''
+import json, os, signal
+from pathlib import Path
+fault = os.environ.get("TEST_EXECUTOR_FAULT")
+replace, link, unlink = os.replace, os.link, os.unlink
+
+def candidate(path):
+    return Path(path).name.startswith("candidate.")
+
+def patched_replace(src, dst, *args, **kwargs):
+    if candidate(src):
+        if fault == "publish_fail":
+            raise PermissionError("injected before replacement")
+        result = replace(src, dst, *args, **kwargs)
+        if fault == "after_replace_interrupt":
+            os.kill(os.getpid(), signal.SIGINT)
+        if fault == "after_replace_dest_change":
+            Path(dst).unlink()
+            Path(dst).write_bytes(b"other writer")
+        return result
+    result = replace(src, dst, *args, **kwargs)
+    if Path(dst).name == "phase.json":
+        record = json.loads(Path(dst).read_text())
+        if record["phase"] == "validated" and fault == "candidate_change":
+            with Path(record["candidate_path"]).open("ab") as stream:
+                stream.write(b"changed after validation")
+        if record["phase"] == "published_complete" and fault == "after_unlink_dest_change":
+            Path(record["destination"]).unlink()
+            Path(record["destination"]).write_bytes(b"other writer")
+    return result
+
+def patched_link(src, dst, *args, **kwargs):
+    if fault == "unsupported_links":
+        raise OSError("injected filesystem without links")
+    if candidate(src) and fault == "publish_fail":
+        raise PermissionError("injected before link")
+    result = link(src, dst, *args, **kwargs)
+    if candidate(src) and fault == "after_link_interrupt":
+        os.kill(os.getpid(), signal.SIGINT)
+    return result
+
+def patched_unlink(path, *args, **kwargs):
+    if Path(path).name == "source.mk3d" and fault == "unlink_fail":
+        raise PermissionError("injected old-source cleanup failure")
+    return unlink(path, *args, **kwargs)
+os.replace, os.link, os.unlink = patched_replace, patched_link, patched_unlink
+'''
+
+
+def _executor_manifest(env, *, converted=True):
+    source = _mkv_file(env, "source.mk3d")
+    original = _executor_document()
+    output = json.loads(json.dumps(original))
+    tracks = {track["id"]: track for track in output["tracks"]}
+    output["tracks"] = [tracks[12], tracks[11]] if converted else output["tracks"]
+    for track in output["tracks"]:
+        if track["id"] in (11, 12):
+            track["properties"].update(default_track=False, forced_track=False)
+    tracks[11]["properties"].update(language="fre", language_ietf="fr-CA", track_name='@literal $cash: "quote"\n\n', flag_commentary=True)
+    output["container"]["properties"]["title"] = ""
+    return source, {"sources": {str(source): original}, "stage": {str(source): output}, "post_edit": {str(source): output}}
+
+
+def test_mkv_utils_executor_grouped_edit_and_literal_observation(env):
+    source, manifest = _executor_manifest(env, converted=False)
+    _run_executor_contract(env, r'''
+config="$(jq '.category="edit"|.operations=["1","2","3","4","5","6"]|.removed_ids=[]|.order=""|.order_ids=[]' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+mkvutil_execute_edit_job "$job"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" success 'Edit status'
+eq "$(jq -r '.applied_metadata["6:11"]' <<< "$MKVUTIL_RESULT_JSON")" true 'generic sixth validation'
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    calls = _command_argv(env, "mkvpropedit")
+    assert len(calls) == 1 and calls[0][0] == str(source)
+    assert calls[0].count("--edit") == 3
+    assert 'name=@literal $cash: "quote"\n\n' in calls[0]
+    assert calls[0][-4:] == ["--edit", "info", "--delete", "title"]
+    assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
+
+
+def test_mkv_utils_executor_one_mux_validated_conversion(env):
+    source, manifest = _executor_manifest(env)
+    result = _run_executor_contract(env, r'''
+mkvutil_execute_mux_job "$job"
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    record = json.loads(result.stdout)
+    assert record["status"] == "success" and record["actual_state"] == "published_complete"
+    assert record["publication_committed"] and record["source_unlinked"]
+    assert record["candidate_path"] is None and not source.exists()
+    assert source.with_suffix(".mka").read_bytes() == b"candidate-data\n"
+    calls = [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
+    assert len(calls) == 1 and not _command_argv(env, "mkvpropedit")
+    assert calls[0][-1] == str(source) and calls[0][calls[0].index("--title") + 1] == ""
+    assert calls[0][calls[0].index("--track-order") + 1] == "0:12,0:11"
+    assert not list(env["workdir"].glob(".mkvutil-*"))
+
+
+@pytest.mark.parametrize("code", [1, 2])
+def test_mkv_utils_executor_native_warning_error_candidate_and_edit_actual(env, code):
+    source, manifest = _executor_manifest(env, converted=False)
+    manifest.update(merge_code=code, edit_code=code)
+    # One requested field failed while the other actual fields remain observable.
+    manifest["post_edit"][str(source)]["tracks"][1]["properties"]["flag_commentary"] = False
+    result = _run_executor_contract(env, r'''
+if mkvutil_execute_mux_job "$job"; then fail 'accepted native nonzero'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+config="$(jq '.category="edit"|.operations=["1","2","3","4","5","6"]|.removed_ids=[]|.order=""|.order_ids=[]' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+if mkvutil_execute_edit_job "$job"; then fail 'accepted native nonzero Edit'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    mux, edit = [json.loads(line) for line in result.stdout.splitlines()]
+    assert mux["status"] == edit["status"] == ("warning" if code == 1 else "failed")
+    assert mux["actual_state"] == "unpublished" and Path(mux["candidate_path"]).is_file()
+    assert edit["edit_changed"] and edit["observed_metadata"]["6:11"] == {"flag_commentary": False}
+    assert edit["applied_metadata"]["6:11"] is False and edit["applied_metadata"]["5:info"] is True
+    assert not source.with_suffix(".mka").exists()
+
+
+@pytest.mark.parametrize("case", ["invalid_output", "source_changed", "candidate_change", "publish_fail", "unsupported_links", "unlink_fail", "after_link_interrupt", "after_unlink_dest_change", "after_replace_interrupt", "after_replace_dest_change"])
+def test_mkv_utils_executor_staging_publication_faults(env, case):
+    same_name = case.startswith("after_replace")
+    source, manifest = _executor_manifest(env, converted=not same_name)
+    body = ""
+    if same_name:
+        body += 'config="$(jq \' .removed_ids=[] | .operations=["2"] \' <<< "$config")"\njob="$(mkvutil_plan_job "$record" "$config")"\n'
+        manifest["stage"][str(source)]["tracks"] = [manifest["stage"][str(source)]["tracks"][2], manifest["stage"][str(source)]["tracks"][0], manifest["stage"][str(source)]["tracks"][1]]
+    if case == "invalid_output":
+        manifest["stage"][str(source)]["tracks"][0]["properties"]["codec_id"] = "A_WRONG"
+    if case == "source_changed":
+        manifest["source_change_on_merge"] = True
+    result = _run_executor_contract(env, body + r'''
+if mkvutil_execute_mux_job "$job"; then fail 'accepted injected failure'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, fault="" if case in ("invalid_output", "source_changed") else case)
+    record = json.loads(result.stdout)
+    if case in ("after_link_interrupt", "after_replace_interrupt"):
+        assert record["status"] == "interrupted"
+        assert record["actual_state"] in ("published_source_retained", "replaced_complete")
+    elif case in ("after_replace_dest_change", "after_unlink_dest_change"):
+        assert record["status"] == "partial" and record["actual_state"] == "published_destination_changed"
+        assert record["publication_committed"]
+    elif case == "unlink_fail":
+        assert record["status"] == "partial" and record["actual_state"] == "published_source_retained"
+        assert source.exists() and source.with_suffix(".mka").exists()
+    else:
+        assert record["status"] == "failed" and record["actual_state"] == "unpublished"
+        assert source.exists() and not source.with_suffix(".mka").exists()
+    if case == "unsupported_links":
+        assert not any("-o" in args for args in _command_argv(env, "mkvmerge"))
+    if case in ("candidate_change", "source_changed", "invalid_output"):
+        assert not record["publication_committed"]
+    assert not _command_argv(env, "mkvpropedit")
+
+
+def test_mkv_utils_executor_preflight_skip_wildcard_collision_and_empty_result(env):
+    source, manifest = _executor_manifest(env)
+    result = _run_executor_contract(env, r'''
+# A changed source listing keeps file identity but fails the shared signature guard.
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_WRONG"; json.dump(m,open(p,"w"))'
+if mkvutil_execute_mux_job "$job"; then fail 'accepted late mismatch'; fi
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" skipped 'late signature skip'
+print -r -- "$MKVUTIL_RESULT_JSON"
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_MPEG4/ISO/AVC"; m["tags_default"]="<Tags><Tag><Targets><TrackUID>0</TrackUID></Targets><Simple><Name>USER</Name><String>  payload  </String></Simple></Tag></Tags>"; json.dump(m,open(p,"w"))'
+if mkvutil_execute_mux_job "$job"; then fail 'accepted wildcard loss'; fi
+eq "$(jq -r '.phase' <<< "$MKVUTIL_RESULT_JSON")" preflight 'wildcard early refusal'
+print -r -- "$MKVUTIL_RESULT_JSON"
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["tags_default"]="<Tags/>"; json.dump(m,open(p,"w"))'
+ln -s nonexistent "$PWD/source.mka"
+if mkvutil_execute_mux_job "$job"; then fail 'accepted dangling symlink collision'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+_mkvutil_execution_engine() { return 1; }
+config="$(jq '.category="edit"|.removed_ids=[]|.order_ids=[]|.order=""|.operations=["5"]|.settings={"5:info":""}|.metadata="5"' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+if mkvutil_execute_edit_job "$job"; then fail 'accepted empty engine response'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    skipped, wildcard, collision, unknown = [json.loads(line) for line in result.stdout.splitlines()]
+    assert skipped["skip_receipt"]["source"] == str(source)
+    assert "TrackUID=0" in wildcard["reason"] and str(source) in wildcard["reason"]
+    assert "Destination exists" in collision["reason"]
+    assert unknown["status"] == "interrupted" and unknown["actual_state"] == "unknown_inspect_filesystem"
+    assert not list(env["workdir"].glob(".mkvutil-*"))
+    assert not any("-o" in args for args in _command_argv(env, "mkvmerge"))
+    assert not _command_argv(env, "mkvpropedit") and source.read_text() == "payload"
+
+
+@pytest.mark.parametrize("category", ["edit", "mux"])
+def test_mkv_utils_executor_native_signal_stops_queue(env, category):
+    source, manifest = _executor_manifest(env, converted=False)
+    manifest[f"{('merge' if category == 'mux' else 'edit')}_code"] = -15
+    second = _mkv_file(env, "second.mk3d")
+    manifest["sources"][str(second)] = _executor_document()
+    result = _run_executor_contract(env, r'''
+if [[ "$TEST_CATEGORY" == edit ]]; then
+  config="$(jq '.category="edit"|.operations=["1","2","3","4","5","6"]|.removed_ids=[]|.order=""|.order_ids=[]' <<< "$config")"
+  job="$(mkvutil_plan_job "$record" "$config")"
+fi
+second="$(mkvutil_capture_source "$PWD/second.mk3d")"
+secondjob="$(mkvutil_plan_job "$second" "$config")"
+if mkvutil_execute_queue "$job" "$secondjob"; then fail 'accepted signal termination'; fi
+eq "${#MKVUTIL_RESULTS}" 1 'queue stop after signal'
+eq "$(jq -r '.status' <<< "${MKVUTIL_RESULTS[1]}")" interrupted 'native signal result'
+'''.replace('"$TEST_CATEGORY"', f'"{category}"'), manifest)
+    assert "interrupted:" in result.stdout
+    modifiers = _command_argv(env, "mkvpropedit") + [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
+    assert len(modifiers) == 1 and str(second) not in modifiers[0]
+    assert second.read_text() == "payload"
+
+
+
+def test_mkv_utils_executor_shared_native_language_pair_and_unknown_rewrite(env):
+    source, manifest = _executor_manifest(env, converted=False)
+    actual = manifest["post_edit"][str(source)]
+    actual["tracks"][1]["properties"].update(language="und", language_ietf="tlh")
+    actual["tracks"][2]["properties"].update(language="und", language_ietf="x-custom")
+    result = _run_executor_contract(env, r'''
+config="$(jq '.category="edit"|.operations=["1","2","3","4","5","6"]|.metadata="1-6"|.removed_ids=[]|.order=""|.order_ids=[]|.settings={"3:11":"i-klingon","3:12":"x-custom","1:11":"0","1:12":"0","2:11":"0","2:12":"0","4:11":"@literal $cash: \"quote\"\n\n","5:info":"","6:11":"1"}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+mkvutil_execute_edit_job "$job"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" success 'verified language equivalence'
+record="$(mkvutil_capture_source "$PWD/source.mk3d")"
+config="$(jq '.settings["3:11"]="i-lux"' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+if mkvutil_execute_edit_job "$job"; then fail 'accepted unproven language rewrite'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    assert json.loads(result.stdout)["validation_ok"] is False
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_mkv_utils_executor_regenerated_uid_mapping_evidence(env, ambiguous):
+    source, manifest = _executor_manifest(env)
+    for track in manifest["stage"][str(source)]["tracks"]:
+        track["properties"]["uid"] += 2000
+    body = ""
+    if ambiguous:
+        for track in manifest["sources"][str(source)]["tracks"][1:]:
+            track["properties"]["track_name"] = "identical"
+        for track in manifest["stage"][str(source)]["tracks"]:
+            track["properties"].update(track_name="new", language="fre", language_ietf="fr-CA", flag_commentary=True)
+        body += 'config="$(jq \'.settings["4:11"]="new"|.settings["4:12"]="new"|.settings["3:12"]="fr-CA"|.settings["6:12"]="1"\' <<< "$config")"\njob="$(mkvutil_plan_job "$record" "$config")"\n'
+    result = _run_executor_contract(env, body + r'''
+code=0
+mkvutil_execute_mux_job "$job" || code=$?
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    result = json.loads(result.stdout)
+    if ambiguous:
+        assert result["status"] == "failed" and "mapping ambiguous" in result["reason"]
+        assert source.exists() and not result["publication_committed"]
+    else:
+        assert result["status"] == "success"
+        assert "unique unchanged properties" in result["validation_notes"][0]
+
+def test_mkv_utils_executor_large_records_and_independent_queue_outcomes(env):
+    source, manifest = _executor_manifest(env)
+    # A single identification record crosses typical per-argv limits; planning
+    # and execution must stream it. Unique UIDs retain exact 64-bit evidence.
+    padding = "p" * 160_000
+    manifest["sources"][str(source)]["container"]["properties"]["private_fixture"] = padding
+    for name in ("bad-stage.mk3d", "successful.mk3d"):
+        path = _mkv_file(env, name)
+        manifest["sources"][str(path)] = json.loads(json.dumps(manifest["sources"][str(source)]))
+        manifest["stage"][str(path)] = json.loads(json.dumps(manifest["stage"][str(source)]))
+    bad = str(env["workdir"] / "bad-stage.mk3d")
+    manifest["stage"][bad]["tracks"][0]["properties"]["codec_id"] = "A_WRONG"
+    result = _run_executor_contract(env, r'''
+second="$(mkvutil_capture_source "$PWD/bad-stage.mk3d")"
+secondjob="$(mkvutil_plan_job "$second" "$config")"
+third="$(mkvutil_capture_source "$PWD/successful.mk3d")"
+thirdjob="$(mkvutil_plan_job "$third" "$config")"
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_WRONG"; json.dump(m,open(p,"w"))'
+if mkvutil_execute_queue "$job" "$secondjob" "$thirdjob"; then fail 'accepted incomplete queue'; fi
+eq "${#MKVUTIL_RESULTS}" 3 'all independent jobs reported'
+for record in "${MKVUTIL_RESULTS[@]}"; do print -r -- "$record"; done
+''', manifest)
+    records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+    assert [record["status"] for record in records] == ["skipped", "failed", "success"]
+    assert all(record["source"].startswith(str(env["workdir"])) for record in records)
+    assert records[2]["elapsed_seconds"] >= 0
+    assert len([args for args in _command_argv(env, "mkvmerge") if "-o" in args]) == 2
+    assert not _command_argv(env, "mkvpropedit")
+    assert source.read_text() == "payload"
+    assert Path(bad).read_text() == "payload"
+    assert not (env["workdir"] / "successful.mk3d").exists()
+
 def test_mkv_utils_removal_mismatch_report_cancel_entrypoint(env: dict[str, Path]):
     models = _removal_models()
     first, skipped = _mkv_file(env, "Reference source.mkv"), _mkv_file(env, "Skipped SRT.mkv")
@@ -786,15 +1120,23 @@ def test_mkv_utils_category_preview_cancel_entrypoint(env: dict[str, Path]):
     assert sorted(path.name for path in env["workdir"].iterdir()) == sorted([first.name, second.name])
 
 
-def test_mkv_utils_category_edit_run_is_guarded(env: dict[str, Path]):
-    source = _mkv_file(env, "guarded.mks")
-    result = _run_mkv_utils(env, fzf_responses=[[str(source)]], input_data="1\n5\n\n3\n")
-    assert result.returncode == 1, result.stdout + result.stderr
-    assert "Execution is not available" in result.stderr
+def test_mkv_utils_category_edit_run_grouped_entrypoint(env: dict[str, Path]):
+    source = _mkv_file(env, "Run title.mks")
+    original = _executor_document()
+    actual = json.loads(json.dumps(original))
+    actual["container"]["properties"]["title"] = ""
+    manifest = env["workdir"].parent / "execution.json"
+    manifest.write_text(json.dumps({"sources": {str(source): original}, "post_edit": {str(source): actual}}))
+    result = _run_mkv_utils(
+        env, fzf_responses=[[str(source)]], input_data="1\n5\n\n3\n",
+        extra_env={"TEST_FAKE_EXECUTION_JSON": str(manifest)},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "success:" in result.stdout and "edited_observed" in result.stdout
     assert len(_command_argv(env, "fzf")) == 1
-    assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
+    assert _command_argv(env, "mkvpropedit") == [[str(source), "--normalize-language-ietf", "off", "--edit", "info", "--delete", "title"]]
     assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
-    assert source.read_text() == "payload"
+    assert source.read_bytes() == b"edited-data\n"
 
 
 def test_mkv_utils_help_shows_menu(env: dict[str, Path]):

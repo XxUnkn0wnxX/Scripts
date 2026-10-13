@@ -142,14 +142,6 @@ typeset -A ext_override=(
   ["S_HDMV/PGS"]="pgs"           # PGS subtitles → .pgs
 )
 
-# Multi-file target selection mode for menu choices (Y/N)
-MULTI_FILE_SELECTION=""
-
-function count_attachments() {
-  local file="$1"
-  mkvmerge --identify "$file" | grep -c "Attachment ID"
-}
-
 format_duration() {
   local total_seconds="$1"
   printf "%02d:%02d:%02d" \
@@ -158,164 +150,6 @@ format_duration() {
     $((total_seconds % 60))
 }
 
-reset_propedit_summary() {
-  propedit_summary_started=0
-  propedit_files_count=${#targets[@]}
-  propedit_failed_files=()
-  typeset -gA propedit_failed_track_ids
-  propedit_failed_track_ids=()
-}
-
-start_propedit_summary() {
-  if [[ $propedit_summary_started -eq 0 ]]; then
-    propedit_summary_started=1
-    if [[ $MULTI_FILE_SELECTION == "Y" && $propedit_files_count -gt 1 ]]; then
-      echo "Total Files To Edit: $propedit_files_count"
-    fi
-  fi
-}
-
-record_propedit_failure() {
-  local failed_file="$1"
-  local track_id="${2:-}"
-  local existing_file
-  local existing_id
-  local existing_ids
-
-  for existing_file in "${propedit_failed_files[@]}"; do
-    [[ "$existing_file" == "$failed_file" ]] && break
-  done
-  if [[ "$existing_file" != "$failed_file" ]]; then
-    propedit_failed_files+=("$failed_file")
-  fi
-
-  [[ -z "$track_id" ]] && return
-  existing_ids="${propedit_failed_track_ids[$failed_file]:-}"
-  for existing_id in ${(s:,:)existing_ids}; do
-    [[ "$existing_id" == "$track_id" ]] && return
-  done
-  propedit_failed_track_ids[$failed_file]="${existing_ids:+$existing_ids,}$track_id"
-}
-
-finish_propedit_summary() {
-  if [[ $MULTI_FILE_SELECTION == "Y" && $propedit_files_count -gt 1 ]]; then
-    local successful_files=$((propedit_files_count - ${#propedit_failed_files[@]}))
-    local failed_file
-    local track_id
-
-    echo "Total Files Edited: $successful_files"
-    if [[ ${#propedit_failed_files[@]} -gt 0 ]]; then
-      printf "Failed Files: %02d\n" ${#propedit_failed_files[@]}
-      for failed_file in "${propedit_failed_files[@]}"; do
-        echo "  ${failed_file:t}"
-        for track_id in ${(s:,:)${propedit_failed_track_ids[$failed_file]:-}}; do
-          [[ -n "$track_id" ]] && echo "    Track ID: $track_id"
-        done
-      done
-    fi
-  fi
-}
-
-prompt_yes_no() {
-  local prompt_text="$1"
-  local default_choice="$2"
-  local response=""
-
-  while true; do
-    printf "%s" "$prompt_text" >&2
-    read response
-    if [[ -z "$response" && -n "$default_choice" ]]; then
-      response="$default_choice"
-    fi
-
-    case "${response:u}" in
-      Y) print -r -- "Y"; return 0 ;;
-      N) print -r -- "N"; return 0 ;;
-      *) echo "Invalid choice. Please enter Y or N." >&2 ;;
-    esac
-  done
-}
-
-normalize_track_id_input() {
-  local track_input="$1"
-  track_input=$(printf '%s' "$track_input" | tr -d '[:space:]')
-  printf '%s' "$track_input"
-}
-
-validate_track_id_list() {
-  local track_input="$1"
-  if ! printf '%s' "$track_input" | grep -Eq '^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$'; then
-    return 1
-  fi
-
-  local -a track_parts
-  IFS=',' read -rA track_parts <<< "$track_input"
-
-  local part=""
-  for part in "${track_parts[@]}"; do
-    if [[ "$part" == *-* ]]; then
-      local start=${part%-*}
-      local end=${part#*-}
-      if (( start > end )); then
-        return 1
-      fi
-    fi
-  done
-
-  return 0
-}
-
-prompt_for_track_ids() {
-  local prompt_text="$1"
-  local track_ids=""
-
-  while true; do
-    printf "%s" "$prompt_text" >&2
-    read track_ids
-    track_ids=$(normalize_track_id_input "$track_ids")
-    if [[ -z "$track_ids" ]]; then
-      echo "Track ID(s) cannot be empty. Please enter at least one Track ID." >&2
-      continue
-    fi
-    if validate_track_id_list "$track_ids"; then
-      print -r -- "$track_ids"
-      return 0
-    fi
-    echo "Invalid Track ID syntax. Use values like 0,1 or 1-2." >&2
-  done
-}
-
-normalize_track_order() {
-  local track_order="$1"
-  track_order=$(printf '%s' "$track_order" | tr -d '[:space:]')
-  printf '%s' "$track_order"
-}
-
-validate_track_order() {
-  local track_order="$1"
-  printf '%s' "$track_order" | grep -Eq '^[0-9]+:[0-9]+(,[0-9]+:[0-9]+)*$'
-}
-
-prompt_for_track_order() {
-  local prompt_text="$1"
-  local track_order=""
-
-  while true; do
-    printf "%s" "$prompt_text" >&2
-    read track_order
-    track_order=$(normalize_track_order "$track_order")
-    if [[ -z "$track_order" ]]; then
-      echo "Track order cannot be empty. Please enter at least one mapping." >&2
-      continue
-    fi
-    if validate_track_order "$track_order"; then
-      print -r -- "$track_order"
-      return 0
-    fi
-    echo "Invalid track order syntax. Use values like 0:0,0:1,0:2." >&2
-  done
-}
- 
 # Function to display track information safely, projecting only the fields we need
 display_track_info() {
   local source_file="$1"
@@ -643,6 +477,9 @@ mkvutil_plan_layout() {
 # section edits media or invokes mkvmerge/mkvpropedit.
 typeset -ga MKVUTIL_METADATA_IDS=()
 typeset -gA MKVUTIL_METADATA_REGISTRY=()
+# Native v93 parser equivalence verified with normalization disabled. Keep
+# this deliberately narrow: unknown preferred-value rewrites remain unproven.
+typeset -gA MKVUTIL_LANGUAGE_NATIVE_ALIASES=(i-klingon 'tlh|und')
 # Keys are CHOICE:ORIGINAL_TID; container settings use CHOICE:info. An existing
 # key with an empty value explicitly clears a name/title; a missing key is idle.
 typeset -gA MKVUTIL_METADATA_SETTINGS=()
@@ -652,9 +489,9 @@ typeset -ga MKVUTIL_PROPEDIT_ARGS=()
 typeset -ga MKVUTIL_MERGE_METADATA_ARGS=()
 
 _mkvutil_metadata_define() {
-  (( $# == 9 )) || return 1
+  (( $# == 11 )) || return 1
   local choice="$1" field="" key="" i=0
-  local -a fields=(label scope prompt default validator property merge snapshot)
+  local -a fields=(label scope prompt default validator property merge snapshot json json_ietf)
   _mkvutil_canonical_id "$choice" || return 1
   choice="$REPLY"
   [[ "$choice" != 0 ]] || return 1
@@ -667,11 +504,11 @@ _mkvutil_metadata_define() {
   done
 }
 
-_mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Flag-forced (1 or 0) [0]: ' 0 boolean flag-forced --forced-display-flag forced_track
-_mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Flag-default (1 or 0) [1]: ' 1 boolean flag-default --default-track-flag default_track
-_mkvutil_metadata_define 3 'Set language for tracks' track 'Language: ' '' language language --language ''
-_mkvutil_metadata_define 4 'Set name for tracks' track 'Name: ' '' text name --track-name ''
-_mkvutil_metadata_define 5 'Set title for MK file' container 'Title (empty to unset): ' '' text title --title ''
+_mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Flag-forced (1 or 0) [0]: ' 0 boolean flag-forced --forced-display-flag forced_track forced_track ''
+_mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Flag-default (1 or 0) [1]: ' 1 boolean flag-default --default-track-flag default_track default_track ''
+_mkvutil_metadata_define 3 'Set language for tracks' track 'Language: ' '' language language --language '' language language_ietf
+_mkvutil_metadata_define 4 'Set name for tracks' track 'Name: ' '' text name --track-name '' track_name ''
+_mkvutil_metadata_define 5 'Set title for MK file' container 'Title (empty to unset): ' '' text title --title '' title ''
 
 # BCP 47 structural syntax plus grandfathered tags; this deliberately does not
 # assert IANA/ISO membership or tool acceptance. Preserve the user's spelling.
@@ -724,11 +561,11 @@ mkvutil_metadata_validate_registry() {
     _mkvutil_canonical_id "$choice" || return 1
     [[ "$choice" == "$REPLY" && "$choice" != 0 && -z "${seen[$choice]-}" ]] || return 1
     seen[$choice]=1
-    for field in label scope prompt default validator property merge snapshot; do
+    for field in label scope prompt default validator property merge snapshot json json_ietf; do
       key="${choice}:$field"
       (( ${+MKVUTIL_METADATA_REGISTRY[$key]} )) || return 1
       case "$field" in
-        default|snapshot) ;;
+        default|snapshot|json_ietf) ;;
         *) [[ -n "${MKVUTIL_METADATA_REGISTRY[$key]}" ]] || return 1 ;;
       esac
     done
@@ -739,6 +576,10 @@ mkvutil_metadata_validate_registry() {
     [[ "$validator" == boolean || "$validator" == language || "$validator" == text ]] || return 1
     [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:property]}" =~ '^[a-z][a-z0-9-]*$' ]] || return 1
     [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:merge]}" =~ '^--[a-z][a-z0-9-]*$' ]] || return 1
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:json]}" =~ '^[a-z][a-z_]*$' ]] || return 1
+    if [[ "$validator" == language ]]; then
+      [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:json_ietf]}" =~ '^[a-z][a-z_]*$' ]] || return 1
+    fi
     value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
     if [[ "$validator" == boolean || -n "$value" ]]; then
       _mkvutil_metadata_value_valid "$validator" "$value" || return 1
@@ -980,267 +821,6 @@ mkvutil_build_merge_metadata_args() {
   return 0
 }
 
-# Function to rename tracks using mkvpropedit
-rename_tracks() {
-  local track_ids="$1"
-  # Split track_ids by comma and space into array ids
-  IFS=', ' read -rA ids <<< "$track_ids"
-  reset_propedit_summary
-  # Loop over each track ID
-  for id in "${ids[@]}"; do
-    # Determine range or single ID
-    if [[ $id == *-* ]]; then
-      local start=${id%-*}
-      local end=${id#*-}
-      for ((i=start; i<=end; i++)); do
-        echo "--------------------  Track ID $i Name ---------------------"
-        printf "Name: "
-        read name
-        # Apply name change to each target file
-        start_propedit_summary
-        for file in "${targets[@]}"; do
-          if (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((i+1)) --set name="$name" < /dev/null); then
-            echo "Edited File: ${file:t}"
-          else
-            echo "Failed File: ${file:t}"
-            record_propedit_failure "$file" "$i"
-          fi
-        done
-      done
-    else
-      echo "--------------------  Track ID $id Name ---------------------"
-      printf "Name: "
-      read name
-      start_propedit_summary
-      for file in "${targets[@]}"; do
-        if (trap '' SIGINT; exec mkvpropedit "$file" --edit track:$((id+1)) --set name="$name" < /dev/null); then
-          echo "Edited File: ${file:t}"
-        else
-          echo "Failed File: ${file:t}"
-          record_propedit_failure "$file" "$id"
-        fi
-      done
-    fi
-  done
-  finish_propedit_summary
-}
-
-set_mkv_title() {
-  local title="$1"
-
-  reset_propedit_summary
-  start_propedit_summary
-  for file in "${targets[@]}"; do
-    if [[ -z "$title" ]]; then
-      if mkvpropedit "$file" --delete title < /dev/null; then
-        echo "Edited File: ${file:t}"
-      else
-        echo "Failed File: ${file:t}"
-        record_propedit_failure "$file"
-      fi
-    else
-      if mkvpropedit "$file" --set title="$title" < /dev/null; then
-        echo "Edited File: ${file:t}"
-      else
-        echo "Failed File: ${file:t}"
-        record_propedit_failure "$file"
-      fi
-    fi
-  done
-  finish_propedit_summary
-}
-
-
-# Function to set language of tracks across multiple files
-set_language_tracks() {
-  local track_ids="$1"
-  IFS=', ' read -rA ids <<< "$track_ids"
-  reset_propedit_summary
-  for id in "${ids[@]}"; do
-    if [[ $id == *-* ]]; then
-      local start=${id%-*}
-      local end=${id#*-}
-      for ((i=start; i<=end; i++)); do
-        echo "--------------------  Track ID $i Language ---------------------"
-        printf "Language: "
-        read lang
-        start_propedit_summary
-        for file in "${targets[@]}"; do
-          if mkvpropedit "$file" --edit track:$((i+1)) --set language="$lang"; then
-            echo "Edited File: ${file:t}"
-          else
-            echo "Failed File: ${file:t}"
-            record_propedit_failure "$file" "$i"
-          fi
-        done
-      done
-    else
-      echo "--------------------  Track ID $id Language ---------------------"
-      printf "Language: "
-      read lang
-      start_propedit_summary
-      for file in "${targets[@]}"; do
-        if mkvpropedit "$file" --edit track:$((id+1)) --set language="$lang"; then
-          echo "Edited File: ${file:t}"
-        else
-          echo "Failed File: ${file:t}"
-          record_propedit_failure "$file" "$id"
-        fi
-      done
-    fi
-  done
-  finish_propedit_summary
-}
-
-# Function to set forced flag for tracks across multiple files
-set_flag_forced_tracks() {
-  local track_ids="$1"
-  IFS=', ' read -rA ids <<< "$track_ids"
-  reset_propedit_summary
-  for id in "${ids[@]}"; do
-    # Determine range or single ID
-    if [[ $id == *-* ]]; then
-      local start=${id%-*}
-      local end=${id#*-}
-      for ((i=start; i<=end; i++)); do
-        echo "--------------------  Track ID $i Forced Flag ---------------------"
-        printf "Flag-forced (1 or 0) [0]: "
-        read value
-        value=${value:-0}
-        start_propedit_summary
-        for file in "${targets[@]}"; do
-          if mkvpropedit "$file" --edit track:$((i+1)) --set flag-forced=$value; then
-            echo "Edited File: ${file:t}"
-          else
-            echo "Failed File: ${file:t}"
-            record_propedit_failure "$file" "$i"
-          fi
-        done
-      done
-    else
-      echo "--------------------  Track ID $id Forced Flag ---------------------"
-      printf "Flag-forced (1 or 0) [0]: "
-      read value
-      value=${value:-0}
-      start_propedit_summary
-      for file in "${targets[@]}"; do
-        if mkvpropedit "$file" --edit track:$((id+1)) --set flag-forced=$value; then
-          echo "Edited File: ${file:t}"
-        else
-          echo "Failed File: ${file:t}"
-          record_propedit_failure "$file" "$id"
-        fi
-      done
-    fi
-  done
-  finish_propedit_summary
-}
-
-# Function to set default flag for tracks across multiple files
-set_flag_default_tracks() {
-  local track_ids="$1"
-  IFS=', ' read -rA ids <<< "$track_ids"
-  reset_propedit_summary
-  for id in "${ids[@]}"; do
-    # Determine range or single ID
-    if [[ $id == *-* ]]; then
-      local start=${id%-*}
-      local end=${id#*-}
-      for ((i=start; i<=end; i++)); do
-        echo "--------------------  Track ID $i Default Flag ---------------------"
-        printf "Flag-default (1 or 0) [1]: "
-        read value
-        value=${value:-1}
-        start_propedit_summary
-        for file in "${targets[@]}"; do
-          if mkvpropedit "$file" --edit track:$((i+1)) --set flag-default=$value; then
-            echo "Edited File: ${file:t}"
-          else
-            echo "Failed File: ${file:t}"
-            record_propedit_failure "$file" "$i"
-          fi
-        done
-      done
-    else
-      echo "--------------------  Track ID $id Default Flag ---------------------"
-      printf "Flag-default (1 or 0) [1]: "
-      read value
-      value=${value:-1}
-      start_propedit_summary
-      for file in "${targets[@]}"; do
-        if mkvpropedit "$file" --edit track:$((id+1)) --set flag-default=$value; then
-          echo "Edited File: ${file:t}"
-        else
-          echo "Failed File: ${file:t}"
-          record_propedit_failure "$file" "$id"
-        fi
-      done
-    fi
-  done
-  finish_propedit_summary
-}
-
-# Helper: extract one track by id, with enhanced output
-extract_single() {
-  local tid=$1
-  local src_base=${source_file##*/}
-  local base=${src_base%.*}
-
-  # Pull the JSON for this file directly, then grab codec_id
-  local cid
-  cid=$(mkvmerge -J "$source_file" < /dev/null \
-        | jq -r ".tracks[] | select(.id==${tid}) | .properties.codec_id")
-
-  # 1) Try a full‐ID override
-  local ext=${ext_override[$cid]:-}
-
-  # 2) Fallback to the short key
-  if [[ -z $ext ]]; then
-    local key=${cid##*/}
-    ext=${ext_override[$key]:-}
-  fi
-
-  # 3) Fallback to pymkv2 map or lowercase key
-  if [[ -z $ext ]]; then
-    ext=${codec_ext[$key]:-}
-    [[ -z $ext ]] && ext=${(L)${key//[^[:alnum:]]/}}
-  fi
-
-  echo "Matched codec ID: ${cid} → extension: .${ext}"
-  echo "Extracting track ${tid} (${cid}) → ${base} - Track [${tid}].${ext}"
-  mkvextract tracks "$source_file" \
-    ${tid}:"${base} - Track [${tid}].${ext}"
-}
-
-# Function to extract selected tracks from a single MKV
-extract_tracks() {
-  local track_ids="$1"
-  IFS=', ' read -rA ids <<<"$track_ids"
-
-  # build the codec→ext map
-  typeset -A codec_ext
-  ensure_venv_python
-  eval "$(
-    "$PYTHON_BIN" - <<'PYCODE'
-from pymkv.TypeTrack import type_files
-flat = {k:v for cat in type_files.values() for k,v in cat.items()}
-items = ' '.join(f"['{k}']='{v}'" for k, v in flat.items())
-print(f"typeset -A codec_ext=( {items} )")
-PYCODE
-  )"
-
-  for id in "${ids[@]}"; do
-    if [[ $id == *-* ]]; then
-      local start=${id%-*} end=${id#*-}
-      for ((i=start; i<=end; i++)); do
-        extract_single "$i"
-      done
-    else
-      extract_single "$id"
-    fi
-  done
-}
-
 # Category planning controller. Jobs are JSON records, with raw identification
 # JSON retained as a string so 64-bit UID evidence never passes through jq math.
 typeset -ga MKVUTIL_SCAN_FILES=() MKVUTIL_SELECTED_FILES=() MKVUTIL_SOURCES=() MKVUTIL_JOBS=()
@@ -1248,11 +828,18 @@ typeset -ga MKVUTIL_REMOVAL_SKIPS=() MKVUTIL_REMOVAL_SKIP_HISTORY=()
 typeset -g MKVUTIL_CURRENT_JOB="" MKVUTIL_CONFIG="" MKVUTIL_CODEC_EXT_JSON=""
 
 _mkvutil_json_array() {
-  jq -cn '$ARGS.positional' --args -- "$@"
+  (( $# > 0 )) || { print -r -- '[]'; return 0; }
+  printf '%s\0' "$@" | jq -Rs 'split("\u0000")[:-1]'
 }
 
 _mkvutil_json_map() {
-  jq -cn '$ARGS.positional as $p | reduce range(0; $p|length; 2) as $i ({}; .[$p[$i]]=$p[$i+1])' --args -- "$@"
+  _mkvutil_json_array "$@" | jq -c '. as $p | reduce range(0; $p|length; 2) as $i ({}; .[$p[$i]]=$p[$i+1])'
+}
+
+_mkvutil_jq_records() {
+  local query="$1"
+  shift
+  printf '%s\n' "$@" | jq -sc "$query"
 }
 
 mkvutil_source_identity() {
@@ -1279,15 +866,19 @@ mkvutil_capture_source() {
   [[ "$before" == "$after" ]] || { print -u2 -r -- "Source changed during inspection: $file"; return 1; }
   rows="$(collect_tracks_for_remux "$file" "$json")" || return 1
   mkvutil_plan_layout "$rows" '' '' "${file:e}" || return 1
-  jq -cn --arg source "$file" --argjson identity "$before" --arg source_json "$json" '
-    ($source_json | fromjson) as $j |
-    {source:$source, identity:$identity, source_json:$source_json,
-     model:{tracks:[$j.tracks[] | {id,type,properties:{codec_id:.properties.codec_id,
-       track_name:.properties.track_name, language:.properties.language,
-       language_ietf:.properties.language_ietf, default_track:.properties.default_track,
-       forced_track:.properties.forced_track}}],
-       title:($j.container.properties.title // null), attachments:($j.attachments // [])}}
-  '
+  printf '%s\0' "$file" "$before" "$json" | python3 -c '
+import json, sys
+source, identity, raw = sys.stdin.buffer.read().decode().split("\0")[:-1]
+original = json.loads(raw)
+fields = ("codec_id", "track_name", "language", "language_ietf", "default_track", "forced_track")
+model = {"tracks": [{"id": item["id"], "type": item["type"], "properties":
+         {key: item.get("properties", {}).get(key) for key in fields}}
+         for item in original["tracks"]],
+         "title": original.get("container", {}).get("properties", {}).get("title"),
+         "attachments": original.get("attachments", [])}
+print(json.dumps({"source": source, "identity": json.loads(identity), "source_json": raw, "model": model}))
+'
+
 }
 
 mkvutil_scan_files() {
@@ -1448,8 +1039,8 @@ mkvutil_configure_category() {
 # Only requested original IDs define removal compatibility. Reference codec
 # values must be usable strings; metadata and other tracks are not signatures.
 mkvutil_removal_signatures() {
-  jq -en --argjson reference "$1" --arg ids "$2" '
-    reduce ($ids|split(",")[]) as $id ({};
+  printf '%s\n' "$1" | jq -ec --arg ids "$2" '
+    . as $reference | reduce ($ids|split(",")[]) as $id ({};
       ([$reference.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
       if $track==null or ($track.properties.codec_id|type)!="string" or
         ($track.properties.codec_id|test("[^[:space:]]")|not) or
@@ -1464,8 +1055,8 @@ mkvutil_removal_signatures() {
 mkvutil_removal_mismatch() {
   local receipt=""
   mkvutil_validate_config "$2" || return 1
-  receipt="$(jq -cn --argjson record "$1" --argjson config "$2" '
-    if $config.category!="mux" or ($config.removed_ids|length)==0 then empty else
+  receipt="$(_mkvutil_jq_records '
+    .[0] as $record | .[1] as $config | if $config.category!="mux" or ($config.removed_ids|length)==0 then empty else
       [$config.removed_ids[] as $id |
         $config.removal_signatures[$id] as $expected |
         ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
@@ -1480,7 +1071,7 @@ mkvutil_removal_mismatch() {
         {schema:1,kind:"removal-mismatch",source:$record.source,identity:$record.identity,
          reference:$config.reference,requested_ids:$config.removed_ids,reasons:$reasons,
          outputs:[],propedit_args:[],merge_metadata_args:[]} end
-    end')" || return 1
+    end' "$1" "$2")" || return 1
   [[ -n "$receipt" ]] || return 0
   print -r -- "$receipt"
   return 3
@@ -1550,12 +1141,12 @@ mkvutil_plan_job() {
   category="$(jq -r '.category' <<< "$config")" || return 1
   raw="$(jq -r '.source_json' <<< "$record")" || return 1
   rows="$(collect_tracks_for_remux "$file" "$raw")" || return 1
-  jq -en --argjson record "$record" --argjson config "$config" '
-    ($config.removed_ids + $config.order_ids + $config.extract_ids +
+  _mkvutil_jq_records '
+    .[0] as $record | .[1] as $config | ($config.removed_ids + $config.order_ids + $config.extract_ids +
       [$config.settings|keys[]|split(":")[1]|select(. != "info")]|unique) as $targeted |
     all($targeted[]; . as $id | any($record.model.tracks[];
       (.id|tostring)==$id and .type==$config.expected_types[$id]))
-    ' > /dev/null || { print -u2 -r -- "Missing or incompatible original track IDs: $file"; return 1; }
+    ' "$record" "$config" | jq -e . > /dev/null || { print -u2 -r -- "Missing or incompatible original track IDs: $file"; return 1; }
   removal="$(jq -r '.removed_ids|join(",")' <<< "$config")" || return 1
   order="$(jq -r '.order' <<< "$config")" || return 1
   mkvutil_plan_layout "$rows" "$removal" "$order" "${file:e}" || return 1
@@ -1584,11 +1175,11 @@ mkvutil_plan_job() {
   overrides="$(_mkvutil_json_map "${(@kv)ext_override}")" || return 1
   registry="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_REGISTRY}")" || return 1
   choices="$(_mkvutil_json_array "${MKVUTIL_METADATA_IDS[@]}")" || return 1
-  jq -cn --argjson record "$record" --argjson config "$config" --argjson args "$args" \
-    --argjson inputs "$input_ids" --argjson retained "$retained" --argjson selectors "$selectors" \
-    --argjson types "$types" --argjson flags "$flags" --arg extension "$MKVUTIL_OUTPUT_EXTENSION" \
-    --arg track_order "$MKVUTIL_TRACK_ORDER" --argjson codec_map "$codec_map" --argjson overrides "$overrides" \
-    --argjson registry "$registry" --argjson choices "$choices" '
+  _mkvutil_jq_records '
+    .[0] as $record | .[1] as $config | .[2] as $args | .[3] as $inputs |
+    .[4] as $retained | .[5] as $selectors | .[6] as $types | .[7] as $flags |
+    .[8] as $options | $options.extension as $extension | $options.track_order as $track_order |
+    .[9] as $codec_map | .[10] as $overrides | .[11] as $registry | .[12] as $choices |
     def codec_extension($cid):
       ($cid|split("/")|last) as $key |
       $overrides[$cid] // $overrides[$key] // $codec_map[$cid] // $codec_map[$key] // ($key|ascii_downcase|gsub("[^a-z0-9]";""));
@@ -1626,7 +1217,9 @@ mkvutil_plan_job() {
          language:(if ($config.settings|has("3:"+$id)) then $config.settings["3:"+$id] else (.properties.language_ietf // .properties.language // "") end),
          forced:(if ($config.settings|has("1:"+$id)) then ($config.settings["1:"+$id]=="1") else .properties.forced_track end),
          default:(if ($config.settings|has("2:"+$id)) then ($config.settings["2:"+$id]=="1") else .properties.default_track end)}]}
-  '
+  ' "$record" "$config" "$args" "$input_ids" "$retained" "$selectors" "$types" "$flags" \
+    "$(jq -cn --arg extension "$MKVUTIL_OUTPUT_EXTENSION" --arg track_order "$MKVUTIL_TRACK_ORDER" '{extension:$extension,track_order:$track_order}')" \
+    "$codec_map" "$overrides" "$registry" "$choices"
 }
 
 # Reload known job fields with NUL framing: empty arguments and trailing newlines
@@ -1846,10 +1439,616 @@ mkvutil_preview_jobs() {
   done
 }
 
+# Executors return one JSON result in MKVUTIL_RESULT_JSON. Queue consumers own
+# outcome history; each job receives an explicit immutable plan record.
+typeset -g MKVUTIL_RESULT_JSON=""
+typeset -ga MKVUTIL_RESULTS=()
+
+_mkvutil_execution_failure() {
+  local job="$1" reason="$2" status_name="${3:-failed}"
+  _mkvutil_jq_records '. [0] as $job | .[1] as $reason | .[2] as $status |
+    {source:$job.source,destination:$job.destination,category:$job.config.category,
+     action_ids:$job.config.operations,metadata_ids:$job.config.metadata,
+     status:$status,native_code:null,phase:"preflight",actual_state:"not_modified_by_job",
+     reason:$reason,candidate_path:null,staging_directory:null}' \
+    "$job" "$(_mkvutil_json_array "$reason" | jq -c '.[0]')" "$(_mkvutil_json_array "$status_name" | jq -c '.[0]')"
+}
+
+_mkvutil_execution_engine() {
+  local action="$1" job="$2" fresh="$3" registry="$4" python_bin="" program="" aliases=""
+  aliases="$(_mkvutil_json_map "${(@kv)MKVUTIL_LANGUAGE_NATIVE_ALIASES}")" || return 1
+  python_bin="${VENV_PATH}/bin/python3"
+  [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
+  program="$(cat <<'PYCODE'
+import copy, json, os, re, signal, stat, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
+from pathlib import Path
+
+job, fresh, registry, language_aliases = [json.loads(value) for value in sys.stdin.buffer.read().decode().split("\0")[:-1]]
+action = sys.argv[1]
+started = time.monotonic()
+source, destination = Path(job["source"]), Path(job["destination"])
+original = json.loads(fresh["source_json"])
+config = job["config"]
+result = dict(source=str(source), destination=str(destination), category=action,
+              action_ids=config["operations"], metadata_ids=config["metadata"],
+              status="failed", native_code=None, phase="preflight", actual_state="unpublished",
+              reason="", candidate_path=None, staging_directory=None, validation_notes=[])
+stage_dir = candidate = None
+candidate_identity = None
+child = None
+interrupted = False
+publication_attempted = publication_committed = source_unlinked = False
+source_tags = ""
+
+class Interrupted(Exception):
+    pass
+
+class ValidationFailure(Exception):
+    pass
+
+def identity(path):
+    item = os.lstat(path)
+    if not stat.S_ISREG(item.st_mode):
+        raise ValueError(f"Not a regular file entry: {path}")
+    return {key: str(value) for key, value in zip(("dev", "ino", "size", "mtime_ns"),
+            (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns))}
+
+def inode(path):
+    try:
+        value = identity(path)
+        return value["dev"], value["ino"]
+    except (OSError, ValueError):
+        return None
+
+def source_unchanged():
+    if identity(source) != job["identity"]:
+        raise ValueError("Source identity changed since planning")
+
+def phase(name):
+    result["phase"] = name
+    if stage_dir:
+        record = dict(result, source_original_identity=job["identity"], stage_identity=candidate_identity,
+                      publication_attempted=publication_attempted, publication_committed=publication_committed,
+                      source_unlinked=source_unlinked)
+        temporary = stage_dir / "phase.new"
+        temporary.write_text(json.dumps(record, ensure_ascii=False) + "\n")
+        os.replace(temporary, stage_dir / "phase.json")
+        result["phase_receipt"] = str(stage_dir / "phase.json")
+
+def stop_child():
+    global child
+    if child:
+        try:
+            os.killpg(child.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            child.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            child.communicate(timeout=2)
+
+def interrupt(signum, frame):
+    global interrupted
+    interrupted = True
+    raise Interrupted(f"Interrupted by signal {signum}")
+
+for signum in (signal.SIGINT, signal.SIGTERM):
+    signal.signal(signum, interrupt)
+
+def run(argv, timeout=None):
+    global child
+    child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        if timeout is not None:
+            stdout, stderr = child.communicate(timeout=timeout)
+        else:
+            while True:
+                try:
+                    stdout, stderr = child.communicate(timeout=1)
+                    break
+                except subprocess.TimeoutExpired:
+                    # A dead leader can leave descendants holding its pipes.
+                    # Stop only its owned process group, with bounded cleanup.
+                    if child.poll() is not None and child.returncode < 0:
+                        stop_child()
+                        stdout, stderr = child.communicate(timeout=2)
+                        break
+    except BaseException:
+        stop_child()
+        raise
+    code = child.returncode
+    child = None
+    return code, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+
+def identify(path):
+    code, raw, error = run(["mkvmerge", "-J", str(path)], 60)
+    if code != 0:
+        raise ValidationFailure(f"Identification failed ({code}): {error.strip()}")
+    parsed = json.loads(raw)
+    if not isinstance(parsed.get("tracks"), list):
+        raise ValidationFailure("Identification has no track listing")
+    return parsed, raw
+
+def tags(path):
+    code, text, error = run(["mkvextract", str(path), "tags"], 60)
+    if code != 0:
+        raise ValidationFailure(f"Tag inspection failed ({code}): {error.strip()}")
+    # Parse even an empty tag document, instead of accepting arbitrary output.
+    ET.fromstring(text)
+    return text
+
+def definition(choice):
+    prefix = choice + ":"
+    return dict({key[len(prefix):]: value for key, value in registry.items() if key.startswith(prefix)}, choice=choice)
+
+def track_settings(tid):
+    return [(definition(key.split(":")[0]), value)
+            for key, value in config["settings"].items() if key.split(":", 1)[1] == tid]
+
+def iso(code):
+    try:
+        from iso639 import Language
+        return Language.match(code, strict_case=False)
+    except (ImportError, ValueError, KeyError, Exception):
+        return None
+
+def equivalent_iso(left, right):
+    if str(left).lower() == str(right).lower():
+        return True
+    a, b = iso(str(left)), iso(str(right))
+    return bool(a and b and a.part3 == b.part3)
+
+def language_matches(value, properties, item):
+    legacy = properties.get(item["json"])
+    ietf = properties.get(item["json_ietf"])
+    if not isinstance(ietf, str) or not isinstance(legacy, str):
+        return False
+    verified = language_aliases.get(value.casefold())
+    if verified:
+        verified_ietf, verified_legacy = verified.split("|", 1)
+        if (ietf.casefold(), legacy.casefold()) == (verified_ietf.casefold(), verified_legacy.casefold()):
+            return True
+    parts = value.split("-")
+    primary = iso(parts[0])
+    projected = (primary.part1 or primary.part3) if primary else parts[0]
+    expected = "-".join([projected, *parts[1:]])
+    # No invented preferred-value mapping: normalization is explicitly off.
+    if ietf.casefold() not in (value.casefold(), expected.casefold()):
+        return False
+    if primary:
+        expected_legacy = primary.part2b or primary.part3
+        return equivalent_iso(legacy, expected_legacy)
+    if value.lower().startswith("x-"):
+        return legacy.lower() == "und"
+    note = f"Native parser supplied legacy projection for {value!r}; complete IETF spelling verified"
+    if note not in result["validation_notes"]:
+        result["validation_notes"].append(note)
+    return bool(re.fullmatch(r"[a-zA-Z]{3}", legacy))
+
+def property_matches(item, value, properties):
+    actual = properties.get(item["json"])
+    if item["validator"] == "language":
+        return language_matches(value, properties, item)
+    if item["validator"] == "boolean":
+        # Preservation fields must remain explicit booleans. Optional Matroska
+        # flags can be omitted at their registry-declared default.
+        if actual is None and not item["snapshot"]:
+            actual = item["default"] == "1"
+        return type(actual) is bool and actual == (value == "1")
+    return ("" if actual is None else actual) == value
+
+volatile_properties = {"uid", "id", "number", "minimum_timestamp", "num_index_entries"}
+
+def unchanged_matches(before, after, tid):
+    if before["type"] != after["type"]:
+        return False
+    changed = {item["json"] for item, value in track_settings(tid)}
+    changed |= {item["json_ietf"] for item, value in track_settings(tid) if item["json_ietf"]}
+    previous, actual = before.get("properties", {}), after.get("properties", {})
+    marker = previous.get("tag__statistics_tags")
+    generated = {"tag_" + name.lower() for name in marker.split()} | {"tag__statistics_tags", "tag__statistics_writing_app", "tag__statistics_writing_date_utc"} if isinstance(marker, str) else set()
+    for key, expected in previous.items():
+        if key in volatile_properties or key in changed or key in generated:
+            continue
+        observed = actual.get(key)
+        if key == "language":
+            if not equivalent_iso(expected, observed):
+                return False
+        elif key == "language_ietf":
+            if not isinstance(observed, str) or observed.casefold() != expected.casefold():
+                return False
+        elif type(expected) is bool:
+            if type(observed) is not bool or observed != expected:
+                return False
+        elif observed != expected:
+            return False
+    return True
+
+def tag_signature(text, uid_map, retained_uids, source_document):
+    root = ET.fromstring(text)
+    records = []
+    statistics = {"BPS", "DURATION", "NUMBER_OF_FRAMES", "NUMBER_OF_BYTES",
+                  "_STATISTICS_WRITING_APP", "_STATISTICS_WRITING_DATE_UTC", "_STATISTICS_TAGS"}
+    for tag in root.findall("Tag"):
+        targets = tag.find("Targets")
+        if targets is not None:
+            track_targets = targets.findall("TrackUID")
+            if source_document and track_targets and all(int(item.text or "0") != 0 and int(item.text or "0") not in retained_uids for item in track_targets):
+                continue
+            for target in track_targets:
+                value = int(target.text or "0")
+                if source_document:
+                    if value == 0:
+                        target.text = "0"
+                    elif value in uid_map:
+                        target.text = str(uid_map[value])
+                    else:
+                        targets.remove(target)
+                elif value != 0 and value not in retained_uids:
+                    targets.remove(target)
+        marker = next((simple for simple in tag.findall("Simple") if simple.findtext("Name") == "_STATISTICS_TAGS"), None)
+        generated = set((marker.findtext("String") or "").split()) | statistics if marker is not None else set()
+        for simple in list(tag.findall("Simple")):
+            if simple.findtext("Name") in generated:
+                tag.remove(simple)
+        if not tag.findall("Simple"):
+            continue
+        def canonical(element):
+            text = element.text or ""
+            if len(element) and not text.strip():
+                text = ""
+            return (element.tag, text, tuple(sorted(canonical(child) for child in element)))
+        records.append(canonical(tag))
+    return sorted(records)
+
+def oracle(actual, actual_tags):
+    expected_tracks = {str(item["id"]): item for item in original["tracks"]}
+    retained = job["retained_ids"] if action == "mux" else job["input_ids"]
+    ordered = [expected_tracks[tid] for tid in retained]
+    output = actual["tracks"]
+    if len(ordered) != len(output):
+        raise ValidationFailure("Output track count differs from retained plan")
+    applied = {}
+    for position, (tid, expected, observed) in enumerate(zip(retained, ordered, output)):
+        if not unchanged_matches(expected, observed, tid):
+            raise ValidationFailure(f"Track {tid} at output position {position+1}: type/codec/unrequested properties differ")
+        for item, value in track_settings(tid):
+            ok = property_matches(item, value, observed.get("properties", {}))
+            applied[item["choice"] + ":" + tid] = ok
+            if not ok:
+                raise ValidationFailure(f"Track {tid}: requested {item['property']} differs")
+    original_uids = [item.get("properties", {}).get("uid") for item in ordered]
+    output_uids = [item.get("properties", {}).get("uid") for item in output]
+    preserved_uids = all(type(value) is int for value in original_uids) and len(set(original_uids)) == len(original_uids) and original_uids == output_uids
+    if action == "edit" and not preserved_uids:
+        raise ValidationFailure("In-place Edit changed or cannot establish track UID mapping")
+    if not preserved_uids:
+        # Solve only mappings uniquely established by unchanged source fields.
+        # Requested names/flags/languages are not circular identity evidence.
+        remaining = set(range(len(output)))
+        pending = set(range(len(ordered)))
+        while pending:
+            progress = False
+            for index in list(pending):
+                candidates = [position for position in remaining if unchanged_matches(ordered[index], output[position], retained[index])]
+                if len(candidates) == 1:
+                    if candidates[0] != index:
+                        raise ValidationFailure("Unique source mapping contradicts planned order")
+                    remaining.remove(candidates[0]); pending.remove(index); progress = True
+            if not progress:
+                raise ValidationFailure("Regenerated/missing UIDs and identical properties leave track mapping ambiguous")
+        result["validation_notes"].append("Track mapping established by unique unchanged properties; UIDs were regenerated/missing")
+    uid_map = {old: new for old, new in zip(original_uids, output_uids) if type(old) is int and type(new) is int}
+    container = actual.get("container", {}).get("properties", {})
+    old_container = original.get("container", {}).get("properties", {})
+    title_fields = set()
+    for key, value in config["settings"].items():
+        choice, target = key.split(":", 1)
+        item = definition(choice)
+        if item["scope"] == "container":
+            title_fields.add(item["json"])
+            ok = property_matches(item, value, container)
+            applied[item["choice"] + ":info"] = ok
+            if not ok:
+                raise ValidationFailure(f"Requested container {item['property']} differs")
+    if "title" not in title_fields and container.get("title", "") != old_container.get("title", ""):
+        raise ValidationFailure("Untouched container title differs")
+    if actual.get("chapters", []) != original.get("chapters", []):
+        raise ValidationFailure("Chapter descriptors differ")
+    def attachments(document):
+        return [{key: value for key, value in entry.items() if key not in ("id", "properties")}
+                for entry in document.get("attachments", [])]
+    if attachments(actual) != attachments(original):
+        raise ValidationFailure("Attachment descriptors differ")
+    result["tag_descriptors"] = {"before": {key: original.get(key, []) for key in ("global_tags", "track_tags")},
+                                 "after": {key: actual.get(key, []) for key in ("global_tags", "track_tags")}}
+    if tag_signature(source_tags, uid_map, set(original_uids), True) != tag_signature(actual_tags, {}, set(output_uids), False):
+        raise ValidationFailure("User tag XML differs after retained-UID projection")
+    result["applied_metadata"] = applied
+    return True
+
+def reconcile():
+    if action == "edit":
+        return result.get("actual_state", "edit_unknown")
+    stage_inode = (candidate_identity["dev"], candidate_identity["ino"]) if candidate_identity else None
+    if stage_inode and inode(destination) == stage_inode:
+        if destination == source:
+            return "replaced_complete"
+        return "published_source_retained" if os.path.lexists(source) else "published_complete"
+    if publication_committed:
+        return "published_destination_changed"
+    if publication_attempted:
+        original_inode = (job["identity"]["dev"], job["identity"]["ino"])
+        if inode(source) != original_inode or (destination == source and inode(candidate) != stage_inode):
+            return "publication_outcome_unknown"
+    return "unpublished"
+
+def inspect_edit():
+    try:
+        actual, raw = identify(source)
+        result["actual_json"] = raw
+        result["actual_identity"] = identity(source)
+        result["actual_state"] = "edited_observed"
+        result["edit_changed"] = actual != original
+        tracks = {str(item["id"]): item.get("properties", {}) for item in actual["tracks"]}
+        result["applied_metadata"] = {}
+        result["observed_metadata"] = {}
+        for key, value in config["settings"].items():
+            choice, target = key.split(":", 1)
+            item = definition(choice)
+            properties = actual.get("container", {}).get("properties", {}) if target == "info" else tracks.get(target, {})
+            result["observed_metadata"][key] = {field: properties.get(field) for field in (item["json"], item["json_ietf"]) if field}
+            result["applied_metadata"][key] = property_matches(item, value, properties)
+        try:
+            oracle(actual, tags(source))
+            result["validation_ok"] = True
+        except (ValidationFailure, ValueError) as error:
+            result["validation_ok"] = False
+            result["validation_error"] = str(error)
+    except (OSError, ValueError, ValidationFailure) as error:
+        result["actual_state"] = "edit_unknown"
+        result["inspection_error"] = str(error)
+
+def publish():
+    global publication_attempted, publication_committed, source_unlinked
+    publication_attempted = True
+    phase("publishing")
+    source_unchanged()
+    if identity(candidate) != candidate_identity:
+        raise ValueError("Candidate changed after validation")
+    if candidate_identity["size"] == "0":
+        raise ValidationFailure("Staged output is empty")
+    if destination == source:
+        os.replace(candidate, source)
+        publication_committed = True
+        result["actual_state"] = reconcile()
+        phase("replaced")
+        if identity(source) != candidate_identity:
+            raise ValueError("Published replacement identity differs")
+    else:
+        if os.path.lexists(destination):
+            raise FileExistsError(f"Destination exists: {destination}")
+        os.link(candidate, destination, follow_symlinks=False)
+        publication_committed = True
+        result["actual_state"] = reconcile()
+        phase("published_source_retained")
+        if identity(destination) != candidate_identity or identity(candidate) != candidate_identity:
+            raise ValueError("Published destination/candidate identity differs")
+        final, raw = identify(destination)
+        oracle(final, tags(destination))
+        result["published_json"] = raw
+        phase("removing_source")
+        source_unchanged()
+        # Recheck both identities immediately before old-source cleanup. These
+        # are observed-change guards, not a CAS/adversarial-writer guarantee.
+        if identity(destination) != candidate_identity:
+            raise ValueError("Destination changed before source cleanup")
+        os.unlink(source)
+        source_unlinked = True
+        result["actual_state"] = reconcile()
+        phase("published_complete")
+    final, raw = identify(destination)
+    oracle(final, tags(destination))
+    result["published_json"] = raw
+    result["actual_state"] = reconcile()
+    phase("complete")
+
+try:
+    source_unchanged()
+    if json.loads(job["source_json"]) != original:
+        raise ValidationFailure("Source identification changed since planning")
+    if action not in ("edit", "mux"):
+        raise ValueError("Executor category is not available")
+    source_tags = tags(source)
+    if action == "mux" and any(int(target.text or "0") == 0
+                                for target in ET.fromstring(source_tags).findall("Tag/Targets/TrackUID")):
+        raise ValidationFailure(f"{source}: MKVToolNix v93 remux drops all-track TrackUID=0 tags; Mux refused before modification")
+    if action == "edit":
+        phase("native")
+        source_unchanged()
+        code, stdout, stderr = run(["mkvpropedit", str(source), "--normalize-language-ietf", "off", *job["propedit_args"]])
+        result.update(native_code=code, native_stdout=stdout, native_stderr=stderr)
+        inspect_edit()
+        if code == 0 and result.get("validation_ok"):
+            result["status"] = "success"; phase("complete")
+        elif code < 0:
+            result["status"] = "interrupted"; result["reason"] = f"Native Edit terminated by signal {-code}; actual in-place state inspected"
+        elif code == 1:
+            result["status"] = "warning"; result["reason"] = "Native Edit warning; actual in-place state inspected"
+        elif code != 0:
+            result["reason"] = "Native Edit failed; changes may already be present"
+        else:
+            result["reason"] = "In-place Edit validation failed"
+    else:
+        if destination != source and os.path.lexists(destination):
+            raise FileExistsError(f"Destination exists: {destination}")
+        stage_dir = Path(tempfile.mkdtemp(prefix=".mkvutil-", dir=destination.parent))
+        result["staging_directory"] = str(stage_dir)
+        candidate = stage_dir / ("candidate" + destination.suffix)
+        result["candidate_path"] = str(candidate)
+        phase("staging")
+        if destination != source:
+            # Fail unsupported hard links before the potentially expensive remux.
+            probe, link = stage_dir / "link-probe", stage_dir / "link-probe-copy"
+            probe.write_bytes(b"mkvutil\n")
+            os.link(probe, link, follow_symlinks=False)
+            os.unlink(link); os.unlink(probe)
+        source_unchanged()
+        argv = ["mkvmerge", "--normalize-language-ietf", "off", "-o", str(candidate), "--track-order", job["track_order"]]
+        for kind, option, empty in (("video", "--video-tracks", "--no-video"),
+                                    ("audio", "--audio-tracks", "--no-audio"),
+                                    ("subtitles", "--subtitle-tracks", "--no-subtitles")):
+            ids = [tid for tid in job["retained_ids"] if job["track_types"][tid] == kind]
+            argv.extend([option, ",".join(ids)] if ids else [empty])
+        argv.extend(job["merge_metadata_args"])
+        argv.append(str(source))
+        phase("native")
+        code, stdout, stderr = run(argv)
+        result.update(native_code=code, native_stdout=stdout, native_stderr=stderr)
+        if code != 0:
+            result["status"] = "interrupted" if code < 0 else ("warning" if code == 1 else "failed")
+            result["reason"] = "Native Mux warning; candidate retained without publication" if code == 1 else "Native Mux failed; source retained"
+        else:
+            candidate_identity = identity(candidate)
+            if candidate_identity["size"] == "0":
+                raise ValidationFailure("Staged output is empty")
+            phase("validation")
+            actual, raw = identify(candidate)
+            result["candidate_json"] = raw
+            oracle(actual, tags(candidate))
+            if identity(candidate) != candidate_identity:
+                raise ValueError("Candidate changed during validation")
+            result["validation_ok"] = True
+            phase("validated")
+            publish()
+            result["status"] = "success"
+            # Only this uniquely owned directory is eligible for cleanup.
+            if candidate.exists():
+                if identity(candidate) != candidate_identity:
+                    raise ValueError("Candidate changed before owned cleanup")
+                candidate.unlink()
+            for entry in (stage_dir / "phase.json", stage_dir / "phase.new"):
+                if entry.exists():
+                    entry.unlink()
+            stage_dir.rmdir()
+            result["candidate_path"] = None
+            result["phase_receipt"] = None
+except BaseException as error:
+    stop_child()
+    result["reason"] = str(error)
+    result["actual_state"] = reconcile()
+    if interrupted or isinstance(error, (Interrupted, KeyboardInterrupt)):
+        result["status"] = "interrupted"
+        if action == "edit":
+            # Do not let a second signal prevent a bounded actual-state probe.
+            signal.signal(signal.SIGINT, signal.SIG_IGN); signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            inspect_edit()
+    elif result["actual_state"] != "unpublished" and action == "mux":
+        result["status"] = "partial"
+    else:
+        result["status"] = "failed"
+finally:
+    result["elapsed_seconds"] = round(time.monotonic() - started, 6)
+    if action == "mux":
+        result["actual_state"] = reconcile()
+        result.update(publication_attempted=publication_attempted, publication_committed=publication_committed, source_unlinked=source_unlinked)
+        result["source_exists"] = os.path.lexists(source)
+        result["destination_exists"] = os.path.lexists(destination)
+        if result["status"] != "success" and candidate and not os.path.lexists(candidate):
+            result["candidate_path"] = str(destination) if result["actual_state"] != "unpublished" else None
+        try:
+            if stage_dir and stage_dir.exists():
+                phase(result["phase"])
+        except BaseException as error:
+            result["receipt_error"] = str(error)
+    print(json.dumps(result, ensure_ascii=False))
+    sys.exit(0 if result["status"] == "success" else 1)
+PYCODE
+)"
+  printf '%s\0' "$job" "$fresh" "$registry" "$aliases" | "$python_bin" -c "$program" "$action"
+}
+
+_mkvutil_execute_job() {
+  local action="$1" job="$2" fresh="" file="" config="" mismatch="" result_code=0 registry=""
+  MKVUTIL_RESULT_JSON=""
+  if ! mkvutil_load_job "$job"; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid planned job')"
+    return 1
+  fi
+  file="$(jq -r '.source' <<< "$job")" || return 1
+  config="$(jq -c '.config' <<< "$job")" || return 1
+  if ! fresh="$(mkvutil_capture_source "$file")"; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection failed before execution')"
+    return 1
+  fi
+  if ! _mkvutil_jq_records '.[0].identity==.[1].identity' "$job" "$fresh" | jq -e . >/dev/null; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source identity changed before execution')"
+    return 1
+  fi
+  mismatch="$(mkvutil_removal_mismatch "$fresh" "$config")" || result_code=$?
+  if (( result_code != 0 )); then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" "$mismatch" "$([[ $result_code == 3 ]] && print skipped || print failed)")"
+    if (( result_code == 3 )); then
+      MKVUTIL_RESULT_JSON="$(_mkvutil_jq_records '.[0]+{skip_receipt:.[1]}' "$MKVUTIL_RESULT_JSON" "$mismatch")"
+    fi
+    mkvutil_metadata_reset
+    _mkvutil_clear_plan_layout
+    return 1
+  fi
+  registry="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_REGISTRY}")" || return 1
+  result_code=0
+  MKVUTIL_RESULT_JSON="$(_mkvutil_execution_engine "$action" "$job" "$fresh" "$registry")" || result_code=$?
+  if [[ -z "$MKVUTIL_RESULT_JSON" ]]; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Executor stopped without a result; inspect any retained phase receipt' interrupted)"
+    MKVUTIL_RESULT_JSON="$(jq -c '.phase="unknown"|.actual_state="unknown_inspect_filesystem"' <<< "$MKVUTIL_RESULT_JSON")"
+  fi
+  return "$result_code"
+}
+
+mkvutil_execute_edit_job() { _mkvutil_execute_job edit "$1"; }
+mkvutil_execute_mux_job() { _mkvutil_execute_job mux "$1"; }
+
+mkvutil_report_result() {
+  jq -r '"\(.status): \(.source)", "  Destination: \(.destination)",
+    "  Phase: \(.phase); actual state: \(.actual_state)",
+    (if .reason!="" then "  \(.reason)" else empty end),
+    (if .candidate_path then "  Candidate: \(.candidate_path)" else empty end),
+    (if .phase_receipt then "  Phase receipt: \(.phase_receipt)" else empty end)' <<< "$1"
+}
+
+mkvutil_execute_queue() {
+  setopt localtraps
+  local job="" category="" result_code=0 queue_code=0 interrupted=0
+  trap 'interrupted=1' INT TERM
+  MKVUTIL_RESULTS=()
+  for job in "$@"; do
+    (( interrupted == 0 )) || break
+    category="$(jq -r '.config.category' <<< "$job")" || return 1
+    result_code=0
+    case "$category" in
+      edit) mkvutil_execute_edit_job "$job" || result_code=$? ;;
+      mux) mkvutil_execute_mux_job "$job" || result_code=$? ;;
+      *) MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract execution is not available')"; result_code=1 ;;
+    esac
+    MKVUTIL_RESULTS+=("$MKVUTIL_RESULT_JSON")
+    mkvutil_report_result "$MKVUTIL_RESULT_JSON" || return 1
+    (( result_code == 0 )) || queue_code=1
+    [[ "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" != interrupted ]] || { interrupted=1; break; }
+  done
+  (( interrupted == 0 )) || queue_code=1
+  (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 && ${#MKVUTIL_REMOVAL_SKIP_HISTORY} == 0 )) || queue_code=1
+  return "$queue_code"
+}
+
 print_help() {
   print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
-  print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Execution is pending implementation.'
+  print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Edit and Mux execution are available; Extract execution is pending.'
 }
 
 mkvutil_main() {
@@ -1909,7 +2108,10 @@ mkvutil_main() {
         2) mkvutil_preview_jobs || return 1 ;;
         3)
           (( ${#MKVUTIL_JOBS} > 0 )) || { print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'; continue; }
-          print -u2 -r -- 'Execution is not available at this implementation checkpoint; no media changes.'; return 1 ;;
+          if [[ "$category" == extract ]]; then
+            print -u2 -r -- 'Extract execution is not available at this implementation checkpoint; no media changes.'; return 1
+          fi
+          mkvutil_execute_queue "${MKVUTIL_JOBS[@]}"; return $? ;;
         4)
           mkvutil_prepare_skipped_subset || return 1
           category=mux

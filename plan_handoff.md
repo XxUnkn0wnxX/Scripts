@@ -36,11 +36,15 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   share signed `e6dd2b94fd489796df80270814aa040bc19db8a8`; remote refs match.
   Only the instruction file and root ignore exception were synchronized to
   those branches. Utility implementation remains in this feature worktree.
-- Current local feature HEAD: `6444e4cbbe65ffe1a81d18213582695ea242cb8e`
-  (`feat(shell): plan grouped mkvutil jobs and guard removal batches`), signed
-  and two commits ahead of the published feature ref. Both worktrees were clean
-  after that G01 checkpoint; this restart update modifies only the handoff before
-  the next package. No implementation publication/promotion has occurred.
+- Current local feature HEAD: `66dab50d610d4f011bdae0e685d3fca492c107f3`
+  (`docs: record mkvutil final reporting requirements`), signed and three
+  commits ahead of the published feature ref. That checkpoint commits only
+  the three planning records; the G02 source/test/helper draft remains unstaged
+  and under validation. This restart update additionally modifies the handoff.
+  No implementation publication/promotion has occurred. Last accepted
+  implementation checkpoint is signed `6444e4cbbe65ffe1a81d18213582695ea242cb8e`
+  (`feat(shell): plan grouped mkvutil jobs and guard removal batches`); both
+  worktrees were clean after that G01 checkpoint.
 - The user now instructed **"ok you may begin"**, authorizing implementation
   of the approved rework. Their subsequent instruction requires one self-contained
   `shell/mkv_utils.zsh`, with no additional runtime `.zsh` dependencies.
@@ -61,10 +65,13 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 - T01.03 and G01 are now accepted after parent review and final selector/removal
   proof below. Categories, configuration, per-file planning, skip receipts,
   preview and fresh skipped-subset preparation are implemented. Executors
-  remain guarded unavailable. Current totals: 3 / 9 tasks and 1 / 4 goals.
-- Next package: G02 Edit/Mux executors, T02.01 and T02.02 with one coherent
-  source/test/helper owner. T02.03 follows their accepted executor evidence to
-  connect full reporting and skipped-only continuation. Parent owns all records.
+  for Edit/Mux are implemented and their T02.01/T02.02 gates now accepted after
+  focused/native proof, parent review and Astra's bounded post-fix PASS.
+  Extract execution remains guarded. Current totals: 5 / 9 tasks and 1 / 4 goals.
+- Next package: T02.03 full reporting and skipped-only continuation, reusing
+  the verified executors with one coherent source/test/helper owner. G02 remains
+  pending until this task and its goal-level integration gate pass; Extract
+  implementation still waits for G02. Parent owns all records.
 - The user requested always-multi selection and automatic removal mismatch
   skips with skipped-only follow-up batches. Astra verified this delta before
   any new requirement/code edits; the parent updated the authorized plan and
@@ -78,9 +85,11 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 - Rediscovered and reread `zr0-git-repository-workflow`,
   `zr0-parallel-execution`, and `zr0-multi-session-projects` on the user's
   refresh request. The Git worktree reference and current handoff template
-  loaded successfully. Other referenced ignore/change-control/dependency/
-  resumption documents are absent from the installed folders; follow the full
-  skill instructions and preserved approved project contracts until available.
+  loaded successfully. At that earlier refresh, some referenced documents and
+  multi-session validators were absent. The latest user-requested refresh
+  rediscovered/reloaded the multi-session skill, all four relevant references
+  including updated resumption/audits, and both now-installed validators.
+  Those structural checks pass; no record migration or approval change applies.
 - Canonical records are the tracked root `plan.md`, `plan_checklist.md`, and
   `plan_handoff.md` in `../Scripts-dev`. Historical copies in other branches
   and copied fixture receipts are subordinate; do not start another master plan.
@@ -182,21 +191,23 @@ using a pre-publication handoff as proof that an amendment has been pushed.
 
 Planning preparation is verified and remains separate from implementation
 acceptance. The four existing checkpoints are now G01-G04, with nine stable
-task IDs; **3 / 9 tasks and 1 / 4 main goals** are accepted (T01.01-T01.03, G01).
+task IDs; **5 / 9 tasks and 1 / 4 main goals** are accepted
+(T01.01-T01.03, T02.01-T02.02, G01).
 
-The recorded audit identified these implementation checks:
+The executor checkpoint has now closed the following focused gates:
 
 - Establish actual v93 default-flag parity for intended retained-track states,
   plus blank-title clearing and literal-title handling through `mkvmerge`.
-- T01.01 has implemented/proved the newly approved retained-content naming
-  helper. T01.03 still needs consumer evidence for actual per-file output previews.
+- T01.01's approved retained-content naming helper and T01.03's complete
+  per-file preview/removal/selection consumer evidence are accepted.
 - Validate intended track identity and explicit final order for every file;
   do not assume track positions or MakeMKV UIDs survive a remux unchanged.
 - Verify safe staging/promotion, collisions, warning/error distinctions,
   interruption behavior, and correct success reporting.
 
-These are pending requirements or checks already in the plan, not accepted
-runtime behavior or permission to weaken the specification.
+T02.03's complete final reporting, timing and fresh skipped-only continuation
+remain pending. G02 is not accepted yet; integrated all-format/legacy navigation
+qualification and the near-end interactive campaign remain later gates.
 
 ## Execution route and next actions
 
@@ -393,6 +404,15 @@ package is complete; its receipts below are historical.
   fast Edit jobs, with immediate warnings/failures; longer Mux jobs retain
   the familiar between-file elapsed/count/ETA display. Outcomes/timing remain
   collected for every file, with directory/action labels in the final report.
+- Latest reporting clarification makes Edit final-report-only mandatory for
+  every single/batched choice. Use one consistent final format in all three
+  categories. Mux and Extract show between-file elapsed/count/ETA; the user
+  explicitly answered the attachment-only question affirmatively. A combined
+  attachment-and-track job's between-file display times only the track stage;
+  final elapsed covers the whole configured batch. T02.03 owns shared reporting
+  and G02 proof; T03.01 consumes/proves Extract reporting after G02 acceptance,
+  preserving the existing stage gate. The plan/checklist were mirrored and
+  T02.03/T03.01 overlap recorded; no task acceptance is implied.
 - The new native wildcard fixture exposed a verified v93 limitation: normal
   remux drops source TrackUID-zero all-tracks tags while preserving the
   mixed retained/removed UID tag's surviving target. The candidate was refused
@@ -409,6 +429,48 @@ package is complete; its receipts below are historical.
   assigned feature branch and only the parent-owned handoff diff. Controller
   design uses NUL-safe selection, explicit exclusion for invalid/incompatible
   sources (default N), and independent JSON jobs with safe literal argv reload.
+- T02.01/T02.02 writer is now quiescent. Final runtime SHA-256 is
+  `dd1ada39acf6f48853f27e6a441cb1a5d5dfc2cf14a5e7c2adb44a3aa21badb0`.
+  Focused executor selection reports 21 passed in 67.59s; three affected
+  foundation/adapter cases passed in 3.73s and language refinement passed in
+  4.81s. Hash-bound receipts are
+  `.tmp/mkvutil-rework/executors.yGdnvt/executor-focused-receipt.json` and
+  `native/executor-native-receipt.json` under that run directory. Parent verified
+  all three current file hashes against native evidence and the unchanged
+  immutable-source hashes. Native results distinguish Edit, same-name Mux,
+  conversion and both language paths. Chapter XML, attachment bytes, user-tag
+  String whitespace and tiny media payloads were checked; one conversion SRT
+  end timestamp changed from 200ms to 199ms with unchanged cue text, explicitly
+  recorded rather than claimed byte-identical. The verified `i-klingon` native
+  pair is `tlh`/`und`; unknown rewrites remain guarded.
+- Exactly one notified mocked Run journey initially failed because its fixture
+  was inside the harness's resettable state directory. The writer moved only
+  that fixture outside the reset directory; reset/isolation assertions remain.
+  Parent reran the same journey: 1 passed in 2.16s (2.57s wall, 1.46s user,
+  0.96s system) in `.tmp/mkvutil-rework/executor-run-probe-fixed.vxpjIc/pytest`.
+  Original failure log remains at `executor-run-probe.N1EoM7/test.log` under
+  the same project evidence root. Copied runtime hash matches the final source.
+  No native media tools were reached by that menu probe. Parent corrective
+  source/test review and focused verification are now complete.
+- Parent independently passed four critical candidate/post-publication/signal
+  cases in 11.35s (11.90s wall, 6.17s user, 4.41s system), recorded in
+  `.tmp/mkvutil-rework/executor-parent-review.4sDXqS/test.log`. Static checks
+  and all current receipt bindings passed. Astra's bounded post-fix audit
+  returned PASS on the corrected publication, tag, signal and uncertain-result
+  findings; no extra campaign was required. Parent accepted T02.01/T02.02.
+  This does not accept T02.03 or G02, or replace later accumulated integration
+  and all-format qualification.
+- Latest continuity refresh successfully reread the installed skill and its
+  updated resumption/audits, change-control, location/visibility and dependency
+  references. Both now-installed structural validators pass. The handoff is
+  about 43KB and navigable with current sections refreshed; no consolidation
+  or deeper whole-project audit was triggered. The original ordered parent-ID
+  ledger and provenance are unchanged (SHA-256
+  `fefdffb5cf9dccc158d326be5a53004a599f83d50b2acf73f04ae62e80514cab`).
+  That same parent ID was reverified against its CLI session metadata, original
+  Scripts cwd, no fork-parent marker, and this user's current refresh request
+  in the matching log. No new session ID was appended. Git worktree assignments,
+  accepted requirements/permissions and all private recovery evidence remain.
 - Read-only upcoming Mux validation evidence from `mkv_requirement_mapping`:
   bundled v93 manual confirms output track IDs differ and MakeMKV can regenerate
   track UIDs. Validate planned sequence/properties and metadata without an
@@ -440,9 +502,8 @@ checks. New implementation packages follow the current approved route.
    verify branch, HEAD, worktree/index, pending approvals, and any live agents.
 2. Verify the published planning checkpoints and current implementation changes
    from actual Git state; respect the current package's exclusive writer.
-3. Preserve accepted G01/T01.01-T01.03 and implement T02.01/T02.02's Edit/Mux
-   executors under their focused safety/native gates, then T02.03 reporting
-   and skipped-only continuation. Inspect the
+3. Preserve accepted G01/T01.01-T01.03 and T02.01/T02.02's verified Edit/Mux
+   executors; implement T02.03 reporting and skipped-only continuation. Inspect the
    target's prerequisites and overlap before selecting a bounded implementation
    package; present A/B routes only when they materially change scope/order.
 
@@ -453,7 +514,7 @@ checks. New implementation packages follow the current approved route.
 | 1 | T01.01 | Accepted: user instruction/naming choice, focused baseline/pure contract proof, parent review | Canonical original-file model; pure retained-order/output helpers |
 | 2 | T01.02 | Accepted: registry/configuration/argv contracts and small native builder proof | Canonical shared metadata definitions/configuration/builders |
 | 3 | T01.03 | Accepted: actual category configuration, always-multi selection, per-file/skip/subset proof | Real category selection, planning, conflicts, and preview consumers |
-| 4 | T02.01, T02.02 | T01.02/T01.03 and G01 accepted | Same source and helpers: one coherent owner; each executor needs its own evidence |
+| 4 | T02.01, T02.02 | Accepted: focused/native executor gates, parent review and Astra post-fix PASS | Shared source and helpers verified; preserve corrected publication and result contracts |
 | 5 | T02.03 | Both Edit and Mux executors accepted | Integrated reporting and single/batch workflows; G02 goal gate checked |
 | 6 | T03.01 | G01 inputs plus G02 goal acceptance | Preserve approved Extract-after-Edit+Mux stage gate |
 | 7 | T04.01, then T04.02 | Runtime task evidence accepted, then integrated candidate verified | Consolidate valid slice receipts; final help/docs follow validated behavior |

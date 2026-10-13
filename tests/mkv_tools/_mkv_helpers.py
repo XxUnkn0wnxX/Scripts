@@ -238,6 +238,25 @@ if [ "$call_mode" = "identify" ]; then
 fi
 
 if [ "$call_mode" = "json" ]; then
+  if [ -n "${TEST_FAKE_EXECUTION_JSON:-}" ]; then
+    if override="$("$TEST_REAL_PYTHON" - "$TEST_FAKE_EXECUTION_JSON" "$source_file" "$state_dir" <<'PY'
+import json, os, sys
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text())
+source = Path(sys.argv[2]).absolute()
+state = Path(sys.argv[3]) / "execution-inodes.json"
+inodes = json.loads(state.read_text()) if state.exists() else {}
+entry = source.stat()
+value = inodes.get(f"{entry.st_dev}:{entry.st_ino}", manifest.get("sources", {}).get(str(source)))
+if value is None:
+    sys.exit(3)
+print(json.dumps(value))
+PY
+    )"; then
+      printf '%s\\n' "$override"
+      exit 0
+    fi
+  fi
   if [ -n "${TEST_FAKE_MKVMERGE_JSON_BY_PATH:-}" ]; then
     if override="$("$TEST_REAL_PYTHON" - "$TEST_FAKE_MKVMERGE_JSON_BY_PATH" "$source_file" <<'PY'
 import json, os, sys
@@ -329,6 +348,28 @@ for arg in "$@"; do
   esac
 done
 
+if [ -n "${TEST_FAKE_EXECUTION_JSON:-}" ]; then
+  "$TEST_REAL_PYTHON" - "$TEST_FAKE_EXECUTION_JSON" "$source_file" "$output" "$state_dir" <<'PY'
+import json, os, signal, sys
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text())
+source, output = Path(sys.argv[2]).absolute(), Path(sys.argv[3])
+output.write_bytes(b"candidate-data\\n")
+state = Path(sys.argv[4]) / "execution-inodes.json"
+inodes = json.loads(state.read_text()) if state.exists() else {}
+entry = output.stat()
+inodes[f"{entry.st_dev}:{entry.st_ino}"] = manifest["stage"][str(source)]
+state.write_text(json.dumps(inodes))
+if manifest.get("source_change_on_merge"):
+    with source.open("ab") as stream:
+        stream.write(b"changed")
+code = manifest.get("merge_code", 0)
+if code < 0:
+    os.kill(os.getppid(), -code)
+sys.exit(code)
+PY
+  exit $?
+fi
 if [ -n "$output" ]; then
   mkdir -p "$(dirname "$output")"
   : > "$output"
@@ -362,6 +403,19 @@ if [ -n "${TEST_FAKE_MKVEXTRACT_FAIL_CALL:-}" ] && [ "$call" -eq "${TEST_FAKE_MK
   exit 1
 fi
 
+if [ "$2" = "tags" ]; then
+  if [ -n "${TEST_FAKE_EXECUTION_JSON:-}" ]; then
+    "$TEST_REAL_PYTHON" - "$TEST_FAKE_EXECUTION_JSON" "$1" <<'PY'
+import json, os, sys
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text())
+print(manifest.get("tags", {}).get(os.path.abspath(sys.argv[2]), manifest.get("tags_default", "<Tags/>")))
+PY
+  else
+    printf '%s\\n' '<Tags/>'
+  fi
+  exit 0
+fi
 mode="$1"
 if [ "$mode" = "tracks" ]; then
   shift
@@ -413,6 +467,26 @@ printf '%s\\n' "$call" > "$call_file"
 
 if [ -n "${TEST_FAKE_MKVPROPEDIT_FAIL_CALL:-}" ] && [ "$call" -eq "${TEST_FAKE_MKVPROPEDIT_FAIL_CALL}" ]; then
   exit 1
+fi
+if [ -n "${TEST_FAKE_EXECUTION_JSON:-}" ]; then
+  "$TEST_REAL_PYTHON" - "$TEST_FAKE_EXECUTION_JSON" "$1" "$state_dir" <<'PY'
+import json, os, sys
+from pathlib import Path
+manifest = json.loads(Path(sys.argv[1]).read_text())
+source = Path(sys.argv[2]).absolute()
+value = manifest.get("post_edit", {}).get(str(source))
+if value is not None:
+    source.write_bytes(b"edited-data\\n")
+    state = Path(sys.argv[3]) / "execution-inodes.json"
+    inodes = json.loads(state.read_text()) if state.exists() else {}
+    entry = source.stat()
+    inodes[f"{entry.st_dev}:{entry.st_ino}"] = value
+    state.write_text(json.dumps(inodes))
+code = manifest.get("edit_code", 0)
+if code < 0:
+    os.kill(os.getppid(), -code)
+sys.exit(code)
+PY
 fi
 """,
     )
