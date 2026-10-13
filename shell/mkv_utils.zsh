@@ -17,7 +17,7 @@ SCRIPT_NAME="${0:t}"
 SCRIPT_ROOT=${0:A:h}
 looks_like_repo_root() {
   local candidate="$1"
-  [[ -d "$candidate/.git" ]] && return 0
+  [[ -d "$candidate/.git" || -f "$candidate/.git" ]] && return 0
   [[ -f "$candidate/requirements.txt" && -d "$candidate/docs" ]] && return 0
   return 1
 }
@@ -1241,682 +1241,690 @@ PYCODE
   done
 }
 
-print_help() {
-  cat <<EOF
-Usage: ${SCRIPT_NAME} [working_directory]
-       ${SCRIPT_NAME} --help
+# Category planning controller. Jobs are JSON records, with raw identification
+# JSON retained as a string so 64-bit UID evidence never passes through jq math.
+typeset -ga MKVUTIL_SCAN_FILES=() MKVUTIL_SELECTED_FILES=() MKVUTIL_SOURCES=() MKVUTIL_JOBS=()
+typeset -ga MKVUTIL_REMOVAL_SKIPS=() MKVUTIL_REMOVAL_SKIP_HISTORY=()
+typeset -g MKVUTIL_CURRENT_JOB="" MKVUTIL_CONFIG="" MKVUTIL_CODEC_EXT_JSON=""
 
-Interactive Matroska utility script for metadata edits, extraction, and track operations.
-
-Arguments:
-  --help, -h            Show this help page and exit.
-  working_directory     Directory to scan instead of the current directory.
-
-Menu options:
-  1) Set flag-forced for tracks
-     Set the forced flag on selected track IDs across one or more Matroska files.
-
-  2) Set flag-default for tracks
-     Set the default flag on selected track IDs across one or more Matroska files.
-
-  3) Set language for tracks
-     Change the language field on selected track IDs.
-
-  4) Set name for tracks
-     Rename selected track IDs.
-
-  5) Set title for MK file
-     Set or clear the container title on one or more files.
-
-  6) Extract all attachments from MK files
-     Extract every attachment into an Attachments directory.
-
-  7) Mass Remove tracks for multi-MK files
-     Remove selected track IDs and remux the remaining tracks.
-
-  8) Mass Re-order tracks for multi-MK files
-     Apply a new mkvmerge track order to selected files.
-
-  9) Extract Tracks for multi-MK files
-     Extract selected track IDs from one or more files.
-
-Notes:
-  - With no working_directory argument, the script uses the current directory.
-  - The script requires Matroska files in the target directory before the menu can run.
-EOF
+_mkvutil_json_array() {
+  jq -cn '$ARGS.positional' --args -- "$@"
 }
 
-# Sourcing this file defines its helpers without entering the interactive CLI.
-if [[ "$ZSH_EVAL_CONTEXT" != *:file ]]; then
-display_dir="$(pwd)"
-working_dir_set=false
+_mkvutil_json_map() {
+  jq -cn '$ARGS.positional as $p | reduce range(0; $p|length; 2) as $i ({}; .[$p[$i]]=$p[$i+1])' --args -- "$@"
+}
 
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --help|-h)
-      print_help
-      exit 0
-      ;;
-    -*)
-      echo "Usage: ${SCRIPT_NAME} [working_directory]" >&2
-      exit 1
-      ;;
-    *)
-      if [ "$working_dir_set" = true ]; then
-        echo "Usage: ${SCRIPT_NAME} [working_directory]" >&2
-        exit 1
-      fi
-      display_dir="$1"
-      working_dir_set=true
-      ;;
-  esac
-  shift
-done
+mkvutil_source_identity() {
+  python3 - "$1" <<'PYCODE'
+import json, os, stat, sys
+try:
+    item = os.stat(sys.argv[1])
+    if not stat.S_ISREG(item.st_mode):
+        raise ValueError("source is not a regular file")
+    # Decimal strings preserve nanosecond/inode precision in shell/jq records.
+    print(json.dumps(dict(zip(("dev", "ino", "size", "mtime_ns"),
+          map(str, (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)))), sort_keys=True))
+except (OSError, ValueError) as error:
+    print(f"Cannot inspect source identity: {error}", file=sys.stderr)
+    sys.exit(1)
+PYCODE
+}
 
-current_dir="$display_dir"
-if [ ! -d "$current_dir" ]; then
-  echo "Error: Working directory not found: $current_dir" >&2
-  exit 1
-fi
+mkvutil_capture_source() {
+  local file="${1:A}" before="" after="" json="" rows=""
+  before="$(mkvutil_source_identity "$file")" || return 1
+  json="$(mkvmerge -J "$file" < /dev/null)" || return 1
+  after="$(mkvutil_source_identity "$file")" || return 1
+  [[ "$before" == "$after" ]] || { print -u2 -r -- "Source changed during inspection: $file"; return 1; }
+  rows="$(collect_tracks_for_remux "$file" "$json")" || return 1
+  mkvutil_plan_layout "$rows" '' '' "${file:e}" || return 1
+  jq -cn --arg source "$file" --argjson identity "$before" --arg source_json "$json" '
+    ($source_json | fromjson) as $j |
+    {source:$source, identity:$identity, source_json:$source_json,
+     model:{tracks:[$j.tracks[] | {id,type,properties:{codec_id:.properties.codec_id,
+       track_name:.properties.track_name, language:.properties.language,
+       language_ietf:.properties.language_ietf, default_track:.properties.default_track,
+       forced_track:.properties.forced_track}}],
+       title:($j.container.properties.title // null), attachments:($j.attachments // [])}}
+  '
+}
 
-cd "$current_dir" || exit 1
-current_dir="$(pwd)"
-echo "Current Work Dir: $display_dir"
-
-# Collect Matroska files in current dir
-matroska_files=()
-for ext in mkv mka mks mk3d; do
-  # Use (N) glob qualifier to suppress nomatch errors
-  for f in "$current_dir"/*.$ext(N); do
-    [ -e "$f" ] && matroska_files+=("$f")
+mkvutil_scan_files() {
+  local directory="${1:A}" file=""
+  MKVUTIL_SCAN_FILES=()
+  for file in "$directory"/*.(mkv|mka|mks|mk3d)(N.); do
+    MKVUTIL_SCAN_FILES+=("$file")
   done
-done
-if [ ${#matroska_files[@]} -eq 0 ]; then
-  echo "Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again."
-  exit 1
-fi
+  (( ${#MKVUTIL_SCAN_FILES} > 0 ))
+}
 
-print -n "Select an option:
-1) Set flag-forced for tracks
-2) Set flag-default for tracks
-3) Set language for tracks
-4) Set name for tracks
-5) Set title for MK file
-6) Extract all attachments from MK files
-7) Mass Remove tracks for multi-MK files
-8) Mass Re-order tracks for multi-MK files
-9) Extract Tracks for multi-MK files
-Enter choice: "
-read choice
+mkvutil_resolve_directory() {
+  local directory="${1:-$PWD}"
+  [[ -d "$directory" ]] || { print -u2 -r -- "Error: Working directory not found: $directory"; return 1; }
+  print -r -- "${directory:A}"
+}
 
-while [[ -z "$choice" || "$choice" != [1-9] ]]; do
-  echo "Invalid choice. Please enter a number from 1 to 9."
-  printf "Enter choice: "
-  read choice
-done
+# Pure domain check also rejects duplicate aliases, directories and injected
+# fzf choices. Both scan and selected paths become canonical absolute paths.
+mkvutil_accept_files() {
+  local file="" canonical=""
+  local -a accepted=()
+  local -A domain=() seen=()
+  MKVUTIL_SELECTED_FILES=()
+  for file in "${MKVUTIL_SCAN_FILES[@]}"; do domain[${file:A}]=1; done
+  for file in "$@"; do
+    canonical="${file:A}"
+    [[ -n "${domain[$canonical]-}" && -f "$canonical" && -z "${seen[$canonical]-}" ]] || return 1
+    seen[$canonical]=1
+    accepted+=("$canonical")
+  done
+  (( ${#accepted} > 0 )) || return 1
+  MKVUTIL_SELECTED_FILES=("${accepted[@]}")
+}
 
-if [ "$choice" = "1" ]; then
-  # Prompt for multi-file or single-file selection
-  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
+_mkvutil_read() {
+  printf '%s' "$1" >&2
+  IFS= read -r REPLY || return 2
+}
 
-  # Determine target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to apply forced-flag edits:"
-    typeset -a targets
-    targets=()
-    while IFS= read -r file; do
-      targets+=("$file")
-    done < <(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-    if [ ${#targets[@]} -eq 0 ]; then
-      echo "No target files selected. Exiting."
-      exit 1
-    fi
-  else
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --height 40% --reverse --border)
-    if [ -z "$source_file" ]; then
-      echo "No file selected. Exiting."
-      exit 1
-    fi
-    typeset -a targets
-    targets=("$source_file")
-  fi
+_mkvutil_exclude() {
+  _mkvutil_read 'Exclude this file from the batch? (Y/N) [N]: ' || return 2
+  [[ "${REPLY:u}" == Y || "${REPLY:u}" == YES ]]
+}
 
-  # Display track info for first target
-  display_track_info "${targets[1]}"
-
-  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
-
-  # Apply forced-flag edits (prompting per track)
-  set_flag_forced_tracks "$track_ids"
-
-elif [ "$choice" = "2" ]; then
-  # Prompt for multi-file or single-file selection
-  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-  # Determine target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to apply default-flag edits:"
-    typeset -a targets
-    targets=()
-    while IFS= read -r file; do
-      targets+=("$file")
-    done < <(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-    if [ ${#targets[@]} -eq 0 ]; then
-      echo "No target files selected. Exiting."
-      exit 1
-    fi
-  else
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --height 40% --reverse --border)
-    if [ -z "$source_file" ]; then
-      echo "No file selected. Exiting."
-      exit 1
-    fi
-    typeset -a targets
-    targets=("$source_file")
-  fi
-
-  # Display track info for first target
-  display_track_info "${targets[1]}"
-
-  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
-
-  # Apply default-flag edits (prompting per track)
-  set_flag_default_tracks "$track_ids"
-  
-elif [ "$choice" = "3" ]; then
-  # Prompt for multi-file or single-file selection
-  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-  # Determine target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to apply language edits:"
-    typeset -a targets
-    targets=()
-    while IFS= read -r file; do
-      targets+=("$file")
-    done < <(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-    if [ ${#targets[@]} -eq 0 ]; then
-      echo "No target files selected. Exiting."
-      exit 1
-    fi
-  else
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --height 40% --reverse --border)
-    if [ -z "$source_file" ]; then
-      echo "No file selected. Exiting."
-      exit 1
-    fi
-    typeset -a targets
-    targets=("$source_file")
-  fi
-
-  # Display track info for first target
-  display_track_info "${targets[1]}"
-
-  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
-
-  # Perform language setting on selected files (prompting per track)
-  set_language_tracks "$track_ids"
-  
-elif [ "$choice" = "4" ]; then
-  # Prompt for multi-file or single-file selection
-  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-  # Determine target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to apply name edits:"
-    typeset -a targets
-    targets=()
-    while IFS= read -r file; do
-      targets+=("$file")
-    done < <(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-    if [ ${#targets[@]} -eq 0 ]; then
-      echo "No target files selected. Exiting."
-      exit 1
-    fi
-  else
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --height 40% --reverse --border)
-    if [ -z "$source_file" ]; then
-      echo "No file selected. Exiting."
-      exit 1
-    fi
-    typeset -a targets
-    targets=("$source_file")
-  fi
-
-  # Display track info for first target
-  display_track_info "${targets[1]}"
-
-  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to edit (e.g., 0,1 or 1-2): ")
-
-	# Perform renaming on selected files
-	rename_tracks "$track_ids"
-
-		elif [ "$choice" = "5" ]; then
-		  # Prompt for multi-file or single-file selection
-		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-	  # Determine target files
-	  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-	    echo "Select Matroska file(s) to apply title edits:"
-	    typeset -a targets
-	    targets=()
-	    while IFS= read -r file; do
-	      targets+=("$file")
-	    done < <(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-	      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-	    if [ ${#targets[@]} -eq 0 ]; then
-	      echo "No target files selected. Exiting."
-	      exit 1
-	    fi
-	  else
-	    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-	    source_file=$(find . -maxdepth 1 -type f \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-	      | fzf --height 40% --reverse --border)
-	    if [ -z "$source_file" ]; then
-	      echo "No file selected. Exiting."
-	      exit 1
-	    fi
-	    typeset -a targets
-	    targets=("$source_file")
-	  fi
-
-	  printf "Title (empty to unset): "
-	  read title
-
-	  set_mkv_title "$title"
-
-	elif [ "$choice" = "6" ]; then
-	  echo "Select Matroska file(s) to extract attachments:"
-	  typeset -a targets
-	  targets=()
-	  while IFS= read -r file; do
-	    targets+=( "$file" )
-  done < <(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-
-  if [ ${#targets[@]} -eq 0 ]; then
-    echo "No target files selected. Exiting."
-    exit 1
-  fi
-  # Prepare output directory for attachments
-  mkdir -p "Attachments"
-
-  for file in "${targets[@]}"; do
-    attachment_count=$(count_attachments "$file")
-    echo "Processing $file: Extracting $attachment_count attachments..."
-
-    if [ "$attachment_count" -gt 0 ]; then
-      # Compute attachment IDs
-      attachment_ids=( $(seq 1 $attachment_count) )
-      # Determine absolute path to source file
-      # Remove leading './' if present
-      relpath=${file#./}
-      filepath="$current_dir/$relpath"
-      # Extract into Attachments directory
-      (cd "Attachments" && mkvextract attachments "$filepath" "${attachment_ids[@]}")
-    fi
-	  done
-	  echo "Attachments extraction completed."
-
-		elif [ "$choice" = "7" ]; then
-		  # --- Choice 7: Mass Remove tracks ---
-		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-  # Build fzf args
-  fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
-  [[ $MULTI_FILE_SELECTION == "Y" ]] && fzf_args+=(--multi)
-
-  # Single fzf to pick targets
-  targets=()
-  while IFS= read -r f; do
-    targets+=("$f")
-  done < <(
-    find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-    | fzf "${fzf_args[@]}"
+mkvutil_select_files() {
+  local file=""
+  local -a selected=() selector=(--multi --read0 --print0 --height 40% --reverse --border)
+  while IFS= read -r -d '' file; do selected+=("$file"); done < <(
+    printf '%s\0' "${MKVUTIL_SCAN_FILES[@]}" | fzf "${selector[@]}"
   )
-  [ ${#targets[@]} -eq 0 ] && { echo "No files selected. Exiting."; exit 1; }
+  mkvutil_accept_files "${selected[@]}" || { print -u2 -r -- 'No valid scanned files selected.'; return 1; }
+}
 
-  # Show JSON-based track list for first file
-  source_file=${targets[1]}
-  source_mkv_json=""
-  source_track_rows=""
-  if ! source_mkv_json="$(mkvmerge -J "$source_file" < /dev/null)" \
-    || ! source_track_rows="$(collect_tracks_for_remux "$source_file" "$source_mkv_json")"; then
-    echo "Error on ${source_file}; track inspection failed; file unchanged."
-    exit 1
-  fi
-  if ! display_track_info "$source_file" "$source_mkv_json"; then
-    echo "Error on ${source_file}; track inspection failed; file unchanged."
-    exit 1
-  fi
-
-  # Ask which track IDs to remove
-  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to remove (e.g., 0,1 or 1-2): ")
-
-  # Build exclude_ids[] by splitting on commas and ranges
-  exclude_ids=()
-  for tok in ${(s:,:)track_ids}; do
-    if [[ $tok == *-* ]]; then
-      start=${tok%-*}; end=${tok#*-}
-      for ((i=start; i<=end; i++)); do
-        exclude_ids+=($i)
-      done
+mkvutil_inspect_sources() {
+  local file="" record="" result=0
+  MKVUTIL_SOURCES=()
+  MKVUTIL_JOBS=()
+  MKVUTIL_REMOVAL_SKIPS=()
+  MKVUTIL_REMOVAL_SKIP_HISTORY=()
+  for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
+    if record="$(mkvutil_capture_source "$file")"; then
+      MKVUTIL_SOURCES+=("$record")
     else
-      exclude_ids+=($tok)
+      print -u2 -r -- "Inspection failed: $file"
+      _mkvutil_exclude || { result=$?; return "$result"; }
     fi
   done
-  # sort & dedupe
-  exclude_ids=($(printf "%s\n" "${exclude_ids[@]}" | sort -n | uniq))
+  (( ${#MKVUTIL_SOURCES} > 0 )) || { print -u2 -r -- 'No valid sources remain.'; return 1; }
+}
 
-  echo "Removing tracks: ${exclude_ids[*]}"
+mkvutil_category_menu() {
+  case "$1" in
+    edit) mkvutil_metadata_menu ;;
+    mux) print -r -- $'1) Remove tracks\n2) Reorder tracks' ;;
+    extract) print -r -- $'1) Extract attachments\n2) Extract selected tracks' ;;
+    *) return 1 ;;
+  esac
+}
 
-  # Helper to filter out excluded IDs
-  filter_keep() {
-    local arr=("$@") keep=()
-    for id in "${arr[@]}"; do
-      [[ ! " ${exclude_ids[*]} " == *" $id "* ]] && keep+=($id)
-    done
-    echo "${keep[@]}"
-  }
+mkvutil_category_choices() {
+  local domain=""
+  case "$1" in
+    edit) mkvutil_metadata_validate_registry || return 1; domain="${(j:,:)MKVUTIL_METADATA_IDS}" ;;
+    mux|extract) domain=1,2 ;;
+    *) return 1 ;;
+  esac
+  mkvutil_expand_ids "$2" "$domain"
+}
 
-  # Apply removal to each file
-  files_count=${#targets[@]}
-  file_index=1
-  total_processing_seconds=0
-  successful_files=0
-  failed_files=()
-  queue_start=$SECONDS
-  if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-    echo "Total Files Count: $files_count"
+# Configure against the first original model. Every job validates targeted IDs
+# and types against its own model afterward; untouched heterogeneous tracks are
+# allowed. Optional Mux metadata uses exactly the Edit registry/collector.
+mkvutil_configure_category() {
+  local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
+  local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
+  local -a order_ids=()
+  local item=""
+  MKVUTIL_CONFIG=""
+  MKVUTIL_JOBS=()
+  mkvutil_metadata_reset
+  raw="$(jq -r '.source_json' <<< "$reference")" || return 1
+  source="$(jq -r '.source' <<< "$reference")" || return 1
+  rows="$(collect_tracks_for_remux "$source" "$raw")" || return 1
+  mkvutil_plan_layout "$rows" '' '' "${source:e}" || return 1
+  expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || return 1
+  if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
+    print -r -- "Removal reference file: $source"
   fi
-  for target in "${targets[@]}"; do
-    typeset -a video_keep audio_keep subtitle_keep raw_tracks
-    typeset -A seen_track_ids
-    typeset track_rows="" row="" track_type="" track_id="" track_rows_valid="" excluded_id="" requested_ids_valid=""
-    video_keep=()
-    audio_keep=()
-    subtitle_keep=()
-    seen_track_ids=()
-    track_rows=""
-    if [[ "$target" == "$source_file" ]]; then
-      track_rows="$source_track_rows"
-    elif ! track_rows="$(collect_tracks_for_remux "$target")"; then
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        failed_files+=("${target:t}")
-        echo "Failed: ${target:t}"
-      else
-        echo "Error on ${target}; track inspection failed; file unchanged."
+  display_track_info "$source" "$raw" || return 1
+  case "$category" in
+    edit) mkvutil_metadata_configure "$operations" || return $? ;;
+    mux)
+      if [[ ",$operations," == *,1,* ]]; then
+        _mkvutil_read 'Track IDs to remove (comma/range): ' || return 2
+        removal="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
+        signatures="$(mkvutil_removal_signatures "$reference" "$removal")" || return 1
       fi
-      file_index=$((file_index + 1))
-      continue
+      if [[ ",$operations," == *,2,* ]]; then
+        _mkvutil_read 'Track order (e.g. 0:1,0:0; omitted retained tracks append): ' || return 2
+        order="${REPLY//[[:space:]]/}"
+        [[ -n "$order" ]] || return 1
+      fi
+      mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}" || return 1
+      for item in "${(@s:,:)order}"; do
+        [[ -n "$item" ]] || continue
+        _mkvutil_canonical_id "${item#0:}" || return 1
+        order_ids+=("$REPLY")
+      done
+      print -r -- 'Optional metadata edits:'
+      mkvutil_metadata_menu || return 1
+      _mkvutil_read 'Metadata choices (comma/range; blank for none): ' || return 2
+      metadata="$REPLY"
+      if [[ -n "${metadata//[[:space:]]/}" ]]; then
+        metadata="$(mkvutil_category_choices edit "$metadata")" || return 1
+        mkvutil_metadata_configure "$metadata" || return $?
+      fi
+      ;;
+    extract)
+      if [[ ",$operations," == *,2,* ]]; then
+        _mkvutil_read 'Track IDs to extract (comma/range): ' || return 2
+        extract_ids="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+  settings="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_SETTINGS}")" || return 1
+  MKVUTIL_CONFIG="$(jq -cn --arg category "$category" --arg operations "$operations" \
+    --arg removal "$removal" --arg order "$order" --arg metadata "$metadata" --arg extract "$extract_ids" \
+    --argjson order_ids "$(_mkvutil_json_array "${order_ids[@]}")" \
+    --argjson settings "$settings" --argjson expected_types "$expected" --arg reference "$source" --argjson signatures "$signatures" '
+    {category:$category, operations:($operations|split(",")), removed_ids:($removal|split(",")|map(select(length>0))),
+     order:$order, order_ids:$order_ids, metadata:$metadata, settings:$settings, expected_types:$expected_types,
+     extract_ids:($extract|split(",")|map(select(length>0))), reference:$reference, removal_signatures:$signatures}')" || return 1
+  MKVUTIL_REMOVAL_SKIPS=()
+}
+
+# Only requested original IDs define removal compatibility. Reference codec
+# values must be usable strings; metadata and other tracks are not signatures.
+mkvutil_removal_signatures() {
+  jq -en --argjson reference "$1" --arg ids "$2" '
+    reduce ($ids|split(",")[]) as $id ({};
+      ([$reference.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
+      if $track==null or ($track.properties.codec_id|type)!="string" or
+        ($track.properties.codec_id|test("[^[:space:]]")|not) or
+        ($track.type!="video" and $track.type!="audio" and $track.type!="subtitles")
+      then error("unusable removal reference signature for original ID " + $id)
+      else .[$id]={type:$track.type, codec_id:$track.properties.codec_id} end)
+  '
+}
+
+# 0: compatible/no removal; 3: mismatch receipt on stdout; 1: invalid config.
+# This is the single eligibility rule for planning and later executor preflight.
+mkvutil_removal_mismatch() {
+  local receipt=""
+  mkvutil_validate_config "$2" || return 1
+  receipt="$(jq -cn --argjson record "$1" --argjson config "$2" '
+    if $config.category!="mux" or ($config.removed_ids|length)==0 then empty else
+      [$config.removed_ids[] as $id |
+        $config.removal_signatures[$id] as $expected |
+        ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
+        (if $track==null then null else {type:$track.type,codec_id:$track.properties.codec_id} end) as $actual |
+        {original_id:$id,expected:$expected,actual:$actual,
+         reason:(if $track==null then "missing-id"
+           elif $actual.type!=$expected.type and $actual.codec_id!=$expected.codec_id then "type-and-codec-mismatch"
+           elif $actual.type!=$expected.type then "type-mismatch"
+           elif $actual.codec_id!=$expected.codec_id then "codec-mismatch" else null end)} |
+        select(.reason!=null)] as $reasons |
+      if ($reasons|length)==0 then empty else
+        {schema:1,kind:"removal-mismatch",source:$record.source,identity:$record.identity,
+         reference:$config.reference,requested_ids:$config.removed_ids,reasons:$reasons,
+         outputs:[],propedit_args:[],merge_metadata_args:[]} end
+    end')" || return 1
+  [[ -n "$receipt" ]] || return 0
+  print -r -- "$receipt"
+  return 3
+}
+
+_mkvutil_load_settings() {
+  local json="$1" key="" value=""
+  mkvutil_metadata_reset
+  while IFS= read -r -d '' key && IFS= read -r -d '' value; do
+    MKVUTIL_METADATA_SETTINGS[$key]="$value"
+  done < <(jq -j '.settings|to_entries[]|.key,"\u0000",.value,"\u0000"' <<< "$json")
+}
+
+_mkvutil_codec_map() {
+  [[ -z "$MKVUTIL_CODEC_EXT_JSON" ]] || return 0
+  ensure_venv_python
+  MKVUTIL_CODEC_EXT_JSON="$("$PYTHON_BIN" - <<'PYCODE'
+import json
+from pymkv.TypeTrack import type_files
+flat = {k:v for category in type_files.values() for k,v in category.items()}
+print(json.dumps(flat))
+PYCODE
+  )" || return 1
+}
+
+mkvutil_validate_config() {
+  jq -e '
+    . as $config |
+    (.category=="edit" or .category=="mux" or .category=="extract") and
+    (.operations|type)=="array" and (.operations|length)>0 and
+    (.removed_ids|type)=="array" and (.order_ids|type)=="array" and (.extract_ids|type)=="array" and
+    (.order|type)=="string" and (.settings|type)=="object" and (.expected_types|type)=="object" and
+    all(.settings[]; type=="string") and
+    all(.removed_ids[],.order_ids[],.extract_ids[]; type=="string" and test("^[0-9]+$")) and
+    (if .category=="edit" then (.removed_ids|length)==0 and .order=="" and (.extract_ids|length)==0
+     elif .category=="mux" then (.extract_ids|length)==0 and all(.operations[]; .=="1" or .=="2")
+     else (.removed_ids|length)==0 and .order=="" and (.settings|length)==0 and all(.operations[]; .=="1" or .=="2") end) and
+    (if .category=="mux" and (.removed_ids|length)>0 then
+      (.reference|type)=="string" and (.reference|length)>0 and (.removal_signatures|type)=="object" and
+      all(.removed_ids[]; . as $id | $config.removal_signatures[$id] as $signature |
+        ($signature.type=="video" or $signature.type=="audio" or $signature.type=="subtitles") and
+        $config.expected_types[$id]==$signature.type and
+        ($signature.codec_id|type)=="string" and ($signature.codec_id|test("[^[:space:]]")))
+     else true end)
+  ' <<< "$1" > /dev/null
+}
+
+# Pure per-file job builder, apart from a read-only identity recheck. Configuration
+# and both argv arrays are embedded in the returned record, never shared by jobs.
+mkvutil_plan_job() {
+  local record="$1" config="$2" file="" identity="" raw="" rows="" category="" removal="" order=""
+  local args="" input_ids="" retained="" selectors="" types="" flags="" codec_map='{}' overrides="" registry="" choices="" mismatch="" result=0
+  _mkvutil_clear_plan_layout
+  mkvutil_metadata_reset
+  MKVUTIL_CURRENT_JOB=""
+  mkvutil_validate_config "$config" || return 1
+  file="$(jq -r '.source' <<< "$record")" || return 1
+  identity="$(mkvutil_source_identity "$file")" || return 1
+  jq -e --argjson identity "$identity" '.identity == $identity' <<< "$record" > /dev/null || {
+    print -u2 -r -- "Source changed after inspection: $file"; return 1;
+  }
+  mismatch="$(mkvutil_removal_mismatch "$record" "$config")" || result=$?
+  if (( result != 0 )); then
+    (( result != 3 )) || print -r -- "$mismatch"
+    return "$result"
+  fi
+  category="$(jq -r '.category' <<< "$config")" || return 1
+  raw="$(jq -r '.source_json' <<< "$record")" || return 1
+  rows="$(collect_tracks_for_remux "$file" "$raw")" || return 1
+  jq -en --argjson record "$record" --argjson config "$config" '
+    ($config.removed_ids + $config.order_ids + $config.extract_ids +
+      [$config.settings|keys[]|split(":")[1]|select(. != "info")]|unique) as $targeted |
+    all($targeted[]; . as $id | any($record.model.tracks[];
+      (.id|tostring)==$id and .type==$config.expected_types[$id]))
+    ' > /dev/null || { print -u2 -r -- "Missing or incompatible original track IDs: $file"; return 1; }
+  removal="$(jq -r '.removed_ids|join(",")' <<< "$config")" || return 1
+  order="$(jq -r '.order' <<< "$config")" || return 1
+  mkvutil_plan_layout "$rows" "$removal" "$order" "${file:e}" || return 1
+  _mkvutil_load_settings "$config" || return 1
+  case "$category" in
+    edit) mkvutil_build_propedit_args || return 1; args="$(_mkvutil_json_array "${MKVUTIL_PROPEDIT_ARGS[@]}")" || return 1 ;;
+    mux)
+      mkvutil_metadata_snapshot_flags "$raw" || return 1
+      mkvutil_build_merge_metadata_args || return 1
+      args="$(_mkvutil_json_array "${MKVUTIL_MERGE_METADATA_ARGS[@]}")" || return 1
+      ;;
+    extract)
+      args='[]'
+      if [[ "$(jq -r '.extract_ids|length' <<< "$config")" != 0 ]]; then
+        _mkvutil_codec_map || return 1
+        codec_map="$MKVUTIL_CODEC_EXT_JSON"
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+  input_ids="$(_mkvutil_json_array "${MKVUTIL_INPUT_IDS[@]}")" || return 1
+  retained="$(_mkvutil_json_array "${MKVUTIL_RETAINED_IDS[@]}")" || return 1
+  selectors="$(_mkvutil_json_map "${(@kv)MKVUTIL_PROPEDIT_SELECTORS}")" || return 1
+  types="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || return 1
+  flags="$(_mkvutil_json_map "${(@kv)MKVUTIL_SOURCE_FLAGS}")" || return 1
+  overrides="$(_mkvutil_json_map "${(@kv)ext_override}")" || return 1
+  registry="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_REGISTRY}")" || return 1
+  choices="$(_mkvutil_json_array "${MKVUTIL_METADATA_IDS[@]}")" || return 1
+  jq -cn --argjson record "$record" --argjson config "$config" --argjson args "$args" \
+    --argjson inputs "$input_ids" --argjson retained "$retained" --argjson selectors "$selectors" \
+    --argjson types "$types" --argjson flags "$flags" --arg extension "$MKVUTIL_OUTPUT_EXTENSION" \
+    --arg track_order "$MKVUTIL_TRACK_ORDER" --argjson codec_map "$codec_map" --argjson overrides "$overrides" \
+    --argjson registry "$registry" --argjson choices "$choices" '
+    def codec_extension($cid):
+      ($cid|split("/")|last) as $key |
+      $overrides[$cid] // $overrides[$key] // $codec_map[$cid] // $codec_map[$key] // ($key|ascii_downcase|gsub("[^a-z0-9]";""));
+    $record + {schema:1, config:$config, removal_signatures:($config.removal_signatures // {}), input_ids:$inputs, retained_ids:$retained,
+      selectors:$selectors, track_types:$types, source_flags:$flags,
+      output_extension:$extension, track_order:$track_order,
+      propedit_args:(if $config.category=="edit" then $args else [] end),
+      merge_metadata_args:(if $config.category=="mux" then $args else [] end)} |
+    .destination=(if $config.category=="mux" then (.source|sub("\\.[^.]+$";"."+$extension))
+      elif $config.category=="edit" then .source else (.source|sub("/[^/]*$";"/Attachments")) end) |
+    . as $job |
+    .outputs=(if $config.category!="extract" then [.destination] else
+      [if ($config.operations|index("1")) then
+         $record.model.attachments[] | . as $a |
+         if ($a.file_name|type)!="string" or ($a.file_name|length)==0 or
+           ($a.file_name|test("[/\\\\]")) or $a.file_name=="." or $a.file_name==".."
+         then error("unsafe attachment filename") else
+           {kind:"attachment", id:($a.id|tostring), codec:null,
+            path:($job.destination+"/"+$a.file_name)} end
+       else empty end,
+       $config.extract_ids[] as $id | $record.model.tracks[] | select((.id|tostring)==$id) |
+       (.properties.codec_id // "") as $cid | codec_extension($cid) as $ext |
+       if ($ext|length)==0 or ($ext|test("^[a-zA-Z0-9]+$")|not) then error("unknown extraction extension")
+       else {kind:"track", id:$id, codec:$cid, path:($job.source|sub("\\.[^.]+$";""))+" - Track ["+$id+"]."+$ext} end]
+      end) |
+    .requested_metadata=[$choices[] as $choice | $config.settings|to_entries[] |
+      select((.key|split(":")[0])==$choice) |
+      {choice:$choice, original_id:(.key|split(":")[1]), value:.value,
+       label:$registry[$choice+":label"], scope:$registry[$choice+":scope"], property:$registry[$choice+":property"]}] |
+    .preview={title:(if ($config.settings|has("5:info")) then $config.settings["5:info"] else .model.title end),
+      tracks:[$retained|to_entries[] | .key as $position | .value as $id |
+        $record.model.tracks[] | select((.id|tostring)==$id) |
+        {original_id:$id, final_position:($position+1), type:.type, codec:.properties.codec_id,
+         name:(if ($config.settings|has("4:"+$id)) then $config.settings["4:"+$id] else (.properties.track_name // "") end),
+         language:(if ($config.settings|has("3:"+$id)) then $config.settings["3:"+$id] else (.properties.language_ietf // .properties.language // "") end),
+         forced:(if ($config.settings|has("1:"+$id)) then ($config.settings["1:"+$id]=="1") else .properties.forced_track end),
+         default:(if ($config.settings|has("2:"+$id)) then ($config.settings["2:"+$id]=="1") else .properties.default_track end)}]}
+  '
+}
+
+# Reload known job fields with NUL framing: empty arguments and trailing newlines
+# survive. Queue consumers must pass a specific record, never use last-file data.
+mkvutil_load_job() {
+  local job="$1" key="" field="" value=""
+  MKVUTIL_CURRENT_JOB=""
+  _mkvutil_clear_plan_layout
+  mkvutil_metadata_reset
+  jq -e '.schema==1 and (.input_ids|type)=="array" and (.retained_ids|type)=="array" and
+    (.selectors|type)=="object" and (.track_types|type)=="object" and (.source_flags|type)=="object" and
+    (.config.settings|type)=="object" and (.propedit_args|type)=="array" and (.merge_metadata_args|type)=="array"' \
+    <<< "$job" > /dev/null || return 1
+  while IFS= read -r -d '' value; do MKVUTIL_INPUT_IDS+=("$value"); done < <(jq -j '.input_ids[]|.,"\u0000"' <<< "$job")
+  while IFS= read -r -d '' value; do MKVUTIL_RETAINED_IDS+=("$value"); done < <(jq -j '.retained_ids[]|.,"\u0000"' <<< "$job")
+  for key in selectors track_types source_flags settings; do
+    while IFS= read -r -d '' field && IFS= read -r -d '' value; do
+      case "$key" in
+        selectors) MKVUTIL_PROPEDIT_SELECTORS[$field]="$value" ;;
+        track_types) MKVUTIL_TRACK_TYPES[$field]="$value" ;;
+        source_flags) MKVUTIL_SOURCE_FLAGS[$field]="$value" ;;
+        settings) MKVUTIL_METADATA_SETTINGS[$field]="$value" ;;
+      esac
+    done < <(jq -j --arg key "$key" '(if $key=="settings" then .config.settings else .[$key] end)|to_entries[]|.key,"\u0000",.value,"\u0000"' <<< "$job")
+  done
+  while IFS= read -r -d '' value; do MKVUTIL_PROPEDIT_ARGS+=("$value"); done < <(jq -j '.propedit_args[]|.,"\u0000"' <<< "$job")
+  while IFS= read -r -d '' value; do MKVUTIL_MERGE_METADATA_ARGS+=("$value"); done < <(jq -j '.merge_metadata_args[]|.,"\u0000"' <<< "$job")
+  MKVUTIL_TRACK_ORDER="$(jq -r '.track_order' <<< "$job")" || return 1
+  MKVUTIL_OUTPUT_EXTENSION="$(jq -r '.output_extension' <<< "$job")" || return 1
+  MKVUTIL_FLAG_LAYOUT="$(_mkvutil_metadata_layout_rows)|${(j:,:)MKVUTIL_RETAINED_IDS}"
+  MKVUTIL_CURRENT_JOB="$job"
+}
+
+# Validate every destination before offering Run. Same-source Edit/Mux is
+# intentional; cross-job collisions, existing sidecars and other inputs reject.
+mkvutil_check_destinations() {
+  printf '%s\0' "$@" | python3 -c '
+import json, os, sys, unicodedata
+from pathlib import Path
+try:
+    jobs = [json.loads(record) for record in sys.stdin.buffer.read().split(b"\0") if record]
+    def case_insensitive(source):
+        alternate = source.with_name(source.name.swapcase())
+        try:
+            return os.path.samefile(source, alternate)
+        except FileNotFoundError:
+            return False
+    def destination_key(path, source):
+        # Use the nearest existing directory identity, plus pending components.
+        # A letter-bearing existing source establishes case behavior read-only.
+        parent = path.parent
+        tail = [path.name]
+        while not os.path.lexists(parent):
+            tail.insert(0, parent.name)
+            parent = parent.parent
+        if not parent.is_dir():
+            raise ValueError(f"Output parent is not a directory: {parent}")
+        item = parent.stat()
+        insensitive = case_insensitive(source)
+        if item.st_dev != source.parent.stat().st_dev:
+            # This uncommon redirected directory has no source-name probe on
+            # its filesystem. Conservatively compare folded names on macOS.
+            insensitive = sys.platform == "darwin"
+        if insensitive:
+            tail = [unicodedata.normalize("NFD", part).casefold() for part in tail]
+        return item.st_dev, item.st_ino, tuple(tail)
+    sources = {}
+    for job in jobs:
+        source = Path(job["source"])
+        key = destination_key(source, source)
+        if key in sources:
+            raise ValueError(f"Duplicate source alias: {source}")
+        sources[key] = source
+    destinations = {}
+    for job in jobs:
+        source = Path(job["source"])
+        source_key = destination_key(source, source)
+        for output in job["outputs"]:
+            path = Path(output["path"] if isinstance(output, dict) else output)
+            key = destination_key(path, source)
+            if key in destinations:
+                raise ValueError(f"Destination collision or filename alias: {path}")
+            destinations[key] = path
+            if job["config"]["category"] != "extract" and key == source_key:
+                continue
+            if key in sources or os.path.lexists(path):
+                raise ValueError(f"Destination already exists or is another source: {path}")
+except (OSError, ValueError, KeyError, TypeError) as error:
+    print(str(error), file=sys.stderr)
+    sys.exit(1)
+'
+}
+
+mkvutil_report_removal_skips() {
+  local receipt=""
+  for receipt in "$@"; do
+    jq -r '
+      "Skipped removal mismatch: \(.source)", "  Reference: \(.reference)",
+      (.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")
+    ' <<< "$receipt" || return 1
+  done
+}
+
+_mkvutil_remove_scope_source() {
+  local record="" file="$1"
+  local -a remaining=()
+  for record in "${MKVUTIL_SOURCES[@]}"; do
+    [[ "$(jq -r '.source' <<< "$record")" == "$file" ]] || remaining+=("$record")
+  done
+  MKVUTIL_SOURCES=("${remaining[@]}")
+}
+
+# The scope pool survives automatic skips and Review/change. Only an explicit
+# exclusion removes a source. Status 3 means an all-mismatch queue, with receipts
+# still available; any other planning error requires the ordinary exclude policy.
+mkvutil_plan_queue() {
+  local record="" job="" file="" result=0
+  local -a jobs=() scope=()
+  MKVUTIL_JOBS=()
+  MKVUTIL_REMOVAL_SKIPS=()
+  MKVUTIL_PROPEDIT_ARGS=()
+  MKVUTIL_MERGE_METADATA_ARGS=()
+  MKVUTIL_CURRENT_JOB=""
+  for record in "${MKVUTIL_SOURCES[@]}"; do
+    result=0
+    job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")" || result=$?
+    if (( result == 0 )); then
+      jobs+=("$job")
+      scope+=("$record")
+    elif (( result == 3 )); then
+      MKVUTIL_REMOVAL_SKIPS+=("$job")
+      scope+=("$record")
+    else
+      file="$(jq -r '.source' <<< "$record")"
+      print -u2 -r -- "Cannot plan source: $file"
+      _mkvutil_exclude || { result=$?; return "$result"; }
+      _mkvutil_remove_scope_source "$file"
     fi
-    raw_tracks=("${(@f)track_rows}")
-    track_rows_valid=true
+  done
+  MKVUTIL_SOURCES=("${scope[@]}")
+  mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
+  if (( ${#jobs} == 0 )); then
+    (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )) && return 3
+    print -u2 -r -- 'No valid jobs remain.'
+    return 1
+  fi
+  mkvutil_check_destinations "${jobs[@]}" || return 1
+  MKVUTIL_JOBS=("${jobs[@]}")
+}
 
-    for row in "${raw_tracks[@]}"; do
-      [[ -z "$row" ]] && continue
-      track_type="${row%%$'\t'*}"
-      track_id="${row#*$'\t'}"
+# Prepare a fresh scope from mismatch receipts only. Pending eligible jobs may
+# not be discarded. G02's post-execution controller can archive/clear those jobs
+# before calling this helper; configuration and confirmation remain separate.
+mkvutil_prepare_skipped_subset() {
+  local receipt="" file="" record="" result=0
+  local -a paths=() sources=()
+  (( ${#MKVUTIL_JOBS} == 0 && ${#MKVUTIL_REMOVAL_SKIPS} > 0 )) || {
+    print -u2 -r -- 'Skipped-subset preparation requires mismatch skips and no pending eligible jobs.'; return 1;
+  }
+  for receipt in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do
+    jq -e '.kind=="removal-mismatch" and (.reasons|length)>0 and (.source|type)=="string"' <<< "$receipt" > /dev/null || return 1
+    file="$(jq -r '.source' <<< "$receipt")" || return 1
+    paths+=("$file")
+  done
+  MKVUTIL_REMOVAL_SKIP_HISTORY+=("${MKVUTIL_REMOVAL_SKIPS[@]}")
+  MKVUTIL_CONFIG=""
+  MKVUTIL_CURRENT_JOB=""
+  MKVUTIL_JOBS=()
+  MKVUTIL_REMOVAL_SKIPS=()
+  MKVUTIL_SOURCES=()
+  MKVUTIL_SELECTED_FILES=("${paths[@]}")
+  mkvutil_metadata_reset
+  _mkvutil_clear_plan_layout
+  for file in "${paths[@]}"; do
+    if record="$(mkvutil_capture_source "$file")"; then
+      sources+=("$record")
+    else
+      print -u2 -r -- "Fresh skipped-source inspection failed: $file"
+      _mkvutil_exclude || { result=$?; return "$result"; }
+    fi
+  done
+  (( ${#sources} > 0 )) || { print -u2 -r -- 'No valid skipped sources remain.'; return 1; }
+  MKVUTIL_SOURCES=("${sources[@]}")
+  print -r -- "Fresh skipped-subset reference: $(jq -r '.source' <<< "${MKVUTIL_SOURCES[1]}")"
+}
 
-      if ! [[ "$track_id" == <-> ]]; then
-        track_rows_valid=false
-        break
-      fi
-      if [[ -n "${seen_track_ids[$track_id]-}" ]]; then
-        track_rows_valid=false
-        break
-      fi
-      seen_track_ids[$track_id]=1
+mkvutil_cancel_status() {
+  (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 && ${#MKVUTIL_REMOVAL_SKIP_HISTORY} == 0 ))
+}
 
-      case "$track_type" in
-        video) video_keep+=("$track_id") ;;
-        audio) audio_keep+=("$track_id") ;;
-        subtitles) subtitle_keep+=("$track_id") ;;
-        *) track_rows_valid=false; break ;;
+mkvutil_review_menu() {
+  print -r -- $'1) Review/change configured operations\n2) Preview resulting tracks and outputs'
+  if (( ${#MKVUTIL_JOBS} > 0 )); then
+    print -r -- '3) Run batch'
+  elif (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )); then
+    print -r -- '4) Prepare a fresh batch for mismatch-skipped files'
+  fi
+  print -r -- '0) Cancel'
+}
+
+mkvutil_preview_jobs() {
+  local job=""
+  if (( ${#MKVUTIL_REMOVAL_SKIP_HISTORY} > 0 )); then
+    print -r -- 'Previous skipped-scope receipts (execution unresolved):'
+    mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIP_HISTORY[@]}" || return 1
+  fi
+  mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
+  for job in "${MKVUTIL_JOBS[@]}"; do
+    jq -r '
+      "Source: \(.source)", "Category: \(.config.category)", "Destination: \(.destination)",
+      "Title: \(.preview.title // "")",
+      (.config.removed_ids[] | "Original ID \(.): removed"),
+      (.requested_metadata[] | "Metadata: \(.label) — \(.original_id) \(.property)=\(.value|tojson)"),
+      (.preview.tracks[] | "Original ID \(.original_id) => final position \(.final_position): \(.type) [\(.codec)] name=\(.name|tojson) language=\(.language|tojson) default=\(.default) forced=\(.forced)"),
+      (.outputs[] | select(type=="object") | "Extract \(.kind) \(.id): \(.path)")
+    ' <<< "$job" || return 1
+  done
+}
+
+print_help() {
+  print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
+  print -r -- "       ${SCRIPT_NAME} --help"
+  print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Execution is pending implementation.'
+}
+
+mkvutil_main() {
+  local directory="$PWD" category="" choice="" operations="" review="" result=0
+  MKVUTIL_SOURCES=()
+  MKVUTIL_JOBS=()
+  MKVUTIL_REMOVAL_SKIPS=()
+  MKVUTIL_REMOVAL_SKIP_HISTORY=()
+  MKVUTIL_CONFIG=""
+  MKVUTIL_CURRENT_JOB=""
+  mkvutil_metadata_reset
+  (( $# <= 1 )) || { print -u2 -r -- "Usage: ${SCRIPT_NAME} [working_directory]"; return 1; }
+  case "${1-}" in
+    --help|-h) print_help; return 0 ;;
+    -*) print -u2 -r -- "Usage: ${SCRIPT_NAME} [working_directory]"; return 1 ;;
+    '') ;;
+    *) directory="$1" ;;
+  esac
+  local resolved_directory=""
+  resolved_directory="$(mkvutil_resolve_directory "$directory")" || return 1
+  cd "$resolved_directory" || return 1
+  print -r -- "Current Work Dir: $directory"
+  mkvutil_scan_files "$PWD" || {
+    print -r -- 'Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again.'; return 1;
+  }
+  print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract\n0) Exit'
+  _mkvutil_read 'Category: ' || return 0
+  case "$REPLY" in
+    0) return 0 ;;
+    1) category=edit ;;
+    2) category=mux ;;
+    3) category=extract ;;
+    *) print -u2 -r -- 'Invalid category.'; return 1 ;;
+  esac
+  mkvutil_category_menu "$category" || return 1
+  _mkvutil_read 'Operations (single/comma/range): ' || return 0
+  [[ "$REPLY" != 0 ]] || return 0
+  operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+  mkvutil_select_files || { result=$?; (( result == 2 )) && return 0; return "$result"; }
+  mkvutil_inspect_sources || { result=$?; (( result == 2 )) && return 0; return "$result"; }
+  while true; do
+    mkvutil_configure_category "$category" "$operations" || { result=$?; (( result == 2 )) && { mkvutil_cancel_status; return $?; }; return "$result"; }
+    result=0
+    mkvutil_plan_queue || result=$?
+    (( result == 0 || result == 3 )) || { (( result == 2 )) && { mkvutil_cancel_status; return $?; }; return "$result"; }
+    while true; do
+      mkvutil_review_menu
+      _mkvutil_read 'Review choice: ' || { mkvutil_cancel_status; return $?; }
+      review="$REPLY"
+      case "$review" in
+        0) print -r -- 'Cancelled; no media changes.'; mkvutil_cancel_status; return $? ;;
+        1)
+          mkvutil_category_menu "$category" || return 1
+          _mkvutil_read 'Replacement operations: ' || { mkvutil_cancel_status; return $?; }
+          operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+          break ;;
+        2) mkvutil_preview_jobs || return 1 ;;
+        3)
+          (( ${#MKVUTIL_JOBS} > 0 )) || { print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'; continue; }
+          print -u2 -r -- 'Execution is not available at this implementation checkpoint; no media changes.'; return 1 ;;
+        4)
+          mkvutil_prepare_skipped_subset || return 1
+          category=mux
+          mkvutil_category_menu "$category" || return 1
+          _mkvutil_read 'New skipped-subset operations: ' || return 1
+          operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+          break ;;
+        *) print -u2 -r -- 'Invalid review choice.'; return 1 ;;
       esac
     done
-
-    if [[ "$track_rows_valid" != true ]]; then
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        failed_files+=("${target:t}")
-        echo "Failed: ${target:t}"
-      else
-        echo "Error on ${target}; track inspection failed; file unchanged."
-      fi
-      file_index=$((file_index + 1))
-      continue
-    fi
-
-    requested_ids_valid=true
-    for excluded_id in "${exclude_ids[@]}"; do
-      if [[ -z "${seen_track_ids[$excluded_id]-}" ]]; then
-        requested_ids_valid=false
-        break
-      fi
-    done
-    if [[ "$requested_ids_valid" != true ]]; then
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        failed_files+=("${target:t}")
-        echo "Failed: ${target:t}"
-      else
-        echo "Error on ${target}; requested Track ID not found; file unchanged."
-      fi
-      file_index=$((file_index + 1))
-      continue
-    fi
-
-    video_keep=($(filter_keep "${video_keep[@]}"))
-    audio_keep=($(filter_keep "${audio_keep[@]}"))
-    subtitle_keep=($(filter_keep "${subtitle_keep[@]}"))
-
-    if [[ ${#video_keep[@]} -eq 0 && ${#audio_keep[@]} -eq 0 && ${#subtitle_keep[@]} -eq 0 ]]; then
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        failed_files+=("${target:t}")
-        echo "Failed: ${target:t}"
-      else
-        echo "Error on ${target}; no tracks to keep after removal; file unchanged."
-      fi
-      file_index=$((file_index + 1))
-      continue
-    fi
-
-    base=${target##*/}; base=${base%.*}; ext=${target##*.}
-    [[ ${#video_keep[@]} -eq 0 ]] && out_ext=mka || out_ext=$ext
-    tmp="${base}_temp.${out_ext}"
-
-    cmd=(mkvmerge -o "$tmp")
-    [[ ${#video_keep[@]} -gt 0 ]] \
-      && cmd+=(--video-tracks "$(IFS=,; echo "${video_keep[*]}")") \
-      || cmd+=(--no-video)
-    [[ ${#audio_keep[@]} -gt 0 ]] \
-      && cmd+=(--audio-tracks "$(IFS=,; echo "${audio_keep[*]}")") \
-      || cmd+=(--no-audio)
-    [[ ${#subtitle_keep[@]} -gt 0 ]] \
-      && cmd+=(--subtitle-tracks "$(IFS=,; echo "${subtitle_keep[*]}")") \
-      || cmd+=(--no-subtitles)
-    cmd+=("$target")
-
-    echo "Executing: ${cmd[*]}"
-    remux_start=$SECONDS
-    if "${cmd[@]}"; then
-      remux_duration=$((SECONDS - remux_start))
-      mv "$tmp" "${base}.${out_ext}"
-      echo "Replaced: ${base}.${out_ext}"
-      [[ "$out_ext" != "$ext" ]] && rm -f "$target" && echo "Removed original: $target"
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        total_processing_seconds=$((total_processing_seconds + remux_duration))
-        successful_files=$((successful_files + 1))
-        files_remaining=$((files_count - file_index))
-        estimated_seconds=$(((total_processing_seconds * files_remaining + successful_files / 2) / successful_files))
-        echo "${target:t}"
-        echo "  Processed In: $(format_duration "$remux_duration")"
-        echo "  Files Done: $successful_files"
-        echo "  Files Remaining: $files_remaining"
-        echo "  Estimated Time Remaining: $(format_duration "$estimated_seconds")"
-      fi
-    else
-      rm -f "$tmp"
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        failed_files+=("${target:t}")
-        echo "Failed: ${target:t}"
-      else
-        echo "Error on $target; cleaning up."
-      fi
-	    fi
-    file_index=$((file_index + 1))
-	  done
-  if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-    echo "Total Files Done: $successful_files"
-    if [[ ${#failed_files[@]} -gt 0 ]]; then
-      printf "Failed Files: %02d\n" ${#failed_files[@]}
-      for failed_file in "${failed_files[@]}"; do
-        echo "  $failed_file"
-      done
-    fi
-    echo "Elapsed Time: $(format_duration "$((SECONDS - queue_start))")"
-  fi
-
-		elif [ "$choice" = "8" ]; then
-		  # --- Choice 8: Mass Re-order tracks ---
-		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-  fzf_args=(--height 40% --reverse --border --prompt="Select file(s) >")
-  [[ $MULTI_FILE_SELECTION == "Y" ]] && fzf_args+=(--multi)
-
-  targets=()
-  while IFS= read -r f; do
-    targets+=("$f")
-  done < <(
-    find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-    | fzf "${fzf_args[@]}"
-  )
-  [ ${#targets[@]} -eq 0 ] && { echo "No files selected. Exiting."; exit 1; }
-
-  source_file=${targets[1]}
-  display_track_info "$source_file"
-
-  track_order=$(prompt_for_track_order "Enter the new track order (e.g., 0:0,0:1,0:2,…): ")
-
-  files_count=${#targets[@]}
-  file_index=1
-  total_processing_seconds=0
-  successful_files=0
-  failed_files=()
-  queue_start=$SECONDS
-  for target in "${targets[@]}"; do
-    base=${target##*/}; base=${base%.*}; ext=${target##*.}
-    tmp="${base}_temp.${ext}"
-    cmd=(mkvmerge -o "$tmp" --track-order "$track_order" "$target")
-
-    if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 && $file_index -eq 1 ]]; then
-      echo "Total Files Count: $files_count"
-    fi
-    echo "Executing: ${cmd[*]}"
-    remux_start=$SECONDS
-    if "${cmd[@]}"; then
-      remux_duration=$((SECONDS - remux_start))
-      mv "$tmp" "${base}.${ext}"
-      echo "Replaced: ${base}.${ext}"
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        total_processing_seconds=$((total_processing_seconds + remux_duration))
-        successful_files=$((successful_files + 1))
-        files_remaining=$((files_count - file_index))
-        estimated_seconds=$(((total_processing_seconds * files_remaining + successful_files / 2) / successful_files))
-        echo "${target:t}"
-        echo "  Processed In: $(format_duration "$remux_duration")"
-        echo "  Files Done: $successful_files"
-        echo "  Files Remaining: $files_remaining"
-        echo "  Estimated Time Remaining: $(format_duration "$estimated_seconds")"
-      fi
-    else
-      rm -f "$tmp"
-      if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-        failed_files+=("${target:t}")
-        echo "Failed: ${target:t}"
-      else
-        echo "Error on $target; cleaning up."
-      fi
-    fi
-    file_index=$((file_index + 1))
-	  done
-  if [[ $MULTI_FILE_SELECTION == "Y" && $files_count -gt 1 ]]; then
-    echo "Total Files Done: $successful_files"
-    if [[ ${#failed_files[@]} -gt 0 ]]; then
-      printf "Failed Files: %02d\n" ${#failed_files[@]}
-      for failed_file in "${failed_files[@]}"; do
-        echo "  $failed_file"
-      done
-    fi
-    echo "Elapsed Time: $(format_duration "$((SECONDS - queue_start))")"
-  fi
-	  
-	# --- Choice 9: Extract Tracks ---
-	elif [ "$choice" = "9" ]; then
-		  # Prompt for multi-file or single-file selection
-		  MULTI_FILE_SELECTION=$(prompt_yes_no "Enable multi-file target selection? (Y/N) [N]: " "N")
-
-  # Determine target files
-  if [[ "$MULTI_FILE_SELECTION" = "Y" ]]; then
-    echo "Select Matroska file(s) to extract tracks:"
-    typeset -a targets
-    targets=()
-    while IFS= read -r file; do
-      targets+=("$file")
-    done < <(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --multi --height 40% --reverse --border --prompt="Select files > ")
-    if [ ${#targets[@]} -eq 0 ]; then
-      echo "No target files selected. Exiting."
-      exit 1
-    fi
-  else
-    printf "Select the source Matroska file (.mkv, .mka, .mks, .mk3d):\n"
-    source_file=$(find . -maxdepth 1 -type f \
-      \( -name "*.mkv" -o -name "*.mka" -o -name "*.mks" -o -name "*.mk3d" \) \
-      | fzf --height 40% --reverse --border)
-    if [ -z "$source_file" ]; then
-      echo "No file selected. Exiting."
-      exit 1
-    fi
-    typeset -a targets
-    targets=("$source_file")
-  fi
-
-  # Display track info for the first target
-  source_file=${targets[1]}
-  display_track_info "$source_file"
-
-  # Ask once for which tracks to extract
-  track_ids=$(prompt_for_track_ids "Enter the Track ID(s) to extract (e.g., 0,1 or 1-2): ")
-
-  # Loop over all selected files
-  for source_file in "${targets[@]}"; do
-    echo "→ Extracting tracks ${track_ids} from $source_file"
-    extract_tracks "$track_ids"
   done
+}
 
-else
-  echo "Invalid choice."
-fi
+# Sourcing defines helpers without launching the real category entrypoint.
+if [[ "$ZSH_EVAL_CONTEXT" != *:file ]]; then
+  mkvutil_main "$@"
+  exit $?
 fi

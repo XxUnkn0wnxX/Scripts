@@ -4,6 +4,7 @@ import os
 import signal
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 SCRIPT_MKV_MUX_SOURCE = (
@@ -237,57 +238,72 @@ if [ "$call_mode" = "identify" ]; then
 fi
 
 if [ "$call_mode" = "json" ]; then
+  if [ -n "${TEST_FAKE_MKVMERGE_JSON_BY_PATH:-}" ]; then
+    if override="$("$TEST_REAL_PYTHON" - "$TEST_FAKE_MKVMERGE_JSON_BY_PATH" "$source_file" <<'PY'
+import json, os, sys
+with open(sys.argv[1]) as stream:
+    sources = json.load(stream)
+value = sources.get(os.path.abspath(sys.argv[2]), sources.get(sys.argv[2]))
+if value is None:
+    sys.exit(3)
+print(value if isinstance(value, str) else json.dumps(value))
+PY
+    )"; then
+      printf '%s\\n' "$override"
+      exit 0
+    fi
+  fi
   base="$(basename "$source_file")"
 
   case "$base" in
     *option7_alt*)
       cat <<'JSON'
 {"tracks":[
-  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng"}},
-  {"id":11,"type":"audio","properties":{"id":11,"codec_id":"A_AAC","track_name":"Narration","language":"eng"}},
-  {"id":12,"type":"subtitles","properties":{"id":12,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng"}}
+  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":11,"type":"audio","properties":{"id":11,"codec_id":"A_AAC","track_name":"Narration","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":12,"type":"subtitles","properties":{"id":12,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}}
 ]}
 JSON
       ;;
     *novideo*)
       cat <<'JSON'
 {"tracks":[
-  {"id":0,"type":"audio","properties":{"id":0,"codec_id":"A_AC3","track_name":"Dolby","language":"eng"}},
-  {"id":1,"type":"subtitles","properties":{"id":1,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng"}}
+  {"id":0,"type":"audio","properties":{"id":0,"codec_id":"A_AC3","track_name":"Dolby","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":1,"type":"subtitles","properties":{"id":1,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}}
 ]}
 JSON
       ;;
     *extract_unknown*)
       cat <<'JSON'
 {"tracks":[
-  {"id":0,"type":"audio","properties":{"id":0,"codec_id":"A_TRUEHD","track_name":"Atmos","language":"eng"}}
+  {"id":0,"type":"audio","properties":{"id":0,"codec_id":"A_TRUEHD","track_name":"Atmos","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}}
 ]}
 JSON
       ;;
     *extract_codec*)
       cat <<'JSON'
 {"tracks":[
-  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng"}},
-  {"id":1,"type":"audio","properties":{"id":1,"codec_id":"A_OPUS","track_name":"Opus","language":"eng"}},
-  {"id":2,"type":"subtitles","properties":{"id":2,"codec_id":"S_TEXT/ASS","track_name":"","language":"eng"}}
+  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":1,"type":"audio","properties":{"id":1,"codec_id":"A_OPUS","track_name":"Opus","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":2,"type":"subtitles","properties":{"id":2,"codec_id":"S_TEXT/ASS","track_name":"","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}}
 ]}
 JSON
       ;;
     *boost_single*|*boost_fail*)
       cat <<'JSON'
 {"tracks":[
-  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng"}},
-  {"id":1,"type":"audio","properties":{"id":1,"codec_id":"A_AAC","track_name":"Primary","language":"eng"}}
+  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":1,"type":"audio","properties":{"id":1,"codec_id":"A_AAC","track_name":"Primary","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}}
 ]}
 JSON
       ;;
     *)
       cat <<'JSON'
 {"tracks":[
-  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng"}},
-  {"id":1,"type":"audio","properties":{"id":1,"codec_id":"A_AAC","track_name":"Narration","language":"eng"}},
-  {"id":2,"type":"audio","properties":{"id":2,"codec_id":"A_OPUS","track_name":"Music","language":"jpn"}},
-  {"id":3,"type":"subtitles","properties":{"id":3,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng"}}
+  {"id":0,"type":"video","properties":{"id":0,"codec_id":"V_MPEG4/ISO/AVC","track_name":"","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":1,"type":"audio","properties":{"id":1,"codec_id":"A_AAC","track_name":"Narration","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}},
+  {"id":2,"type":"audio","properties":{"id":2,"codec_id":"A_OPUS","track_name":"Music","language":"jpn","language_ietf":"ja","forced_track":false,"default_track":false}},
+  {"id":3,"type":"subtitles","properties":{"id":3,"codec_id":"S_TEXT/ASS","track_name":"Subs","language":"eng","language_ietf":"en","forced_track":false,"default_track":true}}
 ]}
 JSON
       ;;
@@ -435,8 +451,12 @@ fi
 
 OLD_IFS=$IFS
 IFS='|'
+terminator='\\n'
+for arg in "$@"; do
+  [ "$arg" != --print0 ] || terminator='\\0'
+done
 for choice in $selection; do
-  printf '%s\\n' "$choice"
+  printf "%s$terminator" "$choice"
 done
 IFS=$OLD_IFS
 """,
@@ -452,6 +472,18 @@ argv_dir="${TEST_ARGV_LOG_DIR:-}"
 [ -z "$argv_dir" ] || printf '%s\\0' "$@" > "$argv_dir/jq.$$"
 if [ -n "$log_file" ]; then
   printf 'jq\\targs=%s\\n' "$*" >> "$log_file"
+fi
+
+if [ "${TEST_USE_REAL_JSON:-0}" = 1 ]; then
+  state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
+  call_file="$state_dir/fake_jq_calls"
+  call=1
+  [ ! -f "$call_file" ] || call=$(($(cat "$call_file") + 1))
+  printf '%s\\n' "$call" > "$call_file"
+  if [ -n "${TEST_FAKE_JQ_FAIL_CALL:-}" ] && [ "$call" -eq "$TEST_FAKE_JQ_FAIL_CALL" ]; then
+    exit 1
+  fi
+  exec "$TEST_REAL_JQ" "$@"
 fi
 
 if [ "$1" = "-r" ]; then
@@ -698,13 +730,20 @@ fi
         """#!/usr/bin/env sh
 argv_dir="${TEST_ARGV_LOG_DIR:-}"
 [ -z "$argv_dir" ] || printf '%s\\0' "$@" > "$argv_dir/python3.$$"
-code=\"$(cat)\"
-
 if [ \"${TEST_FAKE_PYTHON_FAIL:-0}\" = \"1\" ]; then
   exit 1
 fi
 
+if [ "$1" = -c ]; then
+  exec "$TEST_REAL_PYTHON" "$@"
+fi
+code=\"$(cat)\"
+
 if echo \"$code\" | grep -Fq 'from pymkv.TypeTrack import type_files'; then
+  if echo "$code" | grep -Fq 'json.dumps(flat)'; then
+    printf '%s\\n' '{"A_TRUEHD":"thd","TRUEHD":"thd"}'
+    exit 0
+  fi
   cat <<'PY'
 typeset -A codec_ext=( ['A_TRUEHD']='thd' )
 PY
@@ -714,6 +753,7 @@ fi
 if echo \"$code\" | grep -Fq 'import pymkv'; then
   exit 0
 fi
+printf '%s' "$code" | "$TEST_REAL_PYTHON" "$@"
 """,
     )
 
@@ -828,6 +868,12 @@ def _run_mkv_script(
     run_env["TEST_ARGV_LOG_DIR"] = str(env["argv_log_dir"])
     run_env["TEST_FAKE_STATE_DIR"] = str(env["fake_state"])
     run_env["TEST_FAKE_FZF_SELECTIONS"] = str(env["fake_fzf_selections"])
+    # Resolve delegates before substituting PATH. Media tools remain intercepted;
+    # only read-only JSON/stdlib work reaches the existing real executables.
+    run_env["TEST_REAL_JQ"] = shutil.which("jq") or "/usr/local/bin/jq"
+    run_env["TEST_REAL_PYTHON"] = sys.executable
+    if script_key == "utils":
+        run_env["TEST_USE_REAL_JSON"] = "1"
     if extra_env:
         run_env.update(extra_env)
 

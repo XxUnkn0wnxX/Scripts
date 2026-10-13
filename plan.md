@@ -91,6 +91,10 @@ operation settings.
 - Both paths select target files once. Edit and Extract batch their own submenu
   operations. Mux allows removal, reordering, or both, followed by optional
   metadata choices from the Edit list, including for a single Mux selection.
+- File selection always uses one multi-select picker in every category. Select
+  either one file or several through that same picker; remove the Y/N prompt
+  and separate single-file mode. This is the user's approved selection change;
+  other operation defaults and metadata prompts remain covered below.
 - Category boundaries remain clear: configure Mux metadata inside the Mux
   workflow, using the same metadata choices and prompts as Edit. A general
   cross-category operation builder is outside the agreed design.
@@ -152,8 +156,9 @@ track 1 still edits the English audio after it becomes the third output track.
 
 - Inspect all selected files, not just the first file shown in the UI. Detect
   missing IDs and incompatible layouts before mutation. Present exceptions for
-  exclusion or separate configuration before starting; do not guess mappings
-  from language or name alone.
+  exclusion or separate configuration before starting, with automatic removal
+  mismatch skipping as specified below; do not guess mappings from language
+  or name alone.
 - Audio-only `.mka` and subtitle-only `.mks` inputs are valid. Do not require a
   video track or invent missing audio/subtitle tracks. Preserve `.mk3d` track
   properties and stereoscopic metadata unless explicitly changed. A mixed-format
@@ -175,6 +180,46 @@ track 1 still edits the English audio after it becomes the third output track.
   assuming source positions or UIDs stay unchanged.
 - Preserve 64-bit UID values exactly whenever UID selectors are used. Ambiguous
   identity or unsupported track types must stop that file's job before promotion.
+
+### Removal compatibility and skipped-file batches
+
+For removal jobs, display the full filename and original listing of the first
+successfully inspected file in the current batch before collecting settings.
+That configured reference defines each requested removal ID's expected media
+type and native `codec_id`. The ID, type, and codec must match in every eligible
+file: ASS and SRT subtitles at the same ID are incompatible. Require usable,
+nonempty codec IDs; two missing values do not constitute a match.
+
+- If any requested removal ID is missing or has a different media type/codec,
+  automatically skip the entire Mux job for that file. Perform no removal,
+  reordering, optional metadata edit, or output-producing remux on it.
+- Names, language tags, flags, UIDs, and untargeted track layouts may differ.
+  They do not determine removal compatibility. Existing validation still
+  applies to other configured targets, empty retained layouts, unsupported
+  tracks, unreadable inputs, and changed-source identity.
+- Report the exact skipped filenames and paths before execution and in the
+  resulting summary, with each mismatched ID, expected type/codec, and actual
+  type/codec or missing-ID reason. Distinguish these skips from tool warnings,
+  errors, and explicit exclusions; incomplete selections cannot silently count
+  as fully successful batches.
+- Preserve the current batch's source pool separately from eligible jobs and
+  mismatch receipts. Changing settings recomputes eligibility over that scope;
+  it must not permanently lose automatically skipped sources. An explicit
+  user exclusion remains outside that scope.
+- After a run, offer a new Mux batch for only its mismatch-skipped files,
+  without processing completed files again. Reinspect that subset, display its
+  new reference, clear/recollect settings, and require complete preflight,
+  preview, and explicit Run. Repeat only on the user's choice; do not blindly
+  reuse old track IDs or automatically rerun a batch.
+- An all-skipped batch has no Run option but retains its report and the
+  skipped-subset continuation path. Cancellation/EOF is bounded and leaves the
+  skipped list visible. Count each original selected source once in the final
+  outcome; preserve historical skip receipts. Unresolved skips/failures require
+  a nonzero result; completed continuations may resolve earlier skips.
+
+T01.03 establishes eligibility, skip receipts, and fresh subset planning without
+media mutation. T02.03 connects post-execution continuation and final reporting;
+runtime continuation is not a prerequisite for G01 acceptance.
 
 ## Execution model
 
@@ -315,6 +360,9 @@ remux actions to it.
   file job succeeds. Report warning, failed, and partially completed jobs clearly.
 - Continue with other independent files after a file failure. The batch's exit
   status must reflect incomplete required jobs rather than always returning zero.
+- Report removal mismatch skips separately and preserve their exact source
+  subset for a fresh configured continuation. Completed files must not re-enter
+  that subset; unresolved skips remain visible in the final result.
 
 ## Main goals, tasks, and checkpoint mapping
 
@@ -336,15 +384,15 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | --- | --- | --- | --- | --- |
 | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
 | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
-| T01.03 | Adapt existing actions into category submenus; implement single/comma/range selections, one target selection, per-file planning, conflicts, optional Mux metadata, and complete track/output previews. Wire the actual configuration consumers without media mutation. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, invalid/cancel/EOF behavior, all-format planning, settled output names, and no-write configuration/cancellation evidence. |
+| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence. |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
 | T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
-| T02.02 | Implement one output-producing `mkvmerge` remux per Mux file, combining removal/order with optional direct metadata. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety and command-count proof plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
-| T02.03 | Integrate complete single/batch Edit and Mux jobs with filename reports, elapsed time, average ETA, correct successful/failed/warning/partial counts, and failure-reflecting batch exit status. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | T02.01, T02.02 | T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests and partial-failure summaries, without rerunning a full unrelated suite. |
+| T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
+| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | T02.01, T02.02 | T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
 
 ### G03 — Checkpoint 3: extraction integration
 
@@ -356,7 +404,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T04.01 | Verify every adapted single/batch action and shared metadata path together; consolidate task-level receipts and complete all six existing validation groups, including the small real-v93 and all-format integration evidence, plus the user-requested near-end interactive rehearsal with disposable `.tmp` fixtures. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
+| T04.01 | Verify every adapted single/batch action, shared metadata path, and removal skip-only continuation together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
 | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | T04.01 | none | Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. |
 
 ### Foundations, stage gates, and shared ownership
@@ -420,6 +468,11 @@ host; reuse fixtures instead of adding a large permutation matrix.
    including audio-only, subtitle-only, and stereoscopic inputs. Use cheap
    parameterized cases and a few representative real fixtures rather than
    repeating the entire suite for each extension.
+   Verify the always-multi picker with one/several files, removal ID/type/codec
+   matching and automatic whole-job skips, metadata differences that remain
+   eligible, exact skip reasons, changed-setting reconsideration, and fresh
+   skipped-only continuation. Cover mixed/all-skipped cases, completed-source
+   exclusion, and truthful final counts/status without extra remux passes.
 3. Cover collisions, failed promotion, inspection/validation failures, warning
    versus error handling, interruptions, and reporting of incomplete stages.
 4. Correct the current reorder test's `0:1,1:0` example: it supplies file ID 1 to
@@ -457,6 +510,8 @@ required.
   batches, and the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. Exercise
   invalid selections, defaults, cancellation/EOF, interruption, collisions, and
   partial failures through controlled cases rather than every permutation.
+  Include always-multi selection of one/several files, removal mismatch skips,
+  and a configured continuation for only the skipped sources.
 - Use mocked tool boundaries for deterministic menu/failure churn, then a few
   serial installed-v93 journeys for real output and retained-property checks.
   Verify combined Mux jobs produce one remux per file and no `mkvpropedit` call.
