@@ -36,10 +36,11 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   share signed `e6dd2b94fd489796df80270814aa040bc19db8a8`; remote refs match.
   Only the instruction file and root ignore exception were synchronized to
   those branches. Utility implementation remains in this feature worktree.
-- Current local feature HEAD: `53625bfe69dbfd37100333ce775a60f54a18d313`
-  (`feat(shell): add shared mkvutil planning foundations`), signed and one
-  commit ahead of the published feature ref. Both worktrees were clean before
-  this handoff refresh; no implementation promotion has occurred.
+- Current local feature HEAD: `6444e4cbbe65ffe1a81d18213582695ea242cb8e`
+  (`feat(shell): plan grouped mkvutil jobs and guard removal batches`), signed
+  and two commits ahead of the published feature ref. Both worktrees were clean
+  after that G01 checkpoint; this restart update modifies only the handoff before
+  the next package. No implementation publication/promotion has occurred.
 - The user now instructed **"ok you may begin"**, authorizing implementation
   of the approved rework. Their subsequent instruction requires one self-contained
   `shell/mkv_utils.zsh`, with no additional runtime `.zsh` dependencies.
@@ -90,6 +91,8 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 - Linked checkout inventory was reverified: `../Scripts` owns `develop` at
   `e6dd2b94fd489796df80270814aa040bc19db8a8`; `../Scripts-dev` owns
   `feature/mkvutil-rework` at `53625bfe69dbfd37100333ce775a60f54a18d313`.
+  That inventory preceded the G01 commit; latest feature HEAD is the signed
+  `6444e4c` checkpoint above, with the same two branch assignments.
   The common Git directory and `info/exclude` belong to the original clone and
   are shared. The ignored environment symlink and migration snapshots remain.
 - Keep both branch assignments and all ignored recovery state. Worktree setup,
@@ -311,6 +314,97 @@ package is complete; its receipts below are historical.
   durability. Implement/prove the corrected commit phases before connection.
   Native language validation/normalization remains partial before the real
   tool/staged-result gate; preserve grandfathered/private BCP47 domain.
+- Active next package T02.01/T02.02: reuse `mkv_metadata_foundation` as the sole
+  writer of `shell/mkv_utils.zsh` and the existing utility test/shared helper
+  files in `Scripts-dev`. Prerequisites and G01 goal gate are accepted. Add
+  grouped Edit and one-pass Mux execution, read-only result inspection, owned
+  staging and corrected publication/recovery phases; connect only these
+  executors through a minimal queue consumer. Shared builders/planning stay
+  canonical. T02.03's complete ETA/continuation/result-ledger behavior and G03
+  extraction execution remain subsequent gates. Parent owns all records.
+- A separate read-only `mkv_requirement_mapping` preparation pass may map the
+  existing Extract planner, legacy command contracts and focused tests while
+  the executor writer works. It owns no files, runs no media-producing commands
+  or tests, and cannot start/accept T03.01 before the G02 goal gate.
+- That preparation pass is complete: Extract jobs already have ordered
+  `outputs` records (attachments, then requested original track IDs) and queue
+  collision checks. Installed v93 uses source-first `mkvextract SOURCE
+  attachments|tracks ID:OUTPUT...`; preserve separate grouped stages and
+  stop later stages for a file after an incomplete stage. Codec extension
+  precedence is explicit overrides, full/short TypeTrack map keys, then safe
+  normalized fallback. The legacy attachment/OPUS/TrueHD assertions need
+  category navigation migration and the fake needs source-first stage/output
+  support. This is preparatory evidence only, not T03.01 implementation or
+  acceptance; existing planned output names remain unchanged.
+- Bounded language evidence is complete: installed `bcp47` provides lookup
+  dictionaries, not a full tag canonicalizer; `iso639.Language.match` resolves
+  simple ISO aliases but not full or deprecated BCP47 forms. Do not invent
+  preferred-subtag mappings from these libraries. The parent approved explicit
+  v93 `--normalize-language-ietf off` in both executor commands, subject to
+  native support/proof, to preserve untouched and requested IETF forms under
+  the existing language-preservation contract. Use exact case-insensitive tags
+  plus locally resolvable simple ISO equivalence; the native parser determines
+  acceptance. Edge tags and full executor preservation remain native gates.
+- Next validation: focused non-interactive executor/queue contracts for actual
+  grouped argv, one output merge/zero propedit in Mux, untouched mismatch skips,
+  warnings/errors, source/stage/destination changes, failed publication/unlink,
+  and interrupted commit reconciliation. Use test-supplied staged JSON with
+  media fakes, then small serial real-v93 executor proof including video/stereo,
+  nonempty tags, flags, literal/empty titles, intended retained mapping and
+  chapter/attachment payload preservation. Owned `.tmp` fixtures only; no
+  upgrades, real user media, or broad menu campaign. Parent notice precedes
+  one needed tiny mocked Run journey; native function integration is separate.
+- The first inline executor draft is written and under review, not accepted.
+  Parent review required binding publication to the validated candidate identity,
+  final guards after phase-receipt I/O, exact user tag String whitespace, and
+  per-request actual Edit values even after validation fails. The writer is
+  applying these corrections and preparing focused/native proof. Astra has an
+  immutable read-only draft snapshot at
+  `.tmp/mkvutil-rework/executor-audit.8kAYGq/mkv_utils.zsh`, SHA-256
+  `e3b730bfa04f5a98cb13c4e7314c16bdd96c4874cbab42d76a7d751b5e99df01`,
+  for a bounded publication/oracle audit; later source changes require a diff
+  reconciliation and cannot inherit a draft verdict as acceptance.
+- Astra returned REVISE on that frozen draft: preserve monotonic commit evidence
+  when a published destination later changes/disappears; handle TrackUID zero
+  wildcard and retained/removed OR-target projection; stop the queue when a
+  native child alone terminates by signal. Parent forwarded each finding to
+  the sole writer immediately, alongside an uncertain-state correction for
+  empty executor results. Required focused/native corrective proof remains
+  pending. These corrections enforce existing contracts; no requirements or
+  acceptance gate have changed.
+- New direct user reporting requests extend T02.03: final reports show the
+  input directory basename and category-specific action
+  numbers (one number or expanded/deduplicated multiple numbers), with optional
+  Mux metadata choices separately labeled. Each skipped-only continuation
+  retains its own choice/count/time attribution; failures/partial jobs remain
+  truthful. The user clarified these labels are for the final report, including
+  done/skipped outcomes; this does not add labels to live progress blocks.
+  Plan prose/task/evidence and checklist mirror were updated together;
+  the executor writer was informed. This reporting work remains pending.
+- The user's optional between-file display enhancement permits retaining the
+  familiar Processed In / Files Done / Files Remaining / Estimated Time
+  Remaining block. Parent chose to keep it familiar, with truthful completed,
+  failed/skipped and queued counts and per-file elapsed/remaining-work ETA.
+  Directory/action labels remain final-report-only. Manual integrity checks
+  confirmed all nine task requirements, prerequisite/overlap and evidence
+  mirrors, three accepted tasks, final-report scope, and path privacy.
+- The user explicitly left fast `mkvpropedit` progress optional and said its
+  end report is probably enough. Parent selected final-report-only for normal
+  fast Edit jobs, with immediate warnings/failures; longer Mux jobs retain
+  the familiar between-file elapsed/count/ETA display. Outcomes/timing remain
+  collected for every file, with directory/action labels in the final report.
+- The new native wildcard fixture exposed a verified v93 limitation: normal
+  remux drops source TrackUID-zero all-tracks tags while preserving the
+  mixed retained/removed UID tag's surviving target. The candidate was refused
+  and source preserved. Evidence is in
+  `.tmp/mkvutil-rework/executors.yGdnvt/native/converted-result.json` and its
+  source/output tag XML. Astra rejected a `--global-tags` workaround because
+  that option changes all-tracks scope to whole-file scope. Parent accepted
+  narrow Mux preflight refusal before output-producing commands for these
+  unsupported user tags; it is an ordinary failed job, not a removal mismatch
+  skip. Successful tag preservation is still required; no gate was waived.
+  Mixed-target native success and wildcard zero-modifier refusal proof are
+  pending; keep standalone Edit and the original native failure receipt.
 - The worker's pre-write receipt verified the actual `Scripts-dev` Git root,
   assigned feature branch and only the parent-owned handoff diff. Controller
   design uses NUL-safe selection, explicit exclusion for invalid/incompatible
