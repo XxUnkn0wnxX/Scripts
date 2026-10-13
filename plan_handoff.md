@@ -11,6 +11,19 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 
 ## Current state and safe restart point
 
+- The user-requested code/checklist audit is complete. Its safe snapshot,
+  contract mapping, independent findings and corrective proof are retained in
+  `.tmp/mkvutil-rework/checklist-audit.wni4h33r/`. T02.01 was reopened for missing
+  normal multi-file Edit evidence, then reaccepted after a focused two-file
+  test passed. Current accepted totals are **5 / 9 tasks and 1 / 4 goals**.
+  T02.03 remains unaccepted; two reporting/continuation defects require fixes.
+  The source/test writer was paused and quiescent during the audit, then
+  resumed on the existing T02.03 package with the corrective brief below.
+  Runtime confirmed `mkv_metadata_foundation` running after the handback;
+  the parent remains sole owner of these records.
+  Dirty source SHA-256 at audit is
+  `312ff6f7067f90e0b312f785635736315f56c806559013e1aac36d7f08fab2ae`.
+  Parent added the focused test only; accepted engine/builders were unchanged.
 - Active workspace: sibling worktree `../Scripts-dev`, on
   `feature/mkvutil-rework`, per the user's explicit instruction to work there
   moving forward. The user confirmed this worktree is dedicated to this rework
@@ -36,15 +49,19 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   share signed `e6dd2b94fd489796df80270814aa040bc19db8a8`; remote refs match.
   Only the instruction file and root ignore exception were synchronized to
   those branches. Utility implementation remains in this feature worktree.
-- Current local feature HEAD: `66dab50d610d4f011bdae0e685d3fca492c107f3`
-  (`docs: record mkvutil final reporting requirements`), signed and three
-  commits ahead of the published feature ref. That checkpoint commits only
-  the three planning records; the G02 source/test/helper draft remains unstaged
-  and under validation. This restart update additionally modifies the handoff.
-  No implementation publication/promotion has occurred. Last accepted
-  implementation checkpoint is signed `6444e4cbbe65ffe1a81d18213582695ea242cb8e`
-  (`feat(shell): plan grouped mkvutil jobs and guard removal batches`); both
-  worktrees were clean after that G01 checkpoint.
+- Accepted execution checkpoint at the audit: signed
+  `f44cd9841e00d9d86ffaffcae7b2a5ae520de278`
+  (`feat(shell): execute grouped mkvutil edit and mux jobs`). It was four
+  commits ahead of the published feature ref. Resolve latest local HEAD from
+  Git; the audit record correction is a separate documentation checkpoint.
+  This execution checkpoint commits only
+  the six approved source/test/planning paths and accepted T02.01/T02.02
+  evidence; both worktrees were clean immediately afterward. Current uncommitted
+  source/test work comprises the T02.03 draft and the parent audit's additional
+  test. The checklist/handoff audit correction is saved separately. No implementation publication/promotion
+  has occurred. Prior G01 checkpoint is signed
+  `6444e4cbbe65ffe1a81d18213582695ea242cb8e`; the reporting-plan checkpoint
+  is signed `66dab50d610d4f011bdae0e685d3fca492c107f3`.
 - The user now instructed **"ok you may begin"**, authorizing implementation
   of the approved rework. Their subsequent instruction requires one self-contained
   `shell/mkv_utils.zsh`, with no additional runtime `.zsh` dependencies.
@@ -58,20 +75,33 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   and tests have one writer per package; dependency consumers wait for their gates.
 - T01.01 is accepted after parent review and focused proof. Its pure helpers
   establish original-position selectors, bounded ranges, complete retained order,
-  and approved output extensions without migrating the old consumers yet.
+  and approved output extensions; T01.03 subsequently integrated their consumers.
 - T01.02 is accepted after parent review of the shared registry, configuration,
   flag snapshots and two pure argument builders, five focused unit contracts,
-  and small native v93 builder proof. The writer is quiescent.
+  and small native v93 builder proof. That package is complete; the same writer
+  now owns the active T02.03 source/test package.
 - T01.03 and G01 are now accepted after parent review and final selector/removal
   proof below. Categories, configuration, per-file planning, skip receipts,
   preview and fresh skipped-subset preparation are implemented. Executors
   for Edit/Mux are implemented and their T02.01/T02.02 gates now accepted after
   focused/native proof, parent review and Astra's bounded post-fix PASS.
   Extract execution remains guarded. Current totals: 5 / 9 tasks and 1 / 4 goals.
-- Next package: T02.03 full reporting and skipped-only continuation, reusing
+- Active package: T02.03 full reporting and skipped-only continuation, reusing
   the verified executors with one coherent source/test/helper owner. G02 remains
   pending until this task and its goal-level integration gate pass; Extract
   implementation still waits for G02. Parent owns all records.
+- T02.03's implementation draft uses an original-source-keyed final-outcome
+  ledger separate from current scope/jobs/skip receipts, plus saved per-batch
+  action/configuration/time attribution. History is provenance, not unresolved
+  status by itself. Completed sources cannot re-enter skipped-only cohorts;
+  fresh inspection/configuration/review/Run is required each time. The bounded
+  Astra audit returned PASS WITH NOTES before sole-writer implementation.
+  Reuse `mkv_metadata_foundation` for the same three source/test paths after
+  the audit handback; its T02.03 draft remains unaccepted. It was quiescent
+  during the audit and is now resumed; inspect runtime for any current test
+  process rather than inheriting that historical no-process state. Full
+  Extract execution, final guides and broad menu campaigns stay outside this
+  package. Parent remains the only record writer.
 - The user requested always-multi selection and automatic removal mismatch
   skips with skipped-only follow-up batches. Astra verified this delta before
   any new requirement/code edits; the parent updated the authorized plan and
@@ -97,11 +127,10 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   command must explicitly use `../Scripts-dev`; workers must provide a verified
   Git-root/branch/status receipt there before writing. This is explicit tool
   routing, not a claim that a prompt changed the session's process cwd.
-- Linked checkout inventory was reverified: `../Scripts` owns `develop` at
-  `e6dd2b94fd489796df80270814aa040bc19db8a8`; `../Scripts-dev` owns
-  `feature/mkvutil-rework` at `53625bfe69dbfd37100333ce775a60f54a18d313`.
-  That inventory preceded the G01 commit; latest feature HEAD is the signed
-  `6444e4c` checkpoint above, with the same two branch assignments.
+- Linked checkout inventory was reverified during the code/checklist audit:
+  `../Scripts` owns `develop` at `e6dd2b94fd489796df80270814aa040bc19db8a8`;
+  `../Scripts-dev` owns `feature/mkvutil-rework` at signed `f44cd98`.
+  Both branch assignments remain unchanged.
   The common Git directory and `info/exclude` belong to the original clone and
   are shared. The ignored environment symlink and migration snapshots remain.
 - Keep both branch assignments and all ignored recovery state. Worktree setup,
@@ -196,18 +225,80 @@ task IDs; **5 / 9 tasks and 1 / 4 main goals** are accepted
 
 The executor checkpoint has now closed the following focused gates:
 
-- Establish actual v93 default-flag parity for intended retained-track states,
+- Verified actual v93 default-flag parity for intended retained-track states,
   plus blank-title clearing and literal-title handling through `mkvmerge`.
 - T01.01's approved retained-content naming helper and T01.03's complete
   per-file preview/removal/selection consumer evidence are accepted.
-- Validate intended track identity and explicit final order for every file;
+- Validation binds intended track identity and explicit final order per file;
   do not assume track positions or MakeMKV UIDs survive a remux unchanged.
-- Verify safe staging/promotion, collisions, warning/error distinctions,
+- Checked safe staging/promotion, collisions, warning/error distinctions,
   interruption behavior, and correct success reporting.
 
 T02.03's complete final reporting, timing and fresh skipped-only continuation
 remain pending. G02 is not accepted yet; integrated all-format/legacy navigation
 qualification and the near-end interactive campaign remain later gates.
+
+### User-requested code/checklist audit
+
+- Trigger: a stale aggregate checklist count, followed by the user's request
+  to pause for a real audit. The sole source/test writer stopped safely with
+  no running subprocesses. Snapshot:
+  `.tmp/mkvutil-rework/checklist-audit.wni4h33r/snapshot/`;
+  machine-readable findings and exact source/test bindings:
+  `.tmp/mkvutil-rework/checklist-audit.wni4h33r/audit-receipt.json`.
+- Reviewed accepted `f44cd98` and the frozen T02.03 draft SHA-256 `312ff6f…`;
+  all nine task requirements, evidence requirements, prerequisites and overlap
+  fields match the authoritative plan exactly. G01's source/test/receipt
+  mapping remains supported at the accepted revision. The dirty controller
+  cannot inherit its old entrypoint proof automatically.
+- Astra independently found missing normal multi-file Edit proof. Parent
+  reopened T02.01 (temporarily 4/9), added one two-file grouped queue test with
+  different source listing positions and unrequested property values, and
+  reaccepted after it passed: `1 passed, 11.44s` (12.62s wall, 9.00s combined
+  user/system CPU). Exactly one propedit per source; no output remux. The first
+  test draft wrongly prohibited read-only tag inspection and was corrected;
+  it was not a runtime fix. Logs `two-file-edit.log` and
+  `two-file-edit-fixed.log` preserve both attempts in the audit directory.
+- One notified existing mocked mismatch/preview/Cancel journey passed on the
+  frozen controller: `1 passed, 4.05s` (5.11s wall, 4.00s combined user/system
+  CPU). One always-multi selection, exact ID/type/codec mismatch receipts,
+  identification-only calls and unchanged files are asserted. Log:
+  `controller-cancel.log`. This rechecks one affected G01 path, not the complete
+  T02.03 consumer or final interactive gate.
+- T02.02 passed independent accepted-executor review with its documented
+  TrackUID-zero refusal and SRT timestamp limitation. All three native-receipt
+  implementation hashes match `f44cd98`, all five native result records are
+  successful/validated, and immutable fixture hashes agree. Eight core
+  planner/builder/executor bodies remain unchanged in the draft; their globals
+  and call sites were reviewed. Historical native proof does not qualify the
+  changed queue/controller/reporters.
+- Two concrete T02.03 defects remain: its queue trap sets only a local
+  interruption flag, while the controller uses the global flag to suppress
+  continuation; and ledger status does not reject required not-attempted work
+  after Run. Fix both and prove a signal between jobs leaves later sources
+  untouched, offers no continuation, reports pending outcomes and returns
+  nonzero. Preserve neutral cancellation before any Run.
+- Legacy flat-menu journeys remain unmigrated and cannot establish current
+  navigation behavior. Their semantic assertions and all six validation groups
+  remain required at the existing integration gate. Extract remains guarded.
+  No broad menu campaign, native campaign, publication, plan-contract change,
+  AGENTS edit, worktree change or dependency installation occurred in this audit.
+- All current totals and restart descriptions were reconciled; prior package
+  briefs are explicitly historical. The original parent-session ledger, IDs,
+  order and provenance are unchanged; SHA-256 `fefdffb5…14cab` verified against
+  the snapshot. Structural validators pass separately from code/evidence review.
+- At subsequent checkpoints, derive accepted task/goal totals from the actual
+  checklist rows and compare every current summary before reporting progress.
+  Verify each accepted task's required evidence against the tested revision and
+  affected consumers; an unchanged helper hash does not qualify a changed
+  consumer. Reopen unsupported acceptance and retain historical receipts.
+- Audit handback: parent added only
+  `test_mkv_utils_executor_two_file_edit_keeps_source_selectors_and_properties`
+  to the utility tests. Resume the existing source/test owner on the same
+  feature worktree with that test preserved. First resolve the two T02.03
+  defects, then complete its pending focused ledger/continuation/reporting
+  tests and the single notified continuation probe. Do not start Extract
+  before T02.03 and the G02 goal gate pass.
 
 ## Execution route and next actions
 
@@ -216,7 +307,11 @@ beginning the implementation. Current route B and foundation-first scope are
 recorded in the restart section above. The preceding coordinated documentation
 package is complete; its receipts below are historical.
 
-### Active implementation package
+### Implementation checkpoint history
+
+This section preserves successive package briefs and receipts. Earlier “next”
+steps and pending claims describe their stated checkpoint; use the current
+restart section and audit result for present readiness.
 
 - T01.01 baseline/track/output contract: the completed bounded worker owned additions to
   `shell/mkv_utils.zsh` and focused contract cases in the tracked
@@ -463,21 +558,50 @@ package is complete; its receipts below are historical.
 - Latest continuity refresh successfully reread the installed skill and its
   updated resumption/audits, change-control, location/visibility and dependency
   references. Both now-installed structural validators pass. The handoff is
-  about 43KB and navigable with current sections refreshed; no consolidation
-  or deeper whole-project audit was triggered. The original ordered parent-ID
+  about 43KB at that refresh and navigable with current sections refreshed;
+  size alone did not trigger consolidation. The subsequent user-requested
+  code/checklist audit below was triggered by observed status/evidence drift. The original ordered parent-ID
   ledger and provenance are unchanged (SHA-256
   `fefdffb5cf9dccc158d326be5a53004a599f83d50b2acf73f04ae62e80514cab`).
   That same parent ID was reverified against its CLI session metadata, original
   Scripts cwd, no fork-parent marker, and this user's current refresh request
   in the matching log. No new session ID was appended. Git worktree assignments,
   accepted requirements/permissions and all private recovery evidence remain.
+- T02.03 draft audit returned PASS WITH NOTES. Finalize every exit after
+  processing begins, including interrupted/not-attempted jobs without a
+  continuation offer; preserve prior outcomes on later cancellation/EOF and
+  avoid the old unconditional no-changes message. Use immutable original-path
+  keys, deduplicated live/preflight skip receipts and separate events for
+  exclusions. Save configuration for all-skipped/cancelled cohorts as well as
+  Runs, distinguishing requested from completed actions. Time queue processing
+  monotonically, excluding user think-time, with zero-attempt-safe ETA over
+  remaining eligible work. Astra also identified a stale checklist footer
+  (3/9 versus accepted rows at 5/9); parent corrected it without changing gates.
+- Current T02.03 writer brief: same three source/test/helper files, preserve
+  accepted executor/metadata internals, implement shared final reporting and
+  skipped-only post-run workflow, and prove mixed/all-skipped/resolved/unresolved
+  outcomes, exclusions, warnings/partials/interruption, truthful action/directory
+  labels, Edit final-only display, and zero-work timing. Test source fixtures
+  stay outside resettable fake state. Use focused non-interactive contracts;
+  exactly one small real-entrypoint mocked continuation probe requires parent
+  notice before execution. Adapt affected legacy navigation without weakening
+  assertions, but do not run bulk menu campaigns before the later grant.
+- T02.03's writer confirmed the correct Git root, feature branch and signed
+  `f44cd98` HEAD with only parent checklist/handoff changes before writing.
+  The native-proof core baseline is saved at
+  `.tmp/mkvutil-rework/executors.yGdnvt/accepted-core-baseline.json`; compare
+  unchanged planner/executor function bodies plus relevant globals and the
+  final diff before reusing task-level proof. A body hash is supplementary
+  evidence, not a replacement for consumer/goal integration review.
 - Read-only upcoming Mux validation evidence from `mkv_requirement_mapping`:
   bundled v93 manual confirms output track IDs differ and MakeMKV can regenerate
   track UIDs. Validate planned sequence/properties and metadata without an
   unconditional UID-equality gate. Use exact stdlib integers if UID comparison
   is required; jq arithmetic rounds large UIDs even though untouched serialization
-  preserves them on installed 1.8.1. The current real fixture contains no video/
-  stereo or nonempty tags, so those retained-property proofs remain pending.
+  preserves them on installed 1.8.1. At that earlier foundation checkpoint,
+  the real fixture contained no video/stereo or nonempty tags. The accepted
+  executor receipt subsequently adds tiny H264/stereo and user-tag proof;
+  broader all-format integration remains pending.
   JSON descriptors establish attachment/chapter counts, not their payload bytes;
   existing extracted chapter/attachment comparisons are the stronger receipt.
 
@@ -526,7 +650,7 @@ contain no media operations, product tests, or CI results.
 
 ## Validation evidence and next checks
 
-- Current T01.01 foundation proof: pure helper plus three notified legacy
+- Historical T01.01 foundation proof: pure helper plus three notified legacy
   journeys passed on the dirty source/test tree based on HEAD `96ae959`
   (`4 passed, 25 deselected in 2.70s`); parent syntax and whitespace checks passed.
   These are focused receipts, not the integrated affected-group acceptance gate.
@@ -544,12 +668,13 @@ contain no media operations, product tests, or CI results.
   were completed during this parent session. Source baseline was
   `3c4d4247487babcff7fe23e9f05f2ee554e9f730`; the plan-only commit introduced
   no utility code changes. No runtime speedup was benchmarked.
-- `zsh -n shell/mkv_utils.zsh` and whitespace checks passed during planning.
-  No source changes followed those checks. They do not prove the new behavior.
+- `zsh -n shell/mkv_utils.zsh` and whitespace checks passed at the planning
+  checkpoint, before implementation began. That historical result does not
+  prove the new behavior.
 - Earlier feature-design Astra audit: PASS WITH NOTES for category batching, shared
   metadata definitions, and direct Mux metadata. Its command-count clarification
   was incorporated. No automated or real-media tests were executed.
-- The current structural-rework audit received PASS after preserving the G02
+- The planning structural-rework audit received PASS after preserving the G02
   Extract stage gate, moving naming-contract readiness before preview acceptance,
   and requiring focused executor evidence before final integration.
 - The existing pytest harness and small real-v93 fixtures remain the planned
@@ -565,11 +690,12 @@ contain no media operations, product tests, or CI results.
   harness, generate fresh small all-format fixtures in an owned `.tmp` run
   directory, and keep mocked, real-v93, and terminal evidence distinct. Earlier
   focused executor proofs remain required before accepting their tasks.
-- This documentation checkpoint requires link, requirement-mirroring,
+- That documentation checkpoint required link, requirement-mirroring,
   whitespace, privacy, and actual Git-visibility checks, not a media test run.
 - Document links/anchors, checkpoint identity parity, personal-path checks,
   whitespace/final newlines, and actual Git visibility passed for these records.
-  The index, utility source, and test files remain unchanged.
+  At that documentation checkpoint, the index, utility source, and test files
+  were unchanged; this is not the current implementation worktree status.
 
 ### Interactive-testing permission
 
