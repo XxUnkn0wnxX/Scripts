@@ -1,7 +1,9 @@
 # mkvutil rework plan
 
-Status: planning only. This plan and the `feature/mkvutil-rework` branch are
-authorized; script implementation has not started.
+[Acceptance checklist](plan_checklist.md) · [Current handoff](plan_handoff.md)
+
+This document specifies the approved mkvutil rework. Acceptance status belongs
+to the checklist; current authorization and restart state belong to the handoff.
 
 For this rework, use the Astra planner for intermittent, focused audits at
 meaningful planning or risk changes. The parent maintains this document and owns
@@ -26,10 +28,6 @@ same configured job. Metadata-only jobs should use the existing fast header-edit
 approach and require no full remux.
 
 ## Confirmed baseline
-
-Reviewed on 2026-10-14 from commit
-`3c4d4247487babcff7fe23e9f05f2ee554e9f730` on `develop`. The working tree was
-clean before creating `feature/mkvutil-rework`.
 
 - `mkvutil` resolves to `zsh ~/Apps/Scripts/shell/mkv_utils.zsh`.
 - The active `mkvmerge`, `mkvpropedit`, and `mkvextract` all report
@@ -231,10 +229,10 @@ script's facilities. Avoid separate copies of metadata menus/prompt logic or a
 general plugin framework. The tool-specific mappings stay visible and easy to
 maintain in that shared section.
 
-The current `8 + 4 + 3` workflow already performs one full remux plus separate
-header edits; batching primarily removes its repeated interaction. Combining
-`7 + 8` removes an entire additional remux pass. No runtime speedup has been
-benchmarked during this planning review.
+The existing `8 + 4 + 3` workflow performs one full remux plus separate header
+edits; batching removes its repeated interaction. Combining `7 + 8` removes
+an entire additional remux pass. This is a reduction in processing passes,
+not a measured runtime-speed claim.
 
 ### Metadata contracts
 
@@ -313,27 +311,85 @@ remux actions to it.
 - Continue with other independent files after a file failure. The batch's exit
   status must reflect incomplete required jobs rather than always returning zero.
 
-## Implementation checkpoints
+## Main goals, tasks, and checkpoint mapping
 
-- [x] Review the current script, documentation, and existing test harness.
-- [x] Verify installed tools and the Big Sur compatibility baseline.
-- [x] Create the rework branch and write this planning document.
-- [x] Independently audit the proposal and incorporate material corrections.
-- [ ] **Checkpoint 1: menu and planning contract.** Capture the existing behavior
-  baseline with the focused suite; adapt existing actions into category submenus.
-  Implement selection parsing, category job configuration, shared metadata
-  definitions, optional Mux metadata, conflicts, and preview. Prove that
-  configuration and cancellation produce no media mutations.
-- [ ] **Checkpoint 2: Edit + Mux execution.** Implement grouped metadata-only jobs
-  and one-command Mux jobs using `mkvmerge`'s own metadata arguments, safe
-  promotion, output validation, and queue reporting. Prove `1 + 2`, `8 + 4 + 3`,
-  and `7 + 8 + 4 + 3` equivalents using the category mappings above.
-- [ ] **Checkpoint 3: extraction integration.** Implement multi-selection in
-  Extract, one target-file selection for its batched operations, codec-aware
-  output names, deterministic stage ordering, and collision/failure reporting.
-- [ ] **Checkpoint 4: integration and documentation.** Verify every adapted
-  single/batch action and shared metadata path, update help and the existing
-  guide, complete affected validation, and review the final diff.
+The four existing checkpoints remain the four main goals below. Their names,
+scope, and acceptance requirements are preserved; task IDs make the work and
+its evidence traceable. Task IDs remain stable through later reordering.
+The checklist owns acceptance status; the handoff owns current work and consent.
+
+| Goal ID | Preserved checkpoint | Required task IDs | Goal-level acceptance gate |
+| --- | --- | --- | --- |
+| G01 | Checkpoint 1: menu and planning contract | T01.01, T01.02, T01.03 | All three tasks accepted; category configuration and preview consume the shared foundation and meet the existing no-mutation gate. |
+| G02 | Checkpoint 2: Edit + Mux execution | T02.01, T02.02, T02.03 | All three tasks accepted and combined Edit/Mux workflows meet their semantic, safety, and reporting gates; this is the approved stage gate before Extract implementation. |
+| G03 | Checkpoint 3: extraction integration | T03.01 | T03.01 accepted and both single and batched extraction outcomes verified. G02 acceptance is an existing execution-stage gate, not an assumed extraction API dependency. |
+| G04 | Checkpoint 4: integration and documentation | T04.01, T04.02 | Both tasks accepted; all required integration/verification evidence is current, help/docs match the implementation, and parent final review is complete. |
+
+### G01 — Checkpoint 1: menu and planning contract
+
+| Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
+| --- | --- | --- | --- | --- |
+| T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
+| T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
+| T01.03 | Adapt existing actions into category submenus; implement single/comma/range selections, one target selection, per-file planning, conflicts, optional Mux metadata, and complete track/output previews. Wire the actual configuration consumers without media mutation. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, invalid/cancel/EOF behavior, all-format planning, settled output names, and no-write configuration/cancellation evidence. |
+
+### G02 — Checkpoint 2: Edit + Mux execution
+
+| Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
+| --- | --- | --- | --- | --- |
+| T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
+| T02.02 | Implement one output-producing `mkvmerge` remux per Mux file, combining removal/order with optional direct metadata. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety and command-count proof plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
+| T02.03 | Integrate complete single/batch Edit and Mux jobs with filename reports, elapsed time, average ETA, correct successful/failed/warning/partial counts, and failure-reflecting batch exit status. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | T02.01, T02.02 | T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests and partial-failure summaries, without rerunning a full unrelated suite. |
+
+### G03 — Checkpoint 3: extraction integration
+
+| Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
+| --- | --- | --- | --- | --- |
+| T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, collision handling, and partial-failure reporting without changing source media or claiming sidecar rollback. | T01.01, T01.03, G02 | T02.02, T04.01; common source/output checks and extraction test fixtures | Affected extraction tests across applicable formats, source-preservation/collision/failure evidence, and selected-source real extraction proof. |
+
+### G04 — Checkpoint 4: integration and documentation
+
+| Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
+| --- | --- | --- | --- | --- |
+| T04.01 | Verify every adapted single/batch action and shared metadata path together; consolidate task-level receipts and complete all six existing validation groups, including the small real-v93 and all-format integration evidence. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
+| T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | T04.01 | none | Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. |
+
+### Foundations, stage gates, and shared ownership
+
+- T01.01 owns the original-file job/output contract. Removal output naming must
+  be settled here before T01.03 can earn complete-preview acceptance; its
+  currently unresolved policy is not a license to accept provisional filenames.
+- T01.02 is the single canonical owner of shared metadata definitions,
+  configuration, and both argument builders. Edit and Mux reuse this work;
+  neither consumer receives automatic acceptance from foundation completion.
+- T01.03 owns shared file selection, per-file identity/planning, conflicts, and
+  preview. Runtime consumers depend on this contract and real configuration
+  wiring. A wireframe or stub alone does not establish an integrated menu.
+- T02.02 owns remux-specific staging/promotion; T03.01 owns its extraction output
+  handling. Shared file paths and helper edits are overlaps requiring one writer,
+  not reasons to invent a new common framework or an executor dependency.
+- T03.01's technical inputs come from G01, but the previously approved
+  Extract-after-Edit+Mux sequencing remains an explicit G02 acceptance gate.
+  The dependency checker expands a goal edge to its tasks; the parent must also
+  check that goal's integration/verification gate before starting Extract.
+- Focused evidence belongs to each implementation slice before its task is
+  accepted. T02.02 must establish its required v93 metadata/flag/title/mapping
+  and safety proof before acceptance. T04.01 consolidates valid receipts and
+  verifies combined behavior; it is not the first proof for all predecessors.
+- Source and tests are currently shared surfaces: `shell/mkv_utils.zsh`,
+  `tests/mkv_tools/test_mkv_utils.py`, and `tests/mkv_tools/_mkv_helpers.py`.
+  Dependency-ready tasks are not automatically safe concurrent writer packages.
+  Keep overlapping edits serial or assign one coherent owner; parallelize only
+  genuinely independent read-only reviews or exclusively owned artifacts.
+- Final help/docs acceptance follows T04.01's validated runtime behavior.
+  Lightweight contract notes may accompany foundation work, labelled as drafts.
+
+Before implementation, inspect the selected target's prerequisite closure and
+shared surfaces. Where these materially affect scope/order, present A (smallest
+independently completable ready tasks) and B (minimal coordinated dependency/
+overlap batch), then record the selected route and ownership in the handoff.
+The current authorization to restructure these documents and run parallel
+reviews does not select or authorize an implementation package.
 
 Saved presets and noninteractive CLI operation are possible later extensions of
 the internal job plans. They are not requirements for the first completed rework.
@@ -381,19 +437,6 @@ full remux per file. Support for `.mkv`, `.mka`, `.mks`, and `.mk3d` must remain
 intact across the new workflow. All four checkpoints remain required before
 declaring this rework complete.
 
-### Evidence from this planning session
-
-- Source/documentation/test inspection and installed version/help/manual checks
-  completed.
-- `zsh -n shell/mkv_utils.zsh` and `git diff --check` passed for the reviewed tree.
-- Latest selective Astra audit: **PASS WITH NOTES** for category batching,
-  optional Mux metadata, direct `mkvmerge` execution, and shared metadata
-  definitions serving both tools. The distinction between read-only tool calls
-  and the one output-producing remux call is incorporated above.
-- Existing actions move directly into category submenus, following the user's
-  clarified navigation requirement. Operation behavior and format support remain
-  regression requirements for those adapted single and batch paths.
-- Automated tests and real media operations were not executed during this review.
-  Proposed combined behavior and metadata parity remain implementation gates.
-- No utility implementation, media replacement, dependency upgrade, publication,
-  or push is part of this planning change.
+Planning/audit receipts, runtime verification status, active permissions, and
+the next safe action are maintained in the checklist and handoff. They do not
+alter this specification's requirements or imply acceptance of pending tasks.
