@@ -1985,7 +1985,6 @@ mkvutil_configure_category() {
   local -a track_header=("Current Work Dir: $PWD")
   if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
     track_header+=("Removal reference file: ${source:t}")
-    (( ! MKVUTIL_BYPASS_TRACK_COUNT )) || track_header+=('Bypass enabled: removal track-count guard only.')
   else
     track_header+=("Reference file: ${source:t}")
   fi
@@ -2087,7 +2086,12 @@ mkvutil_configure_category() {
         fi
         (( result == 0 )) || return "$result"
         metadata="$REPLY"
-        _mkvutil_ui_leave
+        if (( MKVUTIL_UI_ACTIVE )); then
+          _mkvutil_ui_leave
+          # Value prompts use normal history. Carry the current output layout
+          # across instead of exposing only the older source-order listing.
+          printf '\n%s\n\n' "$metadata_preview" || return 1
+        fi
         mkvutil_batch_metadata_requested "$metadata" || return 1
         result=0
         mkvutil_metadata_configure "$metadata" "$metadata_mode" "${(j:,:)order_ids}" "$projection" "$metadata_context" || result=$?

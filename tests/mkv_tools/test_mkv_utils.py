@@ -455,6 +455,53 @@ print -r -- 'metadata row colours passed'
     assert not [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
 
 
+@pytest.mark.parametrize('operations', ('2', '1,2'), ids=('reorder', 'remove-reorder'))
+@pytest.mark.parametrize('owned', (0, 1), ids=('scrollback', 'owned'))
+def test_mkv_utils_metadata_handoff_preserves_complete_projected_layout(env, operations, owned):
+    source = _mkv_file(env, 'large metadata layout.mkv')
+    model = _source_json([(0, 'video', 'V_AV1', True), (1, 'audio', 'A_AAC', False)] +
+                         [(track_id, 'subtitles', 'S_TEXT/ASS', False) for track_id in range(2, 21)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/large metadata layout.mkv")"
+MKVUTIL_SOURCES=("$record")
+yellow=$'\e[38;5;220m'; red=$'\e[38;5;203m'; reset=$'\e[0m'
+_mkvutil_track_colours() { MKVUTIL_TRACK_RED="$red"; MKVUTIL_TRACK_YELLOW="$yellow"; }
+_mkvutil_menu_read() {
+  MKVUTIL_UI_ACTIVE="$TEST_OWNED"
+  (( MKVUTIL_UI_ACTIVE )) || print -r -- "$6"
+  REPLY=1,3
+}
+functions[original_metadata_configure]="$functions[mkvutil_metadata_configure]"
+mkvutil_metadata_configure() { print -r -- '<VALUES>'; original_metadata_configure "$@"; }
+answers=$'10,11\n0\n1\n0\neng\nfr\nde'
+[[ "$TEST_OPERATIONS" != 1,2 ]] || answers=$'1\n'"$answers"
+mkvutil_configure_category mux "$TEST_OPERATIONS" <<< "$answers"
+jq -e '.order=="0:0,0:10,0:11" and
+  .settings=={"1:0":"0","1:10":"1","1:11":"0","3:0":"eng","3:10":"fr","3:11":"de"} and
+  .metadata_output_map=={"0":"0","1":"10","2":"11"}' <<< "$MKVUTIL_CONFIG" >/dev/null
+eq "$MKVUTIL_UI_ACTIVE" 0 'values use durable normal history'
+print -r -- '<COMPLETE>'
+''', {str(source): model}, extra_env={'TEST_OPERATIONS': operations, 'TEST_OWNED': str(owned)})
+    preview = result.stdout.split('Output track layout')
+    assert len(preview) == 2, result.stdout
+    layout, after = preview[1].split('<VALUES>')
+    assert after.rstrip().endswith('<COMPLETE>')
+    assert '\x1b[38;5;220mTrack ID 1: subtitles (S_TEXT/ASS) [Original 10] [eng]\x1b[0m' in layout
+    assert '\x1b[38;5;220mTrack ID 2: subtitles (S_TEXT/ASS) [Original 11] [eng]\x1b[0m' in layout
+    assert layout.index('Track ID 0:') < layout.index('Track ID 1:') < layout.index('Track ID 2:')
+    assert layout.count('Track ID ') + layout.count('Track: ') == 21
+    if operations == '1,2':
+        assert '\x1b[38;5;203mTrack: audio (A_AAC) [Original 1] [eng]\x1b[0m' in layout
+        assert 'Track ID 19: subtitles (S_TEXT/ASS) [Original 20] [eng]' in layout
+    else:
+        assert '\x1b[38;5;203m' not in layout
+        assert 'Track ID 20: subtitles (S_TEXT/ASS) [Original 20] [eng]' in layout
+    for prompt in ('Forced', 'Language:'):
+        assert '\x1b[38;5;220mTrack ID 1: subtitles (S_TEXT/ASS) [Original 10] [eng]\x1b[0m\n' + prompt in result.stderr
+    assert source.read_bytes() == b'payload'
+    assert not [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
+
+
 def test_mkv_utils_projected_track_view_and_shared_value_context(tmp_path: Path):
     model = _source_json([(0, "video", "V_VP9", True), (1, "audio", "A_AAC", False),
                           (2, "subtitles", "S_TEXT/ASS", False), (3, "audio", "A_OPUS", True),
@@ -1159,11 +1206,10 @@ def test_mkv_utils_mux_entrypoint_track_count_skip_and_bypass(env, bypass_positi
         assert "Track count mismatch:" not in result.stdout
         _assert_readable_outcomes(result.stdout, "Done: 2")
         assert "Skipped: 0" in result.stdout
-        assert "Bypass enabled: removal track-count guard only." in result.stdout
-        assert result.stdout.count("Bypass enabled: removal track-count guard only.") == 1
         assert not first.exists() and not second.exists()
         assert first.with_suffix(".mka").read_bytes() == b"candidate-data\n"
         assert second.with_suffix(".mka").read_bytes() == b"candidate-data\n"
+    assert "Bypass enabled:" not in result.stdout + result.stderr
     assert not _command_argv(env, "mkvpropedit")
     extract_calls = _command_argv(env, "mkvextract")
     assert all(argv[1] in {"tags", "chapters"} for argv in extract_calls)

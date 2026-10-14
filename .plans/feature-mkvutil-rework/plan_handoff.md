@@ -14,6 +14,51 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted complete projected-layout handoff and silent bypass
+
+- Latest screenshots exposed a whole-list handoff bug, distinct from per-target
+  row styling: owned metadata menu exit restored original-order normal history.
+  Now the exact cached final removal/reorder layout is carried into normal-history
+  value entry for every optional metadata choice, preserving output IDs, order,
+  red dropped rows and gold explicitly moved rows. Existing non-owned/oversized
+  scrollback previews do not duplicate the layout. Metadata targets are unchanged.
+- The runtime bypass banner is removed. --bypass/help/docs and its count-only
+  scope remain; every original reference ID/type/native format and output binding
+  still validates during planning and the fresh real-run preflight. Names,
+  languages and flags stay lax. Only configure_category changed; all guards,
+  builders, shared collector, job/preflight and engines remain byte-identical.
+- Final-source affected selection: 19 passed, 203 deselected in 72.20s. Includes
+  21-track owned/fallback, combined metadata settings, Back, original-tree and
+  late runtime/count rejection, bypass before/after directory and silent output.
+  Before patch, both owned variants reproduced the missing-layout bug; both
+  fallback variants passed. Intermediate 13-case pass is retained as revision-bound.
+- Two installed-fzf/loaded-alias/v93 read-only-native dry-run journeys qualify
+  reorder-only (4.39s) and combined removal/reorder (3.76s), metadata 1,3, field
+  Back/reselection, full styled list after alternate-screen exit, per-output
+  values and final simulation. Combined also uses --bypass with no notice.
+  Reorder-only's complete capture is qualified offline after correcting a private
+  assertion that put a menu-only scope label into the replayed layout; earlier
+  private parser failure is also preserved. No native writers, changed fixture
+  inventories or user-media access. All source/test/helper hashes remained frozen.
+- Source SHA-256 `7fbc9b5eb217eae6abbf4bb28fe2f7bb281f1fcd2d2e158ec3c61b65b18a676c`;
+  tests SHA-256 `ba2498871ce00908f4196471127ef75e64af49a8af7a18cdd42304b35b77e49e`.
+  Both zsh syntax/Python AST, independent read-only causal review, parent source,
+  exact requirement mirroring, docs and parent-session ledger checks pass.
+  Route B at T01.03/T04.01/T04.02 is accepted: 9/9 tasks, 4/4 checkpoints.
+- Proof: `.tmp/mkvutil-rework/metadata-layout-handoff/receipt.json`, `run-02/`,
+  `ia/qualifications/reorder-only-offline.json`, the linked combined journey and
+  `parent-review.json`. Baseline log: `../metadata-layout-baseline.log` from that
+  private root. No new full-module/native-write/CI campaign is claimed.
+- Standing user authorization: after verified changes for this work, automatically
+  merge/sync and push master as well as develop. Keep the normal Scripts checkout
+  on develop afterward; no new worktrees, force pushes or discarded target work.
+  This latest approval persists with the existing project permissions.
+- Parent owns tracked files; workers and runtime jobs are complete. Baseline refs
+  were signed 56f5950 on develop/master. Next: signed develop commit/push and
+  authorized fast-forward master/push, returning to develop. Actual publication
+  outcome belongs to `metadata-layout-handoff/publication.json`; inspect it and
+  real refs before repeating Git. Earlier receipts and approvals remain intact.
+
 ### Accepted metadata row styling and shared fzf cursor handoff
 
 - Mux metadata value rows now reuse the preview's cached styled rows, preserving
