@@ -584,7 +584,10 @@ print -r -- "$b"
 reject mkvutil_check_destinations "$a" "$b"
 reject mkvutil_check_destinations "$a" "$a"
 print -r -- changed >> "$PWD/Second file.mk3d"
-reject mkvutil_plan_job "$second" "$config"
+changed_code=0
+changed_receipt="$(mkvutil_plan_job "$second" "$config")" || changed_code=$?
+eq "$changed_code" 3 'changed source automatically skipped'
+eq "$(jq -r '.kind' <<< "$changed_receipt")" source-changed 'changed identity receipt'
 ''', {str(first): first_json, str(second): second_json})
     jobs = [json.loads(line) for line in result.stdout.splitlines()]
     assert len(jobs) == 2
@@ -633,9 +636,13 @@ for file in "${MKVUTIL_SCAN_FILES[@]}"; do
 done
 record="$(mkvutil_capture_source "$PWD/audio.mka")"
 bad="$(jq '.settings={"4:11":"name"}|.expected_types={"11":"subtitles"}' <<< "$config")"
-reject mkvutil_plan_job "$record" "$bad"
+code=0; receipt="$(mkvutil_plan_job "$record" "$bad")" || code=$?
+eq "$code" 3 'wrong track type automatically skipped'
+eq "$(jq -r '.reasons[0].reason' <<< "$receipt")" type-mismatch 'wrong type receipt'
 bad="$(jq '.settings={"4:99":"name"}|.expected_types={"99":"audio"}' <<< "$config")"
-reject mkvutil_plan_job "$record" "$bad"
+code=0; receipt="$(mkvutil_plan_job "$record" "$bad")" || code=$?
+eq "$code" 3 'missing target automatically skipped'
+eq "$(jq -r '.reasons[0].reason' <<< "$receipt")" missing-id 'missing ID receipt'
 bad="$(jq '.removed_ids=["11"]' <<< "$config")"
 reject mkvutil_plan_job "$record" "$bad"
 ''', sources)
@@ -787,9 +794,10 @@ eq "$MKVUTIL_CONFIG" '' 'EOF has no configuration'
 other="$(mkvutil_capture_source "$PWD/incompatible.mks")"
 MKVUTIL_SOURCES=("$record" "$other")
 MKVUTIL_CONFIG='{"category":"edit","operations":["4"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{"4:0":"Name"},"expected_types":{"0":"audio"},"extract_ids":[]}'
-mkvutil_plan_queue <<< Y
-eq "${#MKVUTIL_JOBS}" 1 'incompatible file explicitly excluded'
-eq "${#MKVUTIL_SOURCES}" 1 'exclusion persists for reconfiguration'
+mkvutil_plan_queue < /dev/null
+eq "${#MKVUTIL_JOBS}" 1 'incompatible file automatically skipped'
+eq "${#MKVUTIL_SOURCES}" 2 'automatic skips retain original scope'
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 1 'one type mismatch receipt'
 MKVUTIL_SELECTED_FILES=("$PWD/missing.mkv")
 result=0
 mkvutil_inspect_sources <<< N || result=$?
@@ -940,6 +948,7 @@ missing_target="$(mkvutil_capture_source "$PWD/missing-target.mkv")"
 signatures="$(mkvutil_removal_signatures "$reference" 0)"
 config="$(jq -cn --arg reference "$PWD/reference.mkv" --argjson signatures "$signatures" '{category:"mux",operations:["1"],removed_ids:["0"],order:"",order_ids:[],metadata:"",settings:{},expected_types:{"0":"video"},extract_ids:[],reference:$reference,reference_track_count:3,removal_signatures:$signatures}')"
 job="$(mkvutil_plan_job "$reference" "$config")"
+reference_job="$job"
 eq "$(jq -r '.config.bypass_track_count // false' <<< "$job")" false 'count bypass defaults off'
 for record in "$fewer" "$extra"; do
   status_code=0
@@ -947,14 +956,15 @@ for record in "$fewer" "$extra"; do
   eq "$status_code" 3 'count-only difference skips complete job'
   eq "$(jq -r '.reasons|length' <<< "$receipt")" 0 'count-only difference has no fabricated ID reason'
   eq "$(jq -r '.track_count_mismatch.expected' <<< "$receipt")" 3 'reference track count'
+  [[ "$record" != "$fewer" ]] || count_receipt="$receipt"
 done
 bypass="$(jq '.bypass_track_count=true' <<< "$config")"
-reference_job="$(mkvutil_plan_job "$reference" "$config")"
 for record in "$fewer" "$extra"; do
   job="$(mkvutil_plan_job "$record" "$bypass")"
   eq "$(jq -r '.config.bypass_track_count' <<< "$job")" true 'bypass retained in plan'
+  [[ "$record" != "$fewer" ]] || fewer_job="$job"
 done
-unsafe="$(jq --arg protected "$PWD/reference.mkv" '.outputs=[$protected]' <<< "$(mkvutil_plan_job "$fewer" "$bypass")")"
+unsafe="$(jq --arg protected "$PWD/reference.mkv" '.outputs=[$protected]' <<< "$fewer_job")"
 reject mkvutil_check_destinations "$reference_job" "$unsafe"
 for record in "$wrong_codec" "$wrong_type" "$missing_target"; do
   status_code=0
@@ -970,6 +980,10 @@ reject mkvutil_validate_config "$(jq '.removed_ids=["0","11"]|.expected_types["1
 reject mkvutil_validate_config "$(jq '.bypass_track_count="true"' <<< "$config")"
 nonremoval="$(jq 'del(.reference_track_count,.bypass_track_count)|.removed_ids=[]|.operations=["2"]|.order=""|.order_ids=[]' <<< "$config")"
 mkvutil_validate_config "$nonremoval" || fail 'reorder-only config requires removal count'
+# A count-only receipt has no per-ID reasons and remains a valid retry scope.
+MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=("$count_receipt")
+mkvutil_prepare_skipped_subset
+eq "${#MKVUTIL_SOURCES}" 1 'count-only skipped subset refreshed'
 print -r -- 'removal track-count guard contracts passed'
 ''', sources)
     assert result.stdout.rstrip().endswith("removal track-count guard contracts passed")
@@ -2940,6 +2954,7 @@ def test_mkv_utils_reports_hide_internal_state_and_routine_success_rows(env):
     result = _run_planning_contract(env, r'''
 same="$PWD/Same file.mkv"
 same_edit="$PWD/Same edit.mkv"
+warning="$PWD/Warning file.mkv"
 renamed="$PWD/Renamed file.mkv"
 renamed_output="$PWD/Renamed file.mka"
 extracted="$PWD/Extracted file.mkv"
@@ -2949,16 +2964,17 @@ staged="$PWD/.mkvutil-stage/track.partial.srt"
 recovery="$PWD/.mkvutil-stage"
 skipped="$PWD/Skipped file.mkv"
 reference="$PWD/Reference file.mkv"
-summary="$(jq -cn --arg same "$same" --arg same_edit "$same_edit" --arg renamed "$renamed" --arg renamed_output "$renamed_output" \
+summary="$(jq -cn --arg same "$same" --arg same_edit "$same_edit" --arg warning "$warning" --arg renamed "$renamed" --arg renamed_output "$renamed_output" \
   --arg extracted "$extracted" --arg track "$track" --arg failed "$failed" --arg staged "$staged" \
   --arg recovery "$recovery" --arg skipped "$skipped" --arg reference "$reference" '
-  {directory:"workdir",elapsed_seconds:7,interrupted:false,selected:6,required:6,
-   counts:{done:4,failed:0,warning:0,partial:1,skipped:1,excluded:0,not_attempted:0,interrupted:0},
-   batches:[{id:1,state:"executed",category:"mux",action_ids:["2"],metadata_ids:"",sources:[$same,$same_edit,$renamed,$extracted,$failed,$skipped],eligible:6,attempted:5,completed:4,elapsed_seconds:6,outcomes:{done:4,partial:1,skipped:1},stop:null}],
+  {directory:"workdir",elapsed_seconds:7,interrupted:false,selected:7,required:7,
+   counts:{done:4,failed:0,warning:1,partial:1,skipped:1,excluded:0,not_attempted:0,interrupted:0},
+   batches:[{id:1,state:"executed",category:"mux",action_ids:["2"],metadata_ids:"",sources:[$same,$same_edit,$warning,$renamed,$extracted,$failed,$skipped],eligible:7,attempted:6,completed:4,elapsed_seconds:6,outcomes:{done:4,warning:1,partial:1,skipped:1},stop:null}],
    attachments:{processed:0,published:0,unique_names:0,superseded:0,uncertain_names:0,publications:[]},
    files:[
     {source:$same,destination:$same,status:"success",skip_history:[],attempts:[{batch_id:1,result:{category:"mux",status:"success",phase:"complete",actual_state:"replaced_complete",reason:"",stages:[{kind:"mux",status:"complete",native_code:0}]}}]},
     {source:$same_edit,destination:$same_edit,status:"success",skip_history:[],attempts:[{batch_id:1,result:{category:"edit",status:"success",phase:"complete",actual_state:"edited_observed",reason:"",stages:[{kind:"edit",status:"complete",native_code:0}]}}]},
+    {source:$warning,destination:$warning,status:"warning",skip_history:[],attempts:[{batch_id:1,result:{category:"mux",status:"warning",phase:"complete",actual_state:"replaced_complete",reason:"Metadata warning retained",state_description:"The replacement was saved with a warning.",stages:[{kind:"mux",status:"warning",native_code:0}]}}]},
     {source:$renamed,destination:$renamed_output,status:"success",skip_history:[],attempts:[{batch_id:1,result:{category:"mux",status:"success",phase:"complete",actual_state:"published_complete",reason:"",stages:[{kind:"mux",status:"complete",native_code:0}]}}]},
     {source:$extracted,destination:$extracted,status:"success",skip_history:[],attempts:[{batch_id:1,result:{category:"extract",status:"success",phase:"complete",actual_state:"sidecars_published",reason:"",stages:[{kind:"tracks",status:"complete",native_code:0}],artifacts:[{kind:"track",id:"3",path:$track,publication_state:"confirmed"}]}}]},
     {source:$failed,destination:$failed,status:"partial",skip_history:[],attempts:[{batch_id:1,result:{category:"mux",status:"partial",phase:"publishing",actual_state:"publication_uncertain",reason:"Destination publication uncertain",stages:[{kind:"mux",status:"failed",native_code:2}],staged_paths:[$staged],cleanup_error:"Cleanup could not remove candidate",inventory_errors:["Recovery inventory incomplete"],remaining_staging_directories:[$recovery],uncertain_artifacts:[{path:$staged}]}}]},
@@ -2967,14 +2983,17 @@ summary="$(jq -cn --arg same "$same" --arg same_edit "$same_edit" --arg renamed 
 raw_summary="$summary"
 report="$(mkvutil_format_final_report "$summary")"
 eq "$summary" "$raw_summary" 'formatter leaves raw summary unchanged'
-[[ "$report" == *"Done: 4"* && "$report" == *"Partial: 1"* && "$report" == *"Skipped: 1"* ]] || fail 'aggregate outcomes changed while filtering routine rows'
+[[ "$report" == *"Done: 4"* && "$report" == *"Warning: 1"* && "$report" == *"Partial: 1"* && "$report" == *"Skipped: 1"* ]] || fail 'aggregate outcomes changed while filtering routine rows'
 [[ "$report" != *"Same file.mkv"* && "$report" != *"Same edit.mkv"* ]] || fail 'unchanged successful Edit/Mux file was listed'
+[[ "$report" == *"| Warnings"* && "$report" == *"| warning: Warning file.mkv"* && "$report" == *"Metadata warning retained"* ]] || fail 'warning details are not inside their outcome box'
 [[ "$report" == *"Output: Renamed file.mkv => Renamed file.mka"* ]] || fail 'meaningful rename output is missing'
+[[ "$report" == *"| Outputs"* && "$report" == *"| Output: Renamed file.mkv => Renamed file.mka"* ]] || fail 'successful output is not inside the Outputs box'
 [[ "$report" == *"Outputs from: Extracted file.mkv"* && "$report" == *"English Commentary - Track [3].srt"* ]] || fail 'published track outputs are missing'
 [[ "$report" == *"Failure.mkv"* && "$report" == *"Destination publication uncertain"* ]] || fail 'failure outcome is missing'
 [[ "$report" == *"mux: failed (tool exit 2)"* ]] || fail 'failed stage details are missing'
 [[ "$report" == *"Staged: track.partial.srt"* && "$report" == *"Retained staging directory: .mkvutil-stage"* ]] || fail 'recovery paths are missing'
 [[ "$report" == *"Skip history: unresolved; configurations 1; reference Reference file.mkv"* ]] || fail 'skip history is missing'
+[[ "$report" == *"| Skipped"* && "$report" == *"| skipped: Skipped file.mkv"* ]] || fail 'skip details are not inside their outcome box'
 [[ "$report" == *"Track count mismatch: expected 5; actual 4"* && "$report" == *"codec-mismatch"* ]] || fail 'skip receipt details are missing'
 [[ "$report" != *"Phase:"* && "$report" != *"phase="* && "$report" != *"actual state"* ]] || fail 'internal phase/state labels leaked'
 [[ "$report" != *"replaced_complete"* && "$report" != *"published_complete"* && "$report" != *"sidecars_published"* && "$report" != *"publication_uncertain"* ]] || fail 'internal state enum leaked'
@@ -3017,7 +3036,8 @@ identity="$(mkvutil_source_identity "$source")"
 category="$TEST_DRY_CATEGORY"
 job="$(jq -cn --arg source "$source" --arg category "$category" --argjson identity "$identity" '
   {source:$source,identity:$identity,destination:(if $category=="extract" then ($source|sub("/[^/]+$";"/Attachments")) else $source end),
-   config:{category:$category,operations:(if $category=="extract" then ["1","2"] elif $category=="mux" then ["2"] else ["5"] end),metadata:""},
+   config:{category:$category,operations:(if $category=="extract" then ["1","2"] elif $category=="mux" then ["2"] else ["5"] end),metadata:"",
+     removed_ids:[],order:"",order_ids:[],extract_ids:[],settings:{},expected_types:{}},
    outputs:(if $category!="extract" then [$source] else [
      {kind:"attachment",id:"1",path:($source|sub("/[^/]+$";"/Attachments/font.ttf")),artifacts:[{path:($source|sub("/[^/]+$";"/Attachments/font.ttf")),required:true}]},
      {kind:"track",id:"3",path:($source+".sub"),artifacts:[{path:($source+".sub"),required:true},{path:($source+".idx"),required:true}]},
@@ -3044,13 +3064,14 @@ print -r -- "SUMMARY $summary"
     assert "Done:" not in result.stdout and "Output:" not in result.stdout and "Outputs from:" not in result.stdout
     human_output = "\n".join(line for line in result.stdout.splitlines() if not line.startswith("SUMMARY "))
     assert str(env["workdir"]) not in human_output
+    assert "| Simulated" in human_output and "| Files were not changed." in human_output
     summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
     planned = summary["files"][0]["attempts"][0]["result"]["planned_outputs"]
     if category == "extract":
         assert len(planned) == 5 and planned[-1]["path"].endswith(".wvc") and planned[-1]["required"] is False
         assert {Path(p["path"]).suffix for p in planned} == {".ttf", ".sub", ".idx", ".wv", ".wvc"}
         assert "Track stage:" not in result.stdout and "Files Simulated: 1" in result.stdout
-        assert "Would write: font.ttf" in result.stdout and "Would extract: Dry source.mkv.idx" in result.stdout
+        assert "|   Would write: font.ttf" in result.stdout and "|   Would extract: Dry source.mkv.idx" in result.stdout, result.stdout
         assert "published:" not in result.stdout
         assert summary["batches"][0]["track_stages_attempted"] == 0
     else:
@@ -3061,15 +3082,211 @@ print -r -- "SUMMARY $summary"
     assert not _command_argv(env, "mkvextract")
 
 
+@pytest.mark.parametrize("category", ("edit", "mux", "extract"))
+def test_mkv_utils_target_guard_planning_whole_job_skip_and_config_validity(env, category):
+    source = _mkv_file(env, "Targets.mkv")
+    model = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (1, "audio", "A_AAC", True),
+                          (2, "subtitles", "S_TEXT/ASS", False)],
+                         attachments=[{"id": 1, "file_name": "font.ttf", "size": 4}])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/Targets.mkv")"
+MKVUTIL_CODEC_EXT_JSON='{"AAC":"aac"}'
+config="$(jq -cn --arg category "$TEST_GUARD_CATEGORY" '
+ {category:$category,operations:(if $category=="edit" then ["4"] elif $category=="mux" then ["2"] else ["1","2"] end),
+  removed_ids:[],order:(if $category=="mux" then "0:1" else "" end),order_ids:(if $category=="mux" then ["1"] else [] end),
+  metadata:"",settings:(if $category=="edit" then {"4:1":"New name"} else {} end),expected_types:{"1":"audio"},
+  extract_ids:(if $category=="extract" then ["1"] else [] end)}')"
+job="$(mkvutil_plan_job "$record" "$config")"
+for variant in missing wrongtype; do
+  if [[ "$variant" == missing ]]; then changed="$(jq '.model.tracks|=map(select(.id!=1))' <<< "$record")"
+  else changed="$(jq '.model.tracks[1].type="subtitles"' <<< "$record")"; fi
+  code=0; receipt="$(mkvutil_plan_job "$changed" "$config")" || code=$?
+  eq "$code" 3 'incompatible target skips complete job'
+  jq -e '.kind=="track-mismatch" and .requested_ids==["1"] and .outputs==[] and .propedit_args==[] and
+    .merge_metadata_args==[] and .reasons[0].expected=={type:"audio"}' <<< "$receipt" >/dev/null
+  if [[ "$variant" == missing ]]; then
+    jq -e '.reasons[0].reason=="missing-id" and .reasons[0].actual==null' <<< "$receipt" >/dev/null
+  else jq -e '.reasons[0].reason=="type-mismatch" and .reasons[0].actual=={type:"subtitles"}' <<< "$receipt" >/dev/null; fi
+done
+# Codec, names, language and unrelated track counts do not define this guard.
+compatible="$(jq '.model.tracks[1].properties={codec_id:"A_OPUS",track_name:"Other",language:"jpn"}|.model.tracks|=map(select(.id!=2))' <<< "$record")"
+mkvutil_target_mismatch "$compatible" "$config"
+for invalid in 'null' '"metadata"' '17'; do
+  bad="$(jq --argjson invalid "$invalid" '.expected_types["1"]=$invalid' <<< "$config")"
+  code=0; captured="$(mkvutil_plan_job "$record" "$bad")" || code=$?
+  eq "$code" 1 'malformed expected type fails rather than skips'
+  eq "$captured" '' 'malformed config has no receipt or partial job'
+done
+reject mkvutil_validate_config "$(jq '.expected_types={}' <<< "$config")"
+if [[ "$TEST_GUARD_CATEGORY" == extract ]]; then
+  MKVUTIL_SOURCES=("$record")
+  _mkvutil_read_track_ids() { fail 'attachments-only requested IDs'; }
+  mkvutil_configure_category extract 1
+  eq "$(jq -c '.extract_ids' <<< "$MKVUTIL_CONFIG")" '[]' 'attachments-only has no target IDs'
+  attachment_job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")"
+  jq -e '.outputs|length==1 and .[0].kind=="attachment" and .[0].id=="1"' <<< "$attachment_job" >/dev/null
+fi
+print -r -- 'target planning contracts passed'
+''', {str(source): model}, extra_env={"TEST_GUARD_CATEGORY": category})
+    assert result.stdout.rstrip().endswith("target planning contracts passed")
+    assert source.read_bytes() == b"payload" and not (env["workdir"] / "Attachments").exists()
+
+
+def test_mkv_utils_target_guard_mixed_and_all_skip_queue_ledger(env):
+    good, missing, wrong = (_mkv_file(env, name) for name in ("Good.mkv", "Missing.mkv", "Wrong.mkv"))
+    model = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (1, "audio", "A_AAC", True)])
+    result = _run_planning_contract(env, r'''
+good="$(mkvutil_capture_source "$PWD/Good.mkv")"
+missing="$(mkvutil_capture_source "$PWD/Missing.mkv")"
+wrong="$(mkvutil_capture_source "$PWD/Wrong.mkv")"
+config='{"category":"edit","operations":["4"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{"4:1":"Name"},"expected_types":{"1":"audio"},"extract_ids":[]}'
+MKVUTIL_CONFIG="$config"; MKVUTIL_SOURCES=("$good" "$missing" "$wrong")
+mkvutil_ledger_reset "$PWD" "$PWD/Good.mkv" "$PWD/Missing.mkv" "$PWD/Wrong.mkv"
+mkvutil_batch_request edit 4 "$config"
+_mkvutil_exclude() { fail 'mismatch requested exclusion'; }
+mkvutil_plan_queue
+eq "${#MKVUTIL_JOBS}" 1 'mixed queue retains compatible job'
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 2 'mixed queue automatically skips incompatible jobs'
+MKVUTIL_DRY_RUN=1
+if mkvutil_execute_queue "${MKVUTIL_JOBS[@]}"; then fail 'unresolved skips reported success'; fi
+summary="$(mkvutil_final_summary)"
+jq -e '.counts.done==1 and .counts.skipped==2 and .counts.excluded==0 and .required==3 and
+  ([.files[].skip_history[]|select(.resolved==false)]|length)==2' <<< "$summary" >/dev/null
+MKVUTIL_DRY_RUN=0
+mkvutil_ledger_reset "$PWD" "$PWD/Missing.mkv" "$PWD/Wrong.mkv"
+MKVUTIL_CONFIG="$config"; MKVUTIL_SOURCES=("$missing" "$wrong")
+mkvutil_batch_request edit 4 "$config"
+code=0; mkvutil_plan_queue || code=$?
+eq "$code" 3 'all skipped planning exits without a runnable job'
+eq "${#MKVUTIL_JOBS}" 0 'all skipped queue has no writes'
+reject mkvutil_ledger_status
+report="$(mkvutil_format_final_report "$(mkvutil_final_summary)")"
+[[ "$report" == *'Skipped: 2'* && "$report" == *'missing-id'* && "$report" == *'type-mismatch'* ]] || fail 'final mismatch diagnostics missing'
+print -r -- 'target queue contracts passed'
+''', {str(good): model, str(missing): _source_json([(0, "video", "V_MPEG4/ISO/AVC", True)]),
+      str(wrong): _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (1, "subtitles", "S_TEXT/ASS", False)])})
+    assert result.stdout.rstrip().endswith("target queue contracts passed")
+    assert all(source.read_bytes() == b"payload" for source in (good, missing, wrong))
+
+
+@pytest.mark.parametrize("category", ("edit", "mux", "extract"))
+def test_mkv_utils_runtime_shared_guard_skips_before_engine_and_preserves_failures(env, category):
+    source = _mkv_file(env, "Runtime.mkv")
+    model = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (1, "audio", "A_AAC", True),
+                          (2, "subtitles", "S_TEXT/ASS", False)],
+                         attachments=[{"id": 1, "file_name": "font.ttf", "size": 4}])
+    result = _run_planning_contract(env, r'''
+source="$PWD/Runtime.mkv"
+record="$(mkvutil_capture_source "$source")"
+MKVUTIL_CODEC_EXT_JSON='{"AAC":"aac"}'
+config="$(jq -cn --arg category "$TEST_GUARD_CATEGORY" '
+ {category:$category,operations:(if $category=="edit" then ["4"] elif $category=="mux" then ["2"] else ["1","2"] end),
+  removed_ids:[],order:(if $category=="mux" then "0:1" else "" end),order_ids:(if $category=="mux" then ["1"] else [] end),
+  metadata:"",settings:(if $category=="edit" then {"4:1":"Name"} else {} end),expected_types:{"1":"audio"},
+  extract_ids:(if $category=="extract" then ["1"] else [] end)}')"
+job="$(mkvutil_plan_job "$record" "$config")"
+executor="mkvutil_execute_${TEST_GUARD_CATEGORY}_job"
+engine_calls=0
+_mkvutil_execution_engine() { (( ++engine_calls )); fail 'native engine reached'; }
+_mkvutil_extract_engine() { (( ++engine_calls )); fail 'extract engine reached'; }
+_mkvutil_capture_execution_source() { REPLY="$fresh_record"; }
+for variant in missing wrongtype; do
+  if [[ "$variant" == missing ]]; then fresh_record="$(jq '.model.tracks|=map(select(.id!=1))' <<< "$record")"
+  else fresh_record="$(jq '.model.tracks[1].type="subtitles"' <<< "$record")"; fi
+  reject "$executor" "$job"
+  jq -e '.status=="skipped" and .skip_receipt.kind=="track-mismatch" and .native_code==null and
+    .phase=="preflight" and .actual_state=="not_modified_by_job" and .artifacts==[] and .planned_outputs==[] and
+    (.reason|startswith("Selected track IDs"))' <<< "$MKVUTIL_RESULT_JSON" >/dev/null || fail "wrong target result: $MKVUTIL_RESULT_JSON"
+done
+fresh_record="$(jq '.model.tracks[1].properties.codec_id="A_OPUS"' <<< "$record")"
+_mkvutil_preflight_job "$job"
+# A replacement before the queued job starts has a fresh, valid identity.
+python3 -c 'import os,sys;from pathlib import Path;p=Path(sys.argv[1]);r=p.with_suffix(".replacement");r.write_bytes(b"replacement bytes");os.replace(r,p)' "$source"
+fresh_record="$(jq --argjson identity "$(mkvutil_source_identity "$source")" '.identity=$identity' <<< "$record")"
+reject "$executor" "$job"
+jq -e '.status=="skipped" and .skip_receipt.kind=="source-changed" and .skip_receipt.expected_identity==.skip_receipt.identity and
+  .skip_receipt.actual_identity!=.skip_receipt.identity and .actual_state=="not_modified_by_job" and
+  (.reason|startswith("Source changed"))' <<< "$MKVUTIL_RESULT_JSON" >/dev/null || fail "wrong source result: $MKVUTIL_RESULT_JSON"
+fresh_record="$(jq '.identity.size=99' <<< "$record")"
+reject "$executor" "$job"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" failed 'malformed identity remains failure'
+_mkvutil_capture_execution_source() { return 1; }
+reject "$executor" "$job"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" failed 'capture/stat failure remains failure'
+eq "$engine_calls" 0 'all guards precede native engines'
+eq "$MKVUTIL_ENGINE_CONTROL" '' 'no transport'
+print -r -- 'runtime guard contracts passed'
+''', {str(source): model}, extra_env={"TEST_GUARD_CATEGORY": category})
+    assert result.stdout.rstrip().endswith("runtime guard contracts passed")
+    assert source.read_bytes() == b"replacement bytes" and not (env["workdir"] / "Attachments").exists()
+
+
+def test_mkv_utils_source_replacement_planning_receipts_precision_and_subset(env):
+    source = _mkv_file(env, "Replacement.mkv")
+    model = _source_json([(0, "audio", "A_AAC", True)])
+    result = _run_planning_contract(env, r'''
+source="$PWD/Replacement.mkv"
+record="$(mkvutil_capture_source "$source")"
+config='{"category":"edit","operations":["5"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{"5:info":"Title"},"expected_types":{},"extract_ids":[]}'
+python3 -c 'import os,sys;from pathlib import Path;p=Path(sys.argv[1]);r=p.with_suffix(".replacement");r.write_bytes(b"replacement before final Enter");os.replace(r,p)' "$source"
+code=0; receipt="$(mkvutil_plan_job "$record" "$config")" || code=$?
+eq "$code" 3 'replacement before final planning automatically skipped'
+jq -e '.kind=="source-changed" and .expected_identity==.identity and .actual_identity!=.identity and .outputs==[] and .requested_ids==[]' <<< "$receipt" >/dev/null
+mkvutil_ledger_reset "$PWD" "$source"
+mkvutil_batch_request edit 5 "$config"
+mkvutil_ledger_skip "$receipt"
+shown="$(mkvutil_report_removal_skips "$receipt")"
+report="$(mkvutil_format_final_report "$(mkvutil_final_summary)")"
+preview="$(mkvutil_preview_jobs)"
+for display in "$shown" "$report" "$preview"; do
+  [[ "$display" == *'Source changed after inspection/planning; file was not processed'* ]] || fail 'human source skip reason missing'
+  [[ "$display" != *'Original ID null'* && "$display" != *'expected_identity'* && "$display" != *'mtime_ns'* ]] || fail 'identity debug leaked'
+done
+MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=("$receipt")
+mkvutil_prepare_skipped_subset
+eq "${#MKVUTIL_SOURCES}" 1 'source-changed subset refreshed'
+# Decimal strings remain exact, including signed timestamps and huge inodes.
+old='{"dev":"1","ino":"9007199254740992","size":"7","mtime_ns":"-12"}'
+new='{"dev":"1","ino":"9007199254740993","size":"7","mtime_ns":"-12"}'
+precise="$(jq --argjson identity "$old" '.identity=$identity' <<< "$record")"
+code=0; precise_receipt="$(mkvutil_source_mismatch "$precise" "$new" "$config")" || code=$?
+eq "$code" 3 'identity comparison retains more than 53 bits'
+mkvutil_source_mismatch "$precise" "$old" "$config"
+for invalid in 'null' '{}' '{"dev":"1","ino":"2","size":7,"mtime_ns":"12"}'; do
+  code=0; captured="$(mkvutil_source_mismatch "$precise" "$invalid" "$config")" || code=$?
+  eq "$code" 1 'malformed comparison is failure'
+  eq "$captured" '' 'malformed comparison never emits skip'
+done
+badrecord="$(jq '.identity=null' <<< "$record")"
+code=0; captured="$(mkvutil_plan_job "$badrecord" "$config")" || code=$?
+eq "$code" 1 'malformed original identity remains failure'
+mkvutil_source_identity() { return 1; }
+code=0; captured="$(mkvutil_plan_job "$record" "$config")" || code=$?
+eq "$code" 1 'stat failure remains failure'
+print -r -- 'replacement planning contracts passed'
+''', {str(source): model})
+    assert result.stdout.rstrip().endswith("replacement planning contracts passed")
+    assert source.read_bytes() == b"replacement before final Enter"
+
+
 def test_mkv_utils_dry_identity_failure_and_engine_transport_guard(env):
     source = _mkv_file(env, "Changed.mkv")
     result = _run_planning_contract(env, r'''
 source="$PWD/Changed.mkv"
 identity="$(mkvutil_source_identity "$source")"
-job="$(jq -cn --arg source "$source" --argjson identity "$identity" '{source:$source,destination:$source,identity:($identity|.size="999"),config:{category:"edit",operations:["5"],metadata:""},outputs:[$source]}')"
+job="$(jq -cn --arg source "$source" --argjson identity "$identity" '{source:$source,destination:$source,identity:($identity|.size="999"),config:{category:"edit",operations:["5"],metadata:"",removed_ids:[],order:"",order_ids:[],extract_ids:[],settings:{},expected_types:{}},outputs:[$source]}')"
 MKVUTIL_DRY_RUN=1
 reject mkvutil_simulate_job "$job"
-jq -e '.status=="failed" and .actual_state=="not_modified_by_job" and .simulated==false and .planned_outputs==[]' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
+jq -e '.status=="skipped" and .skip_receipt.kind=="source-changed" and .dry_run and .actual_state=="not_modified_by_job" and .simulated==false and .planned_outputs==[]' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
+malformed="$(jq '.identity.size=999' <<< "$job")"
+reject mkvutil_simulate_job "$malformed"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" failed 'malformed dry identity remains failure'
+bad_config="$(jq '.config.operations=["4"]|.config.settings={"4:1":"Name"}|.config.expected_types={"1":"metadata"}' <<< "$job")"
+reject mkvutil_simulate_job "$bad_config"
+jq -e '.status=="failed" and .reason=="Invalid planned configuration" and .planned_outputs==[] and .simulated==false' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
+bad_config="$(jq '.config=null' <<< "$job")"
+reject mkvutil_simulate_job "$bad_config"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" failed 'missing dry config remains failure'
 job="$(jq '.source="/missing/dry-source.mkv"' <<< "$job")"
 reject mkvutil_simulate_job "$job"
 jq -e '.status=="failed" and (.reason|contains("unavailable"))' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
@@ -3097,7 +3314,7 @@ summary="$(mkvutil_final_summary)"
 jq -e '.dry_run and .batches[0].dry_run and .counts.skipped==1' <<< "$summary" >/dev/null
 report="$(mkvutil_format_final_report "$summary")"
 [[ "$report" == *'Final report (DRYRUN)'* && "$report" == *'Simulated: 0'* && "$report" == *'Skipped: 1'* ]] || fail 'all skip dry report'
-job="$(jq -cn --arg source "$source" --argjson identity "$(mkvutil_source_identity "$source")" '{source:$source,destination:$source,identity:$identity,config:{category:"mux",operations:["2"],metadata:""},outputs:[$source]}')"
+job="$(jq -cn --arg source "$source" --argjson identity "$(mkvutil_source_identity "$source")" '{source:$source,destination:$source,identity:$identity,config:{category:"mux",operations:["2"],metadata:"",removed_ids:[],order:"",order_ids:[],extract_ids:[],settings:{},expected_types:{}},outputs:[$source]}')"
 mkvutil_simulate_job "$job"
 mkvutil_ledger_result "$MKVUTIL_RESULT_JSON"
 jq -e '.status=="success" and .skip_history[0].resolved==false' <<< "${MKVUTIL_LEDGER[$source]}" >/dev/null
@@ -3268,7 +3485,7 @@ def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(en
         extraction={str(source): {"tracks": {"outputs": {"1": {"data": "aac payload"}}}}},
     )
     result = _run_mkv_utils(
-        env, fzf_responses=[[str(source)]], input_data="3\n2\nnot-an-id\n99\n1\n", extra_env=extra,
+        env, fzf_responses=[[str(source)]], input_data="3\n2\nnot-an-id\n44\n1\n", extra_env=extra,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stderr.count("Track IDs to extract (comma/range; e to go back):") == 3
@@ -3339,7 +3556,7 @@ def test_mkv_utils_option7_invalid_discovery_rows_skip_remux(env,row_mode):
 
 def test_mkv_utils_option7_nonexistent_track_id_skips_remux(env):
     source=_mkv_file(env,"remove_missing_id.mkv")
-    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n99\n")
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n44\n")
     assert result.returncode==0,result.stdout+result.stderr
     assert result.stderr.count("Track IDs to remove (comma/range; e to go back):") == 2
     assert "Cancelled; no media changes." in result.stdout
@@ -5379,6 +5596,74 @@ print -r -- "STOP_RETURNED:$MKVUTIL_INTERRUPTED:$MKVUTIL_INDICATOR_PID"
         except ProcessLookupError:
             pass
         if process.poll() is None:
+            process.wait(timeout=3)
+        os.close(master)
+        os.close(terminal)
+
+
+def test_mkv_utils_working_indicator_stops_at_queue_and_analysis_remains(env):
+    import fcntl
+    import pty
+    import select
+    import termios
+    import time
+
+    script = r'''
+source "$MKVUTIL_TEST_SOURCE"
+MKVUTIL_INTERRUPTED=0
+_mkvutil_indicator_start Working
+/bin/sleep 0.2
+_mkvutil_indicator_stop
+print -r -- PRE_QUEUE_DONE
+MKVUTIL_HAS_RUN=1
+_mkvutil_indicator_start Working
+/bin/sleep 0.2
+_mkvutil_indicator_stop
+print -r -- QUEUE_DONE
+_mkvutil_indicator_start Analysing
+/bin/sleep 0.2
+_mkvutil_indicator_stop
+print -r -- ANALYSIS_DONE
+'''
+    run_env = os.environ.copy()
+    run_env.update({"TERM": "xterm-256color", "MKVUTIL_TEST_SOURCE": str(env["mkv_utils_script"])})
+    master, terminal = pty.openpty()
+
+    def own_terminal():
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        os.tcsetpgrp(0, os.getpgrp())
+
+    process = subprocess.Popen(["/usr/local/bin/zsh", "-f", "-c", script],
+        cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
+        start_new_session=True, preexec_fn=own_terminal)
+    output = bytearray()
+    deadline = time.monotonic() + 10
+    try:
+        while process.poll() is None and time.monotonic() < deadline:
+            if select.select([master], [], [], 0.05)[0]:
+                try:
+                    output.extend(os.read(master, 65536))
+                except OSError:
+                    break
+        assert process.poll() == 0, output.decode(errors="replace")
+        while select.select([master], [], [], 0)[0]:
+            try:
+                data = os.read(master, 65536)
+            except OSError:
+                break
+            if not data:
+                break
+            output.extend(data)
+        text = output.decode(errors="replace")
+        pre = text.index("PRE_QUEUE_DONE")
+        queue = text.index("QUEUE_DONE", pre)
+        analysis = text.index("ANALYSIS_DONE", queue)
+        assert "Working" in text[:pre]
+        assert "Working" not in text[pre:queue]
+        assert "Analysing" in text[queue:analysis]
+    finally:
+        if process.poll() is None:
+            process.kill()
             process.wait(timeout=3)
         os.close(master)
         os.close(terminal)

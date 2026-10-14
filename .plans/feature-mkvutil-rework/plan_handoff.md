@@ -14,6 +14,63 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted final blocks and track/source preflight safeguards
+
+- User-requested Working is now pre-run-only. It stops at queue entry, including
+  later fresh-source checks; native verbosity remains. Final detailed outcomes
+  use separate shared dynamic ASCII boxes after totals/Complete batch elapsed.
+  Empty groups are omitted; filenames, skip history and recovery facts remain.
+- Available-ID input checks remain. Missing/wrong-type selected IDs now skip the
+  whole file automatically across Edit/Mux/Extract during planning and fresh
+  runtime preflight. Valid files continue, all-skipped queues report without
+  writers. Attachments-only still selects all attachments without an ID prompt;
+  a combined bad-track job starts neither extraction stage. Removal retains
+  native codec and total-count checks; --bypass remains count-only.
+- A verified identity change after initial inspection/planning omits a replaced
+  input with a human source-change receipt. This covers replacement during value
+  entry before final Enter and while queued. Malformed config/identity or failed
+  stat/capture remain failures. Inner engine owner/signal/publication/late-partial
+  behavior is unchanged; no stale settings are retargeted to a replacement.
+- Reused approved coordinated route B at T01.03/T02.03/T03.01/T04.01/T04.02.
+  All worker packages have handed back; parent owns every file. **9/9 tasks and
+  4/4 goals are accepted**; no active worker/runtime job remains.
+- Source SHA-256:
+  `e9ece8d19e895021ec13948e5ee047a9a9725ef8022bbd63c19185b8ea37c000`.
+  Tests SHA-256:
+  `55075d09abcdc936ab1cc611b24b2d67ae723dd8faf4d69f4f2c539a5682f261`.
+  Final focused run03: 22 passed in78.82s; exact pre/post/current bytes match.
+  Includes existing ID/bypass/menu and six report/indicator checks plus new
+  missing/type/source-change/malformed/runtime/dry/mixed/all-skip tests.
+- One quick controlling-PTY real-file --dry-run journey passes: final title
+  prompt held while a fixture is overwritten; 1 simulated, 4 skipped, 0 failed.
+  Count-only 5vs6, missing ID4, wrong ID4 type/codec and source-change reasons
+  name all affected files. Five installed-v93 -J calls, zero modifying attempts;
+  controlled fzf is the boundary. No exclusion prompt, post-Processing Working,
+  extra final menu, or output/staging additions; only deliberate input replacement.
+- Astra actual frozen-code audit PASS; parent source/output/guide/record review
+  PASS. Complete native/support/transport/capture/progress spans match HEAD466726e
+  byte-for-byte; helper and append-only session ledger remain unchanged. Both zsh
+  syntax, Python compile, diff checks, 11 detailed collapsible guide examples,
+  links/privacy/fences and exact nine mirrored contracts/dependencies pass.
+- Proof: `.tmp/mkvutil-rework/report-sections/receipt.json`, `RESULTS.md`,
+  `guards/run-03/`, `parent-static-review.json`, `parent-output-IA-review.json`,
+  `docs-records-review.json`; PTY raw/readable/inputs/argv/inventory evidence at
+  `ia/run/guard-20261015T080234-45390/`. Earlier failed runs stay preserved.
+  Report-worker start snapshots were pre-edit baselines, so final22 replaces
+  that diagnostic binding. Guard run01 had three stub-scope failures, run02 one
+  old 10s helper deadline; test-only caching retained all assertions/timeouts.
+  First IA launch was a private NameError before PTY; corrected attempt passes.
+- Detailed guide examples cover batching, invalid input, boxed dry/skip outcomes,
+  attachment/track extraction, replacement and stop behavior. No new full-module,
+  broad native, fzf/alias or CI result claimed; earlier proof is reused only for
+  unchanged slices. Runtime remains one script with existing installed tools.
+- Same main Scripts checkout and feature/mkvutil-rework. Canonical tracked plans,
+  AGENTS/worktree policy/permissions are unchanged; no dependency/tool upgrades,
+  user-media writes, worktree or branch changes. Signed push follows standing
+  approval; `report-sections/publication.json` records actual commit/remote and
+  clean-tree verification. On recovery inspect that receipt/Git refs before
+  repeating publication. No feature gate remains.
+
 ### Accepted report cleanup, dry-run and simpler reorder
 
 - Latest user scope is implemented and qualified: final reports retain useful

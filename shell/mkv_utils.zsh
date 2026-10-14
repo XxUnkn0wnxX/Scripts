@@ -1216,12 +1216,12 @@ mkvutil_ascii_box() {
 }
 
 mkvutil_format_final_report() {
-  local display=""
-  display="$(_mkvutil_display_record "$1")" || return 1
+  local display="" summary_text="" details="" section="" section_lines_text=""
   local heading='Final report'
+  local -a sections=(Simulated Outputs Completed Errors Warnings 'Partial results' Skipped Excluded Interrupted 'Not attempted' Attachments) section_lines=()
+  display="$(_mkvutil_display_record "$1")" || return 1
   [[ "$(jq -r '.dry_run // false' <<< "$display")" != true ]] || heading+=' (DRYRUN)'
-  mkvutil_ascii_box "$heading" || return 1
-  jq -r '
+  summary_text="$(jq -r '
     (.dry_run // false) as $dry |
     def duration: floor as $s | (($s/3600|floor|tostring)+"h "+(($s%3600)/60|floor|tostring)+"m "+($s%60|tostring)+"s");
     def outcome_label:
@@ -1243,24 +1243,37 @@ mkvutil_format_final_report() {
     "Selected: \(.selected); required: \(.required)",
     "\(if $dry then "Simulated" else "Done" end): \(.counts.done); Failed: \(.counts.failed); Warning: \(.counts.warning); Partial: \(.counts.partial); Skipped: \(.counts.skipped); Excluded: \(.counts.excluded); Not attempted: \(.counts.not_attempted); Interrupted: \(.counts.interrupted)",
     (if .interrupted then "Batch interrupted; remaining jobs not attempted." else empty end),
-    "Complete batch elapsed: \(.elapsed_seconds|duration)",
-    (if $dry then "Files were not changed." else empty end),
-    (if ($dry|not) and any(.batches[];.category=="extract") then
-      "Attachments processed: \(.attachments.processed); published: \(.attachments.published); final unique published names: \(.attachments.unique_names); superseded: \(.attachments.superseded); uncertain names: \(.attachments.uncertain_names)",
-      (.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)") else empty end),
-    (.files[] | . as $file |
-      select(.status!="success" or any(.attempts[]; .result.simulated==true) or
-        (.destination!=null and .destination!=.source and (.attempts[-1].result.category // "")!="extract") or
-        any(.attempts[].result.artifacts[]?; .kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) or
-        (.skip_history|length)>0 or any(.attempts[]; .result.status!="success")) |
+    "Complete batch elapsed: \(.elapsed_seconds|duration)"
+  ' <<< "$display")" || return 1
+  mkvutil_ascii_box "$heading" || return 1
+  print -r -- "$summary_text" || return 1
+  details="$(jq -c '
+    (.dry_run // false) as $dry |
+    def outcome_group:
+      if (.attempts[-1].result.simulated // false) then "Simulated"
+      elif .status=="failed" then "Errors" elif .status=="warning" then "Warnings"
+      elif .status=="partial" then "Partial results" elif .status=="skipped" then "Skipped"
+      elif .status=="excluded" then "Excluded" elif .status=="interrupted" then "Interrupted"
+      elif .status=="not_attempted" or .status=="pending" then "Not attempted"
+      elif .status=="success" and ((.destination!=null and .destination!=.source and (.attempts[-1].result.category // "")!="extract") or
+        any(.attempts[].result.artifacts[]?; .kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain"))) then "Outputs"
+      elif (.skip_history|length)>0 or .exclusion_reason!=null or any(.attempts[]; .result.status!="success") then "Completed"
+      else null end;
+    def outcome_label:
+      if .=="done" then (if $dry then "Simulated" else "Done" end) elif .=="not_attempted" then "Not attempted"
+      elif .=="warning" then "Warning" elif .=="partial" then "Partial"
+      elif .=="failed" then "Failed" elif .=="skipped" then "Skipped"
+      elif .=="excluded" then "Excluded" elif .=="interrupted" then "Interrupted" else . end;
+    def file_lines:
       (if .attempts[-1].result.simulated==true then "Simulated: \(.source)"
        elif .status=="success" then
-         if (.attempts[-1].result.category // "")=="extract" then "Outputs from: \(.source)"
-         elif .destination!=null and .destination!=.source then "Output: \(.source) => \(.destination)"
+         if (.destination!=null and .destination!=.source and (.attempts[-1].result.category // "")!="extract") then "Output: \(.source) => \(.destination)"
+         elif any(.attempts[].result.artifacts[]?; .kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) then "Outputs from: \(.source)"
          else "Completed: \(.source)" end
        else "\(.status): \(.source)\(if .destination and .destination!=.source and (.attempts[-1].result.category // "")!="extract" then " => "+.destination else "" end)" end),
       (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
+         (if (.receipt.reason // "")!="" then "    \(.receipt.reason)" else empty end),
          (if .receipt.track_count_mismatch then "    Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
          (.receipt.reasons[] | "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")),
       (.attempts[] |
@@ -1268,7 +1281,7 @@ mkvutil_format_final_report() {
           "  Would \(if $result.category=="edit" then "update" elif $result.category=="mux" or .kind=="attachment" then "write" else "extract" end): \(.path)\(if .required==false then " (optional)" else "" end)"),
         (if .result.status!="success" then "  Batch \(.batch_id): \(.result.status|outcome_label)\(if (.result.reason // "")!="" then ": "+.result.reason else "" end)",
           "  \(.result.state_description)" else empty end),
-        (.result.stages[]? | select(.status!="success" and .status!="complete") | "  \(.kind): \(.status)\(if .native_code!=null then " (tool exit "+(.native_code|tostring)+")" else "" end)") ,
+        (.result.stages[]? | select(.status!="success" and .status!="complete") | "  \(.kind): \(.status)\(if .native_code!=null then " (tool exit "+(.native_code|tostring)+")" else "" end)"),
         (.result.artifacts[]? | select(.kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
           "  Track \(.id): \(.path)\(if .publication_state=="uncertain" then " (publication uncertain)" else "" end)"),
         (.result.staged_paths[]? | "  Staged: \(.)"),
@@ -1278,10 +1291,23 @@ mkvutil_format_final_report() {
         (if .result.cleanup_error then "  Cleanup failed: \(.result.cleanup_error)" else empty end),
         (.result.inventory_errors[]? | "  Recovery inventory: \(.)"),
         (.result.remaining_staging_directories[]? | "  Retained staging directory: \(.)"),
-        (.result.uncertain_artifacts[]? | "  Uncertain publication: \(.path)")))
-  ' <<< "$display"
+        (.result.uncertain_artifacts[]? | "  Uncertain publication: \(.path)"));
+    . as $summary |
+    (reduce .files[] as $file ({Simulated:[],Outputs:[],Completed:[],Errors:[],Warnings:[],"Partial results":[],Skipped:[],Excluded:[],Interrupted:[],"Not attempted":[],Attachments:[]};
+      ($file|outcome_group) as $group | if $group==null then . else .[$group] += [$file|file_lines] end)) as $groups |
+    ($groups | if $summary.dry_run then .Simulated += ["Files were not changed."] else . end) as $groups |
+    if ($summary.dry_run|not) and any($summary.batches[];.category=="extract") then
+      $groups | .Attachments += ["Attachments processed: \($summary.attachments.processed); published: \($summary.attachments.published); final unique published names: \($summary.attachments.unique_names); superseded: \($summary.attachments.superseded); uncertain names: \($summary.attachments.uncertain_names)"] |
+      .Attachments += [$summary.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)"]
+    else $groups end
+  ' <<< "$display")" || return 1
+  for section in "${sections[@]}"; do
+    section_lines_text="$(jq -r --arg section "$section" '.[$section][]?' <<< "$details")" || return 1
+    [[ -n "$section_lines_text" ]] || continue
+    section_lines=("${(@f)section_lines_text}")
+    mkvutil_ascii_box "$section" "${section_lines[@]}" || return 1
+  done
 }
-
 mkvutil_final_report() { mkvutil_format_final_report "$(mkvutil_final_summary)"; }
 
 mkvutil_clock() { python3 -c 'import time; print(time.monotonic())'; }
@@ -1532,6 +1558,7 @@ _mkvutil_ui_acknowledge() {
 _mkvutil_indicator_start() {
   local label="$1" owner_pid="$$" defer_first_frame=0
   (( ! MKVUTIL_INTERRUPTED )) || return 0
+  if [[ "$label" == Working ]] && (( MKVUTIL_HAS_RUN )); then return 0; fi
   [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]] || return 0
   [[ -z "$MKVUTIL_INDICATOR_PID" ]] || return 0
   [[ "$label" != Working ]] || defer_first_frame=1
@@ -2014,6 +2041,70 @@ mkvutil_removal_mismatch() {
   return 3
 }
 
+# Share the exact target union between configuration validation and per-source
+# eligibility. Container title settings and attachments introduce no track IDs.
+_mkvutil_target_rules() {
+  print -r -- 'def targeted_ids:
+    (.removed_ids + .order_ids + .extract_ids +
+      [.settings|keys[]|split(":")[1]|select(.!="info")])|unique;'
+}
+
+mkvutil_target_mismatch() {
+  local receipt=""
+  mkvutil_validate_config "$2" || return 1
+  receipt="$(_mkvutil_jq_records "$(_mkvutil_target_rules)"$'\n''
+    .[0] as $record | .[1] as $config | ($config|targeted_ids) as $ids |
+    if ($record.model.tracks|type)!="array" or
+      any($record.model.tracks[]; (.id|type)!="number" or .id<0 or .id!=(.id|floor) or
+        (.type!="video" and .type!="audio" and .type!="subtitles")) or
+      ($record.model.tracks|map(.id)|unique|length)!=($record.model.tracks|length)
+    then error("invalid source track model") else . end |
+    [$ids[] as $id | ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
+      {original_id:$id,expected:{type:$config.expected_types[$id]},
+       actual:(if $track==null then null else {type:$track.type} end),
+       reason:(if $track==null then "missing-id"
+         elif $track.type!=$config.expected_types[$id] then "type-mismatch" else null end)} |
+      select(.reason!=null)] as $reasons |
+    if ($reasons|length)==0 then empty else
+      {schema:1,kind:"track-mismatch",source:$record.source,identity:$record.identity,
+       reference:($config.reference // $record.source),requested_ids:$ids,reasons:$reasons,
+       track_count_mismatch:null,outputs:[],propedit_args:[],merge_metadata_args:[]} end
+    ' "$1" "$2")" || return 1
+  [[ -n "$receipt" ]] || return 0
+  print -r -- "$receipt"
+  return 3
+}
+
+_mkvutil_identity_rules() {
+  print -r -- 'def valid_identity:
+    type=="object" and keys==["dev","ino","mtime_ns","size"] and
+    all(.dev,.ino,.size; type=="string" and test("^[0-9]+$")) and
+    (.mtime_ns|type)=="string" and (.mtime_ns|test("^-?[0-9]+$"));'
+}
+
+# Only a verified comparison of complete stat identities can omit a changed
+# source. Missing/malformed evidence remains a failure, never a mismatch skip.
+mkvutil_source_mismatch() {
+  local receipt=""
+  receipt="$(_mkvutil_jq_records "$(_mkvutil_identity_rules)"$'\n''
+    if length!=3 then error("invalid source identity records") else . end |
+    .[0] as $record | .[1] as $actual | .[2] as $config |
+    if ($record.source|type)!="string" or ($record.source|startswith("/")|not) or
+      ($record.source|contains("\u0000")) or ($record.identity|valid_identity|not) or
+      ($actual|valid_identity|not) then error("invalid source identity")
+    elif $record.identity==$actual then empty else
+      {schema:1,kind:"source-changed",source:$record.source,identity:$record.identity,
+       expected_identity:$record.identity,actual_identity:$actual,
+       reference:($config.reference // $record.source),
+       reason:"Source changed after inspection/planning; file was not processed",
+       requested_ids:[],reasons:[],track_count_mismatch:null,
+       outputs:[],propedit_args:[],merge_metadata_args:[]} end
+    ' "$1" "$2" "$3")" || return 1
+  [[ -n "$receipt" ]] || return 0
+  print -r -- "$receipt"
+  return 3
+}
+
 _mkvutil_load_settings() {
   local json="$1" key="" value=""
   mkvutil_metadata_reset
@@ -2035,7 +2126,7 @@ PYCODE
 }
 
 mkvutil_validate_config() {
-  jq -e '
+  jq -e "$(_mkvutil_target_rules)"$'\n''
     . as $config |
     (.category=="edit" or .category=="mux" or .category=="extract") and
     (.operations|type)=="array" and (.operations|length)>0 and
@@ -2043,6 +2134,8 @@ mkvutil_validate_config() {
     (.order|type)=="string" and (.settings|type)=="object" and (.expected_types|type)=="object" and
     all(.settings[]; type=="string") and
     all(.removed_ids[],.order_ids[],.extract_ids[]; type=="string" and test("^[0-9]+$")) and
+    all(targeted_ids[]; . as $id | type=="string" and test("^[0-9]+$") and
+      ($config.expected_types[$id] as $type | $type=="video" or $type=="audio" or $type=="subtitles")) and
     (if .category=="edit" then (.removed_ids|length)==0 and .order=="" and (.extract_ids|length)==0
      elif .category=="mux" then (.extract_ids|length)==0 and all(.operations[]; .=="1" or .=="2")
      else (.removed_ids|length)==0 and .order=="" and (.settings|length)==0 and all(.operations[]; .=="1" or .=="2") end) and
@@ -2071,23 +2164,23 @@ mkvutil_plan_job() {
   mkvutil_validate_config "$config" || return 1
   file="$(jq -r '.source' <<< "$record")" || return 1
   identity="$(mkvutil_source_identity "$file")" || return 1
-  jq -e --argjson identity "$identity" '.identity == $identity' <<< "$record" > /dev/null || {
-    print -u2 -r -- "Source changed after inspection: ${file:t}"; return 1;
-  }
-  mismatch="$(mkvutil_removal_mismatch "$record" "$config")" || result=$?
+  mismatch="$(mkvutil_source_mismatch "$record" "$identity" "$config")" || result=$?
   if (( result != 0 )); then
     (( result != 3 )) || print -r -- "$mismatch"
     return "$result"
   fi
+  local guard=""
+  for guard in mkvutil_removal_mismatch mkvutil_target_mismatch; do
+    result=0
+    mismatch="$("$guard" "$record" "$config")" || result=$?
+    if (( result != 0 )); then
+      (( result != 3 )) || print -r -- "$mismatch"
+      return "$result"
+    fi
+  done
   category="$(jq -r '.category' <<< "$config")" || return 1
   raw="$(jq -r '.source_json' <<< "$record")" || return 1
   rows="$(collect_tracks_for_remux "$file" "$raw")" || return 1
-  _mkvutil_jq_records '
-    .[0] as $record | .[1] as $config | ($config.removed_ids + $config.order_ids + $config.extract_ids +
-      [$config.settings|keys[]|split(":")[1]|select(. != "info")]|unique) as $targeted |
-    all($targeted[]; . as $id | any($record.model.tracks[];
-      (.id|tostring)==$id and .type==$config.expected_types[$id]))
-    ' "$record" "$config" | jq -e . > /dev/null || { print -u2 -r -- "Missing or incompatible original track IDs: ${file:t}"; return 1; }
   removal="$(jq -r '.removed_ids|join(",")' <<< "$config")" || return 1
   order="$(jq -r '.order' <<< "$config")" || return 1
   mkvutil_plan_layout "$rows" "$removal" "$order" "${file:e}" || return 1
@@ -2296,7 +2389,8 @@ mkvutil_report_removal_skips() {
   for receipt in "$@"; do
     display="$(_mkvutil_display_record "$receipt")" || return 1
     jq -r '
-      "Skipped removal mismatch: \(.source)", "  Reference: \(.reference)",
+      "Skipped \(if .kind=="source-changed" then "source changed" elif .kind=="track-mismatch" then "track mismatch" else "removal mismatch" end): \(.source)", "  Reference: \(.reference)",
+      (if (.reason // "")!="" then "  \(.reason)" else empty end),
       (if .track_count_mismatch then "  Track count mismatch: expected \(.track_count_mismatch.expected); actual \(.track_count_mismatch.actual)" else empty end),
       (.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")
     ' <<< "$display" || return 1
@@ -2388,9 +2482,20 @@ mkvutil_prepare_skipped_subset() {
     print -u2 -r -- 'Skipped-subset preparation requires mismatch skips and no pending eligible jobs.'; return 1;
   }
   for receipt in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do
-    IFS= read -r -d '' file < <(jq -esj '
-      if length==1 and .[0].kind=="removal-mismatch" and (.[0].reasons|length)>0 and
-        (.[0].source|type)=="string" and (.[0].source|contains("\u0000")|not)
+    IFS= read -r -d '' file < <(jq -esj "$(_mkvutil_identity_rules)"$'\n''
+      def valid_count:
+        type=="object" and (.expected|type)=="number" and (.actual|type)=="number" and
+        .expected>0 and .actual>=0 and .expected==(.expected|floor) and .actual==(.actual|floor) and .expected!=.actual;
+      if length==1 and (.[0].source|type)=="string" and
+        (.[0].source|startswith("/")) and (.[0].source|contains("\u0000")|not) and
+        (.[0] | if .kind=="removal-mismatch" then
+            (.reasons|type)=="array" and ((.reasons|length)>0 or (.track_count_mismatch|valid_count))
+          elif .kind=="track-mismatch" then (.reasons|type)=="array" and (.reasons|length)>0
+          elif .kind=="source-changed" then
+            (.identity|valid_identity) and (.expected_identity|valid_identity) and (.actual_identity|valid_identity) and
+            .identity==.expected_identity and .expected_identity!=.actual_identity and
+            (.reason|type)=="string" and (.reason|test("[^[:space:]]"))
+          else false end)
       then .[0].source,"\u0000" else error("invalid skipped source receipt") end' <<< "$receipt") || return 1
     paths+=("$file")
   done
@@ -2444,6 +2549,7 @@ mkvutil_preview_jobs() {
       display="$(_mkvutil_display_record "$entry")" || return 1
       jq -r '.source as $source | .skip_history[] |
         "Previous skip \(if .resolved then "resolved" else "unresolved" end): \($source)",
+        (if (.receipt.reason // "")!="" then "  \(.receipt.reason)" else empty end),
         (if .receipt.track_count_mismatch then "  Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
         (.receipt.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")' <<< "$display" || return 1
     done
@@ -2484,18 +2590,79 @@ _mkvutil_execution_failure() {
     "$job" "$(_mkvutil_json_array "$reason" | jq -c '.[0]')" "$(_mkvutil_json_array "$status_name" | jq -c '.[0]')"
 }
 
+_mkvutil_execution_skip() {
+  local job="$1" receipt="$2" reason=""
+  reason="$(jq -er '
+    if .kind=="source-changed" then .reason
+    elif .kind=="removal-mismatch" then "Removal track requirements do not match; file was not processed"
+    elif .kind=="track-mismatch" then "Selected track IDs are missing or have incompatible types; file was not processed"
+    else error("invalid skip receipt kind") end' <<< "$receipt")" || return 1
+  _mkvutil_jq_records '.[0]+{skip_receipt:.[1],artifacts:[],planned_outputs:[],publications:[]}' \
+    "$(_mkvutil_execution_failure "$job" "$reason" skipped)" "$receipt"
+}
+
+# Both real execution paths recheck the same source identity and eligibility
+# before entering an engine. Return the fresh captured source through REPLY.
+_mkvutil_preflight_job() {
+  local job="$1" config="" file="" fresh="" mismatch="" guard="" result=0 identity=""
+  config="$(jq -c '.config' <<< "$job")" || return 1
+  if ! mkvutil_validate_config "$config"; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid planned configuration')"
+    return 1
+  fi
+  file="$(jq -r '.source' <<< "$job")" || return 1
+  if ! _mkvutil_capture_execution_source "$file"; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection stopped or failed before execution' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
+    return 1
+  fi
+  fresh="$REPLY"
+  if ! jq -e --arg source "$file" '.source==$source' <<< "$fresh" >/dev/null; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid fresh source record')"
+    return 1
+  fi
+  identity="$(jq -c '.identity' <<< "$fresh")" || return 1
+  mismatch="$(mkvutil_source_mismatch "$job" "$identity" "$config")" || result=$?
+  if (( result == 0 )); then
+    for guard in mkvutil_removal_mismatch mkvutil_target_mismatch; do
+      mismatch="$("$guard" "$fresh" "$config")" || result=$?
+      (( result == 0 )) || break
+    done
+  fi
+  if (( result != 0 )); then
+    if (( result == 3 )); then
+      MKVUTIL_RESULT_JSON="$(_mkvutil_execution_skip "$job" "$mismatch")" || return 1
+    else
+      MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid source identity or track requirements before execution')"
+    fi
+    mkvutil_metadata_reset
+    _mkvutil_clear_plan_layout
+    return 1
+  fi
+  REPLY="$fresh"
+}
+
 # Consume the already validated plan without native inspection or filesystem
 # writes. Only a fresh source stat is needed before reporting intended outputs.
 mkvutil_simulate_job() {
-  local job="$1" source="" identity="" reason="" result_code=0
+  local job="$1" source="" identity="" reason="" mismatch="" config="" result_code=0
   MKVUTIL_RESULT_JSON=""
   source="$(jq -er '.source | select(type=="string" and startswith("/"))' <<< "$job")" || return 1
-  if (( MKVUTIL_INTERRUPTED )); then
+  config="$(jq -c '.config' <<< "$job")" || return 1
+  if ! mkvutil_validate_config "$config"; then
+    reason='Invalid planned configuration'; result_code=1
+  elif (( MKVUTIL_INTERRUPTED )); then
     reason='Stopped before simulation'; result_code=1
   elif ! identity="$(mkvutil_source_identity "$source")"; then
     reason='Source unavailable before simulation'; result_code=1
-  elif ! jq -e --argjson identity "$identity" '.identity==$identity' <<< "$job" >/dev/null; then
-    reason='Source identity changed before simulation'; result_code=1
+  else
+    mismatch="$(mkvutil_source_mismatch "$job" "$identity" "$config")" || result_code=$?
+    if (( result_code == 3 )); then
+      MKVUTIL_RESULT_JSON="$(_mkvutil_execution_skip "$job" "$mismatch")" || return 1
+      MKVUTIL_RESULT_JSON="$(jq -c '.+{dry_run:true,simulated:false}' <<< "$MKVUTIL_RESULT_JSON")" || return 1
+      return 1
+    elif (( result_code != 0 )); then
+      reason='Invalid source identity before simulation'
+    fi
   fi
   if (( result_code )); then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" "$reason" "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")" || return 1
@@ -3430,33 +3597,14 @@ PYCODE
 }
 
 _mkvutil_execute_job() {
-  local action="$1" job="$2" fresh="" file="" config="" mismatch="" result_code=0 registry=""
+  local action="$1" job="$2" fresh="" result_code=0 registry=""
   MKVUTIL_RESULT_JSON=""
   if ! mkvutil_load_job "$job"; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid planned job')"
     return 1
   fi
-  file="$(jq -r '.source' <<< "$job")" || return 1
-  config="$(jq -c '.config' <<< "$job")" || return 1
-  if ! _mkvutil_capture_execution_source "$file"; then
-    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection stopped or failed before execution' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
-    return 1
-  fi
+  _mkvutil_preflight_job "$job" || return 1
   fresh="$REPLY"
-  if ! _mkvutil_jq_records '.[0].identity==.[1].identity' "$job" "$fresh" | jq -e . >/dev/null; then
-    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source identity changed before execution')"
-    return 1
-  fi
-  mismatch="$(mkvutil_removal_mismatch "$fresh" "$config")" || result_code=$?
-  if (( result_code != 0 )); then
-    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" "$mismatch" "$([[ $result_code == 3 ]] && print skipped || print failed)")"
-    if (( result_code == 3 )); then
-      MKVUTIL_RESULT_JSON="$(_mkvutil_jq_records '.[0]+{skip_receipt:.[1]}' "$MKVUTIL_RESULT_JSON" "$mismatch")"
-    fi
-    mkvutil_metadata_reset
-    _mkvutil_clear_plan_layout
-    return 1
-  fi
   registry="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_REGISTRY}")" || return 1
   result_code=0
   if (( MKVUTIL_INTERRUPTED )); then
@@ -3801,11 +3949,12 @@ mkvutil_execute_extract_job() {
   local job="$1" file="" fresh="" protected="" result=0
   MKVUTIL_RESULT_JSON=""
   file="$(jq -r '.source' <<< "$job")" || return 1
-  if ! mkvutil_check_destinations "$job" || ! _mkvutil_capture_execution_source "$file"; then
+  _mkvutil_preflight_job "$job" || return 1
+  fresh="$REPLY"
+  if ! mkvutil_check_destinations "$job"; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract preflight or source inspection stopped or failed' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
     return 1
   fi
-  fresh="$REPLY"
   protected="$(_mkvutil_json_array "${MKVUTIL_SCOPE_KEYS[@]}" "$file")" || return 1
   if (( MKVUTIL_INTERRUPTED )); then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before extraction' not_attempted)"
@@ -3906,6 +4055,7 @@ mkvutil_execute_queue() {
     mkvutil_batch_request "$category" "$operations" "$config" || return 1
   fi
   for record in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do mkvutil_ledger_skip "$record" || return 1; done
+  _mkvutil_indicator_stop
   MKVUTIL_HAS_RUN=1
   # Always preserve pending outcomes and archive timing, including a signal
   # between jobs or a bookkeeping failure after a tool has already returned.
