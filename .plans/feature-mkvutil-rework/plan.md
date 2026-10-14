@@ -61,6 +61,33 @@ before the next input, output or exit; the main Category selector keeps its curs
 The user's cursor-only follow-up requests one quick interactive check, with no
 full-suite rerun; earlier unaffected qualification remains revision-bound.
 
+## Latest approved input-validation amendment
+
+Validate every user input against its field's grammar and current allowed IDs.
+Invalid choices, numbers, ranges, comma lists, reorder syntax, flag values,
+language syntax and exclusion answers report the problem and retry the same
+prompt, preserving valid prior settings without starting processing. Exact e/E
+is the only navigation letter before processing; remove the undeclared 0-menu
+and track-ID `cancel` navigation aliases. EOF and Ctrl+C keep cancellation and
+stop semantics. The native fzf search controls remain unchanged.
+Main Category input now requires a single category number followed by Enter,
+matching the submenu input protocol. Main e/E plus Enter exits silently; the
+former immediate single-key behavior is superseded.
+
+Single IDs and combinations such as `3`, `1-4,2` and `1,3,4-6` are valid only
+inside the question's allowed domain. Reorder accepts `0:0,0:4,0:1` with distinct
+retained IDs. Allow whitespace around separators but reject whitespace inside
+a number instead of joining digits. Removal must retain at least one track.
+Free-text names/titles retain literal input and existing empty/default and
+escaped-e behavior; Y/N remains a field answer rather than navigation.
+
+Qualify each distinct prompt type and the reported Back/invalid-character
+terminal journey with bounded existing fixtures, plus affected navigation and
+metadata/structural consumers. No new full-suite/native-media campaign is
+required for this follow-up; real internal/tool errors remain fatal.
+
+## Native verbosity boundary
+
 Restore live native stdout/stderr for the modifying Mux, Edit and Extract commands.
 Every file section has its basename and a short category/action heading, with
 optional Mux metadata IDs, between the existing progress blocks. Edit retains
@@ -172,16 +199,16 @@ remain internal and are visible only in working-directory displays.
 Ctrl+C exits the utility. Do not display a dedicated Exit or Cancel choice.
 The main menu also accepts hidden `e`/`E` for silent exit. Category action
 and optional Mux metadata menus show `e) Back`.
-At an interactive terminal, main-menu choices `1`, `2`, `3`, and hidden `e`/`E`
-act on a single keypress without Enter. Submenu batch selections and data fields
-remain line-based; redirected input retains its existing line-based behavior.
+Main-menu choices `1`, `2`, `3`, `4`, and hidden `e`/`E` require Enter to confirm.
+Submenu batch selections and data fields use the same line-based input protocol;
+the main menu accepts a single category, rather than lists or ranges.
 On a capable interactive terminal, navigation menus own a temporary screen:
 each active menu replaces the previous menu's choices. Adjacent navigation-only
 views retain that screen rather than exiting/reentering it. Buffer the complete
 menu body, then overwrite it in one literal-safe write, clearing stale line
 endings and unused rows without a blank-before-paint screen clear. Existing
 readers emit their prompts; do not add animation, sleeps or artificial delay. Restore the main-menu
-`Category:` selector while keeping immediate single-key selection. Keep the
+`Category:` selector with line editing and Enter to confirm. Keep the
 normal terminal cursor visible while waiting, retaining its existing style and
 blinking behavior. Restore terminal state before submenu/data input and normal
 or interrupted exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains Back.
@@ -190,8 +217,9 @@ Keep the file picker on the menu's owned screen until selection or cancellation,
 without exposing normal history between the menu and fzf. Let the picker paint
 its near-full-height view without an extra screen clear or artificial delay.
 Restore normal history before track models/value collection, processing output,
-final reports and validation errors, including configuration, planning and
-execution boundaries. Capture navigation diagnostics and restore the screen
+final reports and fatal errors, including configuration, planning and
+execution boundaries. Render ordinary menu-validation errors in the current
+owned view before retrying. Capture fatal navigation diagnostics and restore the screen
 in the parent shell before displaying them. Successful navigation reads retain
 the view; failed reads, EOF, interruption and final exit restore normal screen/
 cursor without changing queue handlers or exit status.
@@ -625,7 +653,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | --- | --- | --- | --- | --- |
 | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete job plans are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
 | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. Apply the metadata batch-target and Back contracts through this shared collector. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
-| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete job plans. Start automatically after the final required input and complete preflight; remove Review/change, Preview and Run menus from every category, including post-configuration acknowledgement and skipped-subset menus. All-skipped/no-eligible configurations report and exit without writes. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and internal skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu and metadata Back, following the latest public reset exception and truthful result history. Apply the metadata batch-target contract, retry invalid reorder entries while retaining removal, and preserve structural scope only when optional Mux metadata Back clears pending settings. Support e/E at all utility configuration and preflight-exclusion prompts with atomic full-cohort inspection recovery; Mux metadata-list Back returns directly to main. Add main choice 4 for read-only Analyze with the existing multi-file picker; show only a terminal-safe animated Analysing indicator during inspection, buffer the first usable reference listing, then stop/reap/clear the owned indicator before a boxed workdir/reference header, spacer, one listing for the matching cohort and the final report. Inspect all files silently and keep mismatched/failed/unstarted filenames only in the final report for separate analysis. Preserve interruption outcomes and clean up the display child before results. Use one shared ASCII box renderer for workdir/reference headers and final-report headings across categories. Compare complete original-ID/type/native-codec signatures against the first usable reference, ignoring names/languages/flags and listing order; report mismatched, failed and unstarted filenames, then exit. Display file references as filename plus extension throughout configuration, processing and reports; full paths are shown only for working-directory displays and remain internal for processing/recovery. Accept one relative/absolute working directory, --help and --bypass in either option/directory order. Persist bypass as a configuration boolean that disables only the removal total-track-count guard; filename/extension filtering remains available in every file picker. Verify the real mkvutil alias from an external working directory, with relative/absolute target directories and repository-relative dependency resolution. Keep all shared ASCII rows aligned to displayed text widths for short/long paths and filenames; avoid a redundant unboxed workdir line in owned-terminal history while retaining visible working-directory context. On public Back to actions, fully clear the unexecuted selection/cohort and pending settings so choosing actions rescans and reopens fzf; only Mux optional metadata field Back preserves files/removal/reorder, while Back from that list fully resets to main. Use the shared Working status for silent preparation between fields, with owned-child cleanup before input/output and smooth inline transitions without screen clearing or foreground delay. Hide the terminal typing cursor while the shared indicator is displayed; restore it before input, output or exit, and retain the main Category cursor. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and per-file plans | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip contracts, final-input automatic execution and no-write incomplete-configuration/Back/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
+| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete job plans. Start automatically after the final required input and complete preflight; remove Review/change, Preview and Run menus from every category, including post-configuration acknowledgement and skipped-subset menus. All-skipped/no-eligible configurations report and exit without writes. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and internal skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu and metadata Back, following the latest public reset exception and truthful result history. Apply the metadata batch-target contract, retry invalid reorder entries while retaining removal, and preserve structural scope only when optional Mux metadata Back clears pending settings. Support e/E at all utility configuration and preflight-exclusion prompts with atomic full-cohort inspection recovery; Mux metadata-list Back returns directly to main. Add main choice 4 for read-only Analyze with the existing multi-file picker; show only a terminal-safe animated Analysing indicator during inspection, buffer the first usable reference listing, then stop/reap/clear the owned indicator before a boxed workdir/reference header, spacer, one listing for the matching cohort and the final report. Inspect all files silently and keep mismatched/failed/unstarted filenames only in the final report for separate analysis. Preserve interruption outcomes and clean up the display child before results. Use one shared ASCII box renderer for workdir/reference headers and final-report headings across categories. Compare complete original-ID/type/native-codec signatures against the first usable reference, ignoring names/languages/flags and listing order; report mismatched, failed and unstarted filenames, then exit. Display file references as filename plus extension throughout configuration, processing and reports; full paths are shown only for working-directory displays and remain internal for processing/recovery. Accept one relative/absolute working directory, --help and --bypass in either option/directory order. Persist bypass as a configuration boolean that disables only the removal total-track-count guard; filename/extension filtering remains available in every file picker. Verify the real mkvutil alias from an external working directory, with relative/absolute target directories and repository-relative dependency resolution. Keep all shared ASCII rows aligned to displayed text widths for short/long paths and filenames; avoid a redundant unboxed workdir line in owned-terminal history while retaining visible working-directory context. On public Back to actions, fully clear the unexecuted selection/cohort and pending settings so choosing actions rescans and reopens fzf; only Mux optional metadata field Back preserves files/removal/reorder, while Back from that list fully resets to main. Use the shared Working status for silent preparation between fields, with owned-child cleanup before input/output and smooth inline transitions without screen clearing or foreground delay. Hide the terminal typing cursor while the shared indicator is displayed; restore it before input, output or exit, and retain the main Category cursor. Validate every field and retry invalid input without losing valid settings or executing; allow only exact e/E navigation before processing, preserve EOF/Ctrl+C and text/default semantics, enforce current-domain list/range and retained-track order rules, and reject whitespace-joined digits. Main categories require one choice plus Enter; e/E plus Enter exits silently, and invalid or blank required menu input retries in the current view. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and per-file plans | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip contracts, final-input automatic execution and no-write incomplete-configuration/Back/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
 

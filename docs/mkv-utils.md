@@ -55,9 +55,9 @@ If your existing repository environment already has its dependencies, keep using
 
 The main menu keeps the work areas separate:
 
-At the main **Category:** selector, press `1`, `2`, `3`, or `4` to open a category immediately; no Enter is needed. The normal terminal cursor remains visible while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
+At the main **Category:** selector, type `1`, `2`, `3`, or `4`, then press Enter. The main menu, submenu batches and text fields all use Enter to confirm input, with the normal terminal cursor visible. Hidden `e`/`E` plus Enter exits the main menu; submenu `e`/`E` plus Enter goes Back.
 
-When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Adjacent navigation menus share this screen. Each complete menu body is prepared first and printed together over the previous view, erasing old line endings and unused rows. Navigation redraws add no animation or intentional wait. The category and working directory stay visible, followed by the native input prompt; the owned menu avoids printing a duplicate initial working-directory line. The file picker takes over the same screen and uses nearly its full height, avoiding a return to the old terminal view between the menu and fzf. The utility restores normal history after selection or cancellation, before configuration fields, processing, reports or validation errors. It never clears the normal screen or scrollback.
+When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Adjacent navigation menus share this screen. Each complete menu body is prepared first and printed together over the previous view, erasing old line endings and unused rows. Navigation redraws add no animation or intentional wait. The category and working directory stay visible, followed by the native input prompt; the owned menu avoids printing a duplicate initial working-directory line. Invalid menu input shows a validation message in the same screen and waits for another choice. The file picker takes over the same screen and uses nearly its full height, avoiding a return to the old terminal view between the menu and fzf. The utility restores normal history after selection or cancellation, before configuration fields, processing, reports or fatal diagnostics. It never clears the normal screen or scrollback.
 
 Removal-mismatch details and reports remain in normal terminal history. Redirected streams and empty or `dumb` terminal settings disable owned navigation views. Piped input retains the line-based protocol.
 
@@ -70,6 +70,25 @@ Removal-mismatch details and reports remain in normal terminal history. Redirect
 
 Within a category, enter one action, a comma-separated list, or an ascending range. For example, `1`, `1,2`, or `1-3`. The same format is used for optional Mux metadata choices. The file picker displays and searches filenames within the chosen directory, hiding the parent path. It is always multi-select: select one file or mark several with Tab, then confirm the selection.
 
+Every prompt validates its own input before continuing. Unknown menu choices, malformed lists, descending ranges, unavailable track IDs, invalid reorder entries, invalid flags or language syntax, and unknown Y/N answers show an error and repeat that prompt. Valid earlier settings remain in place. Removal must leave at least one track; reorder cannot include removed tracks. Only exact `e`/`E` navigates Back or exits before processing. `0` and `cancel` are not navigation shortcuts; `0` remains a valid track ID or flag value where requested. Blank input uses a displayed default, clears a text field, or skips optional Mux metadata where applicable.
+
+<details>
+<summary>Valid combinations and rejected input</summary>
+
+| Prompt | Valid input | Meaning or validation |
+| --- | --- | --- |
+| Edit actions | `3` | Select language editing. |
+| Edit actions or optional Mux metadata | `1-4,2` | Select `1,2,3,4` once each. |
+| Track IDs | `1,3,4-6` | Select `1,3,4,5,6`, provided every ID exists. |
+| Mux or Extract actions | `1,2` or `1-2` | Combine the two available actions; `3` is invalid here. |
+| Reorder | `0:0,0:4,0:1` | Put these retained tracks first in that order; unlisted retained tracks follow. |
+
+Whitespace around separators is accepted, such as `1 - 4, 2` or `0 : 0, 0 : 4`. Whitespace inside a number is rejected: `1 2` never becomes ID `12`. Empty comma items (`1,,2`, `1,`), malformed ranges (`1--3`), unavailable IDs and repeated reorder IDs are rejected. An invalid attempt does not start the batch.
+
+Names and titles are text, so words, numbers, commas and hyphens are literal values there. Flags accept only `0` or `1`; languages use the supported language-tag syntax, such as `eng` or `fr-CA`. The main category selector accepts one number followed by Enter, rather than a batch list.
+
+</details>
+
 After choosing files, enter the requested settings. When the last required setting is complete, the utility runs its full preflight and automatically processes eligible jobs, then prints the final report and exits. Edit starts after its last per-ID value or title; Mux starts after its last selected metadata value, or after a blank optional-metadata choice; Extract with track actions starts after the track IDs, while attachments-only starts after file selection. A preflight with no eligible jobs prints the report and exits without writing outputs.
 
 Track configuration shows its full working directory and reference filename in a shared ASCII header box before the track listing. A Mux removal header keeps the **Removal reference file** label and shows the bypass cue when that guard is disabled.
@@ -80,7 +99,7 @@ At any metadata track-ID or value prompt, exact `e` or `E` discards all partiall
 
 The **Working** indicator appears during quiet scans, source inspection, layout and signature preparation, language validation, queue planning and each file's fresh source check when standard output is a terminal and `TERM` is nonempty and not `dumb`. It stays visible across consecutive quiet source checks and pauses before diagnostics or prompts. The typing cursor is hidden while the indicator runs and restored before the next input or output. It stops before menus and media-writing tools; redirected output has no indicator. Analyze uses **Analysing** during its track analysis.
 
-To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. At a metadata track-ID prompt, `cancel` still cancels the invocation. Inspection or planning errors retain their existing Y/N/`e` exclusion prompts. An explicit exclusion applies to the current selection. Public Back clears that selection and its exclusions, so a fresh picker can select the file again.
+To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. Inspection or planning errors offer a Y/N/`e` exclusion prompt: `Y`/`YES` excludes the file, `N`/`NO` or blank declines, and `e`/`E` goes Back. Other answers are rejected. An explicit exclusion applies to the current selection. Public Back clears that selection and its exclusions, so a fresh picker can select the file again.
 
 EOF or Ctrl+C before configuration is complete cancels the invocation. After configuration completes, Ctrl+C requests the category's stop behavior described below. In the file picker, `e` remains a search character under fzf's own controls. Processing ends with the final report and exit.
 
@@ -390,7 +409,9 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The current output audit qualified **184 distinct controlled cases** across the complete module run and corrective checks, followed by **51 affected reporting and extraction cases** after the final output correction. These cover helpers and interactive entry points, individual and grouped actions, fresh selection after Back, the optional Mux metadata exception, Working status, live native output, removal guards, warning/failure/partial outcomes, runtime stopping, and final-report placement. The results are aggregated; they do not describe one entirely passing invocation. The native execution engines and navigation are unchanged by the final two report-renderer corrections.
+The latest input-validation follow-up passed **70 focused cases**, including 22 controlling-terminal journeys. It checks every category's actions, valid single and combined selections, invalid-input retries, line-based main-menu input, Back and reselection, defaults and literal text, no-write cancellation, runtime stopping and the Working cursor handoff. Media commands were controlled in these checks. The native execution engines and report renderers are unchanged; the earlier native evidence below qualifies those processing paths.
+
+The earlier output audit qualified **184 distinct controlled cases** across the complete module run and corrective checks, followed by **51 affected reporting and extraction cases** after the final output correction. These cover helpers and interactive entry points, individual and grouped actions, fresh selection after Back, the optional Mux metadata exception, Working status, live native output, removal guards, warning/failure/partial outcomes, runtime stopping, and final-report placement. Those results are aggregated; they do not describe one entirely passing invocation.
 
 A separate logged campaign passed **20 native menu journeys** using installed MKVToolNix v93 and fresh tiny fixtures. It exercised Edit choices 1–5 and a combined edit; removal, reordering and every optional Mux metadata choice; all Extract combinations; and matching/mismatched Analyze selections. The fixtures cover `.mkv`, `.mka`, `.mks` and `.mk3d`. Native checks verify the intended track order, metadata, output extensions and preserved payloads, chapters, user tags and attachments for the relevant jobs. Track edits use compatible file groups; title edits also run across all four formats together.
 

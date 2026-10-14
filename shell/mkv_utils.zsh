@@ -276,6 +276,8 @@ mkvutil_expand_ids() {
   done
   (( ${#allowed_ids} > 0 )) || return 1
 
+  # Spaces may surround separators, but must never join two numeric tokens.
+  [[ ! "$selection" =~ '[0-9][[:space:]]+[0-9]' ]] || return 1
   selection="${selection//[[:space:]]/}"
   [[ -n "$selection" ]] || return 1
   tokens=("${(@s:,:)selection}")
@@ -379,8 +381,7 @@ _mkvutil_plan_layout_build() {
   done <<< "$rows"
   (( ${#MKVUTIL_INPUT_IDS} > 0 )) || return 1
 
-  removed_input="${removed_input//[[:space:]]/}"
-  if [[ -n "$removed_input" ]]; then
+  if [[ -n "${removed_input//[[:space:]]/}" ]]; then
     removed_ids="$(mkvutil_expand_ids "$removed_input" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
     for track_id in "${(@s:,:)removed_ids}"; do
       removed_set[$track_id]=1
@@ -393,6 +394,7 @@ _mkvutil_plan_layout_build() {
   done
   (( ${#MKVUTIL_RETAINED_IDS} > 0 )) || return 1
 
+  [[ ! "$order_input" =~ '[0-9][[:space:]]+[0-9]' ]] || return 1
   order="${order_input//[[:space:]]/}"
   if [[ -n "$order" ]]; then
     local -a order_items=("${(@s:,:)order}")
@@ -681,11 +683,8 @@ _mkvutil_metadata_collect() {
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
       if [[ "$mode" == independent || -z "$shared_targets" ]]; then
-        _mkvutil_indicator_stop
-        printf '%s — Track IDs (comma/range; e to go back): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
-        IFS= read -r selection || return 2
-        case "$selection" in e|E) return 4 ;; cancel) return 2 ;; esac
-        targets_csv="$(mkvutil_expand_ids "$selection" "${(j:,:)MKVUTIL_RETAINED_IDS}")" || return 1
+        _mkvutil_read_track_ids "${MKVUTIL_METADATA_REGISTRY[${choice}:label]} — Track IDs (comma/range; e to go back): " "${(j:,:)MKVUTIL_RETAINED_IDS}" || return $?
+        targets_csv="$REPLY"
         [[ "$mode" != shared ]] || shared_targets="$targets_csv"
       else
         targets_csv="$shared_targets"
@@ -693,22 +692,31 @@ _mkvutil_metadata_collect() {
       chosen_targets=("${(@s:,:)targets_csv}")
     fi
     for target in "${chosen_targets[@]}"; do
-      _mkvutil_indicator_stop
-      [[ "$target" == info ]] || printf 'Original track ID %s — ' "$target" >&2
-      printf '%s' "${MKVUTIL_METADATA_REGISTRY[${choice}:prompt]}" >&2
-      IFS= read -r value || return 2
-      case "$value" in e|E) return 4 ;; esac
-      if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" == text ]]; then
-        case "$value" in '\e') value=e ;; '\E') value=E ;; esac
-      fi
-      [[ -n "$value" ]] || value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
+      while true; do
+        _mkvutil_indicator_stop
+        (( ! MKVUTIL_INTERRUPTED )) || return 2
+        [[ "$target" == info ]] || printf 'Original track ID %s — ' "$target" >&2
+        printf '%s' "${MKVUTIL_METADATA_REGISTRY[${choice}:prompt]}" >&2
+        IFS= read -r value || return 2
+        case "$value" in e|E) return 4 ;; esac
+        if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" == text ]]; then
+          case "$value" in '\e') value=e ;; '\E') value=E ;; esac
+        fi
+        [[ -n "$value" ]] || value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
+        _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "$value" && break
+        case "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" in
+          boolean) print -u2 -r -- 'Invalid flag. Enter 0 or 1, or e to go back.' ;;
+          language) print -u2 -r -- 'Invalid language tag. Use a tag such as eng or fr-CA, or e to go back.' ;;
+          *) return 1 ;;
+        esac
+      done
       mkvutil_metadata_set "$choice" "$target" "$value" || return 1
     done
   done
   return 0
 }
 
-# Collect once, before execution. EOF/cancel returns 2, Back 4, invalid input 1.
+# Collect once, before execution. Invalid input retries; EOF returns 2, Back 4.
 # An incomplete collection leaves no partial settings or argument arrays.
 mkvutil_metadata_configure() {
   local result=0
@@ -1415,32 +1423,31 @@ _mkvutil_read() {
   IFS= read -r REPLY || return 2
 }
 
-# Main choices are single keys at a terminal; pipes retain line-based input.
-# Submenu batches and metadata values continue through _mkvutil_read.
+# Structured track-ID fields share parsing and retry behavior. Keep validation
+# in the foreground so Back, EOF and signals retain their existing ownership.
+_mkvutil_read_track_ids() {
+  local prompt="$1" domain="$2" expanded=""
+  [[ -n "$domain" ]] || return 1
+  while true; do
+    _mkvutil_read "$prompt" || return 2
+    case "$REPLY" in e|E) return 4 ;; esac
+    if expanded="$(mkvutil_expand_ids "$REPLY" "$domain")"; then
+      REPLY="$expanded"
+      return 0
+    fi
+    (( ! MKVUTIL_INTERRUPTED )) || return 2
+    print -u2 -r -- "Invalid track IDs. Use comma-separated IDs or ascending ranges. Available IDs: $domain"
+  done
+}
+
+# Main and submenu choices use the same line-input protocol. The main menu
+# accepts one category per line; submenu lists/ranges retain their own grammar.
 _mkvutil_read_main() {
   _mkvutil_indicator_stop
-  [[ -t 0 ]] || { _mkvutil_read 'Category: '; return $?; }
-  setopt localtraps
-  printf 'Category: ' >&2
-  local read_code=0 cursor_managed=0 timeout_marker='mkvutil-waiting-for-key'
-  trap 'MKVUTIL_INTERRUPTED=1; read_code=2; return 2' INT TERM
-  {
-    if [[ -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; then
-      cursor_managed=1
-      printf '\e[?25h' >&2
-    fi
-    # Yield periodically so pending terminal signals can run their traps.
-    # Timeout leaves REPLY unchanged; EOF assigns an empty reply.
-    while (( ! MKVUTIL_INTERRUPTED )); do
-      REPLY="$timeout_marker"
-      if IFS= read -r -s -k 1 -t 0.2 REPLY; then break; fi
-      if [[ "$REPLY" != "$timeout_marker" ]]; then read_code=2; break; fi
-    done
-    (( ! MKVUTIL_INTERRUPTED )) || read_code=2
-  } always {
-    (( ! cursor_managed )) || printf '\e[?25h' >&2
-  }
-  return "$read_code"
+  if [[ -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+    printf '\e[?25h' >&2
+  fi
+  _mkvutil_read 'Category: '
 }
 
 # Navigation and its picker share a transient buffer. Pipes and dumb/redirected
@@ -1563,7 +1570,7 @@ _mkvutil_menu_read() {
   _mkvutil_indicator_stop
   (( ! MKVUTIL_INTERRUPTED )) || return 2
   setopt localtraps
-  local view="$1" category="${2-}" prompt="${3-}" targets="${4-}" result=0 owned=0 body=""
+  local view="$1" category="${2-}" prompt="${3-}" targets="${4-}" result=0 owned=0 body="" validation_message="${5-}"
   trap 'MKVUTIL_INTERRUPTED=1; result=2; return 2' INT TERM
   {
     _mkvutil_ui_owned && owned=1
@@ -1572,6 +1579,7 @@ _mkvutil_menu_read() {
       _mkvutil_ui_leave
       [[ -z "$body" ]] || print -u2 -r -- "$body"
     else
+      [[ -z "$validation_message" ]] || body+=$'\n'"$validation_message"
       _mkvutil_ui_enter
       if (( MKVUTIL_UI_ACTIVE )); then
         _mkvutil_ui_redraw "$body"
@@ -1595,6 +1603,9 @@ _mkvutil_menu_read() {
 _mkvutil_menu_choices() {
   local choices="" result=0
   choices="$(mkvutil_category_choices "$1" "$2" 2>&1)" || result=$?
+  # A pure selection rejection keeps the owned screen for its retry. Registry
+  # and rendering failures still leave it before replaying their diagnostics.
+  (( result != 3 )) || return 3
   if (( result )); then
     _mkvutil_ui_leave
     [[ -z "$choices" ]] || print -u2 -r -- "$choices"
@@ -1604,9 +1615,15 @@ _mkvutil_menu_choices() {
 }
 
 _mkvutil_exclude() {
-  _mkvutil_read 'Exclude this file from the batch? (Y/N; e to go back) [N]: ' || return 2
-  case "$REPLY" in e|E) return 4 ;; esac
-  [[ "${REPLY:u}" == Y || "${REPLY:u}" == YES ]]
+  while true; do
+    _mkvutil_read 'Exclude this file from the batch? (Y/N; e to go back) [N]: ' || return 2
+    case "$REPLY" in
+      e|E) return 4 ;;
+      [yY]|[yY][eE][sS]) return 0 ;;
+      ''|[nN]|[nN][oO]) return 1 ;;
+      *) print -u2 -r -- 'Invalid answer. Enter Y, N, or e to go back.' ;;
+    esac
+  done
 }
 
 mkvutil_select_files() {
@@ -1752,7 +1769,7 @@ mkvutil_category_choices() {
     mux|extract) domain=1,2 ;;
     *) return 1 ;;
   esac
-  mkvutil_expand_ids "$2" "$domain"
+  mkvutil_expand_ids "$2" "$domain" || return 3
 }
 
 # Configure against the first original model. Every job validates targeted IDs
@@ -1761,8 +1778,8 @@ mkvutil_category_choices() {
 mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
-  local -a order_ids=()
-  local item="" retained_csv="" metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics=""
+  local -a order_ids=() removal_ids=()
+  local item="" retained_csv="" metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
   MKVUTIL_CONFIG=""
   MKVUTIL_JOBS=()
   mkvutil_metadata_reset
@@ -1795,9 +1812,13 @@ mkvutil_configure_category() {
       (( result == 0 )) || return "$result" ;;
     mux)
       if [[ ",$operations," == *,1,* ]]; then
-        _mkvutil_read 'Track IDs to remove (comma/range; e to go back): ' || return 2
-        case "$REPLY" in e|E) return 4 ;; esac
-        removal="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
+        while true; do
+          _mkvutil_read_track_ids 'Track IDs to remove (comma/range; e to go back): ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
+          removal="$REPLY"
+          removal_ids=("${(@s:,:)removal}")
+          (( ${#removal_ids} < ${#MKVUTIL_INPUT_IDS} )) && break
+          print -u2 -r -- 'Invalid removal. Leave at least one track in the file.'
+        done
         if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
           signature_diagnostics="$(mktemp "${TMPDIR:-/tmp}/mkvutil-signature.XXXXXXXX")" || return 1
         fi
@@ -1825,9 +1846,10 @@ mkvutil_configure_category() {
           (( ! MKVUTIL_INTERRUPTED )) || return 2
           _mkvutil_read 'Track order (e.g. 0:1,0:0; unlisted tracks follow; e to go back): ' || return 2
           case "$REPLY" in e|E) return 4 ;; esac
-          order="${REPLY//[[:space:]]/}"
-          if [[ -n "$order" ]] && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
+          order="$REPLY"
+          if [[ -n "${order//[[:space:]]/}" ]] && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
             (( ! MKVUTIL_INTERRUPTED )) || return 2
+            order="${order//[[:space:]]/}"
             break
           fi
           (( ! MKVUTIL_INTERRUPTED )) || return 2
@@ -1841,11 +1863,18 @@ mkvutil_configure_category() {
       fi
       while true; do
         mkvutil_batch_metadata_requested '' || return 1
-        _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' "${(j:,:)order_ids}" || return $?
-        case "$REPLY" in e|E) return 6 ;; 0) return 4 ;; esac
+        _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' "${(j:,:)order_ids}" "$metadata_error" || return $?
+        metadata_error=""
+        case "$REPLY" in e|E) return 6 ;; esac
         metadata="$REPLY"
         if [[ -z "${metadata//[[:space:]]/}" ]]; then metadata=""; _mkvutil_ui_leave; break; fi
-        _mkvutil_menu_choices edit "$metadata" || return 1
+        result=0
+        _mkvutil_menu_choices edit "$metadata" || result=$?
+        if (( result == 3 )); then
+          metadata_error='Invalid metadata choices. Use the listed numbers, comma lists or ascending ranges; e goes back.'
+          continue
+        fi
+        (( result == 0 )) || return "$result"
         metadata="$REPLY"
         _mkvutil_ui_leave
         mkvutil_batch_metadata_requested "$metadata" || return 1
@@ -1862,9 +1891,8 @@ mkvutil_configure_category() {
       ;;
     extract)
       if [[ ",$operations," == *,2,* ]]; then
-        _mkvutil_read 'Track IDs to extract (comma/range; e to go back): ' || return 2
-        case "$REPLY" in e|E) return 4 ;; esac
-        extract_ids="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
+        _mkvutil_read_track_ids 'Track IDs to extract (comma/range; e to go back): ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
+        extract_ids="$REPLY"
       fi
       ;;
     *) return 1 ;;
@@ -4000,7 +4028,7 @@ mkvutil_close_scope() {
 _mkvutil_main_body() {
   setopt localtraps
   local directory="$PWD" category="" operations="" result=0 resolved_directory="" sticky_code=0 selected=0
-  local argument="" directory_set=0
+  local argument="" directory_set=0 main_error="" action_error=""
   MKVUTIL_LEDGER_ENABLED=0
   MKVUTIL_INTERRUPTED=0
   MKVUTIL_BYPASS_TRACK_COUNT=0
@@ -4021,18 +4049,19 @@ _mkvutil_main_body() {
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
     result=0
-    _mkvutil_menu_read main || result=$?
+    _mkvutil_menu_read main '' '' '' "$main_error" || result=$?
+    main_error=""
     if (( result )); then
       (( MKVUTIL_INTERRUPTED == 0 && result == 2 )) || return 1
       return "$sticky_code"
     fi
     case "$REPLY" in
-      e|E|0) return "$sticky_code" ;;
+      e|E) return "$sticky_code" ;;
       1) category=edit ;;
       2) category=mux ;;
       3) category=extract ;;
       4) category=analysis ;;
-      *) _mkvutil_ui_leave; print -u2 -r -- 'Invalid category.'; return 1 ;;
+      *) main_error='Invalid category. Use 1, 2, 3 or 4.'; continue ;;
     esac
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
     MKVUTIL_LEDGER_ENABLED=0
@@ -4041,6 +4070,7 @@ _mkvutil_main_body() {
     MKVUTIL_REMOVAL_SKIP_HISTORY=()
     mkvutil_discard_configuration
     selected=0
+    action_error=""
     if [[ "$category" == analysis ]]; then
       mkvutil_scan_files_working "$PWD" || {
         _mkvutil_ui_leave
@@ -4052,7 +4082,8 @@ _mkvutil_main_body() {
     fi
     while true; do
       result=0
-      _mkvutil_menu_read actions "$category" 'Operations (single/comma/range): ' || result=$?
+      _mkvutil_menu_read actions "$category" 'Operations (single/comma/range): ' '' "$action_error" || result=$?
+      action_error=""
       if (( result )); then
         if (( selected )); then
           mkvutil_finish "$result" || sticky_code=1
@@ -4064,17 +4095,21 @@ _mkvutil_main_body() {
       fi
       (( MKVUTIL_INTERRUPTED == 0 )) || { (( ! selected )) || mkvutil_finish 1; return 1; }
       case "$REPLY" in
-        e|E|0)
+        e|E)
           mkvutil_reset_public_selection || return 1
           selected=0
           break ;;
       esac
-      # Enter after a main-menu key can reach this prompt; keep waiting.
-      [[ -t 0 && -z "$REPLY" ]] && continue
-      _mkvutil_menu_choices "$category" "$REPLY" || {
+      result=0
+      _mkvutil_menu_choices "$category" "$REPLY" || result=$?
+      if (( result == 3 )); then
+        action_error='Invalid operations. Use the listed numbers, comma lists or ascending ranges; e goes back.'
+        continue
+      fi
+      if (( result )); then
         (( ! selected )) || mkvutil_finish 1
         return 1
-      }
+      fi
       operations="$REPLY"
       if (( ! selected )); then
         mkvutil_scan_files_working "$PWD" || {

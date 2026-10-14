@@ -133,8 +133,10 @@ expect_layout_reject() {
 expect_eq "$(mkvutil_expand_ids ' 12, 011-012, 0, 11 ' '0,11,12')" "12,11,0" "range/dedup/order"
 expect_eq "$(mkvutil_expand_ids '9-12' '12,9,11,10')" "9,10,11,12" "numeric range order"
 expect_eq "$(mkvutil_expand_ids '00011' '11')" "11" "leading zero normalization"
+expect_eq "$(mkvutil_expand_ids ' 1 - 2 , 0 ' '0,1,2')" "1,2,0" "whitespace around delimiters"
 expect_reject '' '0,1'
 expect_reject '1,,2' '1,2'
+expect_reject '1 2' '0,1,2,12'
 expect_reject '3-1' '1,2,3'
 expect_reject '0-3' '0,2,3'
 expect_reject '0-999999999999999999999999999999999999' '0,999999999999999999999999999999999999'
@@ -183,6 +185,7 @@ expect_layout_reject "$rows" '' '0:11,0:11' 'mkv'
 expect_layout_reject "$rows" '' '1:11' 'mkv'
 expect_layout_reject "$rows" '11' '0:11' 'mkv'
 expect_layout_reject "$rows" '' '0:99' 'mkv'
+expect_layout_reject "$rows" '' '0:1 2' 'mkv'
 expect_layout_reject "$rows" '' '' 'avi'
 
 # Repeated calls must neither leak declarations nor expose prior success state.
@@ -413,11 +416,81 @@ eq "$result" 2 'EOF midway through collection returns'
 (( ${#MKVUTIL_METADATA_SETTINGS} == 0 )) || fail 'EOF preserved partially collected name'
 result=0
 mkvutil_metadata_configure 4 <<< cancel || result=$?
-eq "$result" 2 'explicit cancellation returns'
+eq "$result" 2 'invalid ID text reaches bounded EOF after retry'
 reject mkvutil_metadata_configure 4 <<< '11,,12'
 print -r -- 'configuration contracts passed'
 ''', "11\n\n11,12\n\n0\n11\nfr-CA\n11\n@name $cash: \"quote\" \\literal\n\n")
     assert result.stdout.strip() == "configuration contracts passed"
+
+
+def test_mkv_utils_invalid_prompt_values_retry_without_losing_valid_text(tmp_path: Path):
+    result = _run_metadata_contract(tmp_path, r'''
+mkvutil_plan_layout $'audio\t11\nsubtitles\t12' '' '' mka
+mkvutil_metadata_configure '1,3,4,5' shared <<< $'not-an-id\n99\n11,,12\n12-11\ncancel\n11,12\n2\n0\nyes\n1\nbad_tag\nfr-CA\neng\ncancel\n\\e\n\\E'
+eq "${MKVUTIL_METADATA_SETTINGS[1:11]}" 0 'invalid/unknown flag values retry to valid false'
+eq "${MKVUTIL_METADATA_SETTINGS[1:12]}" 1 'invalid flag text retries to valid true'
+eq "${MKVUTIL_METADATA_SETTINGS[3:11]}" fr-CA 'invalid language retries through syntax validator'
+eq "${MKVUTIL_METADATA_SETTINGS[3:12]}" eng 'second language target collected'
+eq "${MKVUTIL_METADATA_SETTINGS[4:11]}" cancel 'cancel is valid arbitrary track-name text'
+eq "${MKVUTIL_METADATA_SETTINGS[4:12]}" e 'escaped e is literal track-name text'
+eq "${MKVUTIL_METADATA_SETTINGS[5:info]}" E 'escaped E is literal title text'
+
+_mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag '' flag_commentary ''
+mkvutil_metadata_validate_registry || fail 'extended Edit registry invalid'
+eq "$(mkvutil_category_choices edit 3)" 3 'single Edit choice'
+eq "$(mkvutil_category_choices edit '1-4,2')" '1,2,3,4' 'mixed range/comma Edit choices deduplicate'
+eq "$(mkvutil_category_choices edit '1,3,4-6')" '1,3,4,5,6' 'mixed Edit choices include registered ID 6'
+eq "$(mkvutil_category_choices mux '1,2')" '1,2' 'combined Mux choices'
+eq "$(mkvutil_category_choices extract '1,2')" '1,2' 'combined Extract choices'
+for invalid in 0 w 99 '1,,2' '2-1' '1-7'; do
+  code=0; captured="$(mkvutil_category_choices edit "$invalid")" || code=$?
+  eq "$code" 3 "invalid Edit choice rejected: $invalid"
+  eq "$captured" '' "no partial Edit choice: $invalid"
+done
+for category in mux extract; do
+  for invalid in 0 3 99 '1,,2' '2-1' '1-3'; do
+    code=0; captured="$(mkvutil_category_choices "$category" "$invalid")" || code=$?
+    eq "$code" 3 "invalid $category choice rejected: $invalid"
+    eq "$captured" '' "no partial $category choice: $invalid"
+  done
+done
+
+# Optional metadata choices use the same bounded domain and accept ordinary
+# text such as "cancel" as a title value.
+raw='{"tracks":[{"id":11,"type":"audio","properties":{"codec_id":"A_AAC"}},{"id":12,"type":"subtitles","properties":{"codec_id":"S_TEXT/ASS"}}]}'
+MKVUTIL_SOURCES[1]="$(jq -cn --arg source "$PWD/reference.mkv" --argjson model "$raw" '{source:$source,source_json:($model|tojson)}')"
+mkvutil_configure_category mux 2 <<< $'0:11,0:12\n0\n5\ncancel'
+eq "${MKVUTIL_METADATA_SETTINGS[5:info]}" cancel 'optional metadata rejects zero then accepts title'
+print -r -- 'invalid prompt retries passed'
+''')
+    assert result.stdout.rstrip().endswith("invalid prompt retries passed")
+    assert result.stderr.count("Track IDs (comma/range;") == 6
+    assert result.stderr.count("Flag-forced (") >= 4
+    assert "Language:" in result.stderr and "Track name:" in result.stderr
+    assert "Metadata choices (comma/range; blank for none): " in result.stderr
+
+
+def test_mkv_utils_exclusion_prompt_retries_only_known_answers(tmp_path: Path):
+    result = _run_metadata_contract(tmp_path, r'''
+code=0
+_mkvutil_exclude <<< $'maybe\nYES' || code=$?
+eq "$code" 0 'unknown answer retries to YES'
+code=0
+_mkvutil_exclude <<< $'cancel\nNO' || code=$?
+eq "$code" 1 'cancel is not a special exclusion answer'
+code=0
+_mkvutil_exclude <<< '' || code=$?
+eq "$code" 1 'blank selects the default No'
+code=0
+_mkvutil_exclude <<< e || code=$?
+eq "$code" 4 'exact e returns Back'
+code=0
+_mkvutil_exclude <<< E || code=$?
+eq "$code" 4 'exact E returns Back'
+print -r -- 'exclusion prompt contracts passed'
+''')
+    assert result.stdout.strip() == "exclusion prompt contracts passed"
+    assert result.stderr.count("Exclude this file from the batch?") == 7
 
 
 def _source_json(tracks: list[tuple[int, str, str, bool]], *, attachments=None):
@@ -2967,6 +3040,24 @@ def test_mkv_utils_option6_extracts_all_attachments(env):
     assert source.read_bytes()==b"payload" and "Attachments processed: 2; published: 2; final unique published names: 2" in result.stdout
 
 
+def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(env):
+    source = _mkv_file(env, "Retry track ID.mkv")
+    model = _integration_model()
+    extra = _integration_manifest(
+        env, {source: model},
+        extraction={str(source): {"tracks": {"outputs": {"1": {"data": "aac payload"}}}}},
+    )
+    result = _run_mkv_utils(
+        env, fzf_responses=[[str(source)]], input_data="3\n2\nnot-an-id\n99\n1\n", extra_env=extra,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stderr.count("Track IDs to extract (comma/range; e to go back):") == 3
+    calls = _command_argv(env, "mkvextract")
+    assert len(calls) == 1 and calls[0][:2] == [str(source), "tracks"]
+    assert (env["workdir"] / "Retry track ID - Track [1].aac").read_bytes() == b"aac payload"
+    assert source.read_bytes() == b"payload" and result.stdout.count("Final report") == 1
+
+
 def test_mkv_utils_option7_video_removal_converts_to_mka_and_keeps_other_tracks(env):
     source=_mkv_file(env,"remove_video.mkv");original=_integration_model();expected=_integration_output(original,[1,2,3])
     extra=_integration_manifest(env,{source:original},stage={str(source):expected})
@@ -3029,7 +3120,9 @@ def test_mkv_utils_option7_invalid_discovery_rows_skip_remux(env,row_mode):
 def test_mkv_utils_option7_nonexistent_track_id_skips_remux(env):
     source=_mkv_file(env,"remove_missing_id.mkv")
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n99\n")
-    assert result.returncode==1,result.stdout+result.stderr
+    assert result.returncode==0,result.stdout+result.stderr
+    assert result.stderr.count("Track IDs to remove (comma/range; e to go back):") == 2
+    assert "Cancelled; no media changes." in result.stdout
     assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
     assert "requested, not run" in result.stdout
 
@@ -3037,7 +3130,9 @@ def test_mkv_utils_option7_nonexistent_track_id_skips_remux(env):
 def test_mkv_utils_option7_refuses_to_remove_every_track(env):
     source=_mkv_file(env,"remove_all.mkv")
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n0-3\n")
-    assert result.returncode==1,result.stdout+result.stderr
+    assert result.returncode==0,result.stdout+result.stderr
+    assert result.stderr.count("Track IDs to remove (comma/range; e to go back):") == 2
+    assert "Cancelled; no media changes." in result.stdout
     assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
     assert "requested, not run" in result.stdout
 
@@ -3151,11 +3246,15 @@ def test_mkv_utils_integration_reject_or_cancel_before_modification(env,boundary
         selected=env["workdir"].parent/"outside scanned domain.mkv";selected.write_bytes(b"outside")
         inputs="1\n5\n"
     result=_run_mkv_utils(env,fzf_responses=[[str(selected)]],input_data=inputs)
-    assert result.returncode==(0 if boundary in ("cancel","eof") else 1),result.stdout+result.stderr
+    assert result.returncode==(0 if boundary in ("removed-metadata","cancel","eof") else 1),result.stdout+result.stderr
     assert source.read_bytes()==b"payload"
     assert not _command_argv(env,"mkvpropedit") and not _command_argv(env,"mkvextract")
     assert not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
-    if boundary == "eof":
+    if boundary == "removed-metadata":
+        assert result.stderr.count('Track IDs (comma/range; e to go back):') == 2
+        assert "Available IDs: 1,2,3" in result.stderr
+        assert "Cancelled; no media changes." in (result.stdout + result.stderr)
+    elif boundary == "eof":
         assert "Cancelled; no media changes." in result.stdout
     elif boundary == "cancel":
         assert result.stdout.count("1) Set flag-forced for tracks") == 2
@@ -3550,9 +3649,9 @@ class _OwnedMenuScreen:
                     self.col += 1
 
 
-@pytest.mark.parametrize("exit_key", [b"e", b"\x03", b"line-ctrl-c", b"z", b"title-ctrl-c", b"track-id-ctrl-c"],
-                         ids=["owned-views-history", "main-ctrl-c", "line-ctrl-c", "visible-error", "title-ctrl-c", "track-id-ctrl-c"])
-def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
+@pytest.mark.parametrize("exit_key", [b"e", b"\x03", b"line-ctrl-c", b"z", b"0", b"title-ctrl-c", b"track-id-ctrl-c", b"back-retry-remux"],
+                         ids=["owned-views-history", "main-ctrl-c", "line-ctrl-c", "invalid-main-reprompt", "zero-is-not-back", "title-ctrl-c", "track-id-ctrl-c", "back-action-retry-remux"])
+def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
     import fcntl
     import pty
     import re
@@ -3563,7 +3662,15 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
 
     source, second = _mkv_file(env, "untouched.mkv"), _mkv_file(env, "mismatch.mkv")
     models = _removal_models()
-    _set_fake_fzf_responses(env, [[str(source), str(second)], [str(source), str(second)]])
+    if exit_key == b"back-retry-remux":
+        _set_fake_fzf_responses(env, [[str(source)], [str(source)]])
+        integration = _integration_manifest(
+            env, {source: models["reference"]},
+            stage={str(source): _integration_output(models["reference"], [1, 0, 2])},
+        )
+    else:
+        _set_fake_fzf_responses(env, [[str(source), str(second)], [str(source), str(second)]])
+        integration = _integration_manifest(env, {source: models["reference"], second: models["codec"]})
     selector = env["fake_bin"] / "fzf"
     selector.write_text(selector.read_text().replace(
         "set -e\n", "set -e\nprintf '\\nPICKER-OPEN\\n' >&2\n", 1,
@@ -3580,7 +3687,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         "TEST_FAKE_STATE_DIR": str(env["fake_state"]),
         "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]),
     })
-    run_env.update(_integration_manifest(env, {source: models["reference"], second: models["codec"]}))
+    run_env.update(integration)
     for tool in ("mkvmerge", "mkvpropedit", "mkvextract", "fzf"):
         assert Path(shutil.which(tool, path=run_env["PATH"])).resolve() == (env["fake_bin"] / tool).resolve()
     master, terminal = pty.openpty()
@@ -3614,17 +3721,14 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         assert prompt in output[start:], output.decode(errors="replace")
 
     def shortcuts():
-        wait_for(b"Category: \x1b[?25h")
-        while termios.tcgetattr(terminal)[3] & (termios.ICANON | termios.ECHO):
-            assert time.monotonic() < deadline, output.decode(errors="replace")
-            select.select([], [], [], 0.001)
+        wait_for(b"Category: ")
         assert screen.active and screen.cursor_visible and "Category: " in screen.text
         assert "1) Matroska Edit" in screen.text and "e) Back" not in screen.text
+        mask = termios.ICANON | termios.ECHO
+        assert before[3] & mask == termios.tcgetattr(terminal)[3] & mask
 
     def line_menu(prompt, view, category):
         wait_for(prompt)
-        # An optional Enter after the instant key may close a blank first
-        # frame. Wait for the replacement view before testing active state.
         while not (screen.active and screen.cursor_visible and f"{category} — {view}" in screen.text and prompt.decode() in screen.text):
             assert time.monotonic() < deadline, output.decode(errors="replace")
             receive()
@@ -3641,9 +3745,15 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
     try:
         shortcuts()
         if exit_key == b"e":
-            for key, category in ((b"1", "Matroska Edit"), (b"2", "Matroska Mux"), (b"3", "Matroska Extract"), (b"1\n", "Matroska Edit")):
+            for key, category in ((b"1", "Matroska Edit"), (b"2\n", "Matroska Mux"), (b"3\n", "Matroska Extract"), (b"1\n", "Matroska Edit")):
                 switches = (screen.enters, screen.leaves)
                 os.write(master, key)
+                if key == b"1":
+                    # A category number is not accepted until its line ends.
+                    receive()
+                    assert process.poll() is None and b"Operations (single/comma/range): " not in output
+                    assert "Category: " in screen.text
+                    os.write(master, b"\n")
                 line_menu(b"Operations (single/comma/range): ", "actions", category)
                 assert (screen.enters, screen.leaves) == switches
                 os.write(master, b"e\n"); shortcuts()
@@ -3651,7 +3761,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             # Keep both optional-metadata Back paths on the owned screen. The
             # first backs directly from the choices; the second backs from a
             # title value, then from choices, before any final value commits.
-            os.write(master, b"2")
+            os.write(master, b"2\n")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             os.write(master, b"2\n")
             normal_input(b"Track order (e.g.")
@@ -3660,7 +3770,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             assert "Original track IDs for each track edit: 0" in screen.text
             os.write(master, b"E\n"); shortcuts()
 
-            os.write(master, b"2")
+            os.write(master, b"2\n")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             os.write(master, b"2\n")
             normal_input(b"Track order (e.g.")
@@ -3671,28 +3781,56 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             os.write(master, b"e\n")
             line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
             os.write(master, b"E\n"); shortcuts()
-            os.write(master, b"e")
+            os.write(master, b"e\n")
         elif exit_key == b"track-id-ctrl-c":
-            os.write(master, b"2")
+            os.write(master, b"2\n")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             os.write(master, b"1\n")
             normal_input(b"Track IDs to remove (comma/range; e to go back): ")
             os.write(master, b"\x03")
         elif exit_key == b"title-ctrl-c":
-            os.write(master, b"1")
+            os.write(master, b"1\n")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Edit")
             os.write(master, b"5\n")
             normal_input(b"Title (empty to unset): ")
             os.write(master, b"\x03")
         elif exit_key == b"line-ctrl-c":
-            os.write(master, b"2")
+            os.write(master, b"2\n")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             os.write(master, b"\x03")
+        elif exit_key == b"z":
+            for invalid in (b"z\n", b"1,2\n", b"1-2\n", b"\n"):
+                os.write(master, invalid)
+                wait_for(b"Category: ")
+                assert "Invalid category. Use 1, 2, 3 or 4." in screen.text
+            os.write(master, b"e\n")
+        elif exit_key == b"0":
+            os.write(master, b"0\n")
+            wait_for(b"Category: ")
+            assert "Invalid category. Use 1, 2, 3 or 4." in screen.text
+            os.write(master, b"e\n")
+        elif exit_key == b"back-retry-remux":
+            os.write(master, b"2\n")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            os.write(master, b"2\n")
+            normal_input(b"Track order (e.g.")
+            os.write(master, b"e\n")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            for invalid in (b"0\n", b"w\n", b"\n"):
+                os.write(master, invalid)
+                line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+                assert "Invalid operations." in screen.text
+            os.write(master, b"2\n")
+            wait_for(b"PICKER-OPEN")
+            normal_input(b"Track order (e.g.")
+            os.write(master, b"0:1,0:0\n")
+            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            os.write(master, b"\n")
         else:
             os.write(master, exit_key)
         while process.poll() is None and time.monotonic() < deadline:
             receive()
-        expected_status = 0 if exit_key == b"e" else 1
+        expected_status = 0 if exit_key in (b"e", b"z", b"0", b"back-retry-remux") else 1
         assert process.poll() == expected_status, output.decode(errors="replace")
         while time.monotonic() < deadline and select.select([master], [], [], 0)[0]:
             try:
@@ -3709,8 +3847,8 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         assert screen.line_erases >= screen.tail_erases
         assert b"\x1b[2J" not in output
         assert "1) Matroska Edit" not in screen.normal and "2) Matroska Mux" not in screen.normal
-        if exit_key == b"z":
-            assert "Invalid category." in screen.normal
+        if exit_key in (b"z", b"0"):
+            assert output.count(b"Category: ") >= 2
         if exit_key in (b"title-ctrl-c", b"track-id-ctrl-c"):
             scopes = 1
             assert len(_command_argv(env, "fzf")) == scopes
@@ -3720,6 +3858,12 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             assert len(_command_argv(env, "fzf")) == 2
             assert len(_command_argv(env, "mkvmerge")) == 4
             assert all(call[0] == "-J" for call in _command_argv(env, "mkvmerge"))
+        elif exit_key == b"back-retry-remux":
+            calls = _command_argv(env, "mkvmerge")
+            assert len(_command_argv(env, "fzf")) == 2
+            assert len([call for call in calls if "-o" in call]) == 1
+            assert all(call[:1] == ["-J"] for call in calls if "-o" not in call)
+            assert "Invalid" in output.decode(errors="replace")
         else:
             assert not any(_command_argv(env, tool) for tool in ("fzf", "mkvmerge"))
     finally:
@@ -3727,8 +3871,12 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         os.close(master); os.close(terminal)
         if process.poll() is None:
             process.kill(); process.wait(timeout=10)
-    assert source.read_text() == second.read_text() == "payload"
-    assert not any(_command_argv(env, tool) for tool in ("mkvpropedit", "mkvextract"))
+    if exit_key == b"back-retry-remux":
+        assert source.read_bytes() == b"candidate-data\n" and second.read_bytes() == b"payload"
+    else:
+        assert source.read_text() == second.read_text() == "payload"
+    assert not _command_argv(env, "mkvpropedit")
+    assert all(call[1] == "tags" for call in _command_argv(env, "mkvextract"))
 
 
 def test_mkv_utils_owned_menu_pipe_gating_and_report_failure_visibility(tmp_path):
@@ -3861,6 +4009,8 @@ for choices in '5,3,4' '3,5,4'; do
 done
 mkvutil_metadata_configure 5 shared <<< cancel
 eq "${MKVUTIL_METADATA_SETTINGS[5:info]}" cancel 'title-only literal without IDs'
+mkvutil_metadata_configure 4 shared <<< $'11\ncancel'
+eq "${MKVUTIL_METADATA_SETTINGS[4:11]}" cancel 'cancel is literal track-name text'
 mkvutil_metadata_configure 4 shared <<< $'11,12\n\\e suffix\n\\\\E'
 eq "${MKVUTIL_METADATA_SETTINGS[4:11]}" '\e suffix' 'nonexact escape preserved'
 eq "${MKVUTIL_METADATA_SETTINGS[4:12]}" '\\E' 'double backslash preserved'
@@ -3868,7 +4018,7 @@ print -r -- 'shared target contracts passed'
 ''')
     assert result.stdout.strip() == 'shared target contracts passed'
     # Two multi-action collections and one name collection; title-only asks none.
-    assert result.stderr.count('Track IDs (comma/range;') == 3
+    assert result.stderr.count('Track IDs (comma/range;') == 4
     assert result.stderr.count('Original track ID 12 — Language:') == 2
     assert result.stderr.count('Original track ID 11 — Language:') == 2
     assert 'Track name:' in result.stderr and 'e) Back' in result.stderr
@@ -3925,7 +4075,7 @@ print -r -- 'preset contracts passed'
     for action in ('Flag-forced', 'Flag-default', 'Language', 'Track name'):
         prompts = [result.stderr.index(f'Original track ID {tid} — {action}') for tid in (0, 4, 3)]
         assert prompts == sorted(prompts)
-    assert result.stderr.count('Track IDs (comma/range;') == 3  # independent only
+    assert result.stderr.count('Track IDs (comma/range;') == 5  # invalid removed target retries, plus independent choices
 
 
 def test_mkv_utils_configuration_order_retry_metadata_back_and_batch_attribution(env):
@@ -3961,14 +4111,16 @@ eq "$code" 6 'list Back returns to main'
 eq "$(jq -r '.metadata_ids' <<< "${MKVUTIL_BATCHES[4]}")" '' 'list Back attribution clear'
 eq "$MKVUTIL_CONFIG" '' 'list Back leaves no config'
 code=0
-mkvutil_configure_category mux 1,2 <<< '0,3,4,11,12' || code=$?
-eq "$code" 1 'all removed fails before order'
+mkvutil_configure_category mux 1,2 <<< $'0,3,4,11,12\n12\n0:0\n' || code=$?
+eq "$code" 0 'all-track removal retries before order'
+eq "$(jq -r '.removed_ids|join(",")' <<< "$MKVUTIL_CONFIG")" 12 'valid removal follows rejected all-track choice'
+eq "$(jq -r '.order' <<< "$MKVUTIL_CONFIG")" '0:0' 'explicit reorder follows valid removal'
 print -r -- 'configuration retries passed'
 ''', {str(source): model})
     assert result.stdout.rstrip().endswith('configuration retries passed')
     assert result.stderr.count('Invalid track order.') == 4
-    assert result.stderr.count('Track IDs to remove (comma/range; e to go back):') == 3
-    assert result.stderr.count('Track order (e.g.') == 7
+    assert result.stderr.count('Track IDs to remove (comma/range; e to go back):') == 4
+    assert result.stderr.count('Track order (e.g.') == 8
     assert 'Original track IDs for each track edit: 0,4,3' in result.stdout
     assert not _command_argv(env, 'fzf') and source.read_text() == 'payload'
 
@@ -4625,7 +4777,7 @@ esac
         if stop == "dumb-complete":
             answer(b"Category: ", b"4\n")
         else:
-            answer(b"Category: \x1b[?25h", {"edit": b"1", "mux": b"2", "analysis": b"4"}.get(category, b"3"))
+            answer(b"Category: ", {"edit": b"1\n", "mux": b"2\n", "analysis": b"4\n"}.get(category, b"3\n"))
         if category != "analysis":
             answer(b"Operations (single/comma/range): ", {"edit": b"5\n", "mux": b"2\n", "extract": b"1,2\n", "attachments": b"1\n"}[category])
             if category == "edit": answer(b"Title (empty to unset): ", b"Stop test\n")
@@ -4857,7 +5009,7 @@ def test_mkv_utils_working_indicator_during_delayed_inspection(env):
         os.write(master, value)
 
     try:
-        answer(b"Category: \x1b[?25h", b"1")
+        answer(b"Category: ", b"1\n")
         answer(b"Operations (single/comma/range): ", b"5\n")
         while not marker.exists() and time.monotonic() < deadline:
             receive()

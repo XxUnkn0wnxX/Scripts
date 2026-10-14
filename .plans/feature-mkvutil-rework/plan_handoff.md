@@ -14,6 +14,56 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted prompt validation and main-menu Enter
+
+- User requested strict field-specific validation, predictable correction/Back
+  behavior and common reachable edge checks, then restored main Category input
+  to one choice plus Enter. Only exact e/E navigates before processing; main
+  e/E plus Enter exits silently. Text/default values, fzf search controls and
+  EOF/Ctrl+C retain their field-specific contracts. No instant main-key behavior.
+- Confirmed/fixed fatal invalid-input paths in category/action/optional metadata
+  menus and metadata/removal/extraction fields. Unknown exclusion answers now
+  retry. All-track removal retries before ordering. Shared list/order validation
+  rejects digits separated by whitespace rather than silently joining them;
+  valid mixed lists/ranges and retained original-ID order remain supported.
+- T01.02/T01.03/T04.01/T04.02 and all corresponding gates are accepted: **9/9
+  tasks, 4/4 goals**. Final focused `run-05` passed **70 cases in 337.60s**:
+  48 ordinary/helper/entrypoint cases and 22 controlling-PTY journeys (8 main
+  menus, 13 runtime-stop cases and Working handoff). Media tools/fzf were
+  controlled; no full-module, native-media campaign or CI run was performed.
+- Source SHA-256:
+  `2be387e1ebc41dacca5dbf459ada4196c1c53ae801c6f727c4999e9852d3a944`.
+  Tests SHA-256:
+  `2046e9f77a44cf0de2de33a86fdc8480f534199dbf2430ec3b2fd6d3a31784da`.
+  Parent checked all 70 source-bound case records and the actual Back/0/w/blank
+  transcript: two pickers, one writer, action/source/progress/final ordering,
+  one readable final report. Both zsh syntax checks and Python compile pass.
+- Canonical proof: `.tmp/mkvutil-rework/prompt-validation/receipt.json`,
+  `RESULTS.md`, `run-05/command.txt`, `full.log`, `journey-index.jsonl`,
+  `parent-static-review.json`, `test-reconciliation.json` and
+  `final-output-review.json`. Preserve all prior snapshots/failures: the first
+  revision had 45 passes and five stale-oracle/harness failures; corrective
+  `run-02`/`run-03` resolved them before the user's main-input change. The first
+  command/full output was not persisted, so it is diagnostic history only.
+  `run-04` stopped at collection due to a selector typo; no product tests ran.
+- The `run-05` start-test snapshot/hashes were mistakenly copied from the older
+  pre-adaptation snapshot after completion. They remain preserved as stale
+  evidence. Parent independently verified that the pytest cached code matches
+  current compiled source, its timestamp predates launch, and executed node IDs
+  use the new line-input function. `test_mkv_utils-qualified.py` and the explicit
+  reconciliation bind the tested file; no test/source edits occurred during run.
+- Read-only review compared actual preimplementation source at
+  `e3cb187975d524087e70ad7ce1e48894c21f0d65` with the accepted native-output
+  evidence. The enhanced action/source/native/progress/final output retains the
+  original useful facts. Native engines, stop/publication guards, output/report
+  renderers and cursor lifecycle are byte-identical to the preceding accepted
+  source. No additional ordinary output defect was found; no new dependencies.
+- Parent owns all files after worker handback; no worker/runtime job remains.
+  Main Scripts checkout stays on feature/mkvutil-rework. Canonical tracked plan
+  placement, AGENTS and worktree policy are unchanged. Final signed publication
+  follows standing approval; `publication.json` records exact remote verification.
+  If recovering without that receipt, inspect Git refs before retrying a push.
+
 ### Accepted indicator cursor follow-up
 
 - User reported the typing cursor hovering over Working and requested exactly
