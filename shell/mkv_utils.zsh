@@ -872,6 +872,33 @@ typeset -g MKVUTIL_DIRECTORY_NAME=""
 typeset -gF 6 MKVUTIL_TOTAL_ELAPSED=0
 typeset -ga MKVUTIL_SCOPE_KEYS=() MKVUTIL_BATCHES=()
 typeset -gA MKVUTIL_LEDGER=()
+typeset -gi MKVUTIL_ENGINE_PID=0 MKVUTIL_STOP_SIGNAL=0
+typeset -g MKVUTIL_ENGINE_CONTROL="" MKVUTIL_ENGINE_CATEGORY=""
+
+# Only the queue owner handles terminal keys during Run. Native writers already
+# have their own process group; signal the engine, never the terminal group.
+_mkvutil_request_stop() {
+  local requested="$1"
+  if (( ! MKVUTIL_INTERRUPTED )); then
+    if [[ "$requested" == 2 && ( "$MKVUTIL_ENGINE_CATEGORY" == edit || "$MKVUTIL_ENGINE_CATEGORY" == mux ) && -f "$MKVUTIL_ENGINE_CONTROL/admitted" ]]; then
+      print -u2 -r -- 'Stop requested; finishing the current file before stopping.'
+    else
+      print -u2 -r -- 'Stop requested; stopping the current operation.'
+    fi
+  fi
+  MKVUTIL_INTERRUPTED=1
+  # Once requested, additional terminal Ctrl+C must not kill result parsing or
+  # the final report. TERM/HUP remain available for hard termination.
+  trap '' INT
+  # A later Ctrl+C must never downgrade a hard termination request.
+  if (( MKVUTIL_STOP_SIGNAL == 0 || requested != 2 )); then MKVUTIL_STOP_SIGNAL=$requested; fi
+  if [[ -n "$MKVUTIL_ENGINE_CONTROL" ]]; then
+    print -r -- "$MKVUTIL_STOP_SIGNAL" > "$MKVUTIL_ENGINE_CONTROL/signal"
+    if (( MKVUTIL_ENGINE_PID > 0 )) && [[ -f "$MKVUTIL_ENGINE_CONTROL/ready" ]]; then
+      kill -"$MKVUTIL_STOP_SIGNAL" "$MKVUTIL_ENGINE_PID" 2>/dev/null || true
+    fi
+  fi
+}
 
 mkvutil_ledger_reset() {
   local directory="$1" source=""
@@ -879,6 +906,7 @@ mkvutil_ledger_reset() {
   MKVUTIL_LEDGER_ENABLED=1
   MKVUTIL_HAS_RUN=0
   MKVUTIL_INTERRUPTED=0
+  MKVUTIL_STOP_SIGNAL=0
   MKVUTIL_BATCH_ID=0
   MKVUTIL_TOTAL_ELAPSED=0
   MKVUTIL_DIRECTORY_NAME="${directory:A:t}"
@@ -894,14 +922,47 @@ mkvutil_ledger_reset() {
   done
 }
 
+# Eligibility is keyed by the original selected identity, including retry scopes.
+# Return 3 only for a verified exclusion or completed source; malformed state fails.
+_mkvutil_cohort_eligible() {
+  local file="$1" entry="" eligible=""
+  [[ -n "$file" && "$file" == /* && "$file" == "${file:A}" ]] || return 1
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  entry="${MKVUTIL_LEDGER[$file]-}"
+  [[ -n "$entry" ]] || return 1
+  eligible="$(jq -esr --arg source "$file" '
+    (if length==1 then .[0] else error("invalid cohort ledger document count") end) |
+    if type=="object" and .source==$source and (.required|type)=="boolean" and
+      (.excluded_from_retry|type)=="boolean" and (.attempts|type)=="array" and (.skip_history|type)=="array" and
+      (.status as $status|["pending","skipped","success","warning","partial","failed","interrupted","excluded","not_attempted"]|index($status))!=null
+    then if .required==false or .status=="excluded" or .excluded_from_retry or .status=="success" then "skip" else "eligible" end
+    else error("invalid cohort ledger identity or state") end' <<< "$entry")" || return 1
+  case "$eligible" in eligible) return 0 ;; skip) return 3 ;; *) return 1 ;; esac
+}
+
 # A configured cohort is archived before its prompts can end with EOF. Requested
 # action numbers remain visible even when the cohort never reaches Run.
 mkvutil_batch_request() {
-  local category="$1" operations="$2" config="${3:-null}" sources="" record=""
-  local -a paths=()
+  local category="$1" operations="$2" config="${3:-null}" sources="" record="" file="" result=0
+  local -a candidates=() paths=()
   (( MKVUTIL_LEDGER_ENABLED )) || return 0
-  for record in "${MKVUTIL_SOURCES[@]}"; do paths+=("$(jq -r '.source' <<< "$record")"); done
-  (( ${#paths} > 0 )) || paths=("${MKVUTIL_SCOPE_KEYS[@]}")
+  if (( ${#MKVUTIL_SOURCES} > 0 )); then
+    for record in "${MKVUTIL_SOURCES[@]}"; do
+      IFS= read -r -d '' file < <(jq -esj 'if length==1 and (.[0]|type)=="object" and (.[0].source|type)=="string" and (.[0].source|length)>0 and (.[0].source|contains("\u0000")|not) then .[0].source,"\u0000" else error("invalid source identity") end' <<< "$record") || return 1
+      candidates+=("$file")
+    done
+  elif (( ${#MKVUTIL_SELECTED_FILES} > 0 )); then
+    candidates=("${MKVUTIL_SELECTED_FILES[@]}")
+  else
+    candidates=("${MKVUTIL_SCOPE_KEYS[@]}")
+  fi
+  for file in "${candidates[@]}"; do
+    result=0
+    _mkvutil_cohort_eligible "$file" || result=$?
+    (( result != 1 )) || return 1
+    (( result == 0 )) || continue
+    paths+=("$file")
+  done
   sources="$(_mkvutil_json_array "${paths[@]}")" || return 1
   MKVUTIL_BATCH_ID=$(( ${#MKVUTIL_BATCHES} + 1 ))
   MKVUTIL_BATCHES+=("$(_mkvutil_jq_records '
@@ -955,7 +1016,7 @@ mkvutil_ledger_exclude() {
 mkvutil_ledger_skip() {
   local receipt="$1" source="" entry="" updated=""
   (( MKVUTIL_LEDGER_ENABLED )) || return 0
-  source="$(jq -r '.source' <<< "$receipt")" || return 1
+  IFS= read -r -d '' source < <(jq -esj 'if length==1 and (.[0].source|type)=="string" and (.[0].source|contains("\u0000")|not) then .[0].source,"\u0000" else error("invalid skip source identity") end' <<< "$receipt") || return 1
   entry="${MKVUTIL_LEDGER[$source]-}"
   [[ -n "$entry" ]] || return 1
   updated="$(_mkvutil_jq_records '
@@ -1063,6 +1124,10 @@ mkvutil_format_final_report() {
       (if .category=="mux" then "  Optional Mux metadata: \(if .metadata_ids=="" then "none" else .metadata_ids end)" else empty end),
       "  Requested files: \(.sources|length); eligible: \(.eligible); attempted: \(.attempted); completed: \(.completed); elapsed: \(.elapsed_seconds|duration)",
       "  Outcomes: \(.outcomes|tojson)"),
+    (.batches[] | select(.stop!=null) |
+      "Stopped configuration \(.id): \(.stop.mode)",
+      "  Files not started due to stop: \(.stop.not_started_sources|length)",
+      (.stop.not_started_sources[] | "    \(.)")),
     "Selected: \(.selected); required: \(.required)",
     "Done: \(.counts.done); Failed: \(.counts.failed); Warning: \(.counts.warning); Partial: \(.counts.partial); Skipped: \(.counts.skipped); Excluded: \(.counts.excluded); Not attempted: \(.counts.not_attempted); Interrupted: \(.counts.interrupted)",
     (if .interrupted then "Batch interrupted; remaining jobs not attempted." else empty end),
@@ -1079,6 +1144,7 @@ mkvutil_format_final_report() {
         (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end),
         (.result.stages[]? | "  Stage \(.kind): \(.status); code=\(.native_code)") ,
         (.result.staged_paths[]? | "  Staged: \(.)"),
+        (.result.discarded_partial_tracks[]? | "  Discarded unfinished track: \(.)"),
         (.result.scratch_paths[]? | "  Native scratch: \(.)"),
         (.result.unexpected_paths[]? | "  Unexpected artifact: \(.)"),
         (if .result.cleanup_error then "  Cleanup failed: \(.result.cleanup_error)" else empty end),
@@ -1285,7 +1351,7 @@ _mkvutil_menu_body() {
       print -r -- 'Optional metadata edits:'
       [[ -z "$targets" ]] || print -r -- "Original track IDs for each track edit: $targets"
       mkvutil_metadata_menu || return 1
-      print -r -- 'e) Back' ;;
+      print -r -- 'e) Back to main categories' ;;
     review) mkvutil_review_menu ;;
     *) return 1 ;;
   esac
@@ -1334,7 +1400,8 @@ _mkvutil_menu_choices() {
 }
 
 _mkvutil_exclude() {
-  _mkvutil_read 'Exclude this file from the batch? (Y/N) [N]: ' || return 2
+  _mkvutil_read 'Exclude this file from the batch? (Y/N; e to go back) [N]: ' || return 2
+  case "$REPLY" in e|E) return 4 ;; esac
   [[ "${REPLY:u}" == Y || "${REPLY:u}" == YES ]]
 }
 
@@ -1349,20 +1416,26 @@ mkvutil_select_files() {
 
 mkvutil_inspect_sources() {
   local file="" record="" result=0
+  local -a sources=()
   MKVUTIL_SOURCES=()
   MKVUTIL_JOBS=()
   MKVUTIL_REMOVAL_SKIPS=()
-  MKVUTIL_REMOVAL_SKIP_HISTORY=()
   for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
+    result=0
+    _mkvutil_cohort_eligible "$file" || result=$?
+    (( result != 1 )) || return 1
+    (( result == 0 )) || continue
     if record="$(mkvutil_capture_source "$file")"; then
-      MKVUTIL_SOURCES+=("$record")
+      jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
+      sources+=("$record")
     else
       print -u2 -r -- "Inspection failed: $file"
       _mkvutil_exclude || { result=$?; return "$result"; }
       mkvutil_ledger_exclude "$file" 'Initial inspection failed' || return 1
     fi
   done
-  (( ${#MKVUTIL_SOURCES} > 0 )) || { print -u2 -r -- 'No valid sources remain.'; return 1; }
+  (( ${#sources} > 0 )) || { print -u2 -r -- 'No valid sources remain.'; return 1; }
+  MKVUTIL_SOURCES=("${sources[@]}")
 }
 
 mkvutil_category_menu() {
@@ -1413,7 +1486,8 @@ mkvutil_configure_category() {
       (( result == 0 )) || return "$result" ;;
     mux)
       if [[ ",$operations," == *,1,* ]]; then
-        _mkvutil_read 'Track IDs to remove (comma/range): ' || return 2
+        _mkvutil_read 'Track IDs to remove (comma/range; e to go back): ' || return 2
+        case "$REPLY" in e|E) return 4 ;; esac
         removal="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
         signatures="$(mkvutil_removal_signatures "$reference" "$removal")" || return 1
       fi
@@ -1423,7 +1497,8 @@ mkvutil_configure_category() {
       if [[ ",$operations," == *,2,* ]]; then
         while true; do
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          _mkvutil_read 'Track order (e.g. 0:1,0:0; omitted retained tracks append): ' || return 2
+          _mkvutil_read 'Track order (e.g. 0:1,0:0; omitted retained tracks append; e to go back): ' || return 2
+          case "$REPLY" in e|E) return 4 ;; esac
           order="${REPLY//[[:space:]]/}"
           if [[ -n "$order" ]] && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
             (( ! MKVUTIL_INTERRUPTED )) || return 2
@@ -1441,7 +1516,7 @@ mkvutil_configure_category() {
       while true; do
         mkvutil_batch_metadata_requested '' || return 1
         _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' "${(j:,:)order_ids}" || return $?
-        case "$REPLY" in e|E|0) return 4 ;; esac
+        case "$REPLY" in e|E) return 6 ;; 0) return 4 ;; esac
         metadata="$REPLY"
         if [[ -z "${metadata//[[:space:]]/}" ]]; then metadata=""; _mkvutil_ui_leave; break; fi
         _mkvutil_menu_choices edit "$metadata" || return 1
@@ -1461,7 +1536,8 @@ mkvutil_configure_category() {
       ;;
     extract)
       if [[ ",$operations," == *,2,* ]]; then
-        _mkvutil_read 'Track IDs to extract (comma/range): ' || return 2
+        _mkvutil_read 'Track IDs to extract (comma/range; e to go back): ' || return 2
+        case "$REPLY" in e|E) return 4 ;; esac
         extract_ids="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
       fi
       ;;
@@ -1857,8 +1933,10 @@ mkvutil_prepare_skipped_subset() {
     print -u2 -r -- 'Skipped-subset preparation requires mismatch skips and no pending eligible jobs.'; return 1;
   }
   for receipt in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do
-    jq -e '.kind=="removal-mismatch" and (.reasons|length)>0 and (.source|type)=="string"' <<< "$receipt" > /dev/null || return 1
-    file="$(jq -r '.source' <<< "$receipt")" || return 1
+    IFS= read -r -d '' file < <(jq -esj '
+      if length==1 and .[0].kind=="removal-mismatch" and (.[0].reasons|length)>0 and
+        (.[0].source|type)=="string" and (.[0].source|contains("\u0000")|not)
+      then .[0].source,"\u0000" else error("invalid skipped source receipt") end' <<< "$receipt") || return 1
     paths+=("$file")
   done
   local previous="" duplicate=0
@@ -1878,7 +1956,12 @@ mkvutil_prepare_skipped_subset() {
   mkvutil_metadata_reset
   _mkvutil_clear_plan_layout
   for file in "${paths[@]}"; do
+    result=0
+    _mkvutil_cohort_eligible "$file" || result=$?
+    (( result != 1 )) || return 1
+    (( result == 0 )) || continue
     if record="$(mkvutil_capture_source "$file")"; then
+      jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
       sources+=("$record")
     else
       print -u2 -r -- "Fresh skipped-source inspection failed: $file"
@@ -1954,9 +2037,19 @@ _mkvutil_execution_failure() {
 
 _mkvutil_execution_support() {
   cat <<'PYCOMMON'
-import os, signal, stat, subprocess
+import os, signal, stat, subprocess, sys, time
 child = None
+native_stopped = True
+shutdown_error = ""
 interrupted = False
+stop_requested = False
+stop_signal = 0
+cleaning_up = False
+admitted = False
+stop_before_admission = False
+owner_pid = int(sys.argv[2])
+control_dir = sys.argv[3]
+graceful = sys.argv[1] in ("edit", "mux")
 
 class Interrupted(Exception):
     pass
@@ -1976,7 +2069,8 @@ def inode(path):
         return None
 
 def stop_child():
-    global child
+    global child, cleaning_up, native_stopped, shutdown_error
+    cleaning_up = True
     if child:
         try:
             os.killpg(child.pid, signal.SIGTERM)
@@ -1990,31 +2084,90 @@ def stop_child():
             except ProcessLookupError:
                 pass
             child.communicate(timeout=2)
+        # A descendant may have closed inherited pipes but still be writing.
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 0.5
+        while True:
+            try:
+                os.killpg(child.pid, 0)
+            except ProcessLookupError:
+                native_stopped = True
+                break
+            if time.monotonic() >= deadline:
+                shutdown_error = "Owned native process group shutdown could not be confirmed; candidates retained"
+                break
+            time.sleep(0.01)
 
 def interrupt(signum, frame):
+    global stop_requested, stop_signal, stop_before_admission
+    stop_requested = True
+    if not admitted:
+        stop_before_admission = True
+    if stop_signal == 0 or signum != signal.SIGINT:
+        stop_signal = signum
+    # Latch only. Raising inside Popen acquisition or publication can lose the
+    # owned child/actual-state bookkeeping. Guards act at controlled boundaries.
+
+def owner_guard():
     global interrupted
-    interrupted = True
-    raise Interrupted(f"Interrupted by signal {signum}")
+    # The file also covers signals arriving before the engine installed handlers.
+    # Cleanup/observation is permitted after interruption, further writes are not.
+    if cleaning_up:
+        return
+    if os.getppid() != owner_pid:
+        interrupt(signal.SIGHUP, None)
+    try:
+        with open(os.path.join(control_dir, "signal")) as stream:
+            requested = stream.read().strip()
+    except FileNotFoundError:
+        requested = ""
+    if requested:
+        interrupt(int(requested), None)
+    if stop_requested and (stop_signal != signal.SIGINT or not graceful or stop_before_admission):
+        interrupted = True
+        raise Interrupted(f"Interrupted by signal {stop_signal}")
+
+def admit_file():
+    global admitted
+    owner_guard()
+    admitted = True
+    with open(os.path.join(control_dir, "admitted"), "w") as stream:
+        stream.write("admitted")
 
 def run(argv, timeout=None, cwd=None):
-    global child
+    global child, native_stopped
+    owner_guard()
+    native_stopped = False
     child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, start_new_session=True, cwd=cwd)
     try:
-        if timeout is not None:
-            stdout, stderr = child.communicate(timeout=timeout)
-        else:
-            while True:
+        deadline = time.monotonic() + timeout if timeout is not None else None
+        while True:
+            owner_guard()
+            remaining = deadline - time.monotonic() if deadline is not None else 0.1
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(argv, timeout)
+            try:
+                stdout, stderr = child.communicate(timeout=min(0.1, remaining))
+                owner_guard()
+                # communicate() reaps the leader, not descendants which closed
+                # its pipes. Do not lose their group handle or certify shutdown.
                 try:
-                    stdout, stderr = child.communicate(timeout=1)
+                    os.killpg(child.pid, 0)
+                except ProcessLookupError:
+                    native_stopped = True
+                else:
+                    raise RuntimeError("Native leader exited with a surviving process group; stopping owned descendants")
+                break
+            except subprocess.TimeoutExpired:
+                # A dead leader can leave descendants holding its pipes.
+                if child.poll() is not None and child.returncode < 0:
+                    stop_child()
+                    stdout, stderr = child.communicate(timeout=2)
                     break
-                except subprocess.TimeoutExpired:
-                    # A dead leader can leave descendants holding its pipes.
-                    # Stop only its owned process group, with bounded cleanup.
-                    if child.poll() is not None and child.returncode < 0:
-                        stop_child()
-                        stdout, stderr = child.communicate(timeout=2)
-                        break
     except BaseException:
         stop_child()
         raise
@@ -2022,9 +2175,81 @@ def run(argv, timeout=None, cwd=None):
     child = None
     return code, stdout.decode(errors="replace"), stderr.decode(errors="replace")
 
-for signum in (signal.SIGINT, signal.SIGTERM):
+for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
     signal.signal(signum, interrupt)
+with open(os.path.join(control_dir, "ready"), "w") as stream:
+    stream.write(str(os.getpid()))
 PYCOMMON
+}
+
+# Direct child ownership keeps terminal Ctrl+C out of command-substitution
+# teardown. Requests/results are private files, so media names stay out of argv.
+_mkvutil_launch_engine() {
+  setopt localtraps
+  local python_bin="$1" program="$2" category="$3" job="$4" transport="" result_code=0 checker_pid=0 checker_code=0
+  shift 4
+  MKVUTIL_RESULT_JSON=""
+  if (( MKVUTIL_INTERRUPTED )); then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before execution' not_attempted)"
+    return 1
+  fi
+  transport="$(mktemp -d "${TMPDIR:-/tmp}/mkvutil-engine.XXXXXXXX")" || return 1
+  {
+    printf '%s\0' "$job" "$@" > "$transport/request" || return 1
+    MKVUTIL_ENGINE_CONTROL="$transport"
+    MKVUTIL_ENGINE_CATEGORY="$category"
+    trap '_mkvutil_request_stop 2' INT
+    trap '_mkvutil_request_stop 15' TERM
+    trap '_mkvutil_request_stop 1' HUP
+    if (( MKVUTIL_INTERRUPTED )); then
+      MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before execution' not_attempted)"
+      return 1
+    fi
+    "$python_bin" -c "$program" "$category" "$$" "$transport" < "$transport/request" > "$transport/result" 2> "$transport/errors" &
+    MKVUTIL_ENGINE_PID=$!
+    # A trapped signal interrupts wait without necessarily terminating its child.
+    # Reap that same PID before inspecting results or touching any staging file.
+    while true; do
+      result_code=0
+      wait "$MKVUTIL_ENGINE_PID" || result_code=$?
+      kill -0 "$MKVUTIL_ENGINE_PID" 2>/dev/null || break
+    done
+    MKVUTIL_ENGINE_PID=0
+    MKVUTIL_RESULT_JSON="$(<"$transport/result")"
+    printf '%s\0%s' "$job" "$MKVUTIL_RESULT_JSON" > "$transport/validation"
+    # Async read-only checker inherits ignored terminal INT from zsh. Its result
+    # cannot be lost merely because Ctrl+C arrived after the writer finished.
+    jq -Rse --arg category "$category" '
+      split("\u0000") | (.[0]|fromjson) as $job | (.[1]|fromjson) as $result |
+      $result.source==$job.source and $result.category==$category and
+      (["success","warning","failed","partial","interrupted","not_attempted"]|index($result.status))!=null' < "$transport/validation" >/dev/null 2>&1 &
+    checker_pid=$!
+    while true; do
+      checker_code=0
+      wait "$checker_pid" || checker_code=$?
+      kill -0 "$checker_pid" 2>/dev/null || break
+    done
+    if (( checker_code != 0 )); then
+      MKVUTIL_RESULT_JSON=""
+      print -u2 -r -- "Executor result unavailable or invalid; recovery transport retained: $transport"
+      [[ ! -s "$transport/errors" ]] || cat "$transport/errors" >&2
+      transport=""
+      return 1
+    fi
+    return "$result_code"
+  } always {
+    if (( MKVUTIL_ENGINE_PID > 0 )); then
+      _mkvutil_request_stop 15
+      while kill -0 "$MKVUTIL_ENGINE_PID" 2>/dev/null; do wait "$MKVUTIL_ENGINE_PID" 2>/dev/null || true; done
+      MKVUTIL_ENGINE_PID=0
+    fi
+    MKVUTIL_ENGINE_CONTROL=""
+    MKVUTIL_ENGINE_CATEGORY=""
+    if [[ -n "$transport" ]]; then
+      rm -f -- "$transport/request" "$transport/result" "$transport/errors" "$transport/ready" "$transport/signal" "$transport/admitted" "$transport/validation"
+      rmdir -- "$transport" || true
+    fi
+  }
 }
 
 _mkvutil_execution_engine() {
@@ -2058,6 +2283,7 @@ class ValidationFailure(Exception):
 
 
 def source_unchanged():
+    owner_guard()
     if identity(source) != job["identity"]:
         raise ValueError("Source identity changed since planning")
 
@@ -2380,6 +2606,7 @@ try:
                                 for target in ET.fromstring(source_tags).findall("Tag/Targets/TrackUID")):
         raise ValidationFailure(f"{source}: MKVToolNix v93 remux drops all-track TrackUID=0 tags; Mux refused before modification")
     if action == "edit":
+        admit_file()
         phase("native")
         source_unchanged()
         code, stdout, stderr = run(["mkvpropedit", str(source), "--normalize-language-ietf", "off", *job["propedit_args"]])
@@ -2396,6 +2623,7 @@ try:
         else:
             result["reason"] = "In-place Edit validation failed"
     else:
+        admit_file()
         if destination != source and os.path.lexists(destination):
             raise FileExistsError(f"Destination exists: {destination}")
         stage_dir = Path(tempfile.mkdtemp(prefix=".mkvutil-", dir=destination.parent))
@@ -2454,8 +2682,8 @@ except BaseException as error:
     result["reason"] = str(error)
     result["actual_state"] = reconcile()
     if interrupted or isinstance(error, (Interrupted, KeyboardInterrupt)):
-        result["status"] = "interrupted"
-        if action == "edit":
+        result["status"] = "interrupted" if admitted else "not_attempted"
+        if action == "edit" and admitted:
             # Do not let a second signal prevent a bounded actual-state probe.
             signal.signal(signal.SIGINT, signal.SIG_IGN); signal.signal(signal.SIGTERM, signal.SIG_IGN)
             inspect_edit()
@@ -2464,6 +2692,8 @@ except BaseException as error:
     else:
         result["status"] = "failed"
 finally:
+    result.update(stop_requested=stop_requested, stop_signal=stop_signal)
+    if shutdown_error:result["cleanup_error"] = shutdown_error
     result["elapsed_seconds"] = round(time.monotonic() - started, 6)
     if action == "mux":
         result["actual_state"] = reconcile()
@@ -2481,7 +2711,7 @@ finally:
     sys.exit(0 if result["status"] == "success" else 1)
 PYCODE
 )"
-  printf '%s\0' "$job" "$fresh" "$registry" "$aliases" | "$python_bin" -c "$program" "$action"
+  _mkvutil_launch_engine "$python_bin" "$program" "$action" "$job" "$fresh" "$registry" "$aliases"
 }
 
 _mkvutil_execute_job() {
@@ -2494,7 +2724,7 @@ _mkvutil_execute_job() {
   file="$(jq -r '.source' <<< "$job")" || return 1
   config="$(jq -c '.config' <<< "$job")" || return 1
   if ! fresh="$(mkvutil_capture_source "$file")"; then
-    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection failed before execution')"
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection stopped or failed before execution' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
     return 1
   fi
   if ! _mkvutil_jq_records '.[0].identity==.[1].identity' "$job" "$fresh" | jq -e . >/dev/null; then
@@ -2513,7 +2743,11 @@ _mkvutil_execute_job() {
   fi
   registry="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_REGISTRY}")" || return 1
   result_code=0
-  MKVUTIL_RESULT_JSON="$(_mkvutil_execution_engine "$action" "$job" "$fresh" "$registry")" || result_code=$?
+  if (( MKVUTIL_INTERRUPTED )); then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before execution' not_attempted)"
+    return 1
+  fi
+  _mkvutil_execution_engine "$action" "$job" "$fresh" "$registry" || result_code=$?
   if [[ -z "$MKVUTIL_RESULT_JSON" ]]; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Executor stopped without a result; inspect any retained phase receipt' interrupted)"
     MKVUTIL_RESULT_JSON="$(jq -c '.phase="unknown"|.actual_state="unknown_inspect_filesystem"' <<< "$MKVUTIL_RESULT_JSON")"
@@ -2550,6 +2784,7 @@ for path in protected:
         pass
 
 def source_guard():
+    owner_guard()
     if identity(source)!=job["identity"]:
         raise ValueError("Source identity changed since planning; no source write is performed by Extract")
 
@@ -2681,6 +2916,32 @@ def refresh_recovery_inventory():
     for field in ("scratch_paths","unexpected_paths"):
         result[field]=[path for path in result[field] if path in remaining]
 
+def discard_interrupted_tracks():
+    if (not interrupted or stop_signal != signal.SIGINT or not active_stage or
+            active_stage["status"] != "interrupted" or
+            active_stage["kind"] != "tracks" or active_stage["validated_count"] or
+            not native_stopped):
+        return
+    result["discarded_partial_tracks"] = []
+    for artifact in result["artifacts"]:
+        if artifact["kind"] != "track" or artifact["publication_attempted"]:
+            continue
+        path = Path(artifact["stage_path"])
+        if not os.path.lexists(path):
+            continue
+        try:
+            owned_directory_guard(path.parent)
+            expected = artifact["stage_identity"]
+            current = identity(path)
+            if expected is None or current != expected or (current["dev"], current["ino"]) in input_inodes:
+                raise ValueError(f"Partial track identity unsafe for cleanup: {path}")
+            path.unlink()
+            artifact["present"] = False
+            artifact["discarded_partial"] = True
+            result["discarded_partial_tracks"].append(str(path))
+        except (OSError, ValueError) as error:
+            result["cleanup_error"] = (result.get("cleanup_error", "") + "; " + str(error)).lstrip("; ")
+
 def execute_stage(stage,outputs):
     global active_stage
     active_stage=stage
@@ -2785,7 +3046,10 @@ except BaseException as error:
         elif active_stage["native_code"] not in (0,None):active_stage["status"]="failed"
         else:active_stage["status"]="partial" if stage_published else "failed"
 finally:
-    signal.signal(signal.SIGINT,signal.SIG_IGN);signal.signal(signal.SIGTERM,signal.SIG_IGN)
+    for signum in (signal.SIGINT,signal.SIGTERM,signal.SIGHUP):signal.signal(signum,signal.SIG_IGN)
+    result.update(stop_requested=stop_requested, stop_signal=stop_signal)
+    if shutdown_error:result["cleanup_error"] = shutdown_error
+    discard_interrupted_tracks()
     result["elapsed_seconds"]=time.monotonic()-started
     result["published_artifacts"]=[a for a in result["artifacts"] if a["publication_state"]=="confirmed"]
     result["uncertain_artifacts"]=[a for a in result["artifacts"] if a["publication_state"]=="uncertain"]
@@ -2812,7 +3076,7 @@ finally:
     sys.exit(0 if result["status"]=="success" else 1)
 PYEXTRACT
 )"
-  printf '%s\0' "$job" "$fresh" "$protected" | "$python_bin" -c "$program"
+  _mkvutil_launch_engine "$python_bin" "$program" extract "$job" "$fresh" "$protected"
 }
 
 mkvutil_execute_extract_job() {
@@ -2820,11 +3084,15 @@ mkvutil_execute_extract_job() {
   MKVUTIL_RESULT_JSON=""
   file="$(jq -r '.source' <<< "$job")" || return 1
   if ! mkvutil_check_destinations "$job" || ! fresh="$(mkvutil_capture_source "$file")"; then
-    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract preflight or source inspection failed')"
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract preflight or source inspection stopped or failed' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
     return 1
   fi
   protected="$(_mkvutil_json_array "${MKVUTIL_SCOPE_KEYS[@]}" "$file")" || return 1
-  MKVUTIL_RESULT_JSON="$(_mkvutil_extract_engine "$job" "$fresh" "$protected")" || result=$?
+  if (( MKVUTIL_INTERRUPTED )); then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before extraction' not_attempted)"
+    return 1
+  fi
+  _mkvutil_extract_engine "$job" "$fresh" "$protected" || result=$?
   if [[ -z "$MKVUTIL_RESULT_JSON" ]]; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract stopped without a result; inspect retained stage receipts' interrupted)"
     MKVUTIL_RESULT_JSON="$(jq -c '.actual_state="unknown_inspect_filesystem"' <<< "$MKVUTIL_RESULT_JSON")"
@@ -2853,11 +3121,15 @@ mkvutil_report_result() {
 mkvutil_execute_queue() {
   setopt localtraps
   local job="" category="" operations="" source="" config="" outcome="" record="" status_name="" batch=""
-  local result_code=0 queue_code=0 interrupted=0 attempted=0 completed=0 total=$# native_returned=0 result_recorded=1
+  local result_code=0 queue_code=0 interrupted=0 attempted=0 completed=0 total=$# native_returned=0 result_recorded=1 result_accounted=1
   local -F 6 queue_started=0 job_started=0 now=0 job_elapsed=0 work_elapsed=0 queue_elapsed=0 track_work=0
   local track_elapsed="" track_samples=0
-  local -a paths=() outcomes=()
-  trap 'interrupted=1; MKVUTIL_INTERRUPTED=1' INT TERM
+  local -a paths=() outcomes=() all_jobs=("$@")
+  local queue_index=0 unstarted_offset=0 missed="[]"
+  local active_source="" stop_record=null stop_mode="" engine_signal=0
+  trap '_mkvutil_request_stop 2' INT
+  trap '_mkvutil_request_stop 15' TERM
+  trap '_mkvutil_request_stop 1' HUP
   MKVUTIL_RESULTS=()
   (( MKVUTIL_INTERRUPTED == 0 )) || return 1
   (( total > 0 )) || return 0
@@ -2879,9 +3151,10 @@ mkvutil_execute_queue() {
   {
   queue_started="$(mkvutil_clock)" || return 1
   for job in "$@"; do
+    queue_index=$((queue_index + 1))
     source="$(jq -r '.source' <<< "$job")" || return 1
     [[ -n "${MKVUTIL_LEDGER[$source]-}" ]] || { print -u2 -r -- "Job outside original selected scope: $source"; return 1; }
-    if (( interrupted )); then
+    if (( MKVUTIL_INTERRUPTED )); then
       MKVUTIL_LEDGER[$source]="$(jq -c 'if .status=="pending" then .status="not_attempted" else . end' <<< "${MKVUTIL_LEDGER[$source]}")"
       continue
     fi
@@ -2890,13 +3163,16 @@ mkvutil_execute_queue() {
       success|warning|failed|partial|interrupted|excluded|not_attempted)
         print -u2 -r -- "Source already has an outcome; not retried: $source"
         queue_code=1
+        unstarted_offset=$queue_index
         continue ;;
     esac
+    active_source="$source"
     job_started="$(mkvutil_clock)" || return 1
     result_code=0
     attempted=$(( attempted + 1 ))
     native_returned=0
     result_recorded=0
+    result_accounted=0
     case "$category" in
       edit) mkvutil_execute_edit_job "$job" || result_code=$? ;;
       mux) mkvutil_execute_mux_job "$job" || result_code=$? ;;
@@ -2904,6 +3180,7 @@ mkvutil_execute_queue() {
       *) MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract execution is not available')"; result_code=1 ;;
     esac
     native_returned=1
+    (( ! MKVUTIL_INTERRUPTED )) || trap '' INT
     MKVUTIL_RESULTS+=("$MKVUTIL_RESULT_JSON")
     now="$(mkvutil_clock)" || return 1
     job_elapsed=$(( now - job_started ))
@@ -2912,6 +3189,18 @@ mkvutil_execute_queue() {
     MKVUTIL_RESULT_JSON="$(jq -c --argjson elapsed "$job_elapsed" '.+{processing_seconds:$elapsed}' <<< "$MKVUTIL_RESULT_JSON")" || return 1
     MKVUTIL_RESULTS[-1]="$MKVUTIL_RESULT_JSON"
     status_name="$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" || return 1
+    if [[ "$status_name" == not_attempted ]]; then
+      attempted=$(( attempted - 1 ))
+    else
+      unstarted_offset=$queue_index
+    fi
+    result_accounted=1
+    if [[ "$(jq -r '.stop_requested // false' <<< "$MKVUTIL_RESULT_JSON")" == true ]]; then
+      MKVUTIL_INTERRUPTED=1
+      engine_signal="$(jq -r '.stop_signal // 2' <<< "$MKVUTIL_RESULT_JSON")"
+      if (( MKVUTIL_STOP_SIGNAL == 0 || engine_signal != 2 )); then MKVUTIL_STOP_SIGNAL=$engine_signal; fi
+      trap '' INT
+    fi
     mkvutil_ledger_result "$MKVUTIL_RESULT_JSON" "$source" "$status_name" || return 1
     result_recorded=1
     if [[ "$status_name" == success ]]; then
@@ -2938,10 +3227,15 @@ mkvutil_execute_queue() {
   done
   } always {
     (( interrupted == 0 )) || MKVUTIL_INTERRUPTED=1
+    (( ! MKVUTIL_INTERRUPTED )) || trap '' INT
     if (( native_returned && ! result_recorded )); then
       # A post-tool bookkeeping failure must not relabel changed media as an
       # unattempted file. Retain the executor's actual-state record first.
       status_name="$(jq -r '.status' <<< "${MKVUTIL_RESULTS[-1]}")" || queue_code=1
+      if (( ! result_accounted )); then
+        if [[ "$status_name" == not_attempted ]]; then attempted=$((attempted - 1)); else unstarted_offset=$queue_index; fi
+        result_accounted=1
+      fi
       if mkvutil_ledger_result "${MKVUTIL_RESULTS[-1]}" "$source" "$status_name"; then
         [[ "$status_name" != success ]] || completed=$(( completed + 1 ))
       else
@@ -2956,7 +3250,16 @@ mkvutil_execute_queue() {
     MKVUTIL_TOTAL_ELAPSED=$(( MKVUTIL_TOTAL_ELAPSED + queue_elapsed ))
     batch="${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}"
     outcome="$(mkvutil_batch_outcomes)" || queue_code=1
+    if (( MKVUTIL_INTERRUPTED )); then
+      missed="$(printf '%s\n' "${all_jobs[@]}" | jq -sc --argjson start "$unstarted_offset" '.[$start:]|map(.source)')" || queue_code=1
+      stop_mode=immediate
+      if (( MKVUTIL_STOP_SIGNAL == 2 )) && [[ "$category" == edit || "$category" == mux ]]; then stop_mode=after_current_file; fi
+      stop_record="$(_mkvutil_jq_records '.[0]+{not_started_sources:.[1]}' \
+        "$(jq -cn --arg mode "$stop_mode" --arg active "$active_source" --argjson signal "$MKVUTIL_STOP_SIGNAL" \
+        '{mode:$mode,signal:$signal,active_original_source:$active}')" "$missed")" || queue_code=1
+    fi
     MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(jq -c --argjson elapsed "$queue_elapsed" --argjson attempted "$attempted" --argjson completed "$completed" --argjson eligible "$total" --argjson outcomes "$outcome" --arg state "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print interrupted || print executed)" '.+{state:$state,elapsed_seconds:$elapsed,attempted:$attempted,completed:$completed,eligible:$eligible,outcomes:$outcomes}' <<< "$batch")" || queue_code=1
+    MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(_mkvutil_jq_records '.[0]+{stop:.[1]}' "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}" "$stop_record")" || queue_code=1
     if [[ "$category" == extract ]]; then
       MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(jq -c --argjson seconds "$track_work" --argjson samples "$track_samples" '.+{track_processing_seconds:$seconds,track_stages_attempted:$samples}' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" || queue_code=1
     fi
@@ -3049,6 +3352,8 @@ mkvutil_controller() {
 }
 
 mkvutil_finish() {
+  setopt localtraps
+  (( ! MKVUTIL_INTERRUPTED )) || trap '' INT
   _mkvutil_ui_leave
   local code="$1" final_code=0
   if (( code == 2 )); then
@@ -3072,8 +3377,8 @@ mkvutil_finish() {
   return "$final_code"
 }
 
-# Navigation returns are action-menu control flow only. Data collectors keep
-# literal input, including e. Back retains inspected scope and unresolved skips.
+# Back control flow clears pending configuration while retaining outcome state.
+# Metadata fields return to their list; structural fields return to actions.
 mkvutil_discard_configuration() {
   MKVUTIL_CONFIG=""
   MKVUTIL_CURRENT_JOB=""
@@ -3177,20 +3482,29 @@ _mkvutil_main_body() {
         (( MKVUTIL_INTERRUPTED == 0 )) || return 1
         mkvutil_ledger_reset "$resolved_directory" "${MKVUTIL_SELECTED_FILES[@]}" || return 1
         selected=1
-        mkvutil_batch_request "$category" "$operations" || return 1
-        mkvutil_inspect_sources || {
-          result=$?
+      fi
+      mkvutil_batch_request "$category" "$operations" || return 1
+      if (( ${#MKVUTIL_SOURCES} == 0 )); then
+        result=0
+        mkvutil_inspect_sources || result=$?
+        if (( MKVUTIL_INTERRUPTED )); then mkvutil_finish 1; return 1; fi
+        if (( result == 4 )); then mkvutil_discard_configuration; continue; fi
+        if (( result )); then
           mkvutil_finish "$result" || sticky_code=1
           return "$sticky_code"
-        }
-      else
-        mkvutil_batch_request "$category" "$operations" || return 1
+        fi
       fi
       result=0
       mkvutil_controller "$category" "$operations" || result=$?
       if (( MKVUTIL_INTERRUPTED )); then mkvutil_finish 1; return 1; fi
       case "$result" in
         4) mkvutil_discard_configuration; continue ;;
+        6)
+          mkvutil_close_scope || sticky_code=1
+          (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
+          if (( MKVUTIL_UI_REPORT_SHOWN )); then _mkvutil_ui_acknowledge || return 1; fi
+          mkvutil_discard_configuration
+          break ;;
         5)
           mkvutil_finish 0 || sticky_code=1
           (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1

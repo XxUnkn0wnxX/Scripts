@@ -773,9 +773,11 @@ def _executor_document():
     return document
 
 
-def _run_executor_contract(env, body, manifest, *, fault=""):
+def _run_executor_contract(env, body, manifest, *, fault="", expected_returncode=0):
     manifest_path = env["fake_state"] / "execution.json"
     manifest_path.write_text(json.dumps(manifest))
+    transport_root = env["fake_state"] / "engine-transport"
+    transport_root.mkdir(exist_ok=True)
     run_env = os.environ.copy()
     run_env.update({
         "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
@@ -784,6 +786,7 @@ def _run_executor_contract(env, body, manifest, *, fault=""):
         "TEST_COMMAND_LOG": str(env["command_log"]), "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
         "TEST_FAKE_STATE_DIR": str(env["fake_state"]), "TEST_FAKE_EXECUTION_JSON": str(manifest_path),
         "PYTHONDONTWRITEBYTECODE": "1",
+        "TMPDIR": str(transport_root),
     })
     if fault:
         fault_dir = env["fake_state"] / "faults"
@@ -804,12 +807,12 @@ job="$(mkvutil_plan_job "$record" "$config")"
 ''' + body, "executor-contract", str(env["mkv_utils_script"])],
         cwd=env["workdir"], env=run_env, text=True, capture_output=True, timeout=35,
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == expected_returncode, result.stdout + result.stderr
     return result
 
 
 _EXECUTOR_FAULTS = r'''
-import json, os, signal
+import json, os, signal, subprocess
 from pathlib import Path
 fault = os.environ.get("TEST_EXECUTOR_FAULT")
 replace, link, unlink = os.replace, os.link, os.unlink
@@ -823,7 +826,7 @@ def patched_replace(src, dst, *args, **kwargs):
             raise PermissionError("injected before replacement")
         result = replace(src, dst, *args, **kwargs)
         if fault == "after_replace_interrupt":
-            os.kill(os.getpid(), signal.SIGINT)
+            os.kill(os.getpid(), signal.SIGTERM)
         if fault == "after_replace_dest_change":
             Path(dst).unlink()
             Path(dst).write_bytes(b"other writer")
@@ -846,7 +849,7 @@ def patched_link(src, dst, *args, **kwargs):
         raise PermissionError("injected before link")
     result = link(src, dst, *args, **kwargs)
     if candidate(src) and fault == "after_link_interrupt":
-        os.kill(os.getpid(), signal.SIGINT)
+        os.kill(os.getpid(), signal.SIGTERM)
     return result
 
 def patched_unlink(path, *args, **kwargs):
@@ -854,6 +857,17 @@ def patched_unlink(path, *args, **kwargs):
         raise PermissionError("injected old-source cleanup failure")
     return unlink(path, *args, **kwargs)
 os.replace, os.link, os.unlink = patched_replace, patched_link, patched_unlink
+if fault in ("pre_admission_int", "parent_loss"):
+    original_popen = subprocess.Popen
+    class AcquisitionSignal(original_popen):
+        def __init__(self, argv, *args, **kwargs):
+            super().__init__(argv, *args, **kwargs)
+            if argv[0] == "mkvextract" and argv[-1] == "tags":
+                if fault == "pre_admission_int":os.kill(os.getpid(), signal.SIGINT)
+            if fault == "parent_loss" and argv[0] == "mkvmerge" and "-o" in argv:
+                Path(os.environ["TEST_FAKE_STATE_DIR"], "lost-owner-pids").write_text(json.dumps([os.getpid(),self.pid]))
+                os.kill(os.getppid(), signal.SIGKILL)
+    subprocess.Popen = AcquisitionSignal
 '''
 
 
@@ -958,6 +972,53 @@ print -r -- "$MKVUTIL_RESULT_JSON"
     assert calls[0][-1] == str(source) and calls[0][calls[0].index("--title") + 1] == ""
     assert calls[0][calls[0].index("--track-order") + 1] == "0:12,0:11"
     assert not list(env["workdir"].glob(".mkvutil-*"))
+
+
+def test_mkv_utils_stop_before_admission_and_retry_suffix(env):
+    first, manifest = _executor_manifest(env)
+    second = _mkv_file(env, "Retry later.mk3d")
+    manifest["sources"][str(second)] = manifest["sources"][str(first)]
+    result = _run_executor_contract(env, r'''
+secondjob="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Retry later.mk3d")" "$config")"
+mkvutil_ledger_reset "$PWD" "$PWD/source.mk3d" "$PWD/Retry later.mk3d"
+# A retry candidate remains 'skipped' until it is actually processed.
+later="$PWD/Retry later.mk3d"
+MKVUTIL_LEDGER[$later]="$(jq '.status="skipped"' <<< "${MKVUTIL_LEDGER[$later]}")"
+if mkvutil_execute_queue "$job" "$secondjob"; then fail 'accepted stopped queue'; fi
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''', manifest, fault="pre_admission_int")
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    batch = summary["batches"][0]
+    assert batch["attempted"] == batch["completed"] == 0
+    assert batch["stop"]["not_started_sources"] == [str(first), str(second)]
+    assert summary["counts"]["not_attempted"] == 1 and summary["counts"]["skipped"] == 1
+    assert first.read_bytes() == second.read_bytes() == b"payload"
+    assert not [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
+
+
+def test_mkv_utils_owner_loss_stops_engine_before_publication(env):
+    import time
+    first, manifest = _executor_manifest(env)
+    _run_executor_contract(env, 'mkvutil_execute_mux_job "$job"', manifest,
+                           fault="parent_loss", expected_returncode=-9)
+    deadline = time.monotonic() + 5
+    results = []
+    while time.monotonic() < deadline:
+        results = list((env["fake_state"] / "engine-transport").glob("*/result"))
+        if results and results[0].stat().st_size: break
+        time.sleep(0.02)
+    assert len(results) == 1 and results[0].stat().st_size
+    record = json.loads(results[0].read_text())
+    assert record["status"] == "interrupted" and record["stop_signal"] == 1
+    assert not record["publication_attempted"] and not record["publication_committed"]
+    assert first.read_bytes() == b"payload" and not first.with_suffix(".mka").exists()
+    pids = json.loads((env["fake_state"] / "lost-owner-pids").read_text())
+    for pid in pids:
+        while time.monotonic() < deadline:
+            try: os.kill(pid, 0)
+            except ProcessLookupError: break
+            time.sleep(0.02)
+        with pytest.raises(ProcessLookupError): os.kill(pid, 0)
 
 
 @pytest.mark.parametrize("code", [1, 2])
@@ -1234,7 +1295,7 @@ config='{"category":"extract","operations":["1","2"],"removed_ids":[],"order":""
 
 
 _EXTRACT_FAULTS = r'''
-import json, os, signal
+import json, os, signal, subprocess, sys
 from pathlib import Path
 fault=os.environ.get("TEST_EXTRACT_FAULT", "")
 replace,link,rmdir=os.replace,os.link,os.rmdir
@@ -1258,6 +1319,27 @@ def patched_rmdir(path,*args,**kwargs):
         raise PermissionError(f"injected late cleanup failure: {path}")
     return rmdir(path,*args,**kwargs)
 os.replace,os.link,os.rmdir=patched_replace,patched_link,patched_rmdir
+if fault == "late_recovery_int":
+    original_iterdir = Path.iterdir
+    recovery_signalled = False
+    def recovery_iterdir(path):
+        global recovery_signalled
+        if not recovery_signalled and path.name.startswith(".mkvutil-extract-") and getattr(sys.modules["__main__"], "cleaning_up", False):
+            recovery_signalled = True
+            os.kill(os.getpid(), signal.SIGINT)
+        return original_iterdir(path)
+    Path.iterdir = recovery_iterdir
+if fault == "acquisition_int":
+    original_popen = subprocess.Popen
+    class AcquisitionSignal(original_popen):
+        def __init__(self, argv, *args, **kwargs):
+            super().__init__(argv, *args, **kwargs)
+            self.is_track = argv[0] == "mkvextract" and argv[2] == "tracks"
+            self.communications = 0
+            if fault == "acquisition_int" and self.is_track:
+                Path(os.environ["TEST_FAKE_STATE_DIR"], "acquired-pid").write_text(str(self.pid))
+                os.kill(os.getpid(), signal.SIGINT)
+    subprocess.Popen = AcquisitionSignal
 '''
 
 
@@ -1429,6 +1511,51 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
     assert summary["interrupted"] and summary["counts"]["not_attempted"]==1
     assert len(_command_argv(env,"mkvextract"))==2 and all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
     assert "Processed In:" in result.stdout  # An actual interrupted track attempt is a timing sample.
+
+
+@pytest.mark.parametrize("fault", ["acquisition_int", "late_recovery_int"])
+def test_mkv_utils_extract_stop_acquisition_and_recovery_provenance(env, fault):
+    manifest = _extract_manifest(env)
+    if fault == "late_recovery_int":
+        manifest["extraction"][str(env["workdir"] / "First source.mkv")]["tracks"]["code"] = 1
+    result = _run_extract_contract(env, r'''
+a="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+reject mkvutil_execute_extract_job "$a"
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, fault=fault)
+    record = json.loads(result.stdout)
+    assert record["stop_signal"] == 2
+    if fault == "acquisition_int":
+        assert record["status"] == "interrupted"
+        with pytest.raises(ProcessLookupError): os.kill(int((env["fake_state"] / "acquired-pid").read_text()), 0)
+    else:
+        assert record["status"] == "warning" and not record.get("discarded_partial_tracks")
+        tracks = [a for a in record["artifacts"] if a["kind"] == "track"]
+        assert len(tracks) == 6 and all(Path(a["stage_path"]).is_file() for a in tracks)
+
+
+def test_mkv_utils_extract_leader_exit_stops_owned_descendant(env):
+    manifest = _extract_manifest(env)
+    tool = env["fake_bin"] / "mkvextract"
+    anchor = 'code = stage.get("code", 0)'
+    tool.write_text(tool.read_text().replace(anchor, '''if mode == "tracks":
+    import subprocess
+    pidfile = Path(os.environ["TEST_FAKE_STATE_DIR"], "descendant-pid")
+    code = "import os,signal,time;from pathlib import Path;signal.signal(signal.SIGTERM,signal.SIG_IGN);Path(os.environ['TEST_FAKE_STATE_DIR'],'descendant-pid').write_text(str(os.getpid()));time.sleep(10)"
+    subprocess.Popen([sys.executable,"-c",code],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    deadline = time.monotonic()+1
+    while not pidfile.exists() and time.monotonic()<deadline:time.sleep(0.01)
+''' + anchor))
+    result = _run_extract_contract(env, r'''
+a="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+reject mkvutil_execute_extract_job "$a"
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest)
+    record = json.loads(result.stdout)
+    assert "surviving process group" in record["reason"]
+    assert not record.get("discarded_partial_tracks")
+    assert all(Path(a["stage_path"]).exists() for a in record["artifacts"] if a["kind"] == "track")
+    with pytest.raises(ProcessLookupError): os.kill(int((env["fake_state"] / "descendant-pid").read_text()), 0)
 
 
 def test_mkv_utils_extract_validation_and_protected_companions(env):
@@ -1708,8 +1835,40 @@ reject mkvutil_ledger_status
     assert "Batch interrupted; remaining jobs not attempted." in result.stdout
 
 
+def test_mkv_utils_stop_hard_signal_wins_over_finished_receipt(env):
+    result = _run_planning_contract(env, r'''
+mkvutil_ledger_reset "$PWD" "$PWD/first.mkv" "$PWD/later.mkv"
+config='{"category":"mux","operations":["2"],"metadata":""}'
+first="$(jq -cn --arg source "$PWD/first.mkv" --argjson config "$config" '{source:$source,config:$config}')"
+second="$(jq -cn --arg source "$PWD/later.mkv" --argjson config "$config" '{source:$source,config:$config}')"
+mkvutil_execute_mux_job() {
+  MKVUTIL_RESULT_JSON="$(jq -c '{source:.source,destination:.source,status:"success",phase:"complete",actual_state:"replaced_complete",reason:"",stop_requested:true,stop_signal:2}' <<< "$1")"
+  kill -TERM $$
+}
+reject mkvutil_execute_queue "$first" "$second"
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''', {})
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    stop = summary["batches"][0]["stop"]
+    assert stop["signal"] == 15 and stop["mode"] == "immediate"
+    assert stop["not_started_sources"] == [str(env["workdir"] / "later.mkv")]
+    assert summary["counts"]["done"] == 1
 
-def test_mkv_utils_reporting_processing_exit_keeps_actual_outcome_and_pending(env):
+
+def test_mkv_utils_stop_rejects_mismatched_transport_result(env):
+    result = _run_planning_contract(env, r'''
+job='{"source":"/source.mkv","config":{"category":"mux"}}'
+program='print("{\"source\":\"/different.mkv\",\"category\":\"mux\",\"status\":\"success\"}")'
+reject _mkvutil_launch_engine "$TEST_REAL_PYTHON" "$program" mux "$job"
+eq "$MKVUTIL_RESULT_JSON" '' 'invalid result never accepted'
+''', {}, extra_env={"TMPDIR": str(env["fake_state"])})
+    assert "result unavailable or invalid" in result.stderr
+    assert len(list(env["fake_state"].glob("mkvutil-engine.*/result"))) == 1
+
+
+
+@pytest.mark.parametrize("stop_on_failure,returned_status", [(False, "success"), (True, "success"), (True, "not_attempted")])
+def test_mkv_utils_reporting_processing_exit_keeps_actual_outcome_and_pending(env, stop_on_failure, returned_status):
     result = _run_planning_contract(env, r'''
 MKVUTIL_SOURCES=()
 mkvutil_ledger_reset "$PWD" "$PWD/first.mkv" "$PWD/pending.mkv"
@@ -1721,7 +1880,7 @@ MKVUTIL_JOBS=("$first" "$second")
 typeset -a modifiers=()
 mkvutil_execute_mux_job() {
   modifiers+=("$(jq -r '.source' <<< "$1")")
-  MKVUTIL_RESULT_JSON="$(jq -c '{source:.source,destination:.source,status:"success",phase:"complete",actual_state:"replaced_complete",reason:""}' <<< "$1")"
+  MKVUTIL_RESULT_JSON="$(jq -c --arg outcome "$TEST_RETURNED_STATUS" '{source:.source,destination:.source,status:$outcome,phase:"complete",actual_state:(if $outcome=="success" then "replaced_complete" else "not_modified_by_job" end),reason:""}' <<< "$1")"
 }
 # The first post-tool clock read fails. The always block must archive the
 # tool's actual outcome, finalize the untouched pending job and remain nonzero.
@@ -1730,7 +1889,10 @@ mkvutil_clock() {
   [[ ! -f "$PWD/clock.count" ]] || count="$(< "$PWD/clock.count")"
   count=$(( count + 1 ))
   print -r -- "$count" > "$PWD/clock.count"
-  (( count != 3 )) || return 1
+  if (( count == 3 )); then
+    [[ "$TEST_STOP_ON_FAILURE" != 1 ]] || kill -INT $$
+    return 1
+  fi
   print -r -- "$count"
 }
 reject mkvutil_execute_queue "$first" "$second"
@@ -1738,13 +1900,17 @@ eq "${#modifiers}" 1 'only first tool invoked'
 eq "${#MKVUTIL_JOBS}" 0 'completed queue cleared on early exit'
 reject mkvutil_finish 1
 print -r -- "SUMMARY $(mkvutil_final_summary)"
-''', {})
+''', {}, extra_env={"TEST_STOP_ON_FAILURE": "1" if stop_on_failure else "0", "TEST_RETURNED_STATUS": returned_status})
     summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
-    assert summary["counts"]["done"] == 1 and summary["counts"]["not_attempted"] == 1
-    assert summary["batches"][0]["attempted"] == 1 and summary["batches"][0]["completed"] == 1
+    done = int(returned_status == "success")
+    assert summary["counts"]["done"] == done and summary["counts"]["not_attempted"] == 2 - done
+    assert summary["batches"][0]["attempted"] == done and summary["batches"][0]["completed"] == done
     first = next(record for record in summary["files"] if record["source"].endswith("first.mkv"))
-    assert first["attempts"][0]["result"]["actual_state"] == "replaced_complete"
-    assert "actual state=replaced_complete" in result.stdout
+    state = "replaced_complete" if done else "not_modified_by_job"
+    assert first["attempts"][0]["result"]["actual_state"] == state
+    assert f"actual state={state}" in result.stdout
+    if stop_on_failure:
+        assert summary["batches"][0]["stop"]["not_started_sources"] == [str(env["workdir"] / name) for name in (["pending.mkv"] if done else ["first.mkv", "pending.mkv"])]
 
 def test_mkv_utils_reporting_progress_and_extract_formatter_contract(env):
     result = _run_planning_contract(env, r'''
@@ -2337,7 +2503,7 @@ mkvutil_ledger_reset "$PWD" "$PWD/literal values.mkv"
 mkvutil_batch_request mux 2
 code=0
 mkvutil_configure_category mux 2 <<< $'0:0\nE' || code=$?
-eq "$code" 4 'optional metadata action Back'
+eq "$code" 6 'optional metadata list Back to main'
 eq "$MKVUTIL_CONFIG" '' 'no partial config'
 mkvutil_discard_configuration
 mkvutil_batch_request edit 4,5
@@ -2351,7 +2517,7 @@ for actions in 1 3; do
 done
 code=0
 mkvutil_configure_category mux 1 <<< e || code=$?
-eq "$code" 1 'numeric e is invalid data'
+eq "$code" 4 'removal e returns to actions'
 code=0
 mkvutil_configure_category edit 5 < /dev/null || code=$?
 eq "$code" 2 'data EOF remains bounded'
@@ -2525,13 +2691,14 @@ def test_mkv_utils_navigation_ctrl_c_blocked_input_entrypoint(env):
 
 def test_mkv_utils_navigation_fresh_subset_and_replacement_action_back(env):
     result = _run_planning_contract(env, r'''
-MKVUTIL_SOURCES=('{}' '{}')
+MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/completed.mka" '{source:$source}')" "$(jq -cn --arg source "$PWD/skipped.mkv" '{source:$source}')")
 mkvutil_ledger_reset "$PWD" "$PWD/completed.mka" "$PWD/skipped.mkv"
 mkvutil_batch_request mux 1
 mkvutil_configure_category() { MKVUTIL_CONFIG='{"category":"mux","operations":["1"],"metadata":"","settings":{}}'; }
 mkvutil_plan_queue() { MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=('{}'); return 3; }
 mkvutil_prepare_skipped_subset() {
-  MKVUTIL_SOURCES=('{"source":"fresh-skipped-only"}')
+  MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/skipped.mkv" '{source:$source}')")
+  MKVUTIL_SELECTED_FILES=("$PWD/skipped.mkv")
   MKVUTIL_CONFIG=''; MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=()
   mkvutil_metadata_reset
 }
@@ -2539,7 +2706,7 @@ code=0
 mkvutil_controller mux 1 <<< $'4\nE' || code=$?
 eq "$code" 4 'fresh subset action Back'
 eq "${#MKVUTIL_SOURCES}" 1 'fresh subset retained'
-eq "${MKVUTIL_SOURCES[1]}" '{"source":"fresh-skipped-only"}' 'completed sources not restored'
+eq "$(jq -r '.source' <<< "${MKVUTIL_SOURCES[1]}")" "$PWD/skipped.mkv" 'completed sources not restored'
 eq "${#MKVUTIL_SCOPE_KEYS}" 2 'original report scope retained'
 mkvutil_discard_configuration
 mkvutil_batch_request mux 2
@@ -2640,7 +2807,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
 
     source, second = _mkv_file(env, "untouched.mkv"), _mkv_file(env, "mismatch.mkv")
     models = _removal_models()
-    _set_fake_fzf_responses(env, [[str(source), str(second)]])
+    _set_fake_fzf_responses(env, [[str(source), str(second)], [str(source), str(second)]])
     run_env = os.environ.copy()
     run_env.update({
         "HOME": str(env["workdir"]), "TERM": "xterm-256color",
@@ -2730,12 +2897,15 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             assert "1) Remove tracks" not in screen.text and "1) Set flag-forced" in screen.text
             assert "Original track IDs for each track edit: 0" in screen.text
             switches = (screen.enters, screen.leaves)
-            os.write(master, b"e\n")
+            os.write(master, b"E\n")
+            shortcuts()
+            assert (screen.enters, screen.leaves) == switches
+            os.write(master, b"2")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             assert (screen.enters, screen.leaves) == switches
             assert "Set flag-forced" not in screen.text and "Set title" not in screen.text
             os.write(master, b"1\n")
-            normal_input(b"Track IDs to remove (comma/range): ")
+            normal_input(b"Track IDs to remove (comma/range; e to go back): ")
             os.write(master, b"1\n")
             line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
             os.write(master, b"5\n")
@@ -2781,7 +2951,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             os.write(master, b"2")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             os.write(master, b"1\n")
-            normal_input(b"Track IDs to remove (comma/range): ")
+            normal_input(b"Track IDs to remove (comma/range; e to go back): ")
             os.write(master, b"\x03")
         elif exit_key == b"title-ctrl-c":
             os.write(master, b"1")
@@ -2809,8 +2979,9 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         if exit_key == b"z":
             assert "Invalid category." in screen.normal
         if exit_key in (b"e", b"preview-ctrl-c", b"title-ctrl-c", b"track-id-ctrl-c"):
-            assert len(_command_argv(env, "fzf")) == 1
-            assert len(_command_argv(env, "mkvmerge")) == 2
+            scopes = 2 if exit_key in (b"e", b"preview-ctrl-c") else 1
+            assert len(_command_argv(env, "fzf")) == scopes
+            assert len(_command_argv(env, "mkvmerge")) == 2 * scopes
             assert all(call[0] == "-J" for call in _command_argv(env, "mkvmerge"))
         else:
             assert not any(_command_argv(env, tool) for tool in ("fzf", "mkvmerge"))
@@ -3047,7 +3218,7 @@ eq "$(jq -r '.order' <<< "$MKVUTIL_CONFIG")" 0:4 'skip preserves structure'
 mkvutil_batch_request mux 2
 code=0
 mkvutil_configure_category mux 2 <<< $'0:3\n4\nE\ne' || code=$?
-eq "$code" 4 'list Back remains category Back'
+eq "$code" 6 'list Back returns to main'
 eq "$(jq -r '.metadata_ids' <<< "${MKVUTIL_BATCHES[4]}")" '' 'list Back attribution clear'
 eq "$MKVUTIL_CONFIG" '' 'list Back leaves no config'
 code=0
@@ -3057,7 +3228,7 @@ print -r -- 'configuration retries passed'
 ''', {str(source): model})
     assert result.stdout.rstrip().endswith('configuration retries passed')
     assert result.stderr.count('Invalid track order.') == 4
-    assert result.stderr.count('Track IDs to remove (comma/range):') == 3
+    assert result.stderr.count('Track IDs to remove (comma/range; e to go back):') == 3
     assert result.stderr.count('Track order (e.g.') == 7
     assert 'Original track IDs for each track edit: 0,4,3' in result.stdout
     assert not _command_argv(env, 'fzf') and source.read_text() == 'payload'
@@ -3201,3 +3372,469 @@ print -r -- 'retry interrupt contract passed'
     assert result.stdout.rstrip().endswith('retry interrupt contract passed')
     assert result.stderr.count('Track order (e.g.') == 1
     assert 'Invalid track order.' not in result.stderr
+
+
+def test_mkv_utils_back_cohort_request_identity_and_current_subset(env):
+    result = _run_planning_contract(env, r'''
+first="$PWD/first.mkv"; excluded="$PWD/excluded.mkv"; completed="$PWD/completed.mk3d"; last=$PWD/$'last\n.mkv\n'
+mkvutil_ledger_reset "$PWD" "$first" "$excluded" "$completed" "$last"
+mkvutil_ledger_exclude "$excluded" 'explicit exclusion'
+mkvutil_ledger_result "$(jq -cn --arg source "$completed" '{source:$source,status:"success",destination:"converted.mka"}')"
+# A converted original need not exist to be recognized as completed.
+MKVUTIL_SOURCES=()
+MKVUTIL_SELECTED_FILES=("$completed" "$excluded" "$last" "$first")
+mkvutil_batch_request mux 2
+expected="$(_mkvutil_json_array "$last" "$first")"
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[1]}")" "$expected" 'current selection filters verified exclusions/completed identities'
+MKVUTIL_SOURCES=("$(jq -cn --arg source "$first" '{source:$source}')")
+mkvutil_batch_request edit 5
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[2]}")" "$(_mkvutil_json_array "$first")" 'full inspected pool takes precedence'
+MKVUTIL_SOURCES=(); MKVUTIL_SELECTED_FILES=()
+mkvutil_batch_request edit 5
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[3]}")" "$(_mkvutil_json_array "$first" "$last")" 'legacy scope fallback filters completed/excluded'
+for invalid in missing malformed multiple-documents invalid-first wrong-identity bad-status; do
+  saved="${MKVUTIL_LEDGER[$first]}"
+  case "$invalid" in
+    missing) unset "MKVUTIL_LEDGER[$first]" ;;
+    malformed) MKVUTIL_LEDGER[$first]='{}' ;;
+    multiple-documents) MKVUTIL_LEDGER[$first]="$saved"$'\n'"$saved" ;;
+    invalid-first) MKVUTIL_LEDGER[$first]='{}'$'\n'"$saved" ;;
+    wrong-identity) MKVUTIL_LEDGER[$first]="$(jq --arg source "$last" '.source=$source' <<< "$saved")" ;;
+    bad-status) MKVUTIL_LEDGER[$first]="$(jq '.status="unknown"' <<< "$saved")" ;;
+  esac
+  MKVUTIL_SELECTED_FILES=("$first")
+  reject mkvutil_batch_request mux 2
+  eq "${#MKVUTIL_BATCHES}" 3 "invalid ledger did not publish request: $invalid"
+  MKVUTIL_LEDGER[$first]="$saved"
+done
+nul_record="$(jq -cn --arg source "$first" '{source:($source+"\u0000suffix")}')"
+source_record="$(jq -cn --arg source "$first" '{source:$source}')"
+for invalid in '{}' '{"source":null}' '{"source":"relative.mkv"}' "$nul_record" "$source_record"$'\n'"$source_record"; do
+  MKVUTIL_SOURCES=("$invalid")
+  reject mkvutil_batch_request mux 2
+done
+print -r -- 'cohort identity contracts passed'
+''', {})
+    assert result.stdout.strip() == 'cohort identity contracts passed'
+    assert not _command_argv(env, 'fzf') and not _command_argv(env, 'mkvmerge')
+
+
+def test_mkv_utils_back_atomic_initial_inspection_retries_entire_eligible_selection(env):
+    files = [_mkv_file(env, name) for name in ('first.mkv', 'excluded.mkv', 'back.mkv', 'last.mkv')]
+    _set_fake_fzf_responses(env, [[str(file) for file in files]])
+    sources = {str(file): _source_json([(0, 'audio', 'A_AAC', True)]) for file in files}
+    result = _run_planning_contract(env, r'''
+functions[original_capture_source]="${functions[mkvutil_capture_source]}"
+functions[original_inspect_sources]="${functions[mkvutil_inspect_sources]}"
+inspection_pass=0
+mkvutil_inspect_sources() {
+  (( ++inspection_pass ))
+  local result=0
+  original_inspect_sources || result=$?
+  if (( result==4 )); then
+    eq "${#MKVUTIL_SOURCES}" 0 'Back publishes no partial inspection pool'
+    eq "${#MKVUTIL_SELECTED_FILES}" 4 'Back preserves even not-yet-inspected selection'
+  fi
+  return "$result"
+}
+mkvutil_capture_source() {
+  printf '%s\0' "$1" >> "$PWD/captures.bin"
+  if (( inspection_pass==1 )) && [[ "$1" == */excluded.mkv || "$1" == */back.mkv ]]; then return 1; fi
+  original_capture_source "$1"
+}
+code=0
+mkvutil_main "$PWD" || code=$?
+eq "$code" 0 'explicit exclusion and Back leave neutral invocation successful'
+eq "$inspection_pass" 2 'initial Back triggers same-cohort inspection retry'
+eq "${#MKVUTIL_SELECTED_FILES}" 4 'selected file cohort retained'
+eq "${#MKVUTIL_SOURCES}" 3 'complete eligible pool published'
+eq "$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$PWD/excluded.mkv]}")" excluded 'explicit exclusion survives retry'
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[1]}")" "$(_mkvutil_json_array "$PWD/first.mkv" "$PWD/excluded.mkv" "$PWD/back.mkv" "$PWD/last.mkv")" 'initial preinspection request covers full selection'
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[2]}")" "$(_mkvutil_json_array "$PWD/first.mkv" "$PWD/back.mkv" "$PWD/last.mkv")" 'retry request covers every remaining eligible file'
+eq "$MKVUTIL_CONFIG" '' 'pending config discarded'
+eq "${#MKVUTIL_JOBS}" 0 'no pending jobs'
+print -r -- 'initial atomic Back passed'
+''', sources, input_data='1\n5\nY\ne\n5\ne\ne\ne\n')
+    assert result.stdout.rstrip().endswith('initial atomic Back passed')
+    calls = (env['workdir'] / 'captures.bin').read_bytes().split(b'\0')[:-1]
+    assert calls == [os.fsencode(file) for file in (*files[:3], files[0], files[2], files[3])]
+    assert len(_command_argv(env, 'fzf')) == 1
+    assert len(_command_argv(env, 'mkvmerge')) == 4
+    assert result.stdout.count('Final report') == 1 and 'Excluded: 1' in result.stdout
+    assert all(file.read_text() == 'payload' for file in files)
+
+
+def test_mkv_utils_back_fresh_subset_inspection_retry_preserves_history_and_completed_source(env):
+    files = [_mkv_file(env, name) for name in ('completed.mkv', 'skip-first.mkv', 'excluded.mkv', 'back.mkv', 'last.mkv')]
+    _set_fake_fzf_responses(env, [[str(file) for file in files]])
+    sources = {str(file): _source_json([(0, 'audio', 'A_AAC', True)]) for file in files}
+    result = _run_planning_contract(env, r'''
+functions[original_capture_source]="${functions[mkvutil_capture_source]}"
+phase=1; controllers=0
+mkvutil_capture_source() {
+  printf '%s\0' "$1" >> "$PWD/captures.bin"
+  if (( phase==2 )) && [[ "$1" == */excluded.mkv || "$1" == */back.mkv ]]; then return 1; fi
+  original_capture_source "$1"
+}
+mkvutil_controller() {
+  (( ++controllers ))
+  if (( controllers==1 )); then
+    MKVUTIL_HAS_RUN=1
+    mkvutil_ledger_result "$(jq -cn --arg source "$PWD/completed.mkv" '{source:$source,status:"success",destination:$source,phase:"complete",actual_state:"published_complete"}')"
+    for file in "$PWD/skip-first.mkv" "$PWD/excluded.mkv" "$PWD/back.mkv" "$PWD/last.mkv"; do
+      receipt="$(jq -cn --arg source "$file" --arg reference "$PWD/completed.mkv" '{kind:"removal-mismatch",source:$source,reference:$reference,reasons:[{original_id:"0",reason:"codec-mismatch",expected:{type:"audio",codec_id:"A_OPUS"},actual:{type:"audio",codec_id:"A_AAC"}}]}')"
+      mkvutil_ledger_skip "$receipt"
+      MKVUTIL_REMOVAL_SKIPS+=("$receipt")
+    done
+    phase=2
+    code=0
+    mkvutil_prepare_skipped_subset || code=$?
+    eq "$code" 4 'fresh inspection Back propagated'
+    eq "${#MKVUTIL_SOURCES}" 0 'fresh partial pool not published'
+    eq "${#MKVUTIL_SELECTED_FILES}" 4 'prepared subset includes not-yet-inspected last file'
+    eq "${#MKVUTIL_REMOVAL_SKIP_HISTORY}" 4 'all original mismatch receipts archived'
+    phase=3
+    return 4
+  fi
+  eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[2]}")" "$(_mkvutil_json_array "$PWD/skip-first.mkv" "$PWD/back.mkv" "$PWD/last.mkv")" 'retry batch uses eligible current subset only'
+  eq "${#MKVUTIL_SOURCES}" 3 'all eligible subset files inspected'
+  eq "${#MKVUTIL_REMOVAL_SKIP_HISTORY}" 4 'reinspection retains archived mismatch history'
+  return 6
+}
+code=0
+mkvutil_main "$PWD" || code=$?
+eq "$code" 1 'unresolved mismatch status remains sticky after main exit'
+eq "$controllers" 2 'retry configured without replaying original complete cohort'
+eq "$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$PWD/completed.mkv]}")" success 'completed outcome retained'
+eq "$(jq -r '.attempts|length' <<< "${MKVUTIL_LEDGER[$PWD/completed.mkv]}")" 1 'completed outcome never replayed'
+eq "$(jq -r '.excluded_from_retry' <<< "${MKVUTIL_LEDGER[$PWD/excluded.mkv]}")" true 'explicit unresolved exclusion survives retry'
+eq "$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$PWD/excluded.mkv]}")" skipped 'exclusion does not resolve previous required mismatch'
+eq "${#MKVUTIL_JOBS}" 0 'no jobs survive Back'
+print -r -- 'fresh subset Back passed'
+''', sources, input_data='2\n1\nY\nE\n2\ne\n')
+    assert result.stdout.rstrip().endswith('fresh subset Back passed')
+    calls = (env['workdir'] / 'captures.bin').read_bytes().split(b'\0')[:-1]
+    assert calls == [os.fsencode(file) for file in (*files, *files[1:4], files[1], files[3], files[4])]
+    assert len(_command_argv(env, 'fzf')) == 1 and len(_command_argv(env, 'mkvmerge')) == 9
+    assert result.stdout.count('Final report') == 1 and 'Done: 1' in result.stdout and 'Skipped: 4' in result.stdout
+    assert all(file.read_text() == 'payload' for file in files)
+
+
+def test_mkv_utils_back_planning_exclusion_preserves_full_unexcluded_pool(env):
+    files = [_mkv_file(env, name) for name in ('first.mkv', 'excluded.mkv', 'back.mkv', 'last.mkv')]
+    result = _run_planning_contract(env, r'''
+for file in "$PWD/first.mkv" "$PWD/excluded.mkv" "$PWD/back.mkv" "$PWD/last.mkv"; do
+  MKVUTIL_SOURCES+=("$(mkvutil_capture_source "$file")")
+done
+mkvutil_ledger_reset "$PWD" "$PWD/first.mkv" "$PWD/excluded.mkv" "$PWD/back.mkv" "$PWD/last.mkv"
+mkvutil_batch_request edit 5
+mkvutil_plan_job() {
+  local file="$(jq -r '.source' <<< "$1")"
+  [[ "$file" != */excluded.mkv && "$file" != */back.mkv ]] || return 1
+  print -r -- '{"planned":true}'
+}
+MKVUTIL_CONFIG='{"category":"edit"}'
+code=0
+mkvutil_plan_queue <<< $'Y\ne' || code=$?
+eq "$code" 4 'planning exclusion Back'
+eq "${#MKVUTIL_SOURCES}" 3 'full pool survives except confirmed exclusion'
+eq "${#MKVUTIL_JOBS}" 0 'partially built queue never published'
+mkvutil_discard_configuration
+mkvutil_batch_request edit 5
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[2]}")" "$(_mkvutil_json_array "$PWD/first.mkv" "$PWD/back.mkv" "$PWD/last.mkv")" 'uninspected planning suffix remains requested'
+eq "$MKVUTIL_CONFIG" '' 'pending configuration discarded'
+print -r -- 'planning Back passed'
+''', {str(file): _source_json([(0, 'audio', 'A_AAC', True)]) for file in files})
+    assert result.stdout.rstrip().endswith('planning Back passed')
+    assert len(_command_argv(env, 'mkvmerge')) == 4
+
+
+def test_mkv_utils_back_structural_and_extract_fields_reset_configuration(env):
+    source = _mkv_file(env, 'fields.mkv')
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/fields.mkv")"
+MKVUTIL_SOURCES=("$record")
+for category operations data in mux 1 e mux 2 E extract 2 e; do
+  MKVUTIL_CONFIG=old; MKVUTIL_JOBS=(old); MKVUTIL_METADATA_SETTINGS[4:0]=old
+  code=0
+  mkvutil_configure_category "$category" "$operations" <<< "$data" || code=$?
+  eq "$code" 4 "field Back: $category/$operations"
+  eq "$MKVUTIL_CONFIG" '' 'no partial config'
+  eq "${#MKVUTIL_JOBS}" 0 'no stale jobs'
+  eq "${#MKVUTIL_METADATA_SETTINGS}" 0 'no partial metadata'
+  eq "${#MKVUTIL_SOURCES}" 1 'file pool retained'
+done
+print -r -- 'structural Back passed'
+''', {str(source): _source_json([(0, 'audio', 'A_AAC', True)])})
+    assert result.stdout.rstrip().endswith('structural Back passed')
+    assert 'Invalid track order' not in result.stderr
+
+
+def test_mkv_utils_back_extract_id_returns_to_actions_same_picker_entrypoint(env):
+    source = _mkv_file(env, 'Extract Back.mkv')
+    result = _run_mkv_utils(env, fzf_responses=[[str(source)]], input_data='3\n2\ne\n2\n1\n2\n0\n')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stderr.count('Track IDs to extract (comma/range; e to go back):') == 2
+    assert len(_command_argv(env, 'fzf')) == len(_command_argv(env, 'mkvmerge')) == 1
+    assert str(source.parent / 'Extract Back - Track [1].aac') in result.stdout
+    assert result.stdout.count('Final report') == 1 and 'Cancelled; no media changes.' in result.stdout
+    assert not _command_argv(env, 'mkvextract') and source.read_text() == 'payload'
+
+
+def test_mkv_utils_back_mux_metadata_field_then_list_goes_directly_main_entrypoint(env):
+    source = _mkv_file(env, 'Mux Back.mkv')
+    result = _run_mkv_utils(env, fzf_responses=[[str(source)]], input_data='2\n2\n0:2\n4\ne\nE\ne\n')
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stderr.count('Metadata choices (comma/range; blank for none):') == 2
+    assert result.stdout.count('Original track IDs for each track edit: 2') == 2
+    assert result.stdout.count('1) Matroska Edit') == 2 and 'Final report' not in result.stdout
+    assert result.stderr.count('Operations (single/comma/range):') == 1
+    assert len(_command_argv(env, 'fzf')) == len(_command_argv(env, 'mkvmerge')) == 1
+    assert not _command_argv(env, 'mkvpropedit') and source.read_text() == 'payload'
+
+
+def test_mkv_utils_back_initial_inspection_interrupt_never_rereads_menu(tmp_path):
+    result = _run_metadata_contract(tmp_path, r'''
+reads=0; finished=0
+_mkvutil_menu_read() { (( ++reads )); if (( reads==1 )); then REPLY=1; else REPLY=5; fi; }
+mkvutil_scan_files() { MKVUTIL_SCAN_FILES=("$PWD/pending.mkv"); }
+mkvutil_select_files() { MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
+mkvutil_inspect_sources() { MKVUTIL_INTERRUPTED=1; return 4; }
+mkvutil_finish() { eq "$1" 1 'interrupted inspection finishes as interrupted'; (( ++finished )); return 1; }
+code=0
+mkvutil_main "$PWD" || code=$?
+eq "$code" 1 'interrupt overrides Back control flow'
+eq "$reads" 2 'no additional blocking menu after inspection interrupt'
+eq "$finished" 1 'one terminal finish'
+eq "${#MKVUTIL_BATCHES}" 1 'request remains attributed'
+print -r -- 'inspection interrupt passed'
+''')
+    assert result.stdout.rstrip().endswith('inspection interrupt passed')
+
+
+@pytest.mark.parametrize('boundary', ('quiet', 'unresolved', 'unresolved-main-eof', 'report-failure'))
+def test_mkv_utils_back_metadata_main_control_preserves_sticky_status_and_report_errors(env, boundary):
+    result = _run_planning_contract(env, r'''
+mkvutil_scan_files() { MKVUTIL_SCAN_FILES=("$PWD/pending.mkv"); }
+mkvutil_select_files() { MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
+mkvutil_inspect_sources() { MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/pending.mkv" '{source:$source}')"); }
+mkvutil_controller() {
+  if [[ "$TEST_BACK_BOUNDARY" != quiet ]]; then
+    local receipt="$(jq -cn --arg source "$PWD/pending.mkv" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"0",reason:"missing-id",expected:{type:"audio",codec_id:"A_AAC"},actual:null}]}')"
+    mkvutil_ledger_skip "$receipt"
+  fi
+  return 6
+}
+if [[ "$TEST_BACK_BOUNDARY" == report-failure ]]; then
+  mkvutil_final_report() { print -u2 -r -- 'Report unavailable'; return 1; }
+fi
+code=0
+mkvutil_main "$PWD" || code=$?
+if [[ "$TEST_BACK_BOUNDARY" == quiet ]]; then eq "$code" 0 'neutral metadata list Back remains quiet'
+else eq "$code" 1 'unresolved/report failure remains nonzero'; fi
+if [[ "$TEST_BACK_BOUNDARY" != report-failure ]]; then
+  eq "$MKVUTIL_CONFIG" '' 'pending configuration discarded'
+  eq "${#MKVUTIL_JOBS}" 0 'pending jobs discarded'
+else eq "$MKVUTIL_UI_REPORT_SHOWN" -1 'failed report not covered by main'; fi
+print -r -- 'main Back control passed'
+''', {}, input_data='2\n2\n' + ('' if boundary == 'unresolved-main-eof' else 'e\n'),
+        extra_env={'TEST_BACK_BOUNDARY': boundary})
+    assert result.stdout.rstrip().endswith('main Back control passed')
+    assert result.stdout.count('1) Matroska Edit') == (1 if boundary == 'report-failure' else 2)
+    assert result.stdout.count('Final report') == (1 if boundary in ('unresolved', 'unresolved-main-eof') else 0)
+    if boundary == 'report-failure':
+        assert 'Report unavailable' in result.stderr
+    assert not _command_argv(env, 'mkvmerge') and not _command_argv(env, 'fzf')
+
+
+def test_mkv_utils_back_prepared_subset_preserves_newline_source_identity(env):
+    result = _run_planning_contract(env, r'''
+file=$PWD/$'skipped\n.mkv\n'
+mkvutil_ledger_reset "$PWD" "$file"
+MKVUTIL_SOURCES=(); MKVUTIL_SELECTED_FILES=("$file")
+mkvutil_batch_request mux 1
+receipt="$(jq -cn --arg source "$file" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"0",reason:"missing-id"}]}')"
+mkvutil_ledger_skip "$receipt"
+eq "$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$file]}")" skipped 'original newline path receives skip history'
+MKVUTIL_REMOVAL_SKIPS=("$receipt"); MKVUTIL_JOBS=()
+mkvutil_capture_source() { jq -cn --arg source "$1" '{source:$source}'; }
+mkvutil_prepare_skipped_subset
+eq "${MKVUTIL_SELECTED_FILES[1]}" "$file" 'prepared selection retains trailing newlines'
+IFS= read -r -d '' observed < <(jq -j '.source,"\u0000"' <<< "${MKVUTIL_SOURCES[1]}")
+eq "$observed" "$file" 'prepared source retains trailing newlines'
+mkvutil_batch_request mux 2
+eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[2]}")" "$(_mkvutil_json_array "$file")" 'fresh request retains same original newline identity'
+eq "${#MKVUTIL_REMOVAL_SKIP_HISTORY}" 1 'original newline receipt retained'
+print -r -- 'prepared newline identity passed'
+''', {})
+    assert result.stdout.rstrip().endswith('prepared newline identity passed')
+    assert not _command_argv(env, 'mkvmerge')
+
+
+@pytest.mark.parametrize("category,stop", [
+    ("edit", "int"), ("mux", "int"), ("extract", "int"),
+    ("attachments", "int"), ("mux", "term"), ("edit", "hup"),
+    ("mux", "late-int"),
+    ("extract", "descendant-int"),
+])
+def test_mkv_utils_runtime_stop_terminal(env, category, stop):
+    """Real keyboard/terminal delivery; fake writers pause after creating data."""
+    import fcntl
+    import pty
+    import select
+    import signal
+    import termios
+    import time
+
+    first, second = _mkv_file(env, "Active episode.mkv"), _mkv_file(env, "Missed episode.mkv")
+    original = _integration_model(attachments=[{"id": 1, "file_name": "Font.ttf", "size": 4}])
+    edited = json.loads(json.dumps(original)); edited["container"]["properties"]["title"] = "Stop test"
+    extra = _integration_manifest(env, {first: original, second: original},
+        stage={str(first): _integration_output(original, [1, 0, 2, 3])},
+        post_edit={str(first): edited},
+        extraction={str(first): {"attachments": {"outputs": {"1": {"data": "font"}}},
+                                 "tracks": {"outputs": {"3": {"data": "unfinished track"}}}}})
+    marker = env["fake_state"] / "writer-ready"
+    tool, anchor = {
+        "edit": ("mkvpropedit", 'code = manifest.get("edit_code", 0)'),
+        "mux": ("mkvmerge", 'code = manifest.get("merge_code", 0)'),
+        "extract": ("mkvextract", 'code = stage.get("code", 0)'),
+        "attachments": ("mkvextract", 'code = stage.get("code", 0)'),
+    }[category]
+    condition = 'mode == "tracks"' if category == "extract" else 'mode == "attachments"' if category == "attachments" else "True"
+    executable = env["fake_bin"] / tool
+    body = executable.read_text()
+    assert body.count(anchor) == 1
+    descendant_setup = ""
+    if stop == "descendant-int":
+        descendant_setup = '''    import subprocess
+    child_code = "import os,signal,time;from pathlib import Path;signal.signal(signal.SIGTERM,signal.SIG_IGN);Path(os.environ['TEST_STOP_MARKER']+'.descendant').write_text(str(os.getpid()));time.sleep(10)"
+    subprocess.Popen([sys.executable,"-c",child_code],stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
+    ready_deadline = time.monotonic() + 1
+    while not Path(str(marker)+".descendant").exists() and time.monotonic() < ready_deadline:time.sleep(0.01)
+'''
+    body = body.replace(anchor, f'''if {condition}:
+    import time
+    marker = Path(os.environ["TEST_STOP_MARKER"])
+{descendant_setup}\
+    marker.write_text(str(os.getpid()))
+    time.sleep(0.8)
+    marker.with_suffix(".finished").write_text("finished")
+{anchor}''')
+    executable.write_text(body)
+    result_marker = env["fake_state"] / "result-check-ready"
+    if stop == "late-int":
+        checker = env["fake_bin"] / "jq"
+        checker_text = checker.read_text()
+        checker.write_text(checker_text.replace("set -e\n", '''set -e
+case "$*" in
+  *'$result.source==$job.source'*)
+    printf ready > "$TEST_RESULT_MARKER"
+    sleep 0.6
+    ;;
+esac
+''', 1))
+    _set_fake_fzf_responses(env, [[str(first), str(second)]])
+    transport_root = env["fake_state"] / "transport"; transport_root.mkdir()
+    run_env = os.environ.copy()
+    run_env.update({
+        "HOME": str(env["workdir"]), "TERM": "xterm-256color", "TMPDIR": str(transport_root),
+        "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq", "TEST_REAL_PYTHON": sys.executable,
+        "TEST_USE_REAL_JSON": "1", "PYTHONDONTWRITEBYTECODE": "1",
+        "TEST_COMMAND_LOG": str(env["command_log"]), "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
+        "TEST_FAKE_STATE_DIR": str(env["fake_state"]), "TEST_STOP_MARKER": str(marker),
+        "TEST_RESULT_MARKER": str(result_marker),
+        "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]), **extra,
+    })
+    for name in ("mkvmerge", "mkvpropedit", "mkvextract", "fzf"):
+        assert Path(shutil.which(name, path=run_env["PATH"])).resolve() == (env["fake_bin"] / name).resolve()
+    master, terminal = pty.openpty()
+    before = termios.tcgetattr(terminal)
+
+    def own_terminal():
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        os.tcsetpgrp(0, os.getpgrp())
+
+    process = subprocess.Popen(["/usr/local/bin/zsh", "-f", str(env["mkv_utils_script"])],
+        cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
+        start_new_session=True, preexec_fn=own_terminal)
+    output = bytearray(); deadline = time.monotonic() + 20
+
+    def receive():
+        if select.select([master], [], [], 0.05)[0]:
+            try: data = os.read(master, 65536)
+            except OSError: return False
+            output.extend(data)
+            return bool(data)
+        return True
+
+    def answer(prompt, value):
+        while prompt not in output and time.monotonic() < deadline:
+            receive()
+            assert process.poll() is None, output.decode(errors="replace")
+        assert prompt in output, output.decode(errors="replace")
+        os.write(master, value)
+
+    try:
+        answer(b"Category: \x1b[?25h", {"edit": b"1", "mux": b"2"}.get(category, b"3"))
+        answer(b"Operations (single/comma/range): ", {"edit": b"5\n", "mux": b"2\n", "extract": b"1,2\n", "attachments": b"1\n"}[category])
+        if category == "edit": answer(b"Title (empty to unset): ", b"Stop test\n")
+        elif category == "mux":
+            answer(b"Track order (e.g.", b"0:1\n")
+            answer(b"Metadata choices (comma/range; blank for none): ", b"\n")
+        elif category == "extract": answer(b"Track IDs to extract", b"3\n")
+        answer(b"Review choice: ", b"3\n")
+        while not marker.exists() and time.monotonic() < deadline:
+            receive()
+            assert process.poll() is None, output.decode(errors="replace")
+        assert marker.exists(), output.decode(errors="replace")
+        mask = termios.ICANON | termios.ECHO
+        assert before[3] & mask == termios.tcgetattr(terminal)[3] & mask
+        # e is ordinary terminal typeahead during processing, never a stop key.
+        os.write(master, b"e")
+        if stop in ("int", "late-int", "descendant-int"):
+            os.write(master, b"\x03")
+            if category in ("edit", "mux"):
+                if stop == "late-int":
+                    while not result_marker.exists() and time.monotonic() < deadline: receive()
+                    assert result_marker.exists(), output.decode(errors="replace")
+                    os.write(master, b"\x03")
+                else: answer(b"finishing the current file", b"\x03")
+        else:
+            process.send_signal(signal.SIGTERM if stop == "term" else signal.SIGHUP)
+        while process.poll() is None and time.monotonic() < deadline: receive()
+        assert process.poll() is not None, output.decode(errors="replace")
+        while select.select([master], [], [], 0)[0] and time.monotonic() < deadline:
+            if not receive(): break
+        text = output.decode(errors="replace")
+        assert process.returncode == 1, text
+        assert "Files not started due to stop: 1" in text and f"    {second}" in text
+        assert second.read_bytes() == b"payload"
+        assert not list(transport_root.iterdir()), text
+        with pytest.raises(ProcessLookupError): os.kill(int(marker.read_text()), 0)
+        if stop == "descendant-int":
+            with pytest.raises(ProcessLookupError): os.kill(int(Path(str(marker) + ".descendant").read_text()), 0)
+        if stop in ("int", "late-int") and category in ("edit", "mux"):
+            assert marker.with_suffix(".finished").exists()
+            assert "Done: 1; Failed: 0" in text and "Interrupted: 0" in text
+            assert text.count("finishing the current file") == 1
+            assert _observed_fake_identification(env, first) == (edited if category == "edit" else _integration_output(original, [1, 0, 2, 3]))
+        else:
+            assert not marker.with_suffix(".finished").exists()
+            assert "Interrupted: 1" in text
+        if category == "extract":
+            assert (first.parent / "Attachments" / "Font.ttf").read_bytes() == b"font"
+            assert "Discarded unfinished track:" in text
+            assert not list(first.parent.glob(".mkvutil-extract-*/tracks-*"))
+            assert not list(first.parent.glob("*.ass"))
+        if category == "attachments":
+            assert list(first.parent.glob("Attachments/.mkvutil-extract-*/attachments-*"))
+        calls = _command_argv(env, tool)
+        modifying = [args for args in calls if "-o" in args] if tool == "mkvmerge" else [args for args in calls if len(args) > 1 and args[1] != "tags"]
+        assert len(modifying) == (2 if category == "extract" else 1)
+    finally:
+        (env["workdir"].parent / "runtime-stop-transcript.bin").write_bytes(output)
+        if process.poll() is None:
+            process.kill(); process.wait(timeout=3)
+        os.close(master); os.close(terminal)

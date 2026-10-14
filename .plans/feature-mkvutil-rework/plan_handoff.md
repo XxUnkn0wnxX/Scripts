@@ -14,7 +14,67 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Accepted metadata targets and recovery amendment
+### Accepted Back and runtime-stop follow-up
+
+- The requested scope is implemented and accepted: Edit/Mux Ctrl+C finishes the
+  admitted file's normal validation/publication, then stops; Extract stops its
+  native process and discards only declared owned unvalidated partial tracks
+  after confirmed shutdown. Completed outputs/attachments and uncertain recovery
+  remain. Final reports name the exact ordered files not started, including
+  skipped-only retry scopes. Runtime e has no cancellation action.
+- All coding stayed in the parent under the user's request to avoid Sol 6.1.
+  The read-only Astra planner passed the final process-ownership/accounting
+  corrections. No active worker remains; no further audit or runtime change is
+  pending. Route B is complete: shared launcher → Edit/Mux → reporting → Extract
+  → integration/docs. All nine tasks and four goals are accepted.
+- Current proof root: `.tmp/mkvutil-rework/runtime-stop.4mgf2nx6/`.
+  `receipt.json` and `parent-review.json` consolidate source, tests, native checks,
+  documentation and preserved diagnostic evidence. `final-source-coverage.json`
+  binds all 79 distinct affected cases to the final runtime: 24 cases from the
+  first 77-pass run plus 55 final-source reruns/new cases. The earlier 53 copied
+  runtimes predated the last two fixes and are superseded by those reruns.
+  This is not a single 79-case invocation. The final 55 run took 199.11s pytest,
+  199.62s wall and 179.47s measured user+system CPU; first 77 took 330.62s pytest,
+  331.31s wall and 276.85s measured CPU. No peak/descendant CPU claim.
+- Eight current-source controlling-PTY journeys cover Edit/Mux graceful stopping,
+  immediate track/attachment stopping, repeated and late Ctrl+C, TERM/HUP and
+  descendants with closed pipes. Other focused checks cover pre-admission stop,
+  parent loss, recovery provenance, missing/invalid transport and reporting
+  failure. Existing test guards remain unchanged; shared helpers are unchanged.
+- Three installed-v93 menu journeys passed with fresh immutable-fixture copies:
+  Edit title, combined removal/reorder/title Mux, and attachments+track Extract.
+  UID order, metadata, chapters, attachments, payloads and source preservation
+  were checked as applicable. Native tools are real; only fzf selection is mocked.
+  Native signal timing across all codecs is not claimed. The initial Mux check
+  mistakenly omitted retained original ID 4; the utility output was correct.
+  `native-check-correction.json` preserves that diagnosis; independent output
+  inspection passed without rerunning Edit/Mux or changing source. Extract ran
+  separately. Native executions took 9.38s and 4.85s wall.
+- Back remains accepted at T01.03: 33 affected cases across separate runs
+  (32-pass/one-timeout combined run, sole remaining case passed isolated), plus
+  two final-Back-source controlling-PTY cases. Existing 10s guard unchanged;
+  isolated slow case took 9.53s call, so no timing-margin claim. Proof:
+  `.tmp/mkvutil-rework/back-everywhere.obdrls35/parent-review.json`.
+- Guide reviewed with five collapsible examples, all Back destinations, current
+  stop/report behavior and explicit test boundaries. Live compact help, links,
+  fences, path privacy, inline Python, zsh syntax and parent-ledger preservation
+  pass. Earlier metadata/all-format/native evidence retains its original binding;
+  no new unrelated full suite or CI run is claimed.
+- Source SHA-256:
+  `a11d7f43d060527a4533af4e2a827741acb229c76bf2e50073c96ba5b87fbe7b`.
+  Tests/guide/final tracked record hashes are in `receipt.json`.
+- Main Scripts remains the only checkout on `feature/mkvutil-rework`. Signed
+  prior local HEAD `58879f7301077d1a3e057811709658b6fcc4c59a` contains the metadata
+  package. The containing commit completes Back/runtime stopping and records.
+  No branch/worktree/AGENTS/dependency change or user-media operation occurred.
+- Publication is authorized. Next: verify paired record integrity and final
+  six-file diff, sign the containing commit and push feature (including prior
+  metadata HEAD), then verify exact live ref and clean tree. Record that result in
+  this proof root's `publication.json`. If it already records a verified push,
+  reconcile live Git state before repeating any operation. No implementation or
+  testing gate remains; preserve all earlier approvals and recovery records.
+
+### Historical: Accepted metadata targets and recovery amendment
 
 - User-directed shared Edit IDs, per-choice per-ID values across selected files,
   explicit Mux reorder-ID inheritance, invalid-order retry, action-plus-ID prompts
