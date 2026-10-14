@@ -14,6 +14,13 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Metadata hint wording
+
+- Shortened the metadata hint to `e) Back` at the user's request. Input handling
+  and the guide's literal-text escape instructions are unchanged.
+- This is a display-only edit; no tests run, as explicitly requested. Existing
+  acceptance remains 9/9 tasks and 4/4 goals. Commit and push are authorized.
+
 ### Accepted Back and runtime-stop follow-up
 
 - The requested scope is implemented and accepted: Edit/Mux Ctrl+C finishes the

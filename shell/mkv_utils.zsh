@@ -656,7 +656,7 @@ _mkvutil_metadata_collect() {
       shared_targets="$targets_csv" ;;
     *) return 1 ;;
   esac
-  print -u2 -r -- 'Metadata: e/E goes Back; use \e/\E for literal text e/E.'
+  print -u2 -r -- 'e) Back'
   for choice in "${(@s:,:)choices}"; do
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
