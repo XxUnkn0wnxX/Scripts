@@ -462,9 +462,17 @@ _mkvutil_clear_plan_layout() {
 }
 
 mkvutil_plan_layout() {
-  local result=0
-  _mkvutil_clear_plan_layout
-  _mkvutil_plan_layout_build "$@" || result=$?
+  local result=0 owns_indicator=0
+  if [[ -z "$MKVUTIL_INDICATOR_PID" ]]; then
+    _mkvutil_indicator_start Working || return 1
+    [[ -z "$MKVUTIL_INDICATOR_PID" ]] || owns_indicator=1
+  fi
+  {
+    _mkvutil_clear_plan_layout
+    _mkvutil_plan_layout_build "$@" || result=$?
+  } always {
+    (( ! owns_indicator )) || _mkvutil_indicator_stop
+  }
   if (( result != 0 )); then
     _mkvutil_clear_plan_layout
     return "$result"
@@ -635,7 +643,18 @@ mkvutil_metadata_set() {
     target="$REPLY"
   fi
   _mkvutil_metadata_target_valid "$choice" "$target" || return 1
-  _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "$value" || return 1
+  if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" == language ]]; then
+    local validation=0
+    _mkvutil_indicator_start Working || return 1
+    {
+      _mkvutil_metadata_value_valid language "$value" || validation=$?
+    } always {
+      _mkvutil_indicator_stop
+    }
+    (( validation == 0 )) || return 1
+  else
+    _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "$value" || return 1
+  fi
   MKVUTIL_METADATA_SETTINGS[${choice}:$target]="$value"
 }
 
@@ -656,11 +675,13 @@ _mkvutil_metadata_collect() {
       shared_targets="$targets_csv" ;;
     *) return 1 ;;
   esac
+  _mkvutil_indicator_stop
   print -u2 -r -- 'e) Back'
   for choice in "${(@s:,:)choices}"; do
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
       if [[ "$mode" == independent || -z "$shared_targets" ]]; then
+        _mkvutil_indicator_stop
         printf '%s — Track IDs (comma/range; e to go back): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
         IFS= read -r selection || return 2
         case "$selection" in e|E) return 4 ;; cancel) return 2 ;; esac
@@ -672,6 +693,7 @@ _mkvutil_metadata_collect() {
       chosen_targets=("${(@s:,:)targets_csv}")
     fi
     for target in "${chosen_targets[@]}"; do
+      _mkvutil_indicator_stop
       [[ "$target" == info ]] || printf 'Original track ID %s — ' "$target" >&2
       printf '%s' "${MKVUTIL_METADATA_REGISTRY[${choice}:prompt]}" >&2
       IFS= read -r value || return 2
@@ -880,6 +902,7 @@ typeset -g MKVUTIL_ENGINE_CONTROL="" MKVUTIL_ENGINE_CATEGORY=""
 _mkvutil_request_stop() {
   local requested="$1"
   if (( ! MKVUTIL_INTERRUPTED )); then
+    print -u2
     if [[ "$requested" == 2 && ( "$MKVUTIL_ENGINE_CATEGORY" == edit || "$MKVUTIL_ENGINE_CATEGORY" == mux ) && -f "$MKVUTIL_ENGINE_CONTROL/admitted" ]]; then
       print -u2 -r -- 'Stop requested; finishing the current file before stopping.'
     else
@@ -1143,6 +1166,7 @@ _mkvutil_display_record() {
 }
 
 mkvutil_ascii_box() {
+  _mkvutil_indicator_stop
   (( $# > 0 )) || return 1
   local title="$1" line="" content_width=44 border="" dash_count=0
   setopt localoptions multibyte
@@ -1195,7 +1219,7 @@ mkvutil_format_final_report() {
       "Attachments processed: \(.attachments.processed); published: \(.attachments.published); final unique published names: \(.attachments.unique_names); superseded: \(.attachments.superseded); uncertain names: \(.attachments.uncertain_names)",
       (.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)") else empty end),
     (.files[] | . as $file |
-      "\(.status): \(.source)\(if .destination then " => "+.destination else "" end)",
+      "\(.status): \(.source)\(if .destination and (.attempts[-1].result.category // "")!="extract" then " => "+.destination else "" end)",
       (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
          (if .receipt.track_count_mismatch then "    Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
@@ -1203,6 +1227,8 @@ mkvutil_format_final_report() {
       (.attempts[] | "  Configuration \(.batch_id): phase=\(.result.phase); actual state=\(.result.actual_state)",
         (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end),
         (.result.stages[]? | "  Stage \(.kind): \(.status); code=\(.native_code)") ,
+        (.result.artifacts[]? | select(.kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
+          "  Track output ID \(.id): \(.path) (\(if .publication_state=="confirmed" then "published" else "publication uncertain" end))"),
         (.result.staged_paths[]? | "  Staged: \(.)"),
         (.result.discarded_partial_tracks[]? | "  Discarded unfinished track: \(.)"),
         (.result.scratch_paths[]? | "  Native scratch: \(.)"),
@@ -1283,7 +1309,14 @@ sys.stderr.buffer.write(text)
 mkvutil_capture_source() {
   local file="${1:A}" before="" after="" json="" rows=""
   before="$(mkvutil_source_identity "$file")" || return 1
-  json="$(mkvmerge -J "$file" < /dev/null 2> >(_mkvutil_display_file_errors "$file"))" || return 1
+  json="$(
+    # Keep JSON on descriptor 3 while the foreground pipeline sanitizes stderr.
+    # Waiting for both stages prevents late diagnostics without temporary files
+    # owned by an interruptible command substitution.
+    unsetopt multios
+    setopt pipefail
+    { mkvmerge -J "$file" < /dev/null 2>&1 1>&3 | _mkvutil_display_file_errors "$file"; } 3>&1
+  )" || return 1
   after="$(mkvutil_source_identity "$file")" || return 1
   [[ "$before" == "$after" ]] || { print -u2 -r -- "Source changed during inspection: ${file:t}"; return 1; }
   rows="$(collect_tracks_for_remux "$file" "$json")" || return 1
@@ -1303,6 +1336,31 @@ print(json.dumps({"source": source, "identity": json.loads(identity), "source_js
 
 }
 
+# Foreground execution preflight owns the status row; JSON stays in REPLY.
+_mkvutil_capture_execution_source() {
+  local file="$1" record="" diagnostics="" result=0
+  REPLY=""
+  if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+    diagnostics="$(mktemp "${TMPDIR:-/tmp}/mkvutil-preflight.XXXXXXXX")" || return 1
+  fi
+  {
+    _mkvutil_indicator_start Working || return 1
+    if [[ -n "$diagnostics" ]]; then
+      record="$(mkvutil_capture_source "$file" 2> "$diagnostics")" || result=$?
+    else
+      record="$(mkvutil_capture_source "$file")" || result=$?
+    fi
+  } always {
+    _mkvutil_indicator_stop
+    if [[ -n "$diagnostics" ]]; then
+      [[ ! -s "$diagnostics" ]] || cat "$diagnostics" >&2
+      rm -f -- "$diagnostics"
+    fi
+  }
+  REPLY="$record"
+  return "$result"
+}
+
 mkvutil_scan_files() {
   local directory="${1:A}" file=""
   MKVUTIL_SCAN_FILES=()
@@ -1310,6 +1368,18 @@ mkvutil_scan_files() {
     MKVUTIL_SCAN_FILES+=("$file")
   done
   (( ${#MKVUTIL_SCAN_FILES} > 0 ))
+}
+
+mkvutil_scan_files_working() {
+  local result=0 directory="${1:-$PWD}"
+  {
+    _mkvutil_indicator_start Working || result=$?
+    (( result )) || mkvutil_scan_files "$directory" || result=$?
+  } always {
+    _mkvutil_indicator_stop
+  }
+  (( ! MKVUTIL_INTERRUPTED )) || return 2
+  return "$result"
 }
 
 mkvutil_resolve_directory() {
@@ -1337,6 +1407,8 @@ mkvutil_accept_files() {
 }
 
 _mkvutil_read() {
+  _mkvutil_indicator_stop
+  (( ! MKVUTIL_INTERRUPTED )) || return 2
   setopt localtraps
   trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
   printf '%s' "$1" >&2
@@ -1346,6 +1418,7 @@ _mkvutil_read() {
 # Main choices are single keys at a terminal; pipes retain line-based input.
 # Submenu batches and metadata values continue through _mkvutil_read.
 _mkvutil_read_main() {
+  _mkvutil_indicator_stop
   [[ -t 0 ]] || { _mkvutil_read 'Category: '; return $?; }
   setopt localtraps
   printf 'Category: ' >&2
@@ -1373,6 +1446,7 @@ _mkvutil_read_main() {
 # Navigation and its picker share a transient buffer. Pipes and dumb/redirected
 # terminals retain normal output and the original line-input protocol.
 typeset -gi MKVUTIL_UI_ACTIVE=0 MKVUTIL_UI_REPORT_SHOWN=0 MKVUTIL_BYPASS_TRACK_COUNT=0
+typeset -g MKVUTIL_INDICATOR_PID=""
 _mkvutil_ui_owned() { [[ -t 0 && -t 1 && -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; }
 _mkvutil_ui_enter() {
   if _mkvutil_ui_owned && (( ! MKVUTIL_UI_ACTIVE )); then
@@ -1409,6 +1483,55 @@ _mkvutil_ui_acknowledge() {
   (( ! MKVUTIL_INTERRUPTED )) || return 2
 }
 
+# The indicator owns one terminal row. Callers stop it in foreground control
+# flow before prompting, reporting, or handing output to another tool.
+_mkvutil_indicator_start() {
+  local label="$1" owner_pid="$$" defer_first_frame=0
+  (( ! MKVUTIL_INTERRUPTED )) || return 0
+  [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]] || return 0
+  [[ -z "$MKVUTIL_INDICATOR_PID" ]] || return 0
+  [[ "$label" != Working ]] || defer_first_frame=1
+  (
+    trap - EXIT
+    local frame=1 use_zselect=0 painted=0
+    trap '(( painted )) && exit 73; exit 0' INT TERM
+    local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    zmodload zsh/zselect 2>/dev/null && use_zselect=1
+    while kill -0 "$owner_pid" 2>/dev/null; do
+      if (( defer_first_frame )); then
+        if (( use_zselect )); then zselect -t10 || true; else sleep 0.1; fi
+        defer_first_frame=0
+        kill -0 "$owner_pid" 2>/dev/null || break
+      fi
+      printf '\r  %s %s' "${frames[$frame]}" "$label" || { (( painted )) && exit 73; exit 0; }
+      painted=1
+      while kill -0 "$owner_pid" 2>/dev/null; do
+        if (( use_zselect )); then zselect -t10 || true; else sleep 0.1; fi
+        frame=$((frame % ${#frames} + 1))
+        printf '\r  %s' "${frames[$frame]}" || { (( painted )) && exit 73; exit 0; }
+      done
+    done
+    (( painted )) && exit 73
+    exit 0
+  ) &
+  MKVUTIL_INDICATOR_PID=$!
+  return 0
+}
+
+_mkvutil_indicator_stop() {
+  local helper_pid="$MKVUTIL_INDICATOR_PID" wait_status=0
+  [[ -n "$helper_pid" ]] || return 0
+  MKVUTIL_INDICATOR_PID=""
+  kill -TERM "$helper_pid" 2>/dev/null || true
+  while true; do
+    wait "$helper_pid" 2>/dev/null
+    wait_status=$?
+    kill -0 "$helper_pid" 2>/dev/null || break
+  done
+  (( wait_status != 73 )) || printf '\r\033[2K' || true
+  return 0
+}
+
 # Pure rendering runs off-screen. Diagnostics are captured with the body and
 # replayed by the parent after leaving; a subshell never changes ACTIVE.
 _mkvutil_menu_body() {
@@ -1435,6 +1558,8 @@ _mkvutil_menu_body() {
 }
 
 _mkvutil_menu_read() {
+  _mkvutil_indicator_stop
+  (( ! MKVUTIL_INTERRUPTED )) || return 2
   setopt localtraps
   local view="$1" category="${2-}" prompt="${3-}" targets="${4-}" result=0 owned=0 body=""
   trap 'MKVUTIL_INTERRUPTED=1; result=2; return 2' INT TERM
@@ -1483,6 +1608,7 @@ _mkvutil_exclude() {
 }
 
 mkvutil_select_files() {
+  _mkvutil_indicator_stop
   local file=""
   local -a selected=() selector=(--multi --read0 --print0 --height 40% --reverse --border)
   if (( MKVUTIL_UI_ACTIVE )) && _mkvutil_ui_owned; then
@@ -1502,49 +1628,14 @@ mkvutil_select_files() {
   mkvutil_accept_files "${selected[@]}" || { print -u2 -r -- 'No valid scanned files selected.'; return 1; }
 }
 
-# This child only paints a short indicator while Analyze scans selected sources.
-_mkvutil_start_analysis_indicator() {
-  [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]] || return 0
-  [[ -z "$MKVUTIL_ANALYSIS_INDICATOR_PID" ]] || return 0
-  local owner_pid="$$"
-  (
-    trap - EXIT
-    trap 'exit 0' INT TERM
-    local frame=1 use_zselect=0
-    local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
-    zmodload zsh/zselect 2>/dev/null && use_zselect=1
-    while kill -0 "$owner_pid" 2>/dev/null; do
-      printf '\r\033[2K  %s Analysing' "${frames[$frame]}" || exit 0
-      if (( use_zselect )); then
-        zselect -t10 || true
-      else
-        sleep 0.1
-      fi
-      frame=$((frame % ${#frames} + 1))
-    done
-  ) &
-  MKVUTIL_ANALYSIS_INDICATOR_PID=$!
-  return 0
-}
-
-_mkvutil_stop_analysis_indicator() {
-  local helper_pid="${MKVUTIL_ANALYSIS_INDICATOR_PID-}"
-  [[ -n "$helper_pid" ]] || return 0
-  MKVUTIL_ANALYSIS_INDICATOR_PID=""
-  while kill -0 "$helper_pid" 2>/dev/null; do
-    kill -TERM "$helper_pid" 2>/dev/null || true
-    wait "$helper_pid" 2>/dev/null || true
-  done
-  wait "$helper_pid" 2>/dev/null || true
-  printf '\r\033[2K' || true
-  return 0
-}
+# Retain these hooks for the Analyze path and its existing instrumentation.
+_mkvutil_start_analysis_indicator() { _mkvutil_indicator_start Analysing; }
+_mkvutil_stop_analysis_indicator() { _mkvutil_indicator_stop; }
 
 # Reuse identification, listing and the same ID/type/codec signatures as Mux.
 mkvutil_analyze_files() {
   local file="" record="" raw="" ids="" signature="" listing="" reference="" expected="" result=0
   local reference_label="" stop_code=0
-  local MKVUTIL_ANALYSIS_INDICATOR_PID=""
   local matching=0 analyzed=0
   local -a mismatched=() failed=() missed=()
   {
@@ -1594,27 +1685,52 @@ mkvutil_analyze_files() {
 }
 
 mkvutil_inspect_sources() {
-  local file="" record="" result=0
+  local file="" record="" result=0 capture_result=0 diagnostics_file=""
   local -a sources=()
   MKVUTIL_SOURCES=()
   MKVUTIL_JOBS=()
   MKVUTIL_REMOVAL_SKIPS=()
-  for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
-    result=0
-    _mkvutil_cohort_eligible "$file" || result=$?
-    (( result != 1 )) || return 1
-    (( result == 0 )) || continue
-    if record="$(mkvutil_capture_source "$file")"; then
-      jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
-      sources+=("$record")
-    else
-      print -u2 -r -- "Inspection failed: ${file:t}"
-      _mkvutil_exclude || { result=$?; return "$result"; }
-      mkvutil_ledger_exclude "$file" 'Initial inspection failed' || return 1
-    fi
-  done
-  (( ${#sources} > 0 )) || { print -u2 -r -- 'No valid sources remain.'; return 1; }
-  MKVUTIL_SOURCES=("${sources[@]}")
+  if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+    diagnostics_file="$(mktemp "${TMPDIR:-/tmp}/mkvutil-inspection.XXXXXXXX")" || return 1
+  fi
+  {
+    for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
+      result=0
+      _mkvutil_cohort_eligible "$file" || result=$?
+      (( result != 1 )) || return 1
+      (( result == 0 )) || continue
+      capture_result=0
+      if [[ -n "$diagnostics_file" ]]; then
+        : > "$diagnostics_file" || return 1
+        [[ -n "$MKVUTIL_INDICATOR_PID" ]] || _mkvutil_indicator_start Working || return 1
+        {
+          record="$(mkvutil_capture_source "$file" 2>"$diagnostics_file")" || capture_result=$?
+        } always {
+          (( capture_result == 0 )) || _mkvutil_indicator_stop
+        }
+        if [[ -s "$diagnostics_file" ]]; then
+          _mkvutil_indicator_stop
+          cat "$diagnostics_file" >&2 || return 1
+        fi
+      else
+        record="$(mkvutil_capture_source "$file")" || capture_result=$?
+      fi
+      if (( capture_result == 0 )); then
+        jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
+        sources+=("$record")
+      else
+        print -u2 -r -- "Inspection failed: ${file:t}"
+        _mkvutil_exclude || { result=$?; return "$result"; }
+        mkvutil_ledger_exclude "$file" 'Initial inspection failed' || return 1
+      fi
+    done
+    _mkvutil_indicator_stop
+    (( ${#sources} > 0 )) || { print -r -- 'No valid sources remain.'; return 1; }
+    MKVUTIL_SOURCES=("${sources[@]}")
+  } always {
+    _mkvutil_indicator_stop
+    [[ -z "$diagnostics_file" ]] || rm -f "$diagnostics_file"
+  }
 }
 
 mkvutil_category_menu() {
@@ -1644,15 +1760,21 @@ mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=()
-  local item="" retained_csv="" metadata_mode=independent result=0
+  local item="" retained_csv="" metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics=""
   MKVUTIL_CONFIG=""
   MKVUTIL_JOBS=()
   mkvutil_metadata_reset
-  raw="$(jq -r '.source_json' <<< "$reference")" || return 1
-  source="$(jq -r '.source' <<< "$reference")" || return 1
-  rows="$(collect_tracks_for_remux "$source" "$raw")" || return 1
-  mkvutil_plan_layout "$rows" '' '' "${source:e}" || return 1
-  expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || return 1
+  {
+    _mkvutil_indicator_start Working || prep_result=$?
+    (( prep_result )) || raw="$(jq -r '.source_json' <<< "$reference")" || prep_result=$?
+    (( prep_result )) || source="$(jq -r '.source' <<< "$reference")" || prep_result=$?
+    (( prep_result )) || rows="$(collect_tracks_for_remux "$source" "$raw")" || prep_result=$?
+    (( prep_result )) || mkvutil_plan_layout "$rows" '' '' "${source:e}" || prep_result=$?
+    (( prep_result )) || expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || prep_result=$?
+  } always {
+    _mkvutil_indicator_stop
+  }
+  (( prep_result == 0 )) || return "$prep_result"
   local -a track_header=("Current Work Dir: $PWD")
   if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
     track_header+=("Removal reference file: ${source:t}")
@@ -1674,7 +1796,24 @@ mkvutil_configure_category() {
         _mkvutil_read 'Track IDs to remove (comma/range; e to go back): ' || return 2
         case "$REPLY" in e|E) return 4 ;; esac
         removal="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
-        signatures="$(mkvutil_removal_signatures "$reference" "$removal")" || return 1
+        if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+          signature_diagnostics="$(mktemp "${TMPDIR:-/tmp}/mkvutil-signature.XXXXXXXX")" || return 1
+        fi
+        _mkvutil_indicator_start Working || return 1
+        {
+          if [[ -n "$signature_diagnostics" ]]; then
+            signatures="$(mkvutil_removal_signatures "$reference" "$removal" 2>"$signature_diagnostics")" || signature_result=$?
+          else
+            signatures="$(mkvutil_removal_signatures "$reference" "$removal")" || signature_result=$?
+          fi
+        } always {
+          _mkvutil_indicator_stop
+          if [[ -n "$signature_diagnostics" ]]; then
+            [[ ! -s "$signature_diagnostics" ]] || cat "$signature_diagnostics" >&2
+            rm -f "$signature_diagnostics" || true
+          fi
+        }
+        (( signature_result == 0 )) || return "$signature_result"
       fi
       # Resolve removal before asking for order; retry only the order input.
       mkvutil_plan_layout "$rows" "$removal" '' "${source:e}" || return 1
@@ -2061,6 +2200,7 @@ except (OSError, ValueError, KeyError, TypeError) as error:
 }
 
 mkvutil_report_removal_skips() {
+  _mkvutil_indicator_stop
   local receipt="" display=""
   for receipt in "$@"; do
     display="$(_mkvutil_display_record "$receipt")" || return 1
@@ -2085,8 +2225,12 @@ _mkvutil_remove_scope_source() {
 # exclusion removes a source. Status 3 means an all-mismatch queue, with receipts
 # still available; any other planning error requires the ordinary exclude policy.
 mkvutil_plan_queue() {
-  local record="" job="" file="" result=0
+  local record="" job="" file="" result=0 diagnostics_file=""
   local -a jobs=() scope=()
+  if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+    diagnostics_file="$(mktemp "${TMPDIR:-/tmp}/mkvutil-planning.XXXXXXXX")" || return 1
+  fi
+  {
   MKVUTIL_JOBS=()
   MKVUTIL_REMOVAL_SKIPS=()
   MKVUTIL_PROPEDIT_ARGS=()
@@ -2094,7 +2238,21 @@ mkvutil_plan_queue() {
   MKVUTIL_CURRENT_JOB=""
   for record in "${MKVUTIL_SOURCES[@]}"; do
     result=0
-    job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")" || result=$?
+    if [[ -n "$diagnostics_file" ]]; then
+      : > "$diagnostics_file" || return 1
+      [[ -n "$MKVUTIL_INDICATOR_PID" ]] || _mkvutil_indicator_start Working || return 1
+      {
+        job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG" 2>"$diagnostics_file")" || result=$?
+      } always {
+        (( result == 0 || result == 3 )) || _mkvutil_indicator_stop
+      }
+      if [[ -s "$diagnostics_file" ]]; then
+        _mkvutil_indicator_stop
+        cat "$diagnostics_file" >&2 || return 1
+      fi
+    else
+      job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")" || result=$?
+    fi
     if (( result == 0 )); then
       jobs+=("$job")
       scope+=("$record")
@@ -2104,6 +2262,7 @@ mkvutil_plan_queue() {
       scope+=("$record")
     else
       file="$(jq -r '.source' <<< "$record")"
+      _mkvutil_indicator_stop
       print -u2 -r -- "Cannot plan source: ${file:t}"
       _mkvutil_exclude || { result=$?; return "$result"; }
       mkvutil_ledger_exclude "$file" 'Source could not be planned' || return 1
@@ -2111,15 +2270,21 @@ mkvutil_plan_queue() {
     fi
   done
   MKVUTIL_SOURCES=("${scope[@]}")
+  _mkvutil_indicator_stop
   mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
   mkvutil_batch_planned "${#jobs}" || return 1
   if (( ${#jobs} == 0 )); then
     (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )) && return 3
+    _mkvutil_indicator_stop
     print -u2 -r -- 'No valid jobs remain.'
     return 1
   fi
   mkvutil_check_destinations "${jobs[@]}" || return 1
   MKVUTIL_JOBS=("${jobs[@]}")
+  } always {
+    _mkvutil_indicator_stop
+    [[ -z "$diagnostics_file" ]] || rm -f "$diagnostics_file" || true
+  }
 }
 
 # Prepare a fresh scope from mismatch receipts only. Pending eligible jobs may
@@ -2179,6 +2344,7 @@ mkvutil_cancel_status() {
 }
 
 mkvutil_preview_jobs() {
+  _mkvutil_indicator_stop
   local job="" display="" show_attachment_policy=1
   if (( MKVUTIL_LEDGER_ENABLED )); then
     local source="" entry=""
@@ -2230,6 +2396,211 @@ _mkvutil_execution_failure() {
 _mkvutil_execution_support() {
   cat <<'PYCOMMON'
 import os, signal, stat, subprocess, sys, time
+import queue
+import threading
+
+
+class NativeOutputRenderer:
+    """Replace known paths across chunks before framing native text records."""
+
+    def __init__(self, paths):
+        replacements = {os.fsencode(str(path)): os.fsencode(str(label))
+                        for path, label in paths if str(path)}
+        self.replacements = sorted(replacements.items(), key=lambda item: -len(item[0]))
+        self.pending = b""
+        self.record = b""
+        self.last = b""
+        self.initials = {path[0] for path, _ in self.replacements}
+        self.max_path = max((len(path) for path, _ in self.replacements), default=0)
+
+    def _sanitize(self, data, final=False):
+        pending = self.pending + data
+        offset = 0
+        output = bytearray()
+        while offset < len(pending):
+            tail = pending[offset:] if len(pending) - offset <= self.max_path else None
+            matches = [(path, label) for path, label in self.replacements
+                       if tail is not None and path.startswith(tail)]
+            if matches and not final:
+                # A full shorter key may also prefix a longer key. Wait until
+                # the next chunk distinguishes them; no pathname prefix leaks.
+                exact = next(((path, label) for path, label in matches
+                              if path == tail), None)
+                if exact and len(matches) == 1:
+                    output.extend(exact[1]); offset = len(pending)
+                break
+            complete = next(((path, label) for path, label in self.replacements
+                             if pending.startswith(path, offset)), None)
+            if complete:
+                output.extend(complete[1]); offset += len(complete[0])
+            elif matches and final:
+                output.extend(b"[path]"); offset = len(pending)
+            else:
+                # Copy ordinary text in one span, stopping at the next possible
+                # pathname start. UTF-8 bytes stay intact across output chunks.
+                end = offset + 1
+                while end < len(pending) and pending[end] not in self.initials:
+                    end += 1
+                output.extend(pending[offset:end]); offset = end
+        self.pending = pending[offset:]
+        return bytes(output)
+
+    def _frame(self, data, final=False):
+        self.record += data
+        output = bytearray()
+        while self.record:
+            boundary = next((index + 1 for index, byte in enumerate(self.record)
+                             if byte in (10, 13)), None)
+            if boundary is None:
+                if not final and len(self.record) < 4096:
+                    break
+                boundary = len(self.record) if final else 4096
+                if not final:
+                    # A different stream may be displayed before the next
+                    # snapshot. Keep an incomplete UTF-8 character together.
+                    start = boundary - 1
+                    while start > max(0, boundary - 4) and self.record[start] & 0xc0 == 0x80:
+                        start -= 1
+                    lead = self.record[start]
+                    size = 2 if 0xc2 <= lead <= 0xdf else 3 if 0xe0 <= lead <= 0xef else 4 if 0xf0 <= lead <= 0xf4 else 1
+                    if boundary - start < size:
+                        boundary = start
+            output.extend(self.record[:boundary]); self.record = self.record[boundary:]
+        if output:
+            self.last = bytes(output[-1:])
+        if final and self.last and self.last != b"\n":
+            output.extend(b"\n"); self.last = b"\n"
+        return bytes(output)
+
+    def feed(self, data):
+        return self._frame(self._sanitize(data))
+
+    def finish(self):
+        return self._frame(self._sanitize(b"", final=True), final=True)
+
+
+class NativeDisplayWriter:
+    """A stalled display sink cannot block native ownership or stop checks."""
+
+    def __init__(self, fd=3, max_chunks=64, chunk_size=4096):
+        self.fd = fd
+        self.chunk_size = chunk_size
+        self.queue = queue.Queue(maxsize=max_chunks)
+        self.disabled = threading.Event()
+        self.finished = threading.Event()
+        self.closed = False
+        self.thread = None
+
+    def _write(self):
+        try:
+            while not self.disabled.is_set():
+                payload = self.queue.get()
+                if payload is None:
+                    break
+                view = memoryview(payload)
+                while view and not self.disabled.is_set():
+                    written = os.write(self.fd, view)
+                    if written <= 0:
+                        raise OSError("Native display sink accepted no bytes")
+                    view = view[written:]
+        except (OSError, ValueError):
+            self.disabled.set()
+        finally:
+            self.finished.set()
+
+    def submit(self, payload):
+        if not payload or self.closed or self.disabled.is_set():
+            return
+        if self.thread is None:
+            self.thread = threading.Thread(target=self._write, daemon=True)
+            self.thread.start()
+        try:
+            for offset in range(0, len(payload), self.chunk_size):
+                self.queue.put_nowait(bytes(payload[offset:offset + self.chunk_size]))
+        except queue.Full:
+            self.disabled.set()
+
+    def finish(self, timeout=0.25):
+        if self.closed:
+            return
+        self.closed = True
+        if self.thread is None:
+            return
+        try:
+            self.queue.put_nowait(None)
+        except queue.Full:
+            self.disabled.set()
+        # No queue.join() or unbounded thread join. The daemon never owns native
+        # readers and cannot outlive the engine into the following file.
+        self.finished.wait(timeout)
+        if not self.finished.is_set():
+            self.disabled.set()
+
+
+class NativeCaptureDisplay:
+    def __init__(self, paths):
+        global native_writer
+        if native_writer is None:
+            native_writer = NativeDisplayWriter()
+        self.renderers = [NativeOutputRenderer(paths), NativeOutputRenderer(paths)]
+        self.offsets = [0, 0]
+
+    def observe(self, stdout=None, stderr=None):
+        # communicate(timeout) snapshots are cumulative; submit only new bytes.
+        try:
+            for index, value in enumerate((stdout, stderr)):
+                if value is None:
+                    continue
+                if isinstance(value, str):
+                    value = value.encode(errors="replace")
+                if len(value) > self.offsets[index]:
+                    chunk = value[self.offsets[index]:]
+                    self.offsets[index] = len(value)
+                    if len(chunk) > native_writer.queue.maxsize * native_writer.chunk_size:
+                        native_writer.disabled.set()
+                        continue
+                    native_writer.submit(self.renderers[index].feed(chunk))
+        except Exception:
+            # Display is observational; raw native buffers remain authoritative.
+            native_writer.disabled.set()
+
+    def finish(self):
+        try:
+            for renderer in self.renderers:
+                native_writer.submit(renderer.finish())
+        except Exception:
+            native_writer.disabled.set()
+
+
+native_writer = None
+native_display = None
+
+
+def native_display_paths(paths):
+    # Exact output mappings take precedence; known directory prefixes also hide
+    # native scratch-file paths which are not known until the tool creates them.
+    result = list(paths)
+    for path, label in paths:
+        parent = os.path.dirname(str(path))
+        if parent and parent != os.path.sep:
+            result.extend(((parent + os.path.sep, ""), (parent, os.path.basename(parent))))
+    return result
+
+
+def observe_native(stdout=None, stderr=None):
+    if native_display is not None:
+        native_display.observe(stdout, stderr)
+
+
+def finish_native_display():
+    try:
+        if native_display is not None:
+            native_display.finish()
+        if native_writer is not None:
+            native_writer.finish()
+    except Exception:
+        pass
+
 child = None
 native_stopped = True
 shutdown_error = ""
@@ -2269,13 +2640,16 @@ def stop_child():
         except ProcessLookupError:
             pass
         try:
-            child.communicate(timeout=2)
-        except subprocess.TimeoutExpired:
+            stdout, stderr = child.communicate(timeout=2)
+            observe_native(stdout, stderr)
+        except subprocess.TimeoutExpired as snapshot:
+            observe_native(snapshot.output, snapshot.stderr)
             try:
                 os.killpg(child.pid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
-            child.communicate(timeout=2)
+            stdout, stderr = child.communicate(timeout=2)
+            observe_native(stdout, stderr)
         # A descendant may have closed inherited pipes but still be writing.
         try:
             os.killpg(child.pid, signal.SIGKILL)
@@ -2333,9 +2707,10 @@ def admit_file():
     with open(os.path.join(control_dir, "admitted"), "w") as stream:
         stream.write("admitted")
 
-def run(argv, timeout=None, cwd=None):
-    global child, native_stopped
+def run(argv, timeout=None, cwd=None, display_paths=None):
+    global child, native_stopped, native_display
     owner_guard()
+    native_display = NativeCaptureDisplay(display_paths) if display_paths is not None else None
     native_stopped = False
     child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, start_new_session=True, cwd=cwd)
@@ -2348,6 +2723,7 @@ def run(argv, timeout=None, cwd=None):
                 raise subprocess.TimeoutExpired(argv, timeout)
             try:
                 stdout, stderr = child.communicate(timeout=min(0.1, remaining))
+                observe_native(stdout, stderr)
                 owner_guard()
                 # communicate() reaps the leader, not descendants which closed
                 # its pipes. Do not lose their group handle or certify shutdown.
@@ -2358,15 +2734,21 @@ def run(argv, timeout=None, cwd=None):
                 else:
                     raise RuntimeError("Native leader exited with a surviving process group; stopping owned descendants")
                 break
-            except subprocess.TimeoutExpired:
+            except subprocess.TimeoutExpired as snapshot:
+                observe_native(snapshot.output, snapshot.stderr)
                 # A dead leader can leave descendants holding its pipes.
                 if child.poll() is not None and child.returncode < 0:
                     stop_child()
                     stdout, stderr = child.communicate(timeout=2)
+                    observe_native(stdout, stderr)
                     break
     except BaseException:
         stop_child()
         raise
+    finally:
+        if native_display is not None:
+            native_display.finish()
+            native_display = None
     code = child.returncode
     child = None
     return code, stdout.decode(errors="replace"), stderr.decode(errors="replace")
@@ -2401,7 +2783,7 @@ _mkvutil_launch_engine() {
       MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before execution' not_attempted)"
       return 1
     fi
-    "$python_bin" -c "$program" "$category" "$$" "$transport" < "$transport/request" > "$transport/result" 2> "$transport/errors" &
+    "$python_bin" -c "$program" "$category" "$$" "$transport" < "$transport/request" 3>&1 > "$transport/result" 2> "$transport/errors" &
     MKVUTIL_ENGINE_PID=$!
     # A trapped signal interrupts wait without necessarily terminating its child.
     # Reap that same PID before inspecting results or touching any staging file.
@@ -2805,7 +3187,8 @@ try:
         admit_file()
         phase("native")
         source_unchanged()
-        code, stdout, stderr = run(["mkvpropedit", str(source), "--normalize-language-ietf", "off", *job["propedit_args"]])
+        code, stdout, stderr = run(["mkvpropedit", str(source), "--normalize-language-ietf", "off", *job["propedit_args"]],
+                                   display_paths=native_display_paths([(source, source.name)]))
         result.update(native_code=code, native_stdout=stdout, native_stderr=stderr)
         inspect_edit()
         if code == 0 and result.get("validation_ok"):
@@ -2843,7 +3226,8 @@ try:
         argv.extend(job["merge_metadata_args"])
         argv.append(str(source))
         phase("native")
-        code, stdout, stderr = run(argv)
+        code, stdout, stderr = run(argv, display_paths=native_display_paths([(source, source.name), (candidate, destination.name),
+                                                                           (destination, destination.name)]))
         result.update(native_code=code, native_stdout=stdout, native_stderr=stderr)
         if code != 0:
             result["status"] = "interrupted" if code < 0 else ("warning" if code == 1 else "failed")
@@ -2903,6 +3287,7 @@ finally:
                 phase(result["phase"])
         except BaseException as error:
             result["receipt_error"] = str(error)
+    finish_native_display()
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(0 if result["status"] == "success" else 1)
 PYCODE
@@ -2919,10 +3304,11 @@ _mkvutil_execute_job() {
   fi
   file="$(jq -r '.source' <<< "$job")" || return 1
   config="$(jq -c '.config' <<< "$job")" || return 1
-  if ! fresh="$(mkvutil_capture_source "$file")"; then
+  if ! _mkvutil_capture_execution_source "$file"; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection stopped or failed before execution' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
     return 1
   fi
+  fresh="$REPLY"
   if ! _mkvutil_jq_records '.[0].identity==.[1].identity' "$job" "$fresh" | jq -e . >/dev/null; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source identity changed before execution')"
     return 1
@@ -3167,7 +3553,8 @@ def execute_stage(stage,outputs):
     stage["argv"]=["mkvextract",str(source),stage["kind"],*specs]
     try:
         receipt("native_"+stage["kind"])
-        code,stdout,stderr=run(stage["argv"],cwd=cwd)
+        code,stdout,stderr=run(stage["argv"],cwd=cwd,display_paths=native_display_paths([(source,source.name),
+            *((a["stage_path"],Path(a["path"]).name) for a in stage_artifacts)]))
         stage.update(native_code=code,native_stdout=stdout,native_stderr=stderr)
         result["native_code"]=code
         if code!=0:
@@ -3268,6 +3655,7 @@ finally:
         result["reason"]=(result["reason"]+"; " if result["reason"] else "")+"Cleanup failed: "+str(error)
         if result["status"]=="success":result["status"]="partial";result["phase"]="cleanup_failed"
     refresh_recovery_inventory()
+    finish_native_display()
     print(json.dumps(result,ensure_ascii=False))
     sys.exit(0 if result["status"]=="success" else 1)
 PYEXTRACT
@@ -3279,10 +3667,11 @@ mkvutil_execute_extract_job() {
   local job="$1" file="" fresh="" protected="" result=0
   MKVUTIL_RESULT_JSON=""
   file="$(jq -r '.source' <<< "$job")" || return 1
-  if ! mkvutil_check_destinations "$job" || ! fresh="$(mkvutil_capture_source "$file")"; then
+  if ! mkvutil_check_destinations "$job" || ! _mkvutil_capture_execution_source "$file"; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract preflight or source inspection stopped or failed' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
     return 1
   fi
+  fresh="$REPLY"
   protected="$(_mkvutil_json_array "${MKVUTIL_SCOPE_KEYS[@]}" "$file")" || return 1
   if (( MKVUTIL_INTERRUPTED )); then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before extraction' not_attempted)"
@@ -3301,14 +3690,17 @@ mkvutil_execute_edit_job() { _mkvutil_execute_job edit "$1"; }
 mkvutil_execute_mux_job() { _mkvutil_execute_job mux "$1"; }
 
 mkvutil_report_result() {
+  _mkvutil_indicator_stop
   local display=""
   display="$(_mkvutil_display_record "$1")" || return 1
-  jq -r '"\(.status): \(.source)", "  Destination: \(.destination)",
+  jq -r '"\(.status): \(.source)", (if .category!="extract" then "  Destination: \(.destination)" else empty end),
     "  Phase: \(.phase); actual state: \(.actual_state)",
     (if .reason!="" then "  \(.reason)" else empty end),
     (if .candidate_path then "  Candidate: \(.candidate_path)" else empty end),
     (if .phase_receipt then "  Phase receipt: \(.phase_receipt)" else empty end),
     ((.observed_metadata // {})|to_entries[]|"  Actual metadata \(.key): \(.value|tojson)"),
+    (.artifacts[]? | select(.kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
+      "  Track output ID \(.id): \(.path) (\(if .publication_state=="confirmed" then "published" else "publication uncertain" end))"),
     (.staged_paths[]? | "  Staged: \(.)"),(.phase_receipts[]?|"  Phase receipt: \(.)"),
     (.scratch_paths[]? | "  Native scratch: \(.)"),(.unexpected_paths[]? | "  Unexpected artifact: \(.)"),
     (if .cleanup_error then "  Cleanup failed: \(.cleanup_error)" else empty end),
@@ -3316,9 +3708,37 @@ mkvutil_report_result() {
     (.remaining_staging_directories[]? | "  Retained staging directory: \(.)")' <<< "$display"
 }
 
+# Compact headings use the same metadata labels as configuration, before each
+# file's native messages. Timing remains separate and final-only for Edit.
+mkvutil_action_heading() {
+  local category="$1" operations="$2" metadata="${3-}" choice="" label="" title="" suffix=""
+  local -a labels=()
+  case "$category" in
+    edit)
+      title=Edit
+      for choice in "${(@s:,:)operations}"; do
+        label="${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
+        label="${label#Set }"; label="${label% for tracks}"
+        labels+=("$label")
+      done ;;
+    mux)
+      title=Mux
+      [[ ",$operations," != *,1,* ]] || labels+=(remove)
+      [[ ",$operations," != *,2,* ]] || labels+=(reorder)
+      [[ -z "$metadata" ]] || suffix="; metadata $metadata" ;;
+    extract)
+      title=Extract
+      [[ ",$operations," != *,1,* ]] || labels+=(attachments)
+      [[ ",$operations," != *,2,* ]] || labels+=(tracks) ;;
+    *) return 1 ;;
+  esac
+  print
+  print -r -- "$title $operations: ${(j: + :)labels}$suffix"
+}
+
 mkvutil_execute_queue() {
   setopt localtraps
-  local job="" category="" operations="" source="" config="" outcome="" record="" status_name="" batch=""
+  local job="" category="" operations="" metadata="" source="" config="" outcome="" record="" status_name="" batch=""
   local result_code=0 queue_code=0 interrupted=0 attempted=0 completed=0 total=$# native_returned=0 result_recorded=1 result_accounted=1
   local -F 6 queue_started=0 job_started=0 now=0 job_elapsed=0 work_elapsed=0 queue_elapsed=0 track_work=0
   local track_elapsed="" track_samples=0
@@ -3339,6 +3759,7 @@ mkvutil_execute_queue() {
   config="$(jq -c '.config' <<< "$1")" || return 1
   category="$(jq -r '.category' <<< "$config")" || return 1
   operations="$(jq -r '.operations|join(",")' <<< "$config")" || return 1
+  metadata="$(jq -r '.metadata // "" | if type=="array" then join(",") else . end' <<< "$config")" || return 1
   if (( MKVUTIL_BATCH_ID == 0 )) || [[ "$(jq -r '.state' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" == executed || "$(jq -r '.state' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" == interrupted ]]; then
     mkvutil_batch_request "$category" "$operations" "$config" || return 1
   fi
@@ -3364,9 +3785,8 @@ mkvutil_execute_queue() {
         unstarted_offset=$queue_index
         continue ;;
     esac
-    if [[ "$category" == mux || "$category" == extract ]]; then
-      print -r -- "Processing: ${source:t}"
-    fi
+    mkvutil_action_heading "$category" "$operations" "$metadata" || return 1
+    print -r -- "Processing: ${source:t}"
     active_source="$source"
     job_started="$(mkvutil_clock)" || return 1
     result_code=0
@@ -3525,13 +3945,36 @@ mkvutil_finish() {
   return "$final_code"
 }
 
-# Back control flow clears pending configuration while retaining outcome state.
-# Metadata fields return to their list; structural fields return to actions.
+# Internal cleanup clears pending configuration while retaining outcome state.
+# Public Back uses a separate full-scope reset.
 mkvutil_discard_configuration() {
   MKVUTIL_CONFIG=""
   MKVUTIL_CURRENT_JOB=""
   MKVUTIL_JOBS=()
   mkvutil_metadata_reset
+}
+
+# A public Back discards the entire unexecuted selection and its ledger. Keep
+# this separate from internal recovery, which may intentionally retain scope.
+mkvutil_reset_public_selection() {
+  (( ! MKVUTIL_HAS_RUN && ! MKVUTIL_INTERRUPTED )) || return 1
+  _mkvutil_indicator_stop
+  MKVUTIL_SCAN_FILES=()
+  MKVUTIL_SELECTED_FILES=()
+  MKVUTIL_SOURCES=()
+  MKVUTIL_REMOVAL_SKIPS=()
+  MKVUTIL_REMOVAL_SKIP_HISTORY=()
+  MKVUTIL_LEDGER_ENABLED=0
+  MKVUTIL_BATCH_ID=0
+  MKVUTIL_SCOPE_KEYS=()
+  MKVUTIL_BATCHES=()
+  MKVUTIL_LEDGER=()
+  MKVUTIL_RESULTS=()
+  MKVUTIL_TOTAL_ELAPSED=0
+  MKVUTIL_DIRECTORY_NAME=""
+  MKVUTIL_UI_REPORT_SHOWN=0
+  mkvutil_discard_configuration
+  _mkvutil_clear_plan_layout
 }
 
 mkvutil_close_scope() {
@@ -3596,12 +4039,11 @@ _mkvutil_main_body() {
     MKVUTIL_REMOVAL_SKIP_HISTORY=()
     mkvutil_discard_configuration
     selected=0
-    # Re-scan when selecting a category before processing begins.
-    mkvutil_scan_files "$PWD" || {
-      _mkvutil_ui_leave
-      print -r -- 'No Matroska files found (.mkv, .mka, .mks, .mk3d).'; return 1;
-    }
     if [[ "$category" == analysis ]]; then
+      mkvutil_scan_files_working "$PWD" || {
+        _mkvutil_ui_leave
+        print -r -- 'No Matroska files found (.mkv, .mka, .mks, .mk3d).'; return 1;
+      }
       mkvutil_select_files || return 1
       mkvutil_analyze_files || sticky_code=1
       return "$sticky_code"
@@ -3621,11 +4063,8 @@ _mkvutil_main_body() {
       (( MKVUTIL_INTERRUPTED == 0 )) || { (( ! selected )) || mkvutil_finish 1; return 1; }
       case "$REPLY" in
         e|E|0)
-          mkvutil_close_scope || sticky_code=1
-          # A failed report stays visible; never cover its error with main.
-          (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
-          if (( MKVUTIL_UI_REPORT_SHOWN )); then _mkvutil_ui_acknowledge || return 1; fi
-          mkvutil_discard_configuration
+          mkvutil_reset_public_selection || return 1
+          selected=0
           break ;;
       esac
       # Enter after a main-menu key can reach this prompt; keep waiting.
@@ -3636,6 +4075,10 @@ _mkvutil_main_body() {
       }
       operations="$REPLY"
       if (( ! selected )); then
+        mkvutil_scan_files_working "$PWD" || {
+          _mkvutil_ui_leave
+          print -r -- 'No Matroska files found (.mkv, .mka, .mks, .mk3d).'; return 1;
+        }
         mkvutil_select_files || return 1
         (( MKVUTIL_INTERRUPTED == 0 )) || return 1
         mkvutil_ledger_reset "$resolved_directory" "${MKVUTIL_SELECTED_FILES[@]}" || return 1
@@ -3647,7 +4090,7 @@ _mkvutil_main_body() {
         result=0
         mkvutil_inspect_sources || result=$?
         if (( MKVUTIL_INTERRUPTED )); then mkvutil_finish 1; return 1; fi
-        if (( result == 4 )); then mkvutil_discard_configuration; continue; fi
+        if (( result == 4 )); then mkvutil_reset_public_selection || return 1; selected=0; continue; fi
         if (( result )); then
           mkvutil_finish "$result" || sticky_code=1
           return "$sticky_code"
@@ -3661,12 +4104,10 @@ _mkvutil_main_body() {
         return "$sticky_code"
       fi
       case "$result" in
-        4) mkvutil_discard_configuration; continue ;;
+        4) mkvutil_reset_public_selection || return 1; selected=0; continue ;;
         6)
-          mkvutil_close_scope || sticky_code=1
-          (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
-          if (( MKVUTIL_UI_REPORT_SHOWN )); then _mkvutil_ui_acknowledge || return 1; fi
-          mkvutil_discard_configuration
+          mkvutil_reset_public_selection || return 1
+          selected=0
           break ;;
         *) mkvutil_finish "$result" || sticky_code=1; return "$sticky_code" ;;
       esac
@@ -3680,6 +4121,7 @@ mkvutil_main() {
   {
     _mkvutil_main_body "$@" || result=$?
   } always {
+    _mkvutil_indicator_stop
     _mkvutil_ui_leave
   }
   return "$result"

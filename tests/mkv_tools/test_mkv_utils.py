@@ -70,17 +70,26 @@ def _ascii_box_contains(output: str, *required_rows: str) -> tuple[int, int, lis
     raise AssertionError(f"no ASCII box contains rows: {required_rows!r}\n{output}")
 
 
-def _analysis_spinner_frames(output: str) -> list[str]:
+def _indicator_frames(output: str, label: str) -> list[str]:
     import re
 
     clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
     frames = []
+    active = False
     for segment in clean.split("\r"):
-        if "Analysing" in segment:
-            prefix = segment.split("Analysing", 1)[0].split()
-            if prefix:
-                frames.append(prefix[-1])
+        match = re.match(r"^  ([⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏])(?: (Analysing|Working))?(?:\^C)?$", segment)
+        if match:
+            if match.group(2):
+                active = match.group(2) == label
+            if active:
+                frames.append(match.group(1))
+        else:
+            active = False
     return frames
+
+
+def _analysis_spinner_frames(output: str) -> list[str]:
+    return _indicator_frames(output, "Analysing")
 
 
 def _assert_readable_outcomes(output: str, *expected_counts: str) -> str:
@@ -1009,6 +1018,154 @@ job="$(mkvutil_plan_job "$record" "$config")"
     )
     assert result.returncode == expected_returncode, result.stdout + result.stderr
     return result
+
+
+def test_mkv_utils_native_renderer_sanitizes_paths_before_record_framing(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "shell" / "mkv_utils.zsh"
+    support = subprocess.run(
+        ["/usr/local/bin/zsh", "-f", "-c", 'source "$1"; _mkvutil_execution_support', "support", str(source)],
+        capture_output=True, text=True, check=True, timeout=5,
+    ).stdout
+    control = tmp_path / "control"
+    control.mkdir()
+    script = tmp_path / "renderer_contract.py"
+    script.write_text(support + r'''
+source = os.path.abspath("/tmp/input/part\nname.mkv")
+destination = os.path.abspath("/tmp/output\rname.mka")
+source_bytes, destination_bytes = os.fsencode(source), os.fsencode(destination)
+paths = [(source, "part-name.mkv"), (destination, "logical-output.mka")]
+renderer = NativeOutputRenderer(paths)
+assert renderer.feed(b"reading " + source_bytes[:9]) == b""
+shown = renderer.feed(source_bytes[9:] + b"\ntrack-name=literal/with/slash\n")
+assert shown == b"reading part-name.mkv\ntrack-name=literal/with/slash\n", shown
+renderer = NativeOutputRenderer(paths)
+assert renderer.feed(b"candidate: " + destination_bytes[:12]) == b""
+assert renderer.finish() == b"candidate: [path]\n"
+renderer = NativeOutputRenderer(paths)
+assert renderer.feed(b"selected " + destination_bytes + b"\r") == b"selected logical-output.mka\r"
+assert renderer.finish() == b"\n"
+# Byte-sized chunks exercise UTF-8 boundaries and a shorter pathname which
+# is also a prefix of the longer known pathname.
+renderer = NativeOutputRenderer([("/tmp/字幕", "字幕"), ("/tmp/字幕-final.mkv", "字幕-final.mkv")])
+raw = "open /tmp/字幕-final.mkv\rcomplete\n".encode()
+shown = b"".join(renderer.feed(raw[index:index + 1]) for index in range(len(raw))) + renderer.finish()
+assert shown == "open 字幕-final.mkv\rcomplete\n".encode(), shown
+renderer = NativeOutputRenderer(native_display_paths([("/tmp/owned-stage/request.ass", "Episode - Track [3].ass")]))
+assert renderer.feed(b"write /tmp/owned-stage/request.ass\n/tmp/owned-stage/mkvextract-123-temp-tta-0\n") == b"write Episode - Track [3].ass\nmkvextract-123-temp-tta-0\n"
+stdout_renderer, stderr_renderer = NativeOutputRenderer([]), NativeOutputRenderer([])
+first = stdout_renderer.feed(b"a" * 4095 + "字".encode())
+middle = stderr_renderer.feed(b"ERR\n")
+last = stdout_renderer.feed(b"\n") + stdout_renderer.finish()
+assert (first + middle + last).decode() == "a" * 4095 + "ERR\n字\n"
+read_fd, write_fd = os.pipe()
+saved_read_fd = os.dup(read_fd)
+os.close(read_fd)
+os.dup2(write_fd, 3)
+os.close(write_fd)
+read_fd = saved_read_fd
+source = os.path.abspath("/tmp/source/input\npart.mkv")
+destination = os.path.abspath("/tmp/candidate/output\rpart.mka")
+child = "import os,sys; a=os.fsencode(sys.argv[1]); b=os.fsencode(sys.argv[2]); os.write(1,b'OUT '+a); os.write(1,b'\\n'); os.write(2,b'ERR '+b+b'\\n')"
+code, stdout, stderr = run([sys.executable, "-c", child, source, destination],
+                           display_paths=[(source, "input.mkv"), (destination, "output.mka")])
+assert code == 0
+assert stdout == "OUT " + source + "\n", repr(stdout)
+assert stderr == "ERR " + destination + "\n", repr(stderr)
+finish_native_display()
+os.close(3)
+display = bytearray()
+while True:
+    chunk = os.read(read_fd, 65536)
+    if not chunk:
+        break
+    display.extend(chunk)
+assert bytes(display) == b"OUT input.mkv\nERR output.mka\n", display
+os.close(read_fd)
+read_fd, write_fd = os.pipe()
+writer = NativeDisplayWriter(fd=write_fd, max_chunks=2, chunk_size=4096)
+for unused in range(256):
+    writer.submit(b"x" * 4096)
+started = time.monotonic()
+writer.finish(timeout=0.25)
+elapsed = time.monotonic() - started
+assert elapsed < 0.6, elapsed
+os.close(read_fd)
+os.close(write_fd)
+print("native renderer contracts passed")
+''', encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(script), "mux", str(os.getpid()), str(control)],
+        capture_output=True, text=True, check=False, timeout=5,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().endswith("native renderer contracts passed")
+
+
+def test_mkv_utils_native_blocked_display_does_not_block_owned_shutdown(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "shell" / "mkv_utils.zsh"
+    support = subprocess.run(
+        ["/usr/local/bin/zsh", "-f", "-c", 'source "$1"; _mkvutil_execution_support', "support", str(source)],
+        capture_output=True, text=True, check=True, timeout=5,
+    ).stdout
+    control = tmp_path / "control"
+    control.mkdir()
+    script = tmp_path / "blocked_display.py"
+    script.write_text(support + r'''
+read_fd, write_fd = os.pipe()
+saved_read_fd = os.dup(read_fd)
+os.close(read_fd)
+os.set_blocking(write_fd, False)
+try:
+    while True: os.write(write_fd, b"x" * 4096)
+except BlockingIOError:
+    pass
+os.set_blocking(write_fd, True)
+os.dup2(write_fd, 3)
+os.close(write_fd)
+command = "import os,sys,time; open(sys.argv[1],'w').write(str(os.getpid())); os.write(1,b'NATIVE HELD\\n'); time.sleep(20)"
+try:
+    run([sys.executable, "-c", command, os.path.join(control_dir, "native-pid")], display_paths=[])
+except Interrupted:
+    finish_native_display()
+    print("STOPPED", native_stopped, child.returncode, flush=True)
+else:
+    raise AssertionError("Held native child was not interrupted")
+''', encoding="utf-8")
+    process = subprocess.Popen(
+        [sys.executable, str(script), "mux", str(os.getpid()), str(control)],
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    import signal
+    import time
+
+    native_pid = None
+    try:
+        deadline = time.monotonic() + 5
+        marker = control / "native-pid"
+        while not marker.exists() and time.monotonic() < deadline:
+            assert process.poll() is None
+            time.sleep(0.01)
+        assert marker.exists()
+        native_pid = int(marker.read_text())
+        # Let the snapshot reach a display pipe which has no reader, then ask
+        # the actual ownership guard to terminate its native process group.
+        time.sleep(0.2)
+        started = time.monotonic()
+        (control / "signal").write_text(str(signal.SIGTERM))
+        stdout, stderr = process.communicate(timeout=5)
+        assert time.monotonic() - started < 3, stdout + stderr
+        assert process.returncode == 0 and "STOPPED True -15" in stdout, stdout + stderr
+        with pytest.raises(ProcessLookupError):
+            os.kill(native_pid, 0)
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=2)
+        if native_pid is not None:
+            try:
+                os.killpg(native_pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
 
 
 _EXECUTOR_FAULTS = r'''
@@ -2326,6 +2483,7 @@ def test_mkv_utils_reporting_mux_skip_ends_run_and_retry_needs_new_invocation(en
     assert 'expected={"type":"subtitles","codec_id":"S_TEXT/ASS"}' in report
     assert 'actual={"type":"subtitles","codec_id":"S_TEXT/UTF8"}' in report
     assert "Category: mux; Actions: 1,2" in result.stdout and "Optional Mux metadata: 3,4" in result.stdout
+    assert "Mux 1,2: remove + reorder; metadata 3,4" in result.stdout
     assert "Configuration 2" not in result.stdout
     assert len(_command_argv(env, "fzf")) == 1
     merges = [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
@@ -2382,15 +2540,34 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     manifest_path.write_text(json.dumps(manifest))
     collection=env["workdir"]/"Attachments";collection.mkdir();(collection/"Font.ttf").write_bytes(b"old collection")
     source=env["workdir"]/"First source.mkv"
+    extractor=env["fake_bin"]/"mkvextract"
+    extractor_body=extractor.read_text()
+    extraction_anchor='source, mode, specs = os.path.abspath(sys.argv[1]), sys.argv[2], sys.argv[3:]\n'
+    assert extractor_body.count(extraction_anchor)==1
+    extractor.write_text(extractor_body.replace(extraction_anchor, extraction_anchor +
+        'os.write(1, ("NATIVE "+mode+" "+source+"\\n").encode())\n'
+        'os.write(2, ("NATIVE STDERR "+mode+" "+source+"\\n").encode())\n', 1))
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n1,2\n0-3\n",
                           extra_env={"TEST_FAKE_EXECUTION_JSON":str(manifest_path)})
     assert result.returncode==0,result.stdout+result.stderr
     _ascii_box_contains(result.stdout, "Final report")
     assert "Category: extract; Actions: 1,2" in result.stdout and "Directory: workdir" in result.stdout
+    assert "Extract 1,2: attachments + tracks" in result.stdout
     assert "Done: 1; Failed: 0" in result.stdout and "Attachments processed: 3; published: 3; final unique published names: 2; superseded: 1" in result.stdout
     _assert_readable_outcomes(result.stdout, "Done: 1")
     assert "Processing: First source.mkv" in result.stdout
+    assert result.stdout.index("Extract 1,2: attachments + tracks") < result.stdout.index("Processing: First source.mkv")
+    for mode in ("attachments", "tracks"):
+        assert result.stdout.count(f"NATIVE {mode} First source.mkv") == 1
+        assert result.stdout.count(f"NATIVE STDERR {mode} First source.mkv") == 1
+        assert result.stdout.index(f"NATIVE {mode} First source.mkv") < result.stdout.index("File progress")
+        assert result.stdout.index(f"NATIVE STDERR {mode} First source.mkv") < result.stdout.index("File progress")
+    assert str(source) not in result.stdout
     _ascii_box_contains(result.stdout, "File progress", "File: First source.mkv")
+    final = result.stdout.split('Final report', 1)[1]
+    assert '=> Attachments' not in final
+    assert 'Track output ID 0: First source - Track [0].idx (published)' in final
+    assert 'Track output ID 0: First source - Track [0].sub (published)' in final
     assert "Files Attempted: 1" in result.stdout and "Estimated Time Remaining:" in result.stdout
     assert len(_command_argv(env,"fzf"))==1
     assert [argv[:2] for argv in _command_argv(env,"mkvextract")]==[[str(source),"attachments"],[str(source),"tracks"]]
@@ -2468,7 +2645,7 @@ def test_mkv_utils_nonexistent_working_dir_guard(env: dict[str, Path]):
 
 def test_mkv_utils_no_mkv_files_displays_guard(env: dict[str, Path]):
     (env["workdir"] / "notes.txt").write_text("plain", encoding="utf-8")
-    result = _run_mkv_utils(env, input_data="1\n")
+    result = _run_mkv_utils(env, input_data="1\n5\n")
     assert result.returncode == 1
     assert "No Matroska files found" in result.stdout
 
@@ -2719,6 +2896,9 @@ def _single_edit_menu(env,filename,choice,prompts,expected):
     assert result.returncode==0,result.stdout+result.stderr
     assert len(_command_argv(env,"fzf"))==1 and "--multi" in _command_argv(env,"fzf")[0]
     assert "Done: 1; Failed: 0" in result.stdout and "Processed In:" not in result.stdout
+    action_labels={1:"flag-forced",2:"flag-default",3:"language",4:"name",5:"file title"}
+    assert f"Edit {choice}: {action_labels[choice]}" in result.stdout
+    assert f"Processing: {source.name}" in result.stdout
     assert _observed_fake_identification(env,source)==actual
     assert all(argv[:1]==["-J"] for argv in _command_argv(env,"mkvmerge"))
     return source,result,_command_argv(env,"mkvpropedit")
@@ -2779,6 +2959,8 @@ def test_mkv_utils_option6_extracts_all_attachments(env):
     assert result.returncode==0,result.stdout+result.stderr
     calls=_command_argv(env,"mkvextract")
     assert len(calls)==1 and calls[0][:2]==[str(source),"attachments"]
+    assert "Extract 1: attachments" in result.stdout
+    assert result.stdout.index("Extract 1: attachments") < result.stdout.index(f"Processing: {source.name}")
     assert [spec.split(":",1)[0] for spec in calls[0][2:]]==["1","2"]
     assert (env["workdir"]/"Attachments"/embedded[0]["file_name"]).read_bytes()==b"one"
     assert (env["workdir"]/"Attachments"/"note.txt").read_bytes()==b"note"
@@ -2796,6 +2978,8 @@ def test_mkv_utils_option7_video_removal_converts_to_mka_and_keeps_other_tracks(
     output=source.with_suffix(".mka")
     assert not source.exists() and output.read_bytes()==b"candidate-data\n"
     assert _observed_fake_identification(env,output)==expected and not _command_argv(env,"mkvpropedit")
+    assert "Mux 1: remove" in result.stdout
+    assert result.stdout.index("Mux 1: remove") < result.stdout.index(f"Processing: {source.name}")
 
 
 def test_mkv_utils_option7_failure_cleans_temporary_file(env):
@@ -2890,6 +3074,8 @@ def test_mkv_utils_option8_reorder_tracks_replaces_original(env):
     actual=_observed_fake_identification(env,source)
     assert [t["properties"]["uid"] for t in actual["tracks"]]==[original["tracks"][i]["properties"]["uid"] for i in (1,0,2,3)]
     assert actual==expected and source.read_bytes()==b"candidate-data\n"
+    assert "Mux 2: reorder" in result.stdout
+    assert result.stdout.index("Mux 2: reorder") < result.stdout.index(f"Processing: {source.name}")
     assert result.stdout.count("Final report") == 1 and "Done: 1; Failed: 0" in result.stdout
 
 
@@ -2910,6 +3096,9 @@ def test_mkv_utils_option9_extract_track_extension_from_override(env):
     assert result.returncode==0,result.stdout+result.stderr
     assert _command_argv(env,"mkvextract")[0][:2]==[str(source),"tracks"]
     assert (env["workdir"]/"extract_codec - Track [1].opus").read_bytes()==b"opus bytes" and source.read_bytes()==b"payload"
+    final = result.stdout.split('Final report', 1)[1]
+    assert '=> Attachments' not in final
+    assert 'Track output ID 1: extract_codec - Track [1].opus (published)' in final
 
 
 def test_mkv_utils_option9_extract_track_extension_from_python_map(env):
@@ -2966,7 +3155,11 @@ def test_mkv_utils_integration_reject_or_cancel_before_modification(env,boundary
     assert source.read_bytes()==b"payload"
     assert not _command_argv(env,"mkvpropedit") and not _command_argv(env,"mkvextract")
     assert not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
-    if boundary in ("cancel","eof"):assert "Cancelled; no media changes." in result.stdout
+    if boundary == "eof":
+        assert "Cancelled; no media changes." in result.stdout
+    elif boundary == "cancel":
+        assert result.stdout.count("1) Set flag-forced for tracks") == 2
+        assert "Final report" not in result.stdout
 
 
 def test_mkv_utils_integration_native_child_signal_stops_menu_queue(env):
@@ -2981,48 +3174,22 @@ def test_mkv_utils_integration_native_child_signal_stops_menu_queue(env):
     assert not _command_argv(env,"mkvpropedit") and len(_command_argv(env,"fzf"))==1
 
 
-def test_mkv_utils_navigation_same_scope_and_requested_action_attribution(env):
-    result = _run_planning_contract(env, r'''
-scan_count=0; picker_count=0; inspect_count=0; configure_count=0; plan_count=0
-mkvutil_scan_files() { (( ++scan_count )); MKVUTIL_SCAN_FILES=("$PWD/first.mkv" "$PWD/excluded.mkv"); }
-mkvutil_select_files() { (( ++picker_count )); MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
-mkvutil_inspect_sources() {
-  (( ++inspect_count ))
-  MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/first.mkv" '{source:$source}')")
-  mkvutil_ledger_exclude "$PWD/excluded.mkv" 'Explicit initial exclusion'
-}
-mkvutil_configure_category() {
-  (( ++configure_count ))
-  if (( configure_count==1 )); then
-    MKVUTIL_METADATA_SETTINGS[5:info]='partial'
-    MKVUTIL_JOBS=(stale)
-    return 4
-  fi
-  (( ${#MKVUTIL_METADATA_SETTINGS}==0 )) || fail 'partial configuration survived Back'
-  MKVUTIL_CONFIG="$(jq -cn --arg category "$1" --arg actions "$2" '{category:$category,operations:($actions|split(",")),metadata:"",settings:{}}')"
-}
-mkvutil_plan_queue() {
-  (( ++plan_count ))
-  MKVUTIL_JOBS=()
-  (( plan_count==1 )) && return 4
-  return 2
-}
-mkvutil_execute_queue() { fail 'incomplete preflight must not execute'; }
-mkvutil_main "$PWD"
-eq "$scan_count" 1 'same scope scans once'
-eq "$picker_count" 1 'same scope picks once'
-eq "$inspect_count" 1 'same scope inspects once'
-eq "${#MKVUTIL_SOURCES}" 1 'explicit exclusion retained'
-eq "${#MKVUTIL_SCOPE_KEYS}" 2 'original ledger scope retained'
-(( ${#MKVUTIL_JOBS}==0 && ${#MKVUTIL_METADATA_SETTINGS}==0 )) || fail 'Back retained partial plan'
-print -r -- "SUMMARY $(mkvutil_final_summary)"
-''', {}, input_data="2\n2\n1\n2\n")
-    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
-    assert [batch["action_ids"] for batch in summary["batches"]] == [["2"], ["1"], ["2"]]
-    assert [batch["state"] for batch in summary["batches"]] == ["requested", "configured", "configured"]
-    assert summary["counts"]["excluded"] == 1 and summary["selected"] == 2
+def test_mkv_utils_navigation_action_back_resets_and_reopens_picker(env):
+    first, second = _mkv_file(env, "Back first.mkv"), _mkv_file(env, "Back second.mkv")
+    model = _integration_model()
+    expected = _integration_output(model, [1, 2, 3])
+    extra = _integration_manifest(env, {first: model, second: model}, stage={str(second): expected})
+    result = _run_mkv_utils(env, fzf_responses=[[str(first)], [str(second)]],
+                            input_data="2\n1,2\n1\ne\n1\n0\n\n", extra_env=extra)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(_command_argv(env, "fzf")) == 2
+    writers = [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
+    assert len(writers) == 1 and writers[0][-1] == str(second)
+    assert first.read_bytes() == b"payload" and not first.with_suffix(".mka").exists()
+    assert not second.exists() and _observed_fake_identification(env, second.with_suffix(".mka")) == expected
+    final = result.stdout.split("Final report", 1)[1]
+    assert "Selected: 1" in final and first.name not in final and f"success: {second.name}" in final
     assert result.stdout.count("Final report") == 1
-    assert "0) Exit" not in result.stdout and "0) Cancel" not in result.stdout and "e) Back" in result.stdout
 
 
 def test_mkv_utils_navigation_config_action_back_and_data_literals(env):
@@ -3309,6 +3476,7 @@ class _OwnedMenuScreen:
         self.active = False
         self.cursor_visible = True
         self.normal = ""
+        self.normal_row = ""
         self.cells = [[]]
         self.row = self.col = 0
         self.enters = self.leaves = 0
@@ -3342,6 +3510,10 @@ class _OwnedMenuScreen:
                 elif parameters == "?25" and command in ("h", "l"):
                     self.cursor_visible = command == "h"
                 elif command in ("J", "K"):
+                    if not self.active and command == "K" and parameters == "2":
+                        assert re.search(r"  [⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏] Working", self.normal_row), "erase outside owned Working row"
+                        self.normal_row = ""
+                        continue
                     assert self.active and parameters in ("", "0"), "normal/prepaint screen erase"
                     del self._row()[self.col:]
                     if command == "J":
@@ -3360,6 +3532,10 @@ class _OwnedMenuScreen:
                 character, self.pending = self.pending[0], self.pending[1:]
                 if not self.active:
                     self.normal += character
+                    if character == "\n":
+                        self.normal_row = ""
+                    elif character != "\r":
+                        self.normal_row += character
                 elif character == "\r":
                     self.col = 0
                 elif character == "\n":
@@ -3820,26 +3996,24 @@ print -r -- "JOB $(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")"
     assert 'Track IDs (comma/range;' not in result.stderr
 
 
-def test_mkv_utils_metadata_field_back_edit_keeps_file_scope_entrypoint(env):
-    source = _mkv_file(env, 'Edit Back.mkv')
+def test_mkv_utils_metadata_field_back_edit_resets_and_reopens_file_scope_entrypoint(env):
+    first, second = _mkv_file(env, 'Edit Back first.mkv'), _mkv_file(env, 'Edit Back second.mkv')
     original = _integration_model()
     actual = json.loads(json.dumps(original))
-    actual['container']['properties']['title'] = 'e'
-    extra = _integration_manifest(env, {source: original}, post_edit={str(source): actual})
-    result = _run_mkv_utils(env, fzf_responses=[[str(source)]],
-                            input_data='1\n4,5\n0\npartial name\ne\n5\n\\e\n', extra_env=extra)
+    actual['container']['properties']['title'] = 'Second title'
+    extra = _integration_manifest(env, {first: original, second: original}, post_edit={str(second): actual})
+    result = _run_mkv_utils(env, fzf_responses=[[str(first)], [str(second)]],
+                            input_data='1\n4,5\n0\npartial name\ne\n5\nSecond title\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stderr.count('Operations (single/comma/range):') == 2
-    assert 'Category: edit; Actions: 4,5' in result.stdout and 'Category: edit; Actions: 5' in result.stdout
+    assert len(_command_argv(env, 'fzf')) == 2
     assert 'partial name' not in result.stdout
-    assert len(_command_argv(env, 'fzf')) == 1
-    assert len(_command_argv(env, 'mkvmerge')) == 3
-    assert all(call[:1] == ['-J'] for call in _command_argv(env, 'mkvmerge'))
     edits = _command_argv(env, 'mkvpropedit')
-    assert len(edits) == 1 and 'title=e' in edits[0]
+    assert len(edits) == 1 and edits[0][0] == str(second) and 'title=Second title' in edits[0]
     assert not any('name=' in arg for arg in edits[0])
-    assert source.read_bytes() == b'edited-data\n'
-    assert _observed_fake_identification(env, source) == actual
+    assert first.read_bytes() == b'payload' and second.read_bytes() == b'edited-data\n'
+    assert _observed_fake_identification(env, second) == actual
+    final = result.stdout.split('Final report', 1)[1]
+    assert 'Selected: 1' in final and first.name not in final and f'success: {second.name}' in final
 
 
 def test_mkv_utils_shared_edit_per_id_values_across_source_listing_positions(env):
@@ -3862,6 +4036,8 @@ def test_mkv_utils_shared_edit_per_id_values_across_source_listing_positions(env
     result = _run_mkv_utils(env, fzf_responses=[[str(first), str(second)]],
                             input_data='1\n4,5,3\n2,1\nsecond ID\nfirst ID\nBatch title\nfr-CA\nde\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Edit 4,5,3: name + file title + language" in result.stdout
+    assert result.stdout.index("Edit 4,5,3: name + file title + language") < result.stdout.index(f"Processing: {first.name}")
     assert result.stderr.count('Track IDs (comma/range;') == 1
     calls = _command_argv(env, 'mkvpropedit')
     assert len(calls) == 2 and {call[0] for call in calls} == {str(first), str(second)}
@@ -3992,9 +4168,9 @@ print -r -- 'cohort identity contracts passed'
     assert not _command_argv(env, 'fzf') and not _command_argv(env, 'mkvmerge')
 
 
-def test_mkv_utils_back_atomic_initial_inspection_retries_entire_eligible_selection(env):
+def test_mkv_utils_back_atomic_initial_inspection_resets_and_reselects_entire_cohort(env):
     files = [_mkv_file(env, name) for name in ('first.mkv', 'excluded.mkv', 'back.mkv', 'last.mkv')]
-    _set_fake_fzf_responses(env, [[str(file) for file in files]])
+    _set_fake_fzf_responses(env, [[str(file) for file in files], [str(file) for file in files]])
     sources = {str(file): _source_json([(0, 'audio', 'A_AAC', True)]) for file in files}
     result = _run_planning_contract(env, r'''
 functions[original_capture_source]="${functions[mkvutil_capture_source]}"
@@ -4018,22 +4194,21 @@ mkvutil_capture_source() {
 code=0
 mkvutil_main "$PWD" || code=$?
 eq "$code" 0 'explicit exclusion and Back leave neutral invocation successful'
-eq "$inspection_pass" 2 'initial Back triggers same-cohort inspection retry'
-eq "${#MKVUTIL_SELECTED_FILES}" 4 'selected file cohort retained'
-eq "${#MKVUTIL_SOURCES}" 3 'complete eligible pool published'
-eq "$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$PWD/excluded.mkv]}")" excluded 'explicit exclusion survives retry'
-eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[1]}")" "$(_mkvutil_json_array "$PWD/first.mkv" "$PWD/excluded.mkv" "$PWD/back.mkv" "$PWD/last.mkv")" 'initial preinspection request covers full selection'
-eq "$(jq '.sources' <<< "${MKVUTIL_BATCHES[2]}")" "$(_mkvutil_json_array "$PWD/first.mkv" "$PWD/back.mkv" "$PWD/last.mkv")" 'retry request covers every remaining eligible file'
+eq "$inspection_pass" 2 'Back triggers a fresh selection and inspection'
+eq "${#MKVUTIL_SELECTED_FILES}" 0 'subsequent metadata Back clears fresh selection'
+eq "${#MKVUTIL_SOURCES}" 0 'no abandoned source cache remains'
+eq "${#MKVUTIL_LEDGER}" 0 'old explicit exclusions discarded by public Back'
+eq "${#MKVUTIL_BATCHES}" 0 'unexecuted requests discarded by public Back'
 eq "$MKVUTIL_CONFIG" '' 'pending config discarded'
 eq "${#MKVUTIL_JOBS}" 0 'no pending jobs'
 print -r -- 'initial atomic Back passed'
 ''', sources, input_data='1\n5\nY\ne\n5\ne\ne\ne\n')
     assert result.stdout.rstrip().endswith('initial atomic Back passed')
     calls = (env['workdir'] / 'captures.bin').read_bytes().split(b'\0')[:-1]
-    assert calls == [os.fsencode(file) for file in (*files[:3], files[0], files[2], files[3])]
-    assert len(_command_argv(env, 'fzf')) == 1
-    assert len(_command_argv(env, 'mkvmerge')) == 4
-    assert result.stdout.count('Final report') == 1 and 'Excluded: 1' in result.stdout
+    assert calls == [os.fsencode(file) for file in (*files[:3], *files)]
+    assert len(_command_argv(env, 'fzf')) == 2
+    assert len(_command_argv(env, 'mkvmerge')) == 5
+    assert 'Final report' not in result.stdout
     assert all(file.read_text() == 'payload' for file in files)
 
 
@@ -4141,30 +4316,58 @@ print -r -- 'structural Back passed'
     assert 'Invalid track order' not in result.stderr
 
 
-def test_mkv_utils_back_extract_id_returns_to_actions_same_picker_entrypoint(env):
+def test_mkv_utils_back_extract_id_returns_to_actions_fresh_picker_entrypoint(env):
     source = _mkv_file(env, 'Extract Back.mkv')
     model = _integration_model()
     extra = _integration_manifest(env, {source: model}, extraction={str(source): {'tracks': {'outputs': {'1': {'data': 'aac payload'}}}}})
-    result = _run_mkv_utils(env, fzf_responses=[[str(source)]], input_data='3\n2\ne\n2\n1\n', extra_env=extra)
+    result = _run_mkv_utils(env, fzf_responses=[[str(source)], [str(source)]], input_data='3\n2\ne\n2\n1\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stderr.count('Track IDs to extract (comma/range; e to go back):') == 2
-    assert len(_command_argv(env, 'fzf')) == 1 and len(_command_argv(env, 'mkvmerge')) == 2
+    assert len(_command_argv(env, 'fzf')) == 2 and len(_command_argv(env, 'mkvmerge')) == 3
     assert all(call[:1] == ['-J'] for call in _command_argv(env, 'mkvmerge'))
     assert (source.parent / 'Extract Back - Track [1].aac').read_bytes() == b'aac payload'
     assert result.stdout.count('Final report') == 1 and 'Done: 1; Failed: 0' in result.stdout
     assert len(_command_argv(env, 'mkvextract')) == 1 and source.read_text() == 'payload'
 
 
-def test_mkv_utils_back_mux_metadata_field_then_list_goes_directly_main_entrypoint(env):
-    source = _mkv_file(env, 'Mux Back.mkv')
-    result = _run_mkv_utils(env, fzf_responses=[[str(source)]], input_data='2\n2\n0:2\n4\ne\nE\ne\n')
+def test_mkv_utils_back_mux_metadata_field_preserves_structure_and_selection(env):
+    source = _mkv_file(env, 'Mux field Back.mkv')
+    original = _integration_model()
+    expected = _integration_output(original, [2, 1, 3])
+    expected['container']['properties']['title'] = 'Mux title'
+    extra = _integration_manifest(env, {source: original}, stage={str(source): expected})
+    result = _run_mkv_utils(env, fzf_responses=[[str(source)]],
+                            input_data='2\n1,2\n0\n0:2,0:1\n4\ne\n5\nMux title\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert "Mux 1,2: remove + reorder; metadata 5" in result.stdout
+    assert result.stdout.index("Mux 1,2: remove + reorder; metadata 5") < result.stdout.index(f"Processing: {source.name}")
     assert result.stderr.count('Metadata choices (comma/range; blank for none):') == 2
-    assert result.stdout.count('Original track IDs for each track edit: 2') == 2
-    assert result.stdout.count('1) Matroska Edit') == 2 and 'Final report' not in result.stdout
-    assert result.stderr.count('Operations (single/comma/range):') == 1
-    assert len(_command_argv(env, 'fzf')) == len(_command_argv(env, 'mkvmerge')) == 1
-    assert not _command_argv(env, 'mkvpropedit') and source.read_text() == 'payload'
+    assert len(_command_argv(env, 'fzf')) == 1
+    writers = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
+    assert len(writers) == 1 and writers[0][writers[0].index('--track-order') + 1] == '0:2,0:1,0:3'
+    assert '--title' in writers[0] and writers[0][writers[0].index('--title') + 1] == 'Mux title'
+    assert '--track-name' not in writers[0] and '--language' not in writers[0]
+    assert not source.exists() and source.with_suffix('.mka').read_bytes() == b'candidate-data\n'
+    assert _observed_fake_identification(env, source.with_suffix('.mka')) == expected
+    assert 'Selected: 1' in result.stdout.split('Final report', 1)[1]
+
+
+def test_mkv_utils_back_mux_metadata_list_resets_and_reopens_picker(env):
+    first, second = _mkv_file(env, 'Mux list first.mkv'), _mkv_file(env, 'Mux list second.mkv')
+    model = _integration_model()
+    expected = _integration_output(model, [1, 2, 3])
+    extra = _integration_manifest(env, {first: model, second: model}, stage={str(second): expected})
+    result = _run_mkv_utils(env, fzf_responses=[[str(first)], [str(second)]],
+                            input_data='2\n2\n0:2\nE\n2\n1\n0\n\n', extra_env=extra)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert len(_command_argv(env, 'fzf')) == 2
+    writers = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
+    assert len(writers) == 1 and writers[0][-1] == str(second)
+    assert first.read_bytes() == b'payload' and not first.with_suffix('.mka').exists()
+    assert not second.exists() and _observed_fake_identification(env, second.with_suffix('.mka')) == expected
+    final = result.stdout.split('Final report', 1)[1]
+    assert 'Selected: 1' in final and first.name not in final and f'success: {second.name}' in final
+    assert result.stdout.count('Final report') == 1
 
 
 def test_mkv_utils_back_initial_inspection_interrupt_never_rereads_menu(tmp_path):
@@ -4187,7 +4390,7 @@ print -r -- 'inspection interrupt passed'
 
 
 @pytest.mark.parametrize('boundary', ('quiet', 'unresolved', 'unresolved-main-eof', 'report-failure'))
-def test_mkv_utils_back_metadata_main_control_preserves_sticky_status_and_report_errors(env, boundary):
+def test_mkv_utils_back_metadata_main_control_clears_unexecuted_ledger_without_reports(env, boundary):
     result = _run_planning_contract(env, r'''
 mkvutil_scan_files() { MKVUTIL_SCAN_FILES=("$PWD/pending.mkv"); }
 mkvutil_select_files() { MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
@@ -4199,25 +4402,22 @@ mkvutil_controller() {
   fi
   return 6
 }
-if [[ "$TEST_BACK_BOUNDARY" == report-failure ]]; then
-  mkvutil_final_report() { print -u2 -r -- 'Report unavailable'; return 1; }
-fi
+report_calls=0
+mkvutil_final_report() { (( ++report_calls )); print -u2 -r -- 'Unexpected report for abandoned selection'; return 1; }
 code=0
 mkvutil_main "$PWD" || code=$?
-if [[ "$TEST_BACK_BOUNDARY" == quiet ]]; then eq "$code" 0 'neutral metadata list Back remains quiet'
-else eq "$code" 1 'unresolved/report failure remains nonzero'; fi
-if [[ "$TEST_BACK_BOUNDARY" != report-failure ]]; then
-  eq "$MKVUTIL_CONFIG" '' 'pending configuration discarded'
-  eq "${#MKVUTIL_JOBS}" 0 'pending jobs discarded'
-else eq "$MKVUTIL_UI_REPORT_SHOWN" -1 'failed report not covered by main'; fi
+eq "$code" 0 'metadata list Back discards all unexecuted outcomes'
+eq "$MKVUTIL_CONFIG" '' 'pending configuration discarded'
+eq "${#MKVUTIL_JOBS}" 0 'pending jobs discarded'
+eq "${#MKVUTIL_LEDGER}" 0 'unexecuted outcome ledger discarded'
+eq "${#MKVUTIL_SELECTED_FILES}" 0 'selection discarded'
+eq "$report_calls" 0 'abandoned selection never produces a report'
 print -r -- 'main Back control passed'
 ''', {}, input_data='2\n2\n' + ('' if boundary == 'unresolved-main-eof' else 'e\n'),
         extra_env={'TEST_BACK_BOUNDARY': boundary})
     assert result.stdout.rstrip().endswith('main Back control passed')
-    assert result.stdout.count('1) Matroska Edit') == (1 if boundary == 'report-failure' else 2)
-    assert result.stdout.count('Final report') == (1 if boundary in ('unresolved', 'unresolved-main-eof') else 0)
-    if boundary == 'report-failure':
-        assert 'Report unavailable' in result.stderr
+    assert result.stdout.count('1) Matroska Edit') == 2
+    assert 'Final report' not in result.stdout and 'Unexpected report' not in result.stderr
     assert not _command_argv(env, 'mkvmerge') and not _command_argv(env, 'fzf')
 
 
@@ -4245,11 +4445,30 @@ print -r -- 'prepared newline identity passed'
     assert not _command_argv(env, 'mkvmerge')
 
 
+def _assert_owned_group_gone(group, timeout=0.5):
+    """Require confirmed absence, allowing bounded macOS group retirement."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            os.killpg(group, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError:
+            # EPERM cannot establish absence. Keep probing until it is actually
+            # gone, just as the production native-shutdown guard does.
+            pass
+        assert time.monotonic() < deadline, f"Owned process group {group} shutdown unconfirmed"
+        time.sleep(0.01)
+
+
 @pytest.mark.parametrize("category,stop", [
     ("edit", "int"), ("mux", "int"), ("extract", "int"),
     ("attachments", "int"), ("mux", "term"), ("edit", "hup"),
     ("analysis", "int"), ("analysis", "complete"), ("analysis", "dumb-complete"),
     ("mux", "late-int"),
+    ("mux", "native-output"),
     ("extract", "descendant-int"),
     ("extract", "unconfirmed-int"),
 ])
@@ -4266,7 +4485,8 @@ def test_mkv_utils_runtime_stop_terminal(env, category, stop):
     original = _integration_model(attachments=[{"id": 1, "file_name": "Font.ttf", "size": 4}])
     edited = json.loads(json.dumps(original)); edited["container"]["properties"]["title"] = "Stop test"
     extra = _integration_manifest(env, {first: original, second: original},
-        stage={str(first): _integration_output(original, [1, 0, 2, 3])},
+        stage={str(first): _integration_output(original, [1, 0, 2, 3]),
+               **({str(second): _integration_output(original, [1, 0, 2, 3])} if stop == "native-output" else {})},
         post_edit={str(first): edited},
         extraction={str(first): {"attachments": {"outputs": {"1": {"data": "font"}}},
                                  "tracks": {"outputs": {"3": {"data": "unfinished track"}}}}})
@@ -4281,6 +4501,8 @@ def test_mkv_utils_runtime_stop_terminal(env, category, stop):
         "analysis": ("mkvmerge", 'if [ "$call_mode" = "json" ]; then'),
     }[category]
     condition = 'mode == "tracks"' if category == "extract" else 'mode == "attachments"' if category == "attachments" else "True"
+    if stop == "native-output":
+        condition = 'str(source) == os.environ["TEST_NATIVE_DISPLAY_SOURCE"]'
     executable = env["fake_bin"] / tool
     body = executable.read_text()
     assert body.count(anchor) == 1
@@ -4307,12 +4529,26 @@ def test_mkv_utils_runtime_stop_terminal(env, category, stop):
 fi
 if [ "$call_mode" = "json" ]; then''', 1)
     else:
+        display_setup = ""
+        hold_setup = "    time.sleep(0.8)"
+        if stop == "native-output":
+            display_setup = '''    import os
+    raw_path = os.environ["TEST_NATIVE_DISPLAY_SOURCE"].encode()
+    split = len(raw_path) // 2
+    os.write(1, b"NATIVE OUT: " + raw_path[:split])
+    time.sleep(0.15)
+    os.write(1, raw_path[split:] + b"\\n")
+    os.write(2, b"NATIVE ERR: " + raw_path + b"\\n")
+'''
+            hold_setup = '''    while not Path(os.environ["TEST_NATIVE_DISPLAY_RELEASE"]).exists():
+        time.sleep(0.02)'''
         body = body.replace(anchor, f'''if {condition}:
     import time
     marker = Path(os.environ["TEST_STOP_MARKER"])
 {descendant_setup}\
+{display_setup}\
     marker.write_text(str(os.getpid()))
-    time.sleep(0.8)
+{hold_setup}
     marker.with_suffix(".finished").write_text("finished")
 {anchor}''')
     executable.write_text(body)
@@ -4341,6 +4577,10 @@ esac
         "TEST_RESULT_MARKER": str(result_marker),
         "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]), **extra,
     })
+    native_display_release = env["fake_state"] / "native-display-release"
+    if stop == "native-output":
+        run_env.update(TEST_NATIVE_DISPLAY_SOURCE=str(first),
+                       TEST_NATIVE_DISPLAY_RELEASE=str(native_display_release))
     if category == "analysis" and stop in ("complete", "dumb-complete"):
         run_env.update(TERM="dumb" if stop == "dumb-complete" else "xterm-256color",
                        TEST_ANALYSIS_HOLD_PATH=str(second),
@@ -4399,6 +4639,14 @@ esac
             receive()
             assert process.poll() is None, output.decode(errors="replace")
         assert ready_marker.exists(), output.decode(errors="replace")
+        if stop == "native-output":
+            expected_native = f"NATIVE OUT: {first.name}".encode()
+            expected_error = f"NATIVE ERR: {first.name}".encode()
+            while (expected_native not in output or expected_error not in output) and time.monotonic() < deadline:
+                receive()
+            visible = output.decode(errors="replace")
+            assert expected_native.decode() in visible and f"NATIVE ERR: {first.name}" in visible, visible
+            assert str(first) not in visible, visible
         if category == "analysis":
             if stop == "dumb-complete":
                 assert not _analysis_spinner_frames(output.decode(errors="replace"))
@@ -4425,6 +4673,8 @@ esac
                     assert result_marker.exists(), output.decode(errors="replace")
                     os.write(master, b"\x03")
                 else: answer(b"finishing the current file", b"\x03")
+        elif stop == "native-output":
+            native_display_release.write_text("release", encoding="utf-8")
         else:
             process.send_signal(signal.SIGTERM if stop == "term" else signal.SIGHUP)
         while process.poll() is None and time.monotonic() < deadline: receive()
@@ -4432,7 +4682,7 @@ esac
         while select.select([master], [], [], 0)[0] and time.monotonic() < deadline:
             if not receive(): break
         text = output.decode(errors="replace")
-        assert process.returncode == (0 if analysis_scan else 1), text
+        assert process.returncode == (0 if analysis_scan or stop == "native-output" else 1), text
         assert "Review/change" not in text and "Preview resulting" not in text
         assert "Review choice:" not in text
         if category == "analysis":
@@ -4471,16 +4721,26 @@ esac
                 assert 0 <= text.index("Analysing") < clear_index < report_index
                 assert len(set(_analysis_spinner_frames(text[:clear_index]))) >= 2
                 assert not _analysis_spinner_frames(text[report_index:])
-                with pytest.raises(ProcessLookupError): os.killpg(process.pid, 0)
+                _assert_owned_group_gone(process.pid)
             assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
             assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
             assert _command_argv(env, "fzf")
+        elif stop == "native-output":
+            assert "Mux 2: reorder" in text and "Processing: Active episode.mkv" in text
+            assert text.count("NATIVE OUT: Active episode.mkv") == 1
+            assert text.count("NATIVE ERR: Active episode.mkv") == 1
+            assert text.index("NATIVE OUT: Active episode.mkv") < text.index("File progress")
+            assert text.index("NATIVE ERR: Active episode.mkv") < text.index("File progress")
+            assert text.index("File progress") < text.index("Final report")
+            assert str(first) not in text and marker.with_suffix(".finished").exists()
+            assert first.read_bytes() == b"candidate-data\n"
+            assert "Interrupted: 0" in text
         else:
             assert "Files not started due to stop: 1" in text and f"    {second.name}" in text
-        assert second.read_bytes() == b"payload"
+        assert second.read_bytes() == (b"candidate-data\n" if stop == "native-output" else b"payload")
         assert not list(transport_root.iterdir()), text
         if analysis_scan:
-            with pytest.raises(ProcessLookupError): os.killpg(process.pid, 0)
+            _assert_owned_group_gone(process.pid)
         else:
             with pytest.raises(ProcessLookupError): os.kill(int(marker.read_text()), 0)
         if stop == "descendant-int":
@@ -4493,6 +4753,8 @@ esac
         elif category == "analysis" and stop not in ("complete", "dumb-complete"):
             assert not marker.with_suffix(".finished").exists()
             assert "Files analyzed: 0; Matching: 0; Mismatched: 0; Failed: 1; Not attempted: 1" in text
+        elif stop == "native-output":
+            assert marker.with_suffix(".finished").exists()
         elif category != "analysis":
             assert not marker.with_suffix(".finished").exists()
             assert "Interrupted: 1" in text
@@ -4511,10 +4773,12 @@ esac
             assert list(first.parent.glob("Attachments/.mkvutil-extract-*/attachments-*"))
         calls = _command_argv(env, tool)
         modifying = [args for args in calls if "-o" in args] if tool == "mkvmerge" else [args for args in calls if len(args) > 1 and args[1] != "tags"]
-        expected_modifying = {"analysis": 0, "extract": 2}.get(category, 1)
+        expected_modifying = 2 if stop == "native-output" else {"analysis": 0, "extract": 2}.get(category, 1)
         assert len(modifying) == expected_modifying
     finally:
         (env["workdir"].parent / "runtime-stop-transcript.bin").write_bytes(output)
+        if stop == "native-output":
+            native_display_release.write_text("release", encoding="utf-8")
         if category == "analysis" and stop in ("complete", "dumb-complete"):
             analysis_release.write_text("release", encoding="utf-8")
             try:
@@ -4522,8 +4786,115 @@ esac
             except ProcessLookupError:
                 pass
         if process.poll() is None:
-            process.kill(); process.wait(timeout=3)
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=3)
         os.close(master); os.close(terminal)
+
+
+def test_mkv_utils_working_indicator_during_delayed_inspection(env):
+    import fcntl
+    import pty
+    import select
+    import termios
+    import time
+
+    source = _mkv_file(env, "Held inspection.mkv")
+    manifest = env["workdir"].parent / "held-inspection.json"
+    original = _integration_model()
+    edited = json.loads(json.dumps(original))
+    edited['container']['properties']['title'] = 'Held inspection title'
+    manifest.write_text(json.dumps({"sources": {str(source): original}, "post_edit": {str(source): edited}}))
+    marker, release = env["fake_state"] / "inspection-held", env["fake_state"] / "inspection-release"
+    executable = env["fake_bin"] / "mkvmerge"
+    body = executable.read_text()
+    anchor = 'if [ "$call_mode" = "json" ]; then\n'
+    assert body.count(anchor) == 1
+    replacement = (
+        'if [ "$call_mode" = "json" ] && [ "$source_file" = "$TEST_INSPECTION_HOLD_PATH" ]; then\n'
+        '  printf \'%s\\n\' "$$" > "$TEST_INSPECTION_MARKER"\n'
+        '  while [ ! -e "$TEST_INSPECTION_RELEASE" ]; do /bin/sleep 0.02; done\n'
+        'fi\n' + anchor
+    )
+    executable.write_text(body.replace(anchor, replacement, 1))
+    _set_fake_fzf_responses(env, [[str(source)]])
+    run_env = os.environ.copy()
+    run_env.update({
+        "TERM": "xterm-256color", "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq", "TEST_REAL_PYTHON": sys.executable,
+        "TEST_USE_REAL_JSON": "1", "PYTHONDONTWRITEBYTECODE": "1",
+        "TEST_COMMAND_LOG": str(env["command_log"]), "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
+        "TEST_FAKE_STATE_DIR": str(env["fake_state"]), "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]),
+        "TEST_INSPECTION_HOLD_PATH": str(source), "TEST_INSPECTION_MARKER": str(marker),
+        "TEST_INSPECTION_RELEASE": str(release), "TEST_FAKE_EXECUTION_JSON": str(manifest),
+    })
+    master, terminal = pty.openpty()
+
+    def own_terminal():
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        os.tcsetpgrp(0, os.getpgrp())
+
+    process = subprocess.Popen(["/usr/local/bin/zsh", "-f", str(env["mkv_utils_script"])],
+        cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
+        start_new_session=True, preexec_fn=own_terminal)
+    output = bytearray()
+    deadline = time.monotonic() + 12
+
+    def receive(timeout=0.05):
+        if select.select([master], [], [], timeout)[0]:
+            try:
+                data = os.read(master, 65536)
+            except OSError:
+                return False
+            output.extend(data)
+            return bool(data)
+        return True
+
+    def answer(prompt, value):
+        while prompt not in output and time.monotonic() < deadline:
+            receive()
+            assert process.poll() is None, output.decode(errors="replace")
+        assert prompt in output, output.decode(errors="replace")
+        os.write(master, value)
+
+    try:
+        answer(b"Category: \x1b[?25h", b"1")
+        answer(b"Operations (single/comma/range): ", b"5\n")
+        while not marker.exists() and time.monotonic() < deadline:
+            receive()
+            assert process.poll() is None, output.decode(errors="replace")
+        assert marker.exists(), output.decode(errors="replace")
+        while len(set(_indicator_frames(output.decode(errors="replace"), "Working"))) < 2 and time.monotonic() < deadline:
+            receive()
+        text = output.decode(errors="replace")
+        assert len(set(_indicator_frames(text, "Working"))) >= 2, text
+        assert "Track configuration" not in text and "Title (empty to unset):" not in text
+        release.write_text("release", encoding="utf-8")
+        answer(b"Title (empty to unset): ", b"Held inspection title\n")
+        while process.poll() is None and time.monotonic() < deadline:
+            receive()
+        assert process.poll() == 0, output.decode(errors="replace")
+        text = output.decode(errors="replace")
+        clear_index = text.rfind("\r\x1b[2K", 0, text.index("Track configuration"))
+        assert 0 <= text.index("Working") < clear_index < text.index("Track configuration")
+        assert "Processing: Held inspection.mkv" in text
+        assert "Final report" in text and "Held inspection.mkv" in text
+        assert not _indicator_frames(text[text.index("Track configuration"):text.index("Title (empty to unset):")], "Working")
+        assert source.read_bytes() == b"edited-data\n"
+        assert len(_command_argv(env, "mkvpropedit")) == 1
+        assert all(call[1] == "tags" for call in _command_argv(env, "mkvextract"))
+        with pytest.raises(ProcessLookupError):
+            os.kill(int(marker.read_text()), 0)
+        with pytest.raises(ProcessLookupError):
+            os.killpg(process.pid, 0)
+    finally:
+        (env["workdir"].parent / "working-transcript.bin").write_bytes(output)
+        if process.poll() is None:
+            release.write_text("release", encoding="utf-8")
+            import signal
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=3)
+        os.close(master)
+        os.close(terminal)
 
 
 def test_mkv_utils_analysis_indicator_reaps_child_after_second_signal(env):
@@ -4544,15 +4915,16 @@ source "$MKVUTIL_TEST_SOURCE"
 MKVUTIL_INTERRUPTED=0
 (
   trap '' INT
-  trap 'trap "" TERM; printf "%s\n" "$$" > "$TEST_INDICATOR_STOPPING"; while [[ ! -e "$TEST_INDICATOR_RELEASE" ]]; do /bin/sleep 0.02; done; exit 0' TERM
+  trap 'trap "" TERM; printf "%s\n" "$$" > "$TEST_INDICATOR_STOPPING"; while [[ ! -e "$TEST_INDICATOR_RELEASE" ]]; do /bin/sleep 0.02; done; exit 73' TERM
   while true; do /bin/sleep 1; done
 ) &
-MKVUTIL_ANALYSIS_INDICATOR_PID=$!
-printf "%s\n" "$MKVUTIL_ANALYSIS_INDICATOR_PID" > "$TEST_INDICATOR_PID_FILE"
+MKVUTIL_INDICATOR_PID=$!
+printf "%s\n" "$MKVUTIL_INDICATOR_PID" > "$TEST_INDICATOR_PID_FILE"
+printf '\r  ⠋ Working'
 trap 'MKVUTIL_INTERRUPTED=1; print -r -- "SECOND_SIGNAL_RECEIVED"; : > "$TEST_INDICATOR_INTERRUPTED"' INT
 print -r -- "STOPPING_INDICATOR"
-_mkvutil_stop_analysis_indicator
-print -r -- "STOP_RETURNED:$MKVUTIL_INTERRUPTED:$MKVUTIL_ANALYSIS_INDICATOR_PID"
+_mkvutil_indicator_stop
+print -r -- "STOP_RETURNED:$MKVUTIL_INTERRUPTED:$MKVUTIL_INDICATOR_PID"
 ''', encoding="utf-8")
     run_env = os.environ.copy()
     run_env.update({
@@ -4611,6 +4983,7 @@ print -r -- "STOP_RETURNED:$MKVUTIL_INTERRUPTED:$MKVUTIL_ANALYSIS_INDICATOR_PID"
                 break
         text = output.decode(errors="replace")
         assert process.returncode == 0, text
+        assert "\r  ⠋ Working" in text
         assert "STOP_RETURNED:1:" in text
         assert text.index("\r\x1b[2K") < text.index("STOP_RETURNED:")
         with pytest.raises(ProcessLookupError):

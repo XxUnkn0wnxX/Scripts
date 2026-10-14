@@ -74,11 +74,13 @@ After choosing files, enter the requested settings. When the last required setti
 
 Track configuration shows its full working directory and reference filename in a shared ASCII header box before the track listing. A Mux removal header keeps the **Removal reference file** label and shows the bypass cue when that guard is disabled.
 
-While configuration is incomplete, prompts that support Back accept exact `e` or `E`. At removal IDs, track order, or extraction IDs, Back returns to the category's action list with the selected files and explicit exclusions retained. Choose new actions to configure them afresh; the picker does not repeat. Back from that action list returns to the main categories. The optional Mux metadata list's **e) Back to main categories** also returns directly there. Choosing a new category scans the directory and opens a fresh picker. Once configuration is complete and processing starts, `e` is not a cancellation key.
+While configuration is incomplete, prompts that support Back accept exact `e` or `E`. Except for optional Mux metadata fields, Back from a field returns to the category's action list and clears the selected files, inspected sources, explicit exclusions, unexecuted ledger, and pending configuration. Choose actions again to rescan the directory and open a fresh picker. Back from the action list returns to the main categories. Once processing starts, `e` is not a cancellation key.
 
-At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list with the selected files retained. In Mux, it returns to the optional metadata list while retaining removal and reorder settings; choose metadata again or leave the list blank to skip it. Back from the optional metadata list itself returns directly to the main categories.
+At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list and clears the selection, so choosing actions again opens a fresh picker. In Mux optional metadata fields, it returns to the metadata list while retaining the selected files, removal IDs, and reorder settings; choose metadata again or leave the list blank to skip it. **e) Back to main categories** in the optional metadata list clears the whole unexecuted selection and configuration.
 
-To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. At a metadata track-ID prompt, `cancel` still cancels the invocation. Inspection or planning errors retain their existing Y/N/`e` exclusion prompts. An excluded file stays excluded for that invocation; retry it by starting a new invocation and explicitly selecting it.
+The **Working** indicator appears during quiet scans, source inspection, layout and signature preparation, language validation, queue planning and each file's fresh source check when standard output is a terminal and `TERM` is nonempty and not `dumb`. It stays visible across consecutive quiet source checks and pauses before diagnostics or prompts. It stops before menus and media-writing tools; redirected output has no indicator. Analyze uses **Analysing** during its track analysis.
+
+To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. At a metadata track-ID prompt, `cancel` still cancels the invocation. Inspection or planning errors retain their existing Y/N/`e` exclusion prompts. An explicit exclusion applies to the current selection. Public Back clears that selection and its exclusions, so a fresh picker can select the file again.
 
 EOF or Ctrl+C before configuration is complete cancels the invocation. After configuration completes, Ctrl+C requests the category's stop behavior described below. In the file picker, `e` remains a search character under fzf's own controls. Processing ends with the final report and exit.
 
@@ -204,7 +206,7 @@ If you accidentally include `0:12` in the order, the utility rejects that order 
 </details>
 
 <details>
-<summary>Example: change or skip metadata after starting to enter values</summary>
+<summary>Example: change optional metadata or reset a selection with Back</summary>
 
 With removal and reorder configured, choose metadata `3,4`. If you decide to change the metadata choices while entering a track name, enter `e` at that value prompt:
 
@@ -218,7 +220,11 @@ The optional metadata menu returns. All language and name values from this unfin
 - Press Enter on a blank metadata selection to start preflight without metadata edits.
 - Enter `e` at the metadata menu itself to return directly to the main categories.
 
-In Edit, `e` at a metadata prompt instead returns to Edit actions with the files still selected. To set an actual name or title of `e`, enter `\e`; uppercase `\E` sets `E`.
+For a fresh selection, choose Mux actions `1,2`, select files, then enter `e` at the removal-ID or track-order prompt. The utility returns to Mux actions and clears that selection and its settings. Enter `1,2` again: fzf opens again, allowing you to choose a different set of files.
+
+Edit metadata Back and Extract track-ID Back follow the same reset rule: return to their action list, clear the unexecuted selection, and reopen fzf after new actions are chosen. Back from the optional Mux metadata list itself returns to the main categories and clears the entire pending Mux configuration.
+
+To set an actual name or title of `e`, enter `\e`; uppercase `\E` sets `E`. After processing starts, `e` is ordinary typeahead; use Ctrl+C for the runtime stop behavior below.
 
 </details>
 
@@ -250,6 +256,16 @@ The attachment collection folder is shared for the whole selected batch. It is n
 Attachments from all selected sources collect into one `Attachments/` folder. A later successful `Font.ttf` publication replaces an earlier regular file of that name. Subtitle tracks are written beside each source with its stem and original ID, such as `Episode01 - Track [3].ass`; those track outputs retain collision protection.
 
 For this combined job, between-file timing covers track extraction. The final report covers the complete attachment-and-track batch.
+
+Published track filenames also appear in the final report, for example:
+
+```text
+success: Episode01.mkv
+  Configuration 1: phase=complete; actual state=sidecars_published
+  Stage attachments: complete; code=0
+  Stage tracks: complete; code=0
+  Track output ID 3: Episode01 - Track [3].ass (published)
+```
 
 </details>
 
@@ -324,7 +340,9 @@ These are migration examples; choose any supported combination that fits the cur
 
 The processing report starts with a shared ASCII heading box, then shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Configuration outcome counts use readable labels, such as `Done: 3; Failed: 1`; an empty outcome set is shown as `none`. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, codec and total-track-count details. Each original selected file contributes once to the final counts. Displayed source, destination, stage, and recovery-file references use filenames; the full path is shown for the working directory in `Current Work Dir` and the owned navigation menu's `Directory` line. A processed queue always ends here; starting another batch requires a new invocation.
 
-Edit reports appear at the end and remain silent between files. Mux and Extract print `Processing: filename.ext` before each job, then show elapsed-time, file-count, and ETA summaries in a **File progress** ASCII box that names that source. The box uses ASCII borders and a minimum content width of 44 display columns, expanding for longer lines; its padding uses zsh's multibyte display-width accounting so wide and combining text aligns without changing the border characters. The renderer retains complete lines; a terminal narrower than a box may wrap them. A report may include staged filenames, native scratch filenames, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
+Edit, Mux and Extract show a short action heading and `Processing: filename.ext` before each job, followed by the native tool's live messages. For example, a combined Mux heading is `Mux 1,2: remove + reorder; metadata 1,3`. Native messages show source filenames and logical output filenames, with their parent paths hidden. Identification JSON and tag-inspection payloads stay hidden. Edit prints timing only in its final report; Mux and Extract follow each file's messages with elapsed-time, file-count and ETA summaries in a **File progress** ASCII box that names that source. Extract's final report lists published track filenames and identifies uncertain track publications; attachment collection has its own publication summary.
+
+The box uses ASCII borders and a minimum content width of 44 display columns, expanding for longer lines; its padding uses zsh's multibyte display-width accounting so wide and combining text aligns without changing the border characters. The renderer retains complete lines; a terminal narrower than a box may wrap them. A report may include staged filenames, native scratch filenames, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
 
 Warnings, failed or partial jobs, unresolved removal skips, and interrupted batches produce a nonzero final exit status. Review the reported filenames and recovery details before repeating an operation, especially when the output state is uncertain.
 
@@ -372,11 +390,11 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The current output audit qualified **179 distinct controlled cases** across the complete module run and corrective reruns. These cover helpers and interactive entry points, individual and grouped actions, Back and cancellation, removal guards, warning/failure/partial outcomes, runtime stopping, and final-report placement. The results are aggregated; they do not describe one entirely passing invocation.
+The current output audit qualified **184 distinct controlled cases** across the complete module run and corrective checks, followed by **51 affected reporting and extraction cases** after the final output correction. These cover helpers and interactive entry points, individual and grouped actions, fresh selection after Back, the optional Mux metadata exception, Working status, live native output, removal guards, warning/failure/partial outcomes, runtime stopping, and final-report placement. The results are aggregated; they do not describe one entirely passing invocation. The native execution engines and navigation are unchanged by the final two report-renderer corrections.
 
 A separate logged campaign passed **20 native menu journeys** using installed MKVToolNix v93 and fresh tiny fixtures. It exercised Edit choices 1–5 and a combined edit; removal, reordering and every optional Mux metadata choice; all Extract combinations; and matching/mismatched Analyze selections. The fixtures cover `.mkv`, `.mka`, `.mks` and `.mk3d`. Native checks verify the intended track order, metadata, output extensions and preserved payloads, chapters, user tags and attachments for the relevant jobs. Track edits use compatible file groups; title edits also run across all four formats together.
 
-Two terminal qualifications separately checked installed fzf filtering by extension and Tab multi-selection at 80 columns, and a three-file reorder launched outside the repository through the user's loaded interactive-shell alias at 100 columns. The latter verifies filename-bearing progress and one readable final report. Renderer checks cover ASCII, wide and combining text on zsh 5.9.2 and 5.8. Captured display columns do not establish every font or viewport behavior. Signal timing and injected failures use controlled writers; the native checks establish normal processing on these fixtures, rather than every codec combination. No CI result is implied.
+Three terminal qualifications separately checked installed fzf filtering by extension and Tab multi-selection at 80 columns; a three-file reorder through the user's loaded interactive-shell alias at 100 columns; and a three-picker Back journey through that alias outside the repository. The Back journey checks a fresh selection, retained removal/reorder after metadata-field Back, a complete reset at metadata-list Back, and processing of only the final selection. Renderer checks cover ASCII, wide and combining text on zsh 5.9.2 and 5.8. Captured display columns do not establish every font or viewport behavior. Signal timing and injected failures use controlled writers; the native checks establish normal processing on these fixtures, rather than every codec combination. No CI result is implied.
 
 The script and tests use the repository's installed tools and environment. To inspect tool resolution without changing anything:
 

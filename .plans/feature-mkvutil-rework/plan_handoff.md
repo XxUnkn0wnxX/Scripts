@@ -14,6 +14,89 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted Back reset, Working status and native verbosity
+
+- Latest user instructions authorize this amendment: public e/E Back resets
+  unexecuted selection and settings; only Mux metadata field Back keeps selected
+  files/removal/reorder while clearing metadata. Back from its list resets to
+  main. Add smooth shared Working status during silent preparation, then native
+  verbosity with filename-only references and short action headings per file
+  between existing ETA blocks. Edit keeps final timing only. Walk/log the flows.
+- All nine tasks and four goal gates are accepted after final-source native/TTY,
+  affected controlled, documentation and parent integration review. Existing
+  IDs/checkpoints and safety gates remain. Main Scripts checkout and
+  feature/mkvutil-rework are unchanged; publication is the remaining step.
+- Reuse coordinated route B: UI reset/status package, then shared native-output
+  transport integration in the SAME self-contained source (exclusive writers,
+  sequential integration); tests may be prepared independently in their file.
+  Parent owns records/diagnosis/integration/Git. Read-only mapping returned;
+  Astra reviewed the revised design: PASS WITH NOTES. Native display uses a
+  separate descriptor and one bounded daemon writer per engine; native capture,
+  owner/stop guards and publication remain authoritative. Sanitize known paths
+  before newline/CR framing and never block engine cleanup on the display sink.
+  Both Luna packages handed back; parent now exclusively owns source, tests,
+  docs, records and private runners. Native display, action headings and fresh
+  source-check status are integrated. Astra's actual-code audit is PASS after
+  correcting its UTF-8 fragment finding. Focused Back/status/transport/stop
+  checks pass. Full-03 and corrective-04 qualify all 184 controlled cases;
+  final report corrections additionally passed 51 affected cases. All 20 final
+  native choices plus installed fzf and both loaded-alias terminal journeys
+  pass; parent reviewed actual outputs, exact source/test reconciliation, docs,
+  dependencies and preserved session ledger. No worker/runtime job remains.
+- Evidence root `.tmp/mkvutil-rework/back-working-verbosity/`; preserve per-case
+  logs/raw PTY captures and failed attempts. Existing installed v93 tools and tiny
+  immutable four-format fixtures are reused on fresh copies, no user media,
+  installs/downloads/new dependencies or runtime helper files. Project parallel,
+  isolated interactive testing and signed push-after-testing permissions persist.
+- Focused attempts 01–03 retain their complete failure logs. Attempt 01 caught
+  a parent action-heading assumption that metadata was an array; its canonical
+  string is now handled. Later new-case failures exposed fixture/observation
+  mistakes: original source argv versus output extension, missing expected title,
+  glyph-only frame parsing, waiting for both streams and the second fake stage.
+  These corrections preserve the semantic assertions; no safety gate is waived.
+- The initial complete run (`full-01`) was intentionally stopped after 130.73s
+  wall to address Astra's forced-fragment Unicode edge: 39 passed, one unchanged
+  10s pure-helper deadline failure. That guard case passed unchanged on rerun.
+  The UTF-8 interleaving regression passes and the parent static review confirms
+  both native executor ASTs are unchanged except display-only calls/keywords.
+  Current frozen source SHA-256:
+  `18f1f1cda0e68460b404358fd6bbf6d15ca0dfa6ed8f3244728cdd69ffe961ca`.
+  Tests SHA-256: `e8a65dd6a63d5e95aedbc127e0fec216bb8bfbb96770d214a1ea1b0b6a147b35`.
+- Complete attempt `full-02`: 174 passed, ten failed, 489.71s wall. Nine were
+  stale public-Back/empty-directory-flow/status-row expectations; corrections
+  retain internal recovery and screen-clear guards. One Analyze Ctrl+C check
+  exposed an identification diagnostic temp-file leak. Synchronous piping now
+  avoids that interruptible ownership; native inspection JSON is identical on
+  both zsh versions. Corrective-01: 29 passed, one cleanup failure; corrective-02
+  preserved a transient macOS group-probe EPERM, then unchanged case passed in
+  corrective-03. The complete run was repeated as full-03 below.
+- Full-03: 183 passed, one transient immediate group-existence probe failed;
+  483.91s wall. Corrective-04: all 13 runtime-stop parameters passed, 56.72s wall,
+  with bounded confirmed disappearance (EPERM never counts as absent). Test
+  reconciliation proves the other full-run test bodies are byte-identical.
+  The independent native-output audit then found a legacy Extract destination
+  label: track-only/both ended with `=> Attachments`. Two display renderers now
+  suppress that misleading arrow and list published/uncertain track filenames.
+  Exactly those report renderers differ from the fully exercised source;
+  `source-reconciliation.json` proves this. Reports-final: 51 passed, 164.75s wall.
+- The first three-picker PTY driver had stale prompt/oracle assumptions and
+  timed out before media execution; its stderr and selector logs are preserved.
+  The corrected private driver follows preset metadata IDs and reorder-only
+  final execution. This is a harness correction, not a product-flow claim.
+- Canonical latest evidence: `.tmp/mkvutil-rework/back-working-verbosity/RESULTS.md`
+  and `receipt.json`. Final native root `runs/20261015-060944-38560/`; loaded alias
+  receipts `native-report-pty-20261015-061109/result.json` and
+  `navigation-pty-20261015-061413/result.json`. The latter proves three actual
+  pickers, sole metadata-field retention, full list reset, exactly one final
+  remux, unchanged Delta and UID-mapped exact payload preservation. Early
+  navigation-oracle failures remain indexed separately. Final output audit passed.
+- Implementation and qualification are complete. Publication uses the standing
+  signed-commit/push approval; `.tmp/mkvutil-rework/back-working-verbosity/publication.json`
+  records the exact final commit/remote SHA and clean-checkout verification.
+  If that receipt is absent on recovery, verify Git refs before retrying a push.
+  No further feature work is pending. No CI result claimed; no merge, worktree
+  or AGENTS changes authorized/needed.
+
 ### Accepted full output/interactive audit
 
 - User explicitly requested full IA for every choice/all outputs, saved journey
