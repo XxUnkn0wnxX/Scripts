@@ -14,7 +14,31 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Accepted owned-menu screen amendment
+### Accepted visible main-cursor amendment
+
+- User wants the normal flashing cursor beside Category restored while keeping
+  immediate main keys. Implemented in main Scripts on feature; baseline signed/
+  published `21b475f5660612a0cd172aa56e080a779b152f8b`. The terminal's existing
+  cursor style/blink applies; no animation or terminal preference change was added.
+- Source changes only cursor-show during the main wait and the cleanup variable
+  name. Parent reconstructed the prior complete script byte-for-byte from this
+  exact delta; read timing, sentinel, traps, input grammar, media paths and owned
+  screen/cleanup behavior are preserved. Guide and plan match the new preference.
+- Two existing controlling-PTY cases passed: full menu/history/immediate-key/Back
+  journey and main keyboard Ctrl+C. Proof `.tmp/mkvutil-rework/cursor-visible.Jumdct/receipt.json`:
+  2 passed in 2.86s pytest, 3.49s wall / 2.94s measured CPU. An initial readiness
+  marker failed before cursor-show/key setup (1 failed, 1 passed); its log is
+  retained. Corrected driver waits for Category plus cursor-show, keeping the
+  original 10s guard. Fake media/fzf only; no native/full campaign repeated.
+- Syntax, AST, whitespace, exact source/helper/ledger and stable-record review
+  pass. T01.03/T04.01/T04.02 and G01/G04 are reaccepted: 9/9 tasks and 4/4 goals.
+  Earlier engine and field-interruption receipts remain valid. Worker/processes
+  are quiescent; no dependency, worktree, branch or AGENTS changes were made.
+- Feature commit/push is authorized. Verify the containing signed commit/live ref
+  in this proof folder's `publication.json` after publication. No implementation
+  work remains; use this boundary and current checklist rows for next work.
+
+### Historical: Accepted owned-menu screen amendment
 
 - User-directed screen ownership and restored Category selector are implemented
   in the same script, on feature in the main Scripts checkout. Baseline signed/

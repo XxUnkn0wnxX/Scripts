@@ -2661,11 +2661,11 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         assert prompt in output[start:], output.decode(errors="replace")
 
     def shortcuts():
-        wait_for(b"\x1b[?25l")
+        wait_for(b"Category: \x1b[?25h")
         while termios.tcgetattr(terminal)[3] & (termios.ICANON | termios.ECHO):
             assert time.monotonic() < deadline, output.decode(errors="replace")
             select.select([], [], [], 0.001)
-        assert screen.active and not screen.cursor_visible and "Category: " in screen.text
+        assert screen.active and screen.cursor_visible and "Category: " in screen.text
         assert "1) Matroska Edit" in screen.text and "e) Back" not in screen.text
 
     def line_menu(prompt, view, category):

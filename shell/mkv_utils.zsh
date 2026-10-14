@@ -1185,12 +1185,12 @@ _mkvutil_read_main() {
   [[ -t 0 ]] || { _mkvutil_read 'Category: '; return $?; }
   setopt localtraps
   printf 'Category: ' >&2
-  local read_code=0 cursor_hidden=0 timeout_marker='mkvutil-waiting-for-key'
+  local read_code=0 cursor_managed=0 timeout_marker='mkvutil-waiting-for-key'
   trap 'MKVUTIL_INTERRUPTED=1; read_code=2; return 2' INT TERM
   {
     if [[ -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; then
-      cursor_hidden=1
-      printf '\e[?25l' >&2
+      cursor_managed=1
+      printf '\e[?25h' >&2
     fi
     # Yield periodically so pending terminal signals can run their traps.
     # Timeout leaves REPLY unchanged; EOF assigns an empty reply.
@@ -1201,7 +1201,7 @@ _mkvutil_read_main() {
     done
     (( ! MKVUTIL_INTERRUPTED )) || read_code=2
   } always {
-    (( ! cursor_hidden )) || printf '\e[?25h' >&2
+    (( ! cursor_managed )) || printf '\e[?25h' >&2
   }
   return "$read_code"
 }

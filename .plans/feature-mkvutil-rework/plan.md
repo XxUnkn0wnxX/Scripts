@@ -116,9 +116,10 @@ act on a single keypress without Enter. Submenu batch selections and data fields
 remain line-based; redirected input retains its existing line-based behavior.
 On a capable interactive terminal, navigation menus own a temporary screen:
 each active menu replaces the previous menu's choices. Restore the main-menu
-`Category:` selector while keeping immediate single-key selection. Hide its
-waiting cursor, restoring it before submenu/data input and normal or interrupted
-exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains Back.
+`Category:` selector while keeping immediate single-key selection. Keep the
+normal terminal cursor visible while waiting, retaining its existing style and
+blinking behavior. Restore terminal state before submenu/data input and normal
+or interrupted exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains Back.
 
 Keep file selection, track models/value collection, previews, processing output
 and final reports in normal terminal history. Leave the owned screen before

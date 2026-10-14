@@ -46,7 +46,7 @@ If your existing repository environment already has its dependencies, keep using
 
 The main menu keeps the work areas separate:
 
-At the main **Category:** selector, press `1`, `2`, or `3` to open a category immediately; no Enter is needed. The cursor is hidden while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
+At the main **Category:** selector, press `1`, `2`, or `3` to open a category immediately; no Enter is needed. The normal terminal cursor remains visible while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
 
 When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Each menu replaces the previous one and shows its category and working directory. The utility leaves this screen before the file picker, configuration fields, processing, previews, reports or validation errors. It never clears the normal screen or scrollback.
 
