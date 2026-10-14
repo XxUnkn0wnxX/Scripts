@@ -312,8 +312,28 @@ and does not include Edit or Mux operations.
 - Select files once, collect attachment/track selections upfront, and extract
   the configured items without changing the source media. Keep displayed track
   identities tied to those selected sources.
-- Resolve output names and attachment/track collisions across the entire batch.
-  Preserve codec-aware extensions while avoiding overwrites between episodes.
+- Attachment extraction collects into one shared `Attachments/` folder under
+  the source directory for both one-file and multi-file jobs, preserving embedded
+  filenames. The user explicitly permits replacing existing regular attachment
+  files and earlier collected attachments with the same resolved filename,
+  including its extension. Process selected sources in order, then each source's
+  original attachment-list order; the last successfully published attachment wins.
+  Do not require equal MIME types, sizes, checksums or content before replacement,
+  and do not introduce overwrite prompts between files.
+- Stage each attachment under a unique internal name, including duplicate names
+  within one source, and validate the successful native stage before checked
+  replacement. A warning/error stage leaves the existing collection intact;
+  a later publication failure keeps earlier published files and reports remaining
+  staged candidates. Report processed attachments separately from the final
+  unique filenames and their winning source/attachment. Earlier successful jobs
+  remain successful when their collected bytes are later superseded.
+- Resolve physical output families and collisions across the entire batch.
+  Track sidecars and codec-derived companions retain collision/no-overwrite
+  protection. The attachment exception permits attachment-to-attachment matches
+  under the filesystem's case/Unicode rules; reject directory/symlink leaves,
+  aliases of selected input media (including inode aliases), unsafe embedded
+  names, and attachment-versus-track output collisions. Preserve codec-aware
+  track extensions and include companion files in preview and preflight.
 - A failed required stage stops further processing for that file and reports
   which extraction stages completed. Previously created sidecars are not
   silently rolled back. A partial extraction job must not be reported as fully
@@ -420,7 +440,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, collision handling, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures | Affected extraction tests across applicable formats, source-preservation/collision/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. |
+| T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, shared attachment collection with approved filename overwrites, track/companion collision protection, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures | Affected extraction tests across applicable formats, shared attachment overwrite/order/supersession and protected track/companion collision evidence, source-preservation/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. |
 
 ### G04 — Checkpoint 4: integration and documentation
 
@@ -495,8 +515,11 @@ host; reuse fixtures instead of adding a large permutation matrix.
    eligible, exact skip reasons, changed-setting reconsideration, and fresh
    skipped-only continuation. Cover mixed/all-skipped cases, completed-source
    exclusion, and truthful final counts/status without extra remux passes.
-3. Cover collisions, failed promotion, inspection/validation failures, warning
-   versus error handling, interruptions, and reporting of incomplete stages.
+3. Cover collisions, the approved attachment-only overwrite exception, failed
+   promotion, inspection/validation failures, warning versus error handling,
+   interruptions, and reporting of incomplete stages. Include repeated attachment
+   names within/across sources, last-successful publication, protected input/
+   track aliases, and preservation of earlier collection on a later failure.
 4. Correct the current reorder test's `0:1,1:0` example: it supplies file ID 1 to
    a single-input command. Its stub only creates an empty output and cannot
    establish real track-order correctness.

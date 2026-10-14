@@ -50,11 +50,14 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   existing Python package environment. Initial test setup lacked a temporary
   parent directory; rerunning in a fresh owned run directory passed without
   product changes.
-- Latest verified published feature HEAD: `8f7204bc8545a054e58953f8a6c695bcf7bb714f`
-  (`docs: share mkvutil worktree instructions`), signed. `develop` and `master`
-  share signed `e6dd2b94fd489796df80270814aa040bc19db8a8`; remote refs match.
-  Only the instruction file and root ignore exception were synchronized to
-  those branches. Utility implementation remains in this feature worktree.
+- Latest verified published feature HEAD:
+  `1bb755e1fd033d66dcefb6f431f826cafe89e262`
+  (`feat(shell): report mkvutil batches and retry mismatched files`), signed.
+  The user explicitly authorized automatic pushes after each accepted main
+  goal; G02's accepted checkpoint was pushed and its exact remote ref verified.
+  `develop` and `master` remain at signed `e6dd2b94fd489796df80270814aa040bc19db8a8`
+  locally/remotely. Utility implementation is published on the feature branch;
+  no promotion or live alias/deployment change was made.
 - Prior accepted execution checkpoint at the audit: signed
   `f44cd9841e00d9d86ffaffcae7b2a5ae520de278`
   (`feat(shell): execute grouped mkvutil edit and mux jobs`). It was four
@@ -63,10 +66,12 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   This execution checkpoint commits only
   the six approved source/test/planning paths and accepted T02.01/T02.02
   evidence; both worktrees were clean immediately afterward. Current uncommitted
-  source/test work now comprises the accepted T02.03 package and the audit's
-  additional test, ready for a local implementation checkpoint. The preceding
-  audit record correction is committed separately at signed `22eb849`. No implementation publication/promotion
-  has occurred. Prior G01 checkpoint is signed
+  T02.03 source/test work and the audit's additional test are committed at
+  signed `1bb755e1fd033d66dcefb6f431f826cafe89e262`; the tree was clean afterward.
+  The preceding audit record correction is signed `22eb849`. Current edits are
+  the user-approved attachment-policy and automatic-goal-push records.
+  Accepted G01/G02 implementation is now published on the feature branch;
+  no promotion or live deployment has occurred. Prior G01 checkpoint is signed
   `6444e4cbbe65ffe1a81d18213582695ea242cb8e`; the reporting-plan checkpoint
   is signed `66dab50d610d4f011bdae0e685d3fca492c107f3`.
 - The user now instructed **"ok you may begin"**, authorizing implementation
@@ -334,6 +339,50 @@ near-end interactive campaign remain later gates.
   defects, then complete its pending focused ledger/continuation/reporting
   tests and the single notified continuation probe. Do not start Extract
   before T02.03 and the G02 goal gate pass.
+
+### Approved attachment-collection amendment and Extract preparation
+
+- The user clarified that attachments are intentionally collected from many
+  sources into one shared folder for their existing `mkvmux` workflow, with
+  matching names/formats overwritten. This directly authorizes the narrow
+  attachment-only overwrite exception now mirrored in plan/checklist T03.01;
+  no further approval is pending for it. Keep embedded names and `Attachments/`
+  for both single and batched jobs. The last successfully published attachment
+  wins in selected-source order, then original attachment-list order.
+- Astra's quick amendment audit passed with notes: unique internal staging per
+  attachment ID even for repeated names within one source; filesystem-aware
+  attachment matches allowed, but input inode aliases, unsafe names, directory/
+  symlink leaves and attachment-versus-track collisions remain protected.
+  Stage success precedes checked atomic replacement; later failures retain
+  earlier collection and truthful staged/partial/supersession records. Do not
+  impose content/checksum/MIME equality or add per-file overwrite prompts.
+- Track sidecars and companions remain protected from overwriting. No new Mux
+  action is inferred: the user's stated downstream `mkvmux` workflow is separate
+  from the approved Remove/Reorder utility submenu.
+- Read-only installed-v93 manual/source review prepares T03.01. Official source
+  archive was downloaded only for reference into ignored
+  `.tmp/mkvutil-rework/v93-extraction-source/`; its SHA-256 matches the vendor's
+  published checksum. No installation, upgrade or build occurred. Receipt:
+  `reference-receipt.json`. VobSub replaces the last extension with `.idx`/`.sub`;
+  WavPack may create a `.wvc` correction sidecar; TTA creates temporary files
+  relative to child cwd. Attachments and USF use their explicit output paths;
+  cue sheets require an option the utility does not pass. Native selected-source
+  proof is still required; source inspection is not that proof.
+- Parent identified a codec-map integration issue for T03.01: installed
+  `pymkv.TypeTrack` keys include PCM/TRUEHD/WAVPACK4/VOBSUB, whereas native IDs
+  use `A_PCM/INT/LIT`, `A_TRUEHD`, `A_WAVPACK4` and `S_VOBSUB`. The planner's raw
+  last-slash lookup misses several mappings. Correct native-ID translation
+  within the existing precedence contract and add actual-ID proof before
+  extraction acceptance; avoid treating synthetic short-code tests as native
+  format evidence.
+- Provisional Extract interface: keep logical requested outputs/one native
+  argument per selected item separate from physical artifact families. Reserve
+  both VobSub outputs and possible WavPack companions before Run; contain native
+  scratch files in an owned cwd. Use per-stage receipts/checked publication,
+  attachments first then tracks. Empty attachments/text outputs may be valid;
+  require expected regular outputs and identified attachment sizes where known,
+  rather than a blanket nonempty rule. Common final reporting/timing consumes
+  T02.03's accepted interfaces. No Extract source implementation has begun.
 
 ## Execution route and next actions
 
@@ -787,9 +836,13 @@ authorized concurrent agents for the current task/session. The four checkpoint
 requirements and six validation groups are preserved; no gate was waived.
 Future sessions must recheck concurrency consent. Any agent-proposed contract change
 requires a concrete user-approved proposal before editing plan/checklist rules.
-New unrelated AGENTS edits require their own authorization. The user's existing
-commit/push authorization covers these feature-branch planning records; the
-subsequent request adds the future rehearsal within that scope. The latest
+New unrelated AGENTS edits require their own authorization. The user subsequently
+explicitly approved automatic feature-branch pushes after each main goal's tasks
+and goal-level gates pass. This includes accepted implementation checkpoints;
+verify exact pushed refs and preserve the assigned worktree. It does not authorize
+promotion, release tags, worktree changes or live deployment. Earlier planning-only
+push receipts remain historical. The rehearsal still has its separate execution
+approval boundary. The latest
 "ok you may begin" authorizes approved implementation, and the follow-up replies
 authorize the self-contained script and retained-content naming contracts.
 Deployment, dependency installation, real user-media mutation, and broad

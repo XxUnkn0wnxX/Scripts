@@ -58,7 +58,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 | Accepted | Task ID | Required result (mirror plan) | Required evidence / current status | Hard prerequisites | Shared/overlap |
 | --- | --- | --- | --- | --- | --- |
-| [ ] | T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, collision handling, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | Required: Affected extraction tests across applicable formats, source-preservation/collision/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. Status: not started; no acceptance evidence. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures |
+| [ ] | T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, shared attachment collection with approved filename overwrites, track/companion collision protection, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | Required: Affected extraction tests across applicable formats, shared attachment overwrite/order/supersession and protected track/companion collision evidence, source-preservation/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. Status: not started; no acceptance evidence. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures |
 
 ### G04 — Checkpoint 4: integration and documentation
 
@@ -119,8 +119,11 @@ with their acceptance still pending:
    and fresh skipped-only continuations. Cover mixed/all-skipped cases, zero
    modifying calls for skipped files, completed-source exclusion, and truthful
    resolved/unresolved final counts/status.
-3. [ ] Verify collisions, failed promotion, inspection/validation failures,
-   warning versus error handling, interruptions, and incomplete-stage reporting.
+3. [ ] Verify collisions, the approved attachment-only overwrite exception,
+   failed promotion, inspection/validation failures, warning versus error handling,
+   interruptions, and incomplete-stage reporting. Include repeated attachment
+   names within/across sources, last-successful publication, protected input/
+   track aliases, and preservation of earlier collection on a later failure.
 4. [ ] Correct the reorder test's single-input `0:1,1:0` example and establish
    actual ordering beyond the stub's empty-output behavior.
 5. [ ] Use a small real fixture on installed v93 tools to prove combined
