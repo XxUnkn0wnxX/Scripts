@@ -3278,8 +3278,8 @@ print_help() {
   print -r -- $'\nChoose one action or a batch (1,2 or 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
 }
 
-# Configuration/review can repeat, but each explicit Run archives and clears
-# its completed jobs. Only unresolved removal mismatches form a fresh cohort.
+# Configuration/review can repeat before Run. Processing always ends this
+# invocation; skipped-file reconfiguration is available only before processing.
 mkvutil_controller() {
   local category="$1" operations="$2" review="" result=0
   while true; do
@@ -3318,20 +3318,8 @@ mkvutil_controller() {
           _mkvutil_ui_leave
           mkvutil_execute_queue "${MKVUTIL_JOBS[@]}" || result=$?
           (( MKVUTIL_INTERRUPTED == 0 )) || return 1
-          if (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 )); then
-            (( result == 0 )) || return 1
-            mkvutil_ledger_status; return $?
-          fi
-          mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
-          print -r -- $'1) Prepare a fresh batch for unresolved mismatch-skipped files\ne) Back'
-          _mkvutil_read 'Skipped-subset choice: ' || return 2
-          case "$REPLY" in
-            e|E) return 5 ;;
-            0) mkvutil_ledger_status; return $? ;;
-            1) review=4 ;;
-            *) print -u2 -r -- 'Invalid skipped-subset choice.'; return 1 ;;
-          esac
-          ;&
+          (( result == 0 )) || return 1
+          mkvutil_ledger_status; return $? ;;
         4)
           # This action is never offered while eligible jobs remain pending.
           _mkvutil_ui_leave
@@ -3442,7 +3430,7 @@ _mkvutil_main_body() {
     MKVUTIL_REMOVAL_SKIP_HISTORY=()
     mkvutil_discard_configuration
     selected=0
-    # A new main-category scope sees files converted by a preceding Mux.
+    # Re-scan when selecting a category before processing begins.
     mkvutil_scan_files "$PWD" || {
       _mkvutil_ui_leave
       print -r -- 'No Matroska files found (.mkv, .mka, .mks, .mk3d).'; return 1;
@@ -3497,18 +3485,16 @@ _mkvutil_main_body() {
       result=0
       mkvutil_controller "$category" "$operations" || result=$?
       if (( MKVUTIL_INTERRUPTED )); then mkvutil_finish 1; return 1; fi
+      if (( MKVUTIL_HAS_RUN )); then
+        mkvutil_finish "$result" || sticky_code=1
+        return "$sticky_code"
+      fi
       case "$result" in
         4) mkvutil_discard_configuration; continue ;;
         6)
           mkvutil_close_scope || sticky_code=1
           (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
           if (( MKVUTIL_UI_REPORT_SHOWN )); then _mkvutil_ui_acknowledge || return 1; fi
-          mkvutil_discard_configuration
-          break ;;
-        5)
-          mkvutil_finish 0 || sticky_code=1
-          (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
-          _mkvutil_ui_acknowledge || return 1
           mkvutil_discard_configuration
           break ;;
         *) mkvutil_finish "$result" || sticky_code=1; return "$sticky_code" ;;

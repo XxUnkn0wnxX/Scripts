@@ -1984,7 +1984,7 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
         assert summary["batches"][0]["action_ids"] == (["1", "2"] if workflow == "mux_remove_reorder_metadata" else ["2"])
 
 
-def test_mkv_utils_reporting_mux_skip_fresh_subset_run_entrypoint(env):
+def test_mkv_utils_reporting_mux_skip_ends_run_and_retry_needs_new_invocation(env):
     first, skipped = _mkv_file(env, "Reference ASS.mkv"), _mkv_file(env, "Skipped SRT.mk3d")
     original = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (11, "audio", "A_PCM/INT/LIT", False), (12, "subtitles", "S_TEXT/ASS", False)])
     for position, track in enumerate(original["tracks"]):
@@ -2006,26 +2006,44 @@ def test_mkv_utils_reporting_mux_skip_fresh_subset_run_entrypoint(env):
         input_data="2\n1,2\n12\n0:11\n3,4\nfr-CA\n@literal $name\n3\n1\n1\n12\n5\n\n2\n3\n",
         extra_env={"TEST_FAKE_EXECUTION_JSON": str(manifest)},
     )
-    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.returncode == 1, result.stdout + result.stderr
     assert f"Skipped removal mismatch: {skipped}" in result.stdout
-    assert f"Fresh skipped-subset reference: {skipped}" in result.stdout
+    assert "Fresh skipped-subset reference:" not in result.stdout
+    assert "Skipped-subset choice:" not in result.stderr
+    assert "New skipped-subset operations:" not in result.stderr
     assert result.stdout.count("Final report") == 1 and "Directory: workdir" in result.stdout
-    assert "Done: 2; Failed: 0" in result.stdout and "Skipped: 0; Excluded: 0; Not attempted: 0" in result.stdout
-    assert "Skip history: resolved" in result.stdout
+    assert result.stdout.count("1) Matroska Edit") == 1
+    assert "Done: 1; Failed: 0" in result.stdout and "Skipped: 1; Excluded: 0; Not attempted: 0" in result.stdout
+    assert "Skip history: unresolved" in result.stdout
     assert "Category: mux; Actions: 1,2" in result.stdout and "Optional Mux metadata: 3,4" in result.stdout
-    assert "Category: mux; Actions: 1" in result.stdout and "Optional Mux metadata: 5" in result.stdout
-    assert "Files Done: 1" in result.stdout and "Cancelled; no media changes." not in result.stdout
+    assert "Configuration 2" not in result.stdout
     assert len(_command_argv(env, "fzf")) == 1
     merges = [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
-    assert len(merges) == 2 and not _command_argv(env, "mkvpropedit")
-    first_call = next(argv for argv in merges if argv[-1] == str(first))
-    skipped_call = next(argv for argv in merges if argv[-1] == str(skipped))
+    assert len(merges) == 1 and not _command_argv(env, "mkvpropedit")
+    first_call = merges[0]
+    assert first_call[-1] == str(first)
     assert first_call[first_call.index("--track-order") + 1] == "0:11,0:0"
     assert "--language" in first_call and "11:fr-CA" in first_call and "11:@literal $name" in first_call
-    assert "--language" not in skipped_call and "--track-name" not in skipped_call
-    assert skipped_call[skipped_call.index("--title") + 1] == ""
-    assert first.read_bytes() == skipped.read_bytes() == b"candidate-data\n"
+    assert first.read_bytes() == b"candidate-data\n" and skipped.read_bytes() == b"payload"
     assert not list(env["workdir"].glob(".mkvutil-*"))
+    completed_bytes = first.read_bytes()
+    # Retrying requires a new invocation and an explicit selection of skipped files.
+    retry = _run_mkv_utils(
+        env, fzf_responses=[[str(skipped)]], input_data="2\n1\n12\n5\n\n3\n",
+        extra_env={"TEST_FAKE_EXECUTION_JSON": str(manifest)},
+    )
+    assert retry.returncode == 0, retry.stdout + retry.stderr
+    assert retry.stdout.count("Final report") == 1 and "Done: 1; Failed: 0" in retry.stdout
+    assert "Skipped: 0" in retry.stdout and "Optional Mux metadata: 5" in retry.stdout
+    assert "Configuration 2" not in retry.stdout
+    retries = [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
+    assert len(retries) == 1 and retries[0][-1] == str(skipped)
+    assert "--language" not in retries[0] and "--track-name" not in retries[0]
+    assert retries[0][retries[0].index("--title") + 1] == ""
+    assert len(_command_argv(env, "fzf")) == 1 and not _command_argv(env, "mkvpropedit")
+    assert first.read_bytes() == completed_bytes and skipped.read_bytes() == b"candidate-data\n"
+    assert not list(env["workdir"].glob(".mkvutil-*"))
+
 
 def test_mkv_utils_removal_mismatch_report_cancel_entrypoint(env: dict[str, Path]):
     models = _removal_models()
@@ -2526,15 +2544,14 @@ print -r -- 'navigation data contracts passed'
     assert result.stdout.rstrip().endswith("navigation data contracts passed")
 
 
-@pytest.mark.parametrize("second_scope_end", ["back", "inspection-eof"])
-def test_mkv_utils_navigation_post_run_back_reports_once_and_fresh_scan(env, second_scope_end):
+@pytest.mark.parametrize("category_key,outcome,exit_code", [("1", "success", "0"), ("2", "skipped", "1"), ("3", "partial", "1")])
+def test_mkv_utils_navigation_processing_is_final(env, category_key, outcome, exit_code):
     result = _run_planning_contract(env, r'''
 scan_count=0; picker_count=0; inspect_count=0; modifier_count=0
 mkvutil_scan_files() { (( ++scan_count )); MKVUTIL_SCAN_FILES=("$PWD/fresh-${scan_count}.mka"); }
 mkvutil_select_files() { (( ++picker_count )); MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
 mkvutil_inspect_sources() {
   (( ++inspect_count ))
-  if (( inspect_count==2 )) && [[ "$TEST_SECOND_SCOPE_END" == inspection-eof ]]; then return 2; fi
   MKVUTIL_SOURCES=("$(jq -cn --arg source "${MKVUTIL_SELECTED_FILES[1]}" '{source:$source}')")
 }
 mkvutil_configure_category() { MKVUTIL_CONFIG="$(jq -cn --arg category "$1" --arg actions "$2" '{category:$category,operations:($actions|split(",")),metadata:"",settings:{}}')"; }
@@ -2542,24 +2559,35 @@ mkvutil_plan_queue() { MKVUTIL_JOBS=('{}'); }
 mkvutil_execute_queue() {
   (( ++modifier_count ))
   MKVUTIL_HAS_RUN=1
-  local receipt="$(jq -cn --arg source "${MKVUTIL_SELECTED_FILES[1]}" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"0",reason:"codec-mismatch",expected:{type:"audio",codec_id:"A_AAC"},actual:{type:"audio",codec_id:"A_OPUS"}}]}')"
-  mkvutil_ledger_skip "$receipt"
-  MKVUTIL_REMOVAL_SKIPS=("$receipt")
+  local receipt=""
+  if [[ "$TEST_OUTCOME" == skipped ]]; then
+    receipt="$(jq -cn --arg source "${MKVUTIL_SELECTED_FILES[1]}" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"0",reason:"codec-mismatch",expected:{type:"audio",codec_id:"A_AAC"},actual:{type:"audio",codec_id:"A_OPUS"}}]}')"
+    mkvutil_ledger_skip "$receipt"
+    MKVUTIL_REMOVAL_SKIPS=("$receipt")
+  else
+    receipt="$(jq -cn --arg source "${MKVUTIL_SELECTED_FILES[1]}" --arg outcome "$TEST_OUTCOME" '{source:$source,status:$outcome,reason:"fixture result",phase:"complete",actual_state:"observed"}')"
+    mkvutil_ledger_result "$receipt"
+  fi
   MKVUTIL_JOBS=()
-  return 1
+  return "$TEST_EXIT_CODE"
 }
 code=0
 mkvutil_main "$PWD" || code=$?
-eq "$code" 1 'sticky unresolved outcome after later hidden exit'
-eq "$scan_count" 2 'new main category rescans'
-eq "$picker_count" 2 'new scope selects afresh'
-eq "$inspect_count" 2 'new scope inspected independently'
-eq "$modifier_count" 1 'completed scope never replayed'
-eq "${MKVUTIL_SCOPE_KEYS[1]}" "$PWD/fresh-2.mka" 'new scope uses refreshed filenames'
-''', {}, input_data="2\n1\n3\ne\n1\n5\ne\ne\ne\n",
-        extra_env={"TEST_SECOND_SCOPE_END": second_scope_end})
-    assert result.stdout.count("Final report") == (2 if second_scope_end == "inspection-eof" else 1)
-    assert "Skipped: 1" in result.stdout and "fresh-1.mka" in result.stdout
+eq "$code" "$TEST_EXIT_CODE" 'actual outcome preserved'
+eq "$scan_count" 1 'processing never reopens main'
+eq "$picker_count" 1 'processing never reopens picker'
+eq "$inspect_count" 1 'no second selection scope'
+eq "$modifier_count" 1 'no queue replay'
+eq "${MKVUTIL_SCOPE_KEYS[1]}" "$PWD/fresh-1.mka" 'completed scope remains final'
+remaining=""
+IFS= read -r remaining
+eq "$remaining" e 'post-run typeahead is not consumed'
+''', {}, input_data=f"{category_key}\n1\n3\ne\n1\n5\ne\ne\ne\n",
+        extra_env={"TEST_OUTCOME": outcome, "TEST_EXIT_CODE": exit_code})
+    assert result.stdout.count("Final report") == 1
+    assert result.stdout.count("1) Matroska Edit") == 1
+    assert "fresh-1.mka" in result.stdout and "fresh-2.mka" not in result.stdout
+    assert "Skipped-subset choice:" not in result.stderr and "Press Enter to continue:" not in result.stderr
     assert "0) Exit" not in result.stdout and "0) Finish" not in result.stdout
 
 

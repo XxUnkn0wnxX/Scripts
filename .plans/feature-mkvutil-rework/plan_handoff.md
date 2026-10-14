@@ -14,6 +14,32 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted final-after-processing amendment
+
+- User instruction on 2026-10-15: processing is final; do not return to menus
+  after a queue/batch. This supersedes post-run skipped-file continuation.
+  Pre-run configuration, Back and skipped-only replanning remain available.
+- Parent removed the controller's post-run retry prompt and added a main-flow
+  finalization guard after processing. Every result keeps its actual status,
+  prints one report and ends. A later retry is a fresh invocation/selection.
+- All 13 affected checks pass against current source: mixed-file Mux leaves
+  mismatches untouched, ends nonzero after one report and ignores later input;
+  another invocation processes only explicitly selected skipped files. Other
+  checks cover three-category finality, pre-run subset/Back, grouped workflows,
+  extraction, report visibility and interruption. No new native/IA campaign.
+- Proof: `.tmp/mkvutil-rework/run-final/receipt.json` and `tests.log`.
+  Pytest 31.68s, wall 32.52s, measured user+system CPU 29.10s; no peak/descendant
+  accounting claim. Copied runtime hashes match. Syntax/AST and parent review
+  pass; builders, processing engines, queue and report formatter are unchanged.
+- T02.03/T04.01/T04.02 reaccepted: 9/9 tasks and 4/4 goals. Guide and mirrored
+  contracts describe the new finality rule. Earlier receipts remain historical.
+  Coding stayed in parent; no agents, dependency, AGENTS or worktree changes.
+- Main Scripts remains on feature/mkvutil-rework; baseline signed/pushed HEAD
+  `53f7c9a7efab6818b93b8537b84e0d6ed80093bb`. The containing commit carries this
+  amendment. Existing authorization covers signed commit/push; check this proof
+  root's `publication.json` and live Git state before repeating publication.
+  No implementation or validation gate remains pending.
+
 ### Metadata hint wording
 
 - Shortened the metadata hint to `e) Back` at the user's request. Input handling
