@@ -14,6 +14,32 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted Mux metadata-menu Back and explicit-move highlighting
+
+- Latest user steering is implemented. Back from optional metadata choices now
+  returns to Mux actions using the existing full selection/configuration reset;
+  choose actions again for a fresh picker. Metadata-field Back still returns to
+  metadata choices with selected files/removal/reorder retained. Actions Back
+  returns to main; runtime and finality semantics are unchanged.
+- In reorder-only and combined jobs, gold marks explicitly entered source IDs
+  whose positions change. Automatic zero/appending/position adjustments stay
+  normal. Remove-only stays normal; dropped rows remain light red. The computed
+  order, dense output IDs and canonical metadata targets are unchanged.
+- 16 frozen-source focused checks pass in 38.56s, including all three Mux setups,
+  fresh picker/cleared scopes, no stale modifiers, Back/EOF/outcome boundaries and
+  explicit versus automatic highlighting. One 3.67s real-fzf/read-only-native PTY
+  journey confirms the active Mux actions screen after metadata Back, then main
+  only after Actions Back. One read-only identification; zero media writers;
+  source, tests and fixture remain unchanged. Both zsh syntax/Python AST pass.
+- Source SHA-256 `4f99fd98f26eacd2780b193172838eeb480a94b9bca3ca29ab67d4d405566c2d`;
+  tests SHA-256 `caf202b8bb1d6b5e92e5b8a19f2f2d3fa7330853b70c307dd7b4bfee92424c75`.
+  Guide navigation/colour examples and README are current; plan/checklist required
+  results remain mirrored. All nine tasks and four checkpoints remain accepted.
+- Proof: `.tmp/mkvutil-rework/mux-menu-and-colours/run-01/`, `pty-back/`,
+  `receipt.json`. Previous broad/IA evidence remains revision-bound. No jobs or
+  worker ownership remains. Signed develop push is authorized; actual outcome
+  belongs to `publication.json` there. Inspect refs/receipt before repeating Git.
+
 ### Accepted remove-only colour scope
 
 - Latest user instruction preserves the output layout/new IDs in remove-only

@@ -196,8 +196,11 @@ _mkvutil_track_colours() {
 }
 
 _mkvutil_render_track_view() {
-  jq -r --arg red "${2-}" --arg yellow "${3-}" '
-    .[] | (if .dropped then $red elif .moved then $yellow else "" end) as $colour |
+  jq -r --arg red "${2-}" --arg yellow "${3-}" --arg selected "${4-*}" '
+    .[] | .source_id as $source |
+    (if .dropped then $red
+     elif .moved and ($selected=="*" or ($selected|split(",")|index($source))!=null)
+     then $yellow else "" end) as $colour |
     if $colour=="" then .row else $colour+.row+"\u001b[0m" end
   ' <<< "$1"
 }
@@ -1689,7 +1692,7 @@ _mkvutil_menu_body() {
       print -r -- 'Optional metadata edits:'
       [[ -z "$targets" ]] || print -r -- "Output IDs for each track edit: $targets"
       mkvutil_metadata_menu || return 1
-      print -r -- 'e) Back to main categories' ;;
+      print -r -- 'e) Back' ;;
     *) return 1 ;;
   esac
 }
@@ -1957,7 +1960,7 @@ mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=() removal_ids=()
-  local item="" retained_csv="" projection="" track_view="" metadata_preview="" metadata_targets="" preview_yellow="" output_map='{}'
+  local item="" retained_csv="" projection="" track_view="" metadata_preview="" metadata_targets="" preview_yellow="" order_input="" highlight_ids="" output_map='{}'
   local item_position=0
   local metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
   MKVUTIL_CONFIG=""
@@ -2035,13 +2038,15 @@ mkvutil_configure_category() {
           (( ! MKVUTIL_INTERRUPTED )) || return 2
           _mkvutil_read 'Track order: ' || return 2
           case "$REPLY" in e|E) return 4 ;; esac
-          if order="$(mkvutil_normalize_order "$REPLY" "$retained_csv")" && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
+          order_input="$REPLY"
+          if order="$(mkvutil_normalize_order "$order_input" "$retained_csv")" && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
             (( ! MKVUTIL_INTERRUPTED )) || return 2
             break
           fi
           (( ! MKVUTIL_INTERRUPTED )) || return 2
           print -u2 -r -- "Invalid order. Available: $retained_csv"
         done
+        highlight_ids="$(mkvutil_expand_ids "$order_input" "$retained_csv")" || return 1
         print -r -- "Track order: ${order//0:/}"
         for item in "${(@s:,:)order}"; do
           _mkvutil_canonical_id "${item#0:}" || return 1
@@ -2054,7 +2059,7 @@ mkvutil_configure_category() {
       _mkvutil_track_colours
       [[ -z "$order" ]] || preview_yellow="$MKVUTIL_TRACK_YELLOW"
       metadata_preview=$'--------------------------  Output track layout --------------------------\n'
-      metadata_preview+="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$preview_yellow")" || return 1
+      metadata_preview+="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$preview_yellow" "$highlight_ids")" || return 1
       for item in "${order_ids[@]}"; do
         item_position="${MKVUTIL_RETAINED_IDS[(Ie)$item]}"
         (( item_position > 0 )) || return 1
@@ -2065,7 +2070,7 @@ mkvutil_configure_category() {
         mkvutil_batch_metadata_requested '' || return 1
         _mkvutil_menu_read metadata mux 'Metadata [none]: ' "$metadata_targets" "$metadata_error" "$metadata_preview" || return $?
         metadata_error=""
-        case "$REPLY" in e|E) return 6 ;; esac
+        case "$REPLY" in e|E) return 4 ;; esac
         metadata="$REPLY"
         if [[ -z "${metadata//[[:space:]]/}" ]]; then metadata=""; _mkvutil_ui_leave; break; fi
         result=0
@@ -4588,10 +4593,6 @@ _mkvutil_main_body() {
       fi
       case "$result" in
         4) mkvutil_reset_public_selection || return 1; selected=0; continue ;;
-        6)
-          mkvutil_reset_public_selection || return 1
-          selected=0
-          break ;;
         *) mkvutil_finish "$result" || sticky_code=1; return "$sticky_code" ;;
       esac
     done

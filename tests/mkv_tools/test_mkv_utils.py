@@ -397,9 +397,18 @@ mkvutil_configure_category mux 1 <<< 1
 jq -e '.removed_ids==["1"] and .order==""' <<< "$MKVUTIL_CONFIG" >/dev/null
 mkvutil_configure_category mux 2 <<< '2,0'
 [[ "$preview" == *"${yellow}Track ID 0: subtitles (S_TEXT/ASS) [Original 2] [eng]"* ]] || fail 'reorder-only changes stay yellow'
+[[ "$preview" == *"${yellow}Track ID 1: video (V_VP9) [Original 0] [eng]"* ]] || fail 'explicit video move stays yellow'
+[[ "$preview" == *$'\nTrack ID 2: audio (A_AAC) [Original 1] [eng]'* ]] || fail 'automatically appended track stays normal'
 mkvutil_configure_category mux 1,2 <<< $'1\n2,0'
 [[ "$preview" == *"${yellow}Track ID 0: subtitles (S_TEXT/ASS) [Original 2] [eng]"* ]] || fail 'combined changes stay yellow'
 [[ "$preview" == *"${red}Track: audio (A_AAC) [Original 1] [eng]"* ]] || fail 'combined dropped track stays red'
+[[ "$preview" == *$'\nTrack ID 2: audio (A_OPUS) [Original 3] [eng]'* ]] || fail 'combined automatic adjustment stays normal'
+mkvutil_configure_category mux 2 <<< ' 03 , 2 '
+[[ "$preview" == *"${yellow}Track ID 1: audio (A_OPUS) [Original 3] [eng]"* ]] || fail 'canonical explicit ID stays yellow'
+[[ "$preview" == *$'\nTrack ID 0: video (V_VP9) [Original 0] [eng]'* ]] || fail 'automatically prepended zero stays normal'
+[[ "$preview" == *$'\nTrack ID 2: subtitles (S_TEXT/ASS) [Original 2] [eng]'* ]] || fail 'explicit track that stays in position remains normal'
+[[ "$preview" == *$'\nTrack ID 3: audio (A_AAC) [Original 1] [eng]'* ]] || fail 'implicit appended track stays normal'
+jq -e '.order=="0:0,0:3,0:2" and .order_ids==["0","3","2"]' <<< "$MKVUTIL_CONFIG" >/dev/null
 print -r -- 'preview colour modes passed'
 ''', {str(source): model})
     assert result.stdout.rstrip().endswith("preview colour modes passed")
@@ -4144,7 +4153,7 @@ mkvutil_ledger_reset "$PWD" "$PWD/literal values.mkv"
 mkvutil_batch_request mux 2
 code=0
 mkvutil_configure_category mux 2 <<< $'0,1\nE' || code=$?
-eq "$code" 6 'optional metadata list Back to main'
+eq "$code" 4 'optional metadata list Back to Mux actions'
 eq "$MKVUTIL_CONFIG" '' 'no partial config'
 mkvutil_discard_configuration
 mkvutil_batch_request edit 4,5
@@ -4963,7 +4972,7 @@ eq "$(jq -r '.order' <<< "$MKVUTIL_CONFIG")" 0:4,0:0 'skip preserves structure'
 mkvutil_batch_request mux 2
 code=0
 mkvutil_configure_category mux 2 <<< $'3,0\n4\nE\ne' || code=$?
-eq "$code" 6 'list Back returns to main'
+eq "$code" 4 'list Back returns to Mux actions'
 eq "$(jq -r '.metadata_ids' <<< "${MKVUTIL_BATCHES[4]}")" '' 'list Back attribution clear'
 eq "$MKVUTIL_CONFIG" '' 'list Back leaves no config'
 code=0
@@ -5359,17 +5368,23 @@ def test_mkv_utils_back_mux_metadata_field_preserves_structure_and_selection(env
     assert 'Selected: 1' in result.stdout.split('Final report', 1)[1]
 
 
-def test_mkv_utils_back_mux_metadata_list_resets_and_reopens_picker(env):
+@pytest.mark.parametrize('setup', ('1\n1\n', '2\n2,0\n', '1,2\n1\n2,0\n'),
+                         ids=('remove', 'reorder', 'remove-reorder'))
+def test_mkv_utils_back_mux_metadata_list_resets_and_reopens_picker(env, setup):
     first, second = _mkv_file(env, 'Mux list first.mkv'), _mkv_file(env, 'Mux list second.mkv')
     model = _integration_model()
     expected = _integration_output(model, [1, 2, 3])
     extra = _integration_manifest(env, {first: model, second: model}, stage={str(second): expected})
     result = _run_mkv_utils(env, fzf_responses=[[str(first)], [str(second)]],
-                            input_data='2\n2\n2,0\nE\n2\n1\n0\n\n', extra_env=extra)
+                            input_data='2\n' + setup + 'E\n1\n0\n\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
     assert len(_command_argv(env, 'fzf')) == 2
     writers = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
     assert len(writers) == 1 and writers[0][-1] == str(second)
+    assert writers[0][writers[0].index('--track-order') + 1] == '0:1,0:2,0:3'
+    assert result.stderr.count('Category:') == 1
+    assert result.stderr.count('Actions:') == 2
+    assert result.stderr.count('Metadata [none]:') == 2
     assert first.read_bytes() == b'payload' and not first.with_suffix('.mka').exists()
     assert not second.exists() and _observed_fake_identification(env, second.with_suffix('.mka')) == expected
     final = result.stdout.split('Final report', 1)[1]
@@ -5397,8 +5412,8 @@ print -r -- 'inspection interrupt passed'
     assert result.stdout.rstrip().endswith('inspection interrupt passed')
 
 
-@pytest.mark.parametrize('boundary', ('quiet', 'unresolved', 'unresolved-main-eof', 'report-failure'))
-def test_mkv_utils_back_metadata_main_control_clears_unexecuted_ledger_without_reports(env, boundary):
+@pytest.mark.parametrize('boundary', ('quiet', 'unresolved', 'unresolved-actions-eof', 'report-failure'))
+def test_mkv_utils_back_metadata_actions_control_clears_unexecuted_ledger_without_reports(env, boundary):
     result = _run_planning_contract(env, r'''
 mkvutil_scan_files() { MKVUTIL_SCAN_FILES=("$PWD/pending.mkv"); }
 mkvutil_select_files() { MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
@@ -5408,7 +5423,7 @@ mkvutil_controller() {
     local receipt="$(jq -cn --arg source "$PWD/pending.mkv" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"0",reason:"missing-id",expected:{type:"audio",codec_id:"A_AAC"},actual:null}]}')"
     mkvutil_ledger_skip "$receipt"
   fi
-  return 6
+  return 4
 }
 report_calls=0
 mkvutil_final_report() { (( ++report_calls )); print -u2 -r -- 'Unexpected report for abandoned selection'; return 1; }
@@ -5421,10 +5436,11 @@ eq "${#MKVUTIL_LEDGER}" 0 'unexecuted outcome ledger discarded'
 eq "${#MKVUTIL_SELECTED_FILES}" 0 'selection discarded'
 eq "$report_calls" 0 'abandoned selection never produces a report'
 print -r -- 'main Back control passed'
-''', {}, input_data='2\n2\n' + ('' if boundary == 'unresolved-main-eof' else 'e\n'),
+''', {}, input_data='2\n2\n' + ('' if boundary == 'unresolved-actions-eof' else 'e\n'),
         extra_env={'TEST_BACK_BOUNDARY': boundary})
     assert result.stdout.rstrip().endswith('main Back control passed')
-    assert result.stdout.count('1) Matroska Edit') == 2
+    assert result.stdout.count('1) Matroska Edit') == (1 if boundary == 'unresolved-actions-eof' else 2)
+    assert result.stderr.count('Actions:') == 2
     assert 'Final report' not in result.stdout and 'Unexpected report' not in result.stderr
     assert not _command_argv(env, 'mkvmerge') and not _command_argv(env, 'fzf')
 

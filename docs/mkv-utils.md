@@ -156,7 +156,7 @@ Track configuration shows its full working directory and reference filename in a
 
 While configuration is incomplete, prompts that support Back accept exact `e` or `E`. Except for optional Mux metadata fields, Back from a field returns to the category's action list and clears the selected files, inspected sources, explicit exclusions, unexecuted ledger, and pending configuration. Choose actions again to rescan the directory and open a fresh picker. Back from the action list returns to the main categories. Once processing starts, `e` is not a cancellation key.
 
-At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list and clears the selection, so choosing actions again opens a fresh picker. In Mux optional metadata fields, it returns to the metadata list while retaining the selected files, removal IDs, and reorder settings; choose metadata again or leave the list blank to skip it. **e) Back to main categories** in the optional metadata list clears the whole unexecuted selection and configuration.
+At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list and clears the selection, so choosing actions again opens a fresh picker. In Mux optional metadata fields, it returns to the metadata list while retaining the selected files, removal IDs, and reorder settings; choose metadata again or leave the list blank to skip it. **e) Back** in the optional metadata list returns to the Mux action submenu and clears the selected files, removal IDs, order, metadata and unexecuted outcomes. Choosing actions again opens a fresh file picker. Back from the Mux action submenu then returns to the main categories.
 
 The **Working** indicator appears during quiet scans, source inspection, layout and signature preparation, language validation and queue planning before processing starts, when standard output is a terminal and `TERM` is nonempty and not `dumb`. It stays visible across consecutive preparation steps and pauses before diagnostics or prompts. The typing cursor is hidden while the indicator runs and restored before the next input or output. Once the queue starts, Working stays off, including during each file's fresh source check; action headings, native messages and progress reports show the ongoing work. Redirected output has no indicator. Analyze uses **Analysing** during its track analysis.
 
@@ -224,7 +224,7 @@ Removal and reorder inputs use the **original source IDs**. Removal IDs are coll
 
 Enter reorder IDs as a bare comma list. The first listed track comes first; other retained tracks append in their source order. At least two different IDs must be entered; `7` alone is invalid. If retained source track `0` is omitted, it is prepended: `4,3` becomes `0,4,3`. Explicit `0` keeps its entered position: **`3,1,0` places source video `0` third**, exactly where you entered it. Omitted retained tracks still append afterward; video is last only when no other tracks remain to append. Absent or removed track `0` is never added. Native `0:ID` syntax is handled internally. Removed, unknown, duplicate or malformed IDs re-prompt without repeating removal selection. Removing every track is rejected; fewer than two retained tracks cannot be reordered.
 
-After structural choices, **Output track layout** remains visible within the optional metadata menu and shows the **resulting output order and IDs**. Retained tracks are numbered from `0` in their new order. Dropped rows stay interleaved at their original row slots, soft light red and without IDs; retained rows fill the other slots in output order. When reorder is selected, tracks whose output position differs from their original source position appear in warm yellow/gold, including shifts caused by removal and automatically appended tracks. In remove-only mode, retained tracks keep their normal colour even when their output IDs change. Tracks that keep their position also retain the normal colour. Colour needs no extra dependency; redirected output, `TERM=dumb` and `NO_COLOR=1` stay plain. If the preview and metadata menu cannot fit the terminal, they use normal scrollback so the complete listing remains accessible.
+After structural choices, **Output track layout** remains visible within the optional metadata menu and shows the **resulting output order and IDs**. Retained tracks are numbered from `0` in their new order. Dropped rows stay interleaved at their original row slots, soft light red and without IDs; retained rows fill the other slots in output order. When reorder is selected, warm yellow/gold marks only tracks explicitly named in **Track order** whose positions actually change. Automatically prepended or appended tracks and other automatic position adjustments keep their normal colour. In remove-only mode, all retained tracks keep their normal colour even when their output IDs change. The resulting order and output IDs are always shown. Colour needs no extra dependency; redirected output, `TERM=dumb` and `NO_COLOR=1` stay plain. If the preview and metadata menu cannot fit the terminal, they use normal scrollback so the complete listing remains accessible.
 
 Optional Mux metadata uses the displayed **output IDs**. Before every per-track value, the same full track-description row used by Edit appears above the short action prompt. The utility translates the output ID back to its original source track before building the single remux command. Edit continues to display and accept existing source IDs.
 
@@ -257,6 +257,25 @@ Language: eng
 ```
 
 The ID-less dropped audio row is soft light red. Output `1` is warm yellow because source `4` moved to position `1`; the other retained rows keep their original physical positions. Metadata answers apply to source `0,4,2` across eligible files; appended source `3` keeps its tags.
+
+</details>
+
+<details>
+<summary>Example: highlight only the tracks explicitly moved</summary>
+
+With original source IDs `0,1,2,3`, enter `2,0`. This illustrative listing omits terminal colour escapes:
+
+```text
+Track order: 2,0
+
+Output track layout
+Track ID 0: subtitles (S_TEXT/ASS) [Dialogue] [eng]
+Track ID 1: video (V_VP9) [Main video] [eng]
+Track ID 2: audio (A_AAC) [Main audio] [eng]
+Track ID 3: audio (A_OPUS) [Commentary] [eng]
+```
+
+The first two rows are gold: source tracks `2` and `0` were explicitly placed in new positions. Source track `1` automatically appends at output ID `2` and stays its normal colour; source track `3` also stays normal. The same highlighting rule applies when removal and reorder are combined. Removing tracks alone never makes retained rows yellow.
 
 </details>
 
@@ -333,7 +352,7 @@ Mux reports elapsed time and queue progress between files. Its final report incl
 
 Assume the reference listing has video ID `0`, subtitle ID `3`, audio ID `4`, another retained track `11`, and unwanted track `12`.
 
-1. Press `2` at **Category**, then enter Mux actions `1,2`.
+1. Enter `2` at **Category**, then enter Mux actions `1,2`.
 2. Select the files once and enter removal ID `12`.
 3. Enter reorder sequence `0,4,3`, or `4,3` to prepend retained 0 automatically.
 4. The metadata menu shows **Output IDs for each track edit: 0,1,2**. Select metadata actions `3,4` for language and track name.
@@ -392,11 +411,11 @@ The optional metadata menu returns. All language and name values from this unfin
 
 - Enter a new selection, such as `1,2`, to collect forced and default values afresh for the inherited reorder IDs.
 - Press Enter on a blank metadata selection to start preflight without metadata edits.
-- Enter `e` at the metadata menu itself to return directly to the main categories.
+- Enter `e` at the metadata menu itself to return to the **Mux action submenu**. This clears the files, removal IDs, order and pending metadata; choosing new actions opens a fresh picker. Enter `e` again from the Mux action submenu to return to the main categories.
 
 For a fresh selection, choose Mux actions `1,2`, select files, then enter `e` at the removal-ID or track-order prompt. The utility returns to Mux actions and clears that selection and its settings. Enter `1,2` again: fzf opens again, allowing you to choose a different set of files.
 
-Edit metadata Back and Extract track-ID Back follow the same reset rule: return to their action list, clear the unexecuted selection, and reopen fzf after new actions are chosen. Back from the optional Mux metadata list itself returns to the main categories and clears the entire pending Mux configuration.
+Edit metadata Back and Extract track-ID Back follow the same reset rule: return to their action list, clear the unexecuted selection, and reopen fzf after new actions are chosen. Back from the optional Mux metadata list itself returns to the Mux action submenu and clears the entire pending Mux configuration and file selection.
 
 To set an actual name or title of `e`, enter `\e`; uppercase `\E` sets `E`. After processing starts, `e` is ordinary typeahead; use Ctrl+C for the runtime stop behavior below.
 
@@ -597,6 +616,8 @@ To run only the `mkv_utils` test module:
 ```zsh
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
+
+The metadata-menu Back and explicit-move highlighting update passed **16 focused checks**. These cover all three Mux setups, fresh file selection after Back, cleared settings and unexecuted outcomes, retained structure after metadata-field Back, and yellow only for explicitly moved tracks. One installed-fzf/native-read-only terminal journey also confirmed that Back displays Mux actions, followed by main only after another Back; it made no media writes. Earlier qualification below remains tied to its recorded source revision.
 
 The output-layout and metadata update qualified **123 focused cases across the main and corrective runs**, plus **five logged dry-run PTY journeys** using installed fzf and MKVToolNix v93 identification. These cover source/output ID translation, removal-first ordering, original ID/type/native-format and count checks, per-ID context, metadata Back, invalid-order retries, row colours and both fitting and scrollback previews. The source remained unchanged during qualification; nine stale test contracts were aligned and rechecked. The PTY journeys made no media writes and left all fixture files unchanged. Modifying-tool behavior and late runtime rejection use controlled integration checks; this update does not claim a new full native-write or CI campaign.
 
