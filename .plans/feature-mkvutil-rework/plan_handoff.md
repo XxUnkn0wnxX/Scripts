@@ -14,6 +14,38 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted concise prompts and filename-only outcome rows
+
+- Latest user clarification is implemented: preserve all outcome boxes and the
+  Simulated no-change note; every final outcome group's first file row has no
+  redundant status prefix. Output mappings, reasons/history/recovery remain.
+  Analyze mismatch, error and not-attempted lists use the same labelled boxes.
+  Prompts/help are concise; the detailed guide retains syntax and examples.
+- Reused approved coordinated route B at
+  T01.03/T02.03/T03.01/T04.01/T04.02. Worker handed back; parent owns all files.
+  **9/9 tasks and 4/4 goals accepted**. No worker or runtime job remains.
+- Frozen source SHA-256: `a1a2246b597dff01b284ed1d56e10ada73dcd8ae7d14f4f48f6a28e788d71756`.
+  Tests SHA-256: `2d58f2b3f36e3b443934751a4f1caa84b8842268c84b91415919c7f3506e0af2`.
+  All 11 focused checks passed in18.25s (21.28s measured command wall;
+  8.82s user +7.00s system CPU). Actual test-start/end/current bytes match;
+  unchanged shared fixture helper is included in the snapshots.
+- Both zsh syntax checks, Python compilation, exact shared-renderer sample,
+  help output, diff/guide/contracts/ledger review pass. All 116 unmodified
+  function spans remain byte-identical to e3a4d3a6; changed spans are confined
+  to prompt/help text and final rendering. No new IA/native/full-suite/CI run.
+- Initial static review caught one test assertion indentation error after its
+  prompt replacement; parent corrected the original conditional scope before
+  tests. Parent also separated the Analyze error/mismatch box assertions. The
+  static correction is retained; all focused tests passed on their first run.
+- Evidence: `.tmp/mkvutil-rework/concise-output/receipt.json`, `run-01/`,
+  `parent-review.json`, `sample-report.txt`, `help.txt` and
+  `initial-static-correction.txt`. Guide examples remain in 11 details blocks.
+- Same main Scripts checkout/feature branch, canonical tracked records and
+  preserved parent-session ledger. Existing single-script/tool/permission
+  boundaries remain. Signed push follows standing authorization; inspect
+  `concise-output/publication.json` and Git refs before repeating publication.
+  No feature gate remains.
+
 ### Accepted final blocks and track/source preflight safeguards
 
 - User-requested Working is now pre-run-only. It stops at queue entry, including

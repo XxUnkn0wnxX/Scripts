@@ -464,10 +464,10 @@ eq "${MKVUTIL_METADATA_SETTINGS[5:info]}" cancel 'optional metadata rejects zero
 print -r -- 'invalid prompt retries passed'
 ''')
     assert result.stdout.rstrip().endswith("invalid prompt retries passed")
-    assert result.stderr.count("Track IDs (comma/range;") == 6
-    assert result.stderr.count("Flag-forced (") >= 4
+    assert result.stderr.count("Track IDs:") == 6
+    assert result.stderr.count("Forced (0/1) [0]: ") >= 4
     assert "Language:" in result.stderr and "Track name:" in result.stderr
-    assert "Metadata choices (comma/range; blank for none): " in result.stderr
+    assert "Metadata [none]: " in result.stderr
 
 
 def test_mkv_utils_exclusion_prompt_retries_only_known_answers(tmp_path: Path):
@@ -490,7 +490,7 @@ eq "$code" 4 'exact E returns Back'
 print -r -- 'exclusion prompt contracts passed'
 ''')
     assert result.stdout.strip() == "exclusion prompt contracts passed"
-    assert result.stderr.count("Exclude this file from the batch?") == 7
+    assert result.stderr.count("Exclude file?") == 7
 
 
 def _source_json(tracks: list[tuple[int, str, str, bool]], *, attachments=None):
@@ -2582,7 +2582,7 @@ def test_mkv_utils_reporting_mux_skip_ends_run_and_retry_needs_new_invocation(en
     assert "Done: 1; Failed: 0" in result.stdout and "Skipped: 1; Excluded: 0; Not attempted: 0" in result.stdout
     assert "Skip history: unresolved" in result.stdout
     report = result.stdout[result.stdout.index("Final report"):]
-    assert report.count("Final report") == 1 and f"skipped: {skipped.name}" in report
+    assert report.count("Final report") == 1 and f"| {skipped.name}" in report
     assert "Original ID 12: codec-mismatch" in report
     assert 'expected={"type":"subtitles","codec_id":"S_TEXT/ASS"}' in report
     assert 'actual={"type":"subtitles","codec_id":"S_TEXT/UTF8"}' in report
@@ -2624,7 +2624,7 @@ def test_mkv_utils_category_incomplete_final_input_does_not_execute(env: dict[st
         input_data="2\n2\n2,0\n5\n",
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "Title (empty to unset): " in result.stderr
+    assert "Title [clear]: " in result.stderr
     assert "Review/change" not in result.stdout + result.stderr
     assert "Preview resulting" not in result.stdout + result.stderr
     assert result.stdout.count("Final report") == 1
@@ -2821,14 +2821,11 @@ def test_mkv_utils_analyze_uses_first_usable_full_id_signature_reference(env):
     assert "Reordered metadata.mkv" not in result.stdout
     assert all(str(env["workdir"] / name) not in result.stdout for name in names)
     assert all(name not in result.stderr for name in names)
-    assert "Analysis failed: Unusable first.mkv" in result.stdout
-    assert "Track ID/type/codec mismatch: Codec changed.mkv" in result.stdout
-    assert "Track ID/type/codec mismatch: Type changed.mkv" in result.stdout
-    assert "Track ID/type/codec mismatch: Missing track.mkv" in result.stdout
-    assert "Track ID/type/codec mismatch: Extra track.mkv" in result.stdout
+    _ascii_box_contains(final_report, "Errors", "Unusable first.mkv")
+    _ascii_box_contains(final_report, "Track ID/type/codec mismatch", *names[3:])
     assert "[literal/name/value]" not in result.stdout and "jpn" not in result.stdout
     assert "S_TEXT/ASS" in track_lines[2]
-    assert "Operations (single/comma/range)" not in result.stdout + result.stderr
+    assert "Actions: " not in result.stdout + result.stderr
     picker_calls = _command_argv(env, "fzf")
     assert len(picker_calls) == 1
     picker = picker_calls[0]
@@ -2938,7 +2935,7 @@ diagnostic="$(mkvutil_check_destinations "$collision" 2>&1)" && fail 'accepted e
 summary="$(jq -cn --arg source "$source" --arg destination "$destination" --arg staged "$staged" --arg reference "$reference" '{directory:"workdir",elapsed_seconds:0,interrupted:true,batches:[{id:1,state:"interrupted",category:"mux",action_ids:["1"],metadata_ids:"",sources:[$source],eligible:1,attempted:0,completed:0,elapsed_seconds:0,outcomes:{},stop:{mode:"signal",not_started_sources:[$source]}}],selected:1,required:1,counts:{done:0,failed:0,warning:0,partial:0,skipped:1,excluded:0,not_attempted:0,interrupted:0},attachments:{processed:0,published:0,unique_names:0,superseded:0,uncertain_names:0,publications:[]},files:[{status:"skipped",source:$source,destination:$destination,exclusion_reason:null,skip_history:[{resolved:false,batch_ids:[1],receipt:{reference:$reference,reasons:[{original_id:"12",reason:"codec-mismatch",expected:{type:"subtitles",codec_id:"S_TEXT/ASS"},actual:{type:"subtitles",codec_id:"S_TEXT/UTF8"}}]}}],attempts:[{batch_id:1,result:{phase:"preflight",actual_state:"unpublished",status:"failed",reason:("Source unavailable: "+$source),staged_paths:[$staged],discarded_partial_tracks:[],scratch_paths:[],unexpected_paths:[],cleanup_error:null,inventory_errors:[],remaining_staging_directories:[],uncertain_artifacts:[]}}]}]}')"
 eq "$(jq -r '.files[0].source' <<< "$summary")" "$source" 'raw summary path remains full'
 report="$(mkvutil_format_final_report "$summary")"
-[[ "$report" == *'skipped: Source file.mkv => Output file.mka'* && "$report" == *'reference Reference file.mkv'* ]] || fail 'final report did not shorten source, destination and mismatch reference'
+[[ "$report" == *'| Source file.mkv => Output file.mka'* && "$report" == *'reference Reference file.mkv'* ]] || fail 'final report did not shorten source, destination and mismatch reference'
 [[ "$report" == *'Files not started due to stop: 1'* && "$report" == *'    Source file.mkv'* && "$report" == *'Staged: staged file.mka'* ]] || fail 'final report did not shorten missed/staging names'
 [[ "$report" == *'Source unavailable: Source file.mkv'* && "$report" == *'S_TEXT/ASS'* ]] || fail 'final report changed reason or literal codec'
 [[ "$report" != *"$PWD/"* ]] || fail 'final report printed a full path'
@@ -2985,19 +2982,59 @@ report="$(mkvutil_format_final_report "$summary")"
 eq "$summary" "$raw_summary" 'formatter leaves raw summary unchanged'
 [[ "$report" == *"Done: 4"* && "$report" == *"Warning: 1"* && "$report" == *"Partial: 1"* && "$report" == *"Skipped: 1"* ]] || fail 'aggregate outcomes changed while filtering routine rows'
 [[ "$report" != *"Same file.mkv"* && "$report" != *"Same edit.mkv"* ]] || fail 'unchanged successful Edit/Mux file was listed'
-[[ "$report" == *"| Warnings"* && "$report" == *"| warning: Warning file.mkv"* && "$report" == *"Metadata warning retained"* ]] || fail 'warning details are not inside their outcome box'
-[[ "$report" == *"Output: Renamed file.mkv => Renamed file.mka"* ]] || fail 'meaningful rename output is missing'
-[[ "$report" == *"| Outputs"* && "$report" == *"| Output: Renamed file.mkv => Renamed file.mka"* ]] || fail 'successful output is not inside the Outputs box'
-[[ "$report" == *"Outputs from: Extracted file.mkv"* && "$report" == *"English Commentary - Track [3].srt"* ]] || fail 'published track outputs are missing'
+[[ "$report" == *"| Warnings"* && "$report" == *"| Warning file.mkv"* && "$report" == *"Metadata warning retained"* ]] || fail 'warning details are not inside their outcome box'
+[[ "$report" == *"Renamed file.mkv => Renamed file.mka"* ]] || fail 'meaningful rename output is missing'
+[[ "$report" == *"| Outputs"* && "$report" == *"| Renamed file.mkv => Renamed file.mka"* ]] || fail 'successful output is not inside the Outputs box'
+[[ "$report" == *"| Extracted file.mkv"* && "$report" == *"English Commentary - Track [3].srt"* ]] || fail 'published track outputs are missing'
 [[ "$report" == *"Failure.mkv"* && "$report" == *"Destination publication uncertain"* ]] || fail 'failure outcome is missing'
 [[ "$report" == *"mux: failed (tool exit 2)"* ]] || fail 'failed stage details are missing'
 [[ "$report" == *"Staged: track.partial.srt"* && "$report" == *"Retained staging directory: .mkvutil-stage"* ]] || fail 'recovery paths are missing'
 [[ "$report" == *"Skip history: unresolved; configurations 1; reference Reference file.mkv"* ]] || fail 'skip history is missing'
-[[ "$report" == *"| Skipped"* && "$report" == *"| skipped: Skipped file.mkv"* ]] || fail 'skip details are not inside their outcome box'
+[[ "$report" == *"| Skipped"* && "$report" == *"| Skipped file.mkv"* ]] || fail 'skip details are not inside their outcome box'
 [[ "$report" == *"Track count mismatch: expected 5; actual 4"* && "$report" == *"codec-mismatch"* ]] || fail 'skip receipt details are missing'
 [[ "$report" != *"Phase:"* && "$report" != *"phase="* && "$report" != *"actual state"* ]] || fail 'internal phase/state labels leaked'
 [[ "$report" != *"replaced_complete"* && "$report" != *"published_complete"* && "$report" != *"sidecars_published"* && "$report" != *"publication_uncertain"* ]] || fail 'internal state enum leaked'
 [[ "$report" != *"Stage mux: complete"* && "$report" != *"code=0"* ]] || fail 'completed stage detail was not suppressed'
+
+status_summary="$(jq -cn '
+  {directory:"workdir",elapsed_seconds:0,interrupted:false,selected:9,required:9,
+   counts:{done:1,failed:1,warning:1,partial:1,skipped:1,excluded:1,not_attempted:2,interrupted:1},
+   batches:[{id:1,state:"executed",category:"mux",action_ids:[],metadata_ids:"",sources:[],eligible:9,attempted:0,completed:0,elapsed_seconds:0,outcomes:{},stop:null}],
+   attachments:{processed:0,published:0,unique_names:0,superseded:0,uncertain_names:0,publications:[]},
+   files:[
+    {source:"Error case.mkv",status:"failed",skip_history:[],attempts:[{batch_id:1,result:{status:"failed",reason:"error reason"}}]},
+    {source:"Warning case.mkv",status:"warning",skip_history:[],attempts:[{batch_id:1,result:{status:"warning",reason:"warning reason"}}]},
+    {source:"Partial case.mkv",status:"partial",skip_history:[],attempts:[{batch_id:1,result:{status:"partial",reason:"partial reason"}}]},
+    {source:"Skipped case.mkv",status:"skipped",skip_history:[],attempts:[]},
+    {source:"Excluded case.mkv",status:"excluded",exclusion_reason:"user choice",skip_history:[],attempts:[]},
+    {source:"Interrupted case.mkv",status:"interrupted",skip_history:[],attempts:[{batch_id:1,result:{status:"interrupted",reason:"signal"}}]},
+    {source:"Not attempted case.mkv",status:"not_attempted",skip_history:[],attempts:[]},
+    {source:"Pending case.mkv",status:"pending",skip_history:[],attempts:[]},
+    {source:"Simulated case.mkv",status:"success",skip_history:[],attempts:[{batch_id:1,result:{status:"success",simulated:true}}]}
+   ]}')"
+status_report="$(mkvutil_format_final_report "$status_summary")"
+for group_name in Errors Warnings 'Partial results' Skipped Excluded Interrupted 'Not attempted' Simulated; do
+  case "$group_name" in
+    Errors) file_name='Error case.mkv' ;;
+    Warnings) file_name='Warning case.mkv' ;;
+    'Partial results') file_name='Partial case.mkv' ;;
+    Skipped) file_name='Skipped case.mkv' ;;
+    Excluded) file_name='Excluded case.mkv' ;;
+    Interrupted) file_name='Interrupted case.mkv' ;;
+    'Not attempted') file_name='Not attempted case.mkv' ;;
+    Simulated) file_name='Simulated case.mkv' ;;
+  esac
+  [[ "$status_report" == *"| $group_name"* && "$status_report" == *"| $file_name"* ]] || fail "filename-only row missing from $group_name"
+done
+[[ "$status_report" == *"| Pending case.mkv"* ]] || fail 'pending file missing from Not attempted'
+[[ "$status_report" == *"| Error case.mkv"* && "$status_report" != *"failed: Error case.mkv"* &&
+   "$status_report" == *"| Warning case.mkv"* && "$status_report" != *"warning: Warning case.mkv"* &&
+   "$status_report" == *"| Partial case.mkv"* && "$status_report" != *"partial: Partial case.mkv"* ]] || fail 'outcome labels leaked into file rows'
+dry_summary="$(jq -cn '{directory:"workdir",dry_run:true,elapsed_seconds:0,interrupted:false,selected:0,required:0,
+  counts:{done:0,failed:0,warning:0,partial:0,skipped:0,excluded:0,not_attempted:0,interrupted:0},
+  batches:[],attachments:{processed:0,published:0,unique_names:0,superseded:0,uncertain_names:0,publications:[]},files:[]}')"
+dry_report="$(mkvutil_format_final_report "$dry_summary")"
+[[ "$dry_report" == *"| Simulated"* && "$dry_report" == *"| Files were not changed."* ]] || fail 'simulated note-only outcome changed'
 
 per_job="$(jq -cn --arg source "$failed" --arg staged "$staged" \
   '{source:$source,destination:$source,category:"mux",status:"partial",phase:"publishing",actual_state:"publication_uncertain",reason:"Destination publication uncertain",staged_paths:[$staged],stages:[{kind:"mux",status:"failed",native_code:2}],artifacts:[{kind:"track",id:"3",path:$staged,publication_state:"uncertain"}]}')"
@@ -3488,7 +3525,7 @@ def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(en
         env, fzf_responses=[[str(source)]], input_data="3\n2\nnot-an-id\n44\n1\n", extra_env=extra,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stderr.count("Track IDs to extract (comma/range; e to go back):") == 3
+    assert result.stderr.count("Extract IDs:") == 3
     calls = _command_argv(env, "mkvextract")
     assert len(calls) == 1 and calls[0][:2] == [str(source), "tracks"]
     assert (env["workdir"] / "Retry track ID - Track [1].aac").read_bytes() == b"aac payload"
@@ -3558,7 +3595,7 @@ def test_mkv_utils_option7_nonexistent_track_id_skips_remux(env):
     source=_mkv_file(env,"remove_missing_id.mkv")
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n44\n")
     assert result.returncode==0,result.stdout+result.stderr
-    assert result.stderr.count("Track IDs to remove (comma/range; e to go back):") == 2
+    assert result.stderr.count("Remove IDs:") == 2
     assert "Cancelled; no media changes." in result.stdout
     assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
     assert "requested, not run" in result.stdout
@@ -3568,7 +3605,7 @@ def test_mkv_utils_option7_refuses_to_remove_every_track(env):
     source=_mkv_file(env,"remove_all.mkv")
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n0-3\n")
     assert result.returncode==0,result.stdout+result.stderr
-    assert result.stderr.count("Track IDs to remove (comma/range; e to go back):") == 2
+    assert result.stderr.count("Remove IDs:") == 2
     assert "Cancelled; no media changes." in result.stdout
     assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
     assert "requested, not run" in result.stdout
@@ -3690,8 +3727,8 @@ def test_mkv_utils_integration_reject_or_cancel_before_modification(env,boundary
     assert not _command_argv(env,"mkvpropedit") and not _command_argv(env,"mkvextract")
     assert not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
     if boundary == "removed-metadata":
-        assert result.stderr.count('Track IDs (comma/range; e to go back):') == 2
-        assert "Available IDs: 1,2,3" in result.stderr
+        assert result.stderr.count('Track IDs:') == 2
+        assert "Available: 1,2,3" in result.stderr
         assert "Cancelled; no media changes." in (result.stdout + result.stderr)
     elif boundary == "eof":
         assert "Cancelled; no media changes." in result.stdout
@@ -3927,12 +3964,12 @@ def test_mkv_utils_navigation_ctrl_c_blocked_input_entrypoint(env):
     try:
         process.stdin.write(b"1\n5\n"); process.stdin.flush()
         deadline = time.monotonic() + 10
-        while b"Title (empty to unset): " not in seen and time.monotonic() < deadline:
+        while b"Title [clear]: " not in seen and time.monotonic() < deadline:
             if select.select([process.stderr], [], [], 0.1)[0]:
                 data = os.read(process.stderr.fileno(), 8192)
                 assert data, seen.decode(errors="replace")
                 seen += data
-        assert b"Title (empty to unset): " in seen, seen.decode(errors="replace")
+        assert b"Title [clear]: " in seen, seen.decode(errors="replace")
         process.send_signal(signal.SIGINT)
         stdout, stderr = process.communicate(timeout=10)
     finally:
@@ -3997,7 +4034,7 @@ print -r -- 'automatic controller contracts passed'
     assert result.stdout.rstrip().endswith("automatic controller contracts passed")
     report = result.stdout[result.stdout.index("Final report"):]
     assert report.count("Final report") == 1
-    assert f"skipped: {skipped.name}" in report and "Original ID 1: codec-mismatch" in report
+    assert f"| {skipped.name}" in report and "Original ID 1: codec-mismatch" in report
     assert 'expected={"type":"subtitles","codec_id":"S_TEXT/ASS"}' in report
     assert 'actual={"type":"subtitles","codec_id":"S_TEXT/UTF8"}' in report
     assert not [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
@@ -4190,10 +4227,10 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
                 if key == b"1":
                     # A category number is not accepted until its line ends.
                     receive()
-                    assert process.poll() is None and b"Operations (single/comma/range): " not in output
+                    assert process.poll() is None and b"Actions: " not in output
                     assert "Category: " in screen.text
                     os.write(master, b"\n")
-                line_menu(b"Operations (single/comma/range): ", "actions", category)
+                line_menu(b"Actions: ", "actions", category)
                 assert (screen.enters, screen.leaves) == switches
                 os.write(master, b"e\n"); shortcuts()
                 assert (screen.enters, screen.leaves) == switches
@@ -4201,41 +4238,41 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
             # first backs directly from the choices; the second backs from a
             # title value, then from choices, before any final value commits.
             os.write(master, b"2\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
             os.write(master, b"2\n")
-            normal_input(b"Track order (e.g.")
+            normal_input(b"Track order:")
             os.write(master, b"0,1\n")
-            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
             assert "Original track IDs for each track edit: 0,1" in screen.text
             os.write(master, b"E\n"); shortcuts()
 
             os.write(master, b"2\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
             os.write(master, b"2\n")
-            normal_input(b"Track order (e.g.")
+            normal_input(b"Track order:")
             os.write(master, b"0,1\n")
-            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
             os.write(master, b"5\n")
-            normal_input(b"Title (empty to unset): ")
+            normal_input(b"Title [clear]: ")
             os.write(master, b"e\n")
-            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
             os.write(master, b"E\n"); shortcuts()
             os.write(master, b"e\n")
         elif exit_key == b"track-id-ctrl-c":
             os.write(master, b"2\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
             os.write(master, b"1\n")
-            normal_input(b"Track IDs to remove (comma/range; e to go back): ")
+            normal_input(b"Remove IDs: ")
             os.write(master, b"\x03")
         elif exit_key == b"title-ctrl-c":
             os.write(master, b"1\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Edit")
+            line_menu(b"Actions: ", "actions", "Matroska Edit")
             os.write(master, b"5\n")
-            normal_input(b"Title (empty to unset): ")
+            normal_input(b"Title [clear]: ")
             os.write(master, b"\x03")
         elif exit_key == b"line-ctrl-c":
             os.write(master, b"2\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
             os.write(master, b"\x03")
         elif exit_key == b"z":
             for invalid in (b"z\n", b"1,2\n", b"1-2\n", b"\n"):
@@ -4250,20 +4287,20 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
             os.write(master, b"e\n")
         elif exit_key == b"back-retry-remux":
             os.write(master, b"2\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
             os.write(master, b"2\n")
-            normal_input(b"Track order (e.g.")
+            normal_input(b"Track order:")
             os.write(master, b"e\n")
-            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
             for invalid in (b"0\n", b"w\n", b"\n"):
                 os.write(master, invalid)
-                line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+                line_menu(b"Actions: ", "actions", "Matroska Mux")
                 assert "Invalid operations." in screen.text
             os.write(master, b"2\n")
             wait_for(b"PICKER-OPEN")
-            normal_input(b"Track order (e.g.")
+            normal_input(b"Track order:")
             os.write(master, b"1,0\n")
-            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
             os.write(master, b"\n")
         else:
             os.write(master, exit_key)
@@ -4457,7 +4494,7 @@ print -r -- 'shared target contracts passed'
 ''')
     assert result.stdout.strip() == 'shared target contracts passed'
     # Two multi-action collections and one name collection; title-only asks none.
-    assert result.stderr.count('Track IDs (comma/range;') == 4
+    assert result.stderr.count('Track IDs:') == 4
     assert result.stderr.count('Original track ID 12 — Language:') == 2
     assert result.stderr.count('Original track ID 11 — Language:') == 2
     assert 'Track name:' in result.stderr and 'e) Back' in result.stderr
@@ -4511,10 +4548,12 @@ reject mkvutil_metadata_configure 4 independent <<< $'12\nremoved'
 print -r -- 'preset contracts passed'
 ''')
     assert result.stdout.strip() == 'preset contracts passed'
-    for action in ('Flag-forced', 'Flag-default', 'Language', 'Track name'):
+    for action in ('Forced', 'Default', 'Language', 'Track name'):
         prompts = [result.stderr.index(f'Original track ID {tid} — {action}') for tid in (0, 4, 3)]
         assert prompts == sorted(prompts)
-    assert result.stderr.count('Track IDs (comma/range;') == 5  # invalid removed target retries, plus independent choices
+    assert 'Set language for tracks\nTrack IDs: ' in result.stderr
+    assert 'Set name for tracks\nTrack IDs: ' in result.stderr
+    assert result.stderr.count('Track IDs:') == 5  # invalid removed target retries, plus independent choices
 
 
 def test_mkv_utils_configuration_order_retry_metadata_back_and_batch_attribution(env):
@@ -4557,9 +4596,9 @@ eq "$(jq -r '.order' <<< "$MKVUTIL_CONFIG")" '0:0,0:3' 'explicit reorder follows
 print -r -- 'configuration retries passed'
 ''', {str(source): model})
     assert result.stdout.rstrip().endswith('configuration retries passed')
-    assert result.stderr.count('Invalid track order.') == 4
-    assert result.stderr.count('Track IDs to remove (comma/range; e to go back):') == 4
-    assert result.stderr.count('Track order (e.g.') == 8
+    assert result.stderr.count('Invalid order.') == 4
+    assert result.stderr.count('Remove IDs:') == 4
+    assert result.stderr.count('Track order:') == 8
     assert 'Original track IDs for each track edit: 0,4,3' in result.stdout
     assert not _command_argv(env, 'fzf') and source.read_text() == 'payload'
 
@@ -4584,7 +4623,7 @@ print -r -- "JOB $(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")"
     assert '11:0' in args  # untouched false forced/default flags still preserved
     assert '11:Original 11' not in args and '11:eng' not in args
     assert job['source_flags']['2:11'] == '0' and job['source_flags']['1:11'] == '0'
-    assert 'Track IDs (comma/range;' not in result.stderr
+    assert 'Track IDs:' not in result.stderr
 
 
 def test_mkv_utils_metadata_field_back_edit_resets_and_reopens_file_scope_entrypoint(env):
@@ -4629,7 +4668,7 @@ def test_mkv_utils_shared_edit_per_id_values_across_source_listing_positions(env
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Edit 4,5,3: name + file title + language" in result.stdout
     assert result.stdout.index("Edit 4,5,3: name + file title + language") < result.stdout.index(f"Processing: {first.name}")
-    assert result.stderr.count('Track IDs (comma/range;') == 1
+    assert result.stderr.count('Track IDs:') == 1
     calls = _command_argv(env, 'mkvpropedit')
     assert len(calls) == 2 and {call[0] for call in calls} == {str(first), str(second)}
     for file, selector2, selector1 in ((first, 'track:3', 'track:2'), (second, 'track:1', 'track:4')):
@@ -4667,7 +4706,7 @@ def test_mkv_utils_combined_mux_inherited_per_id_metadata_two_sources(env):
                             input_data='2\n1,2\n12\n0,4,3\n1-5\n1\n0\n1\n0\n1\n0\neng\nfr-CA\nde\nzero\nfour\nthree\nBatch title\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
     assert 'Original track IDs for each track edit: 0,4,3' in result.stdout
-    assert 'Track IDs (comma/range;' not in result.stderr
+    assert 'Track IDs:' not in result.stderr
     assert result.stdout.count('Final report') == 1 and 'Done: 2; Failed: 0' in result.stdout
     calls = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
     assert len(calls) == 2 and {call[-1] for call in calls} == {str(first), str(second)}
@@ -4709,8 +4748,8 @@ eq "${#MKVUTIL_METADATA_SETTINGS}" 0 'interrupted retry has no settings'
 print -r -- 'retry interrupt contract passed'
 ''', {str(source): _source_json([(0, 'audio', 'A_AAC', True), (1, 'audio', 'A_OPUS', False)])})
     assert result.stdout.rstrip().endswith('retry interrupt contract passed')
-    assert result.stderr.count('Track order (e.g.') == 1
-    assert 'Invalid track order.' not in result.stderr
+    assert result.stderr.count('Track order:') == 1
+    assert 'Invalid order.' not in result.stderr
 
 
 def test_mkv_utils_back_cohort_request_identity_and_current_subset(env):
@@ -4903,7 +4942,7 @@ done
 print -r -- 'structural Back passed'
 ''', {str(source): _source_json([(0, 'audio', 'A_AAC', True), (1, 'audio', 'A_OPUS', False)])})
     assert result.stdout.rstrip().endswith('structural Back passed')
-    assert 'Invalid track order' not in result.stderr
+    assert 'Invalid order' not in result.stderr
 
 
 def test_mkv_utils_back_extract_id_returns_to_actions_fresh_picker_entrypoint(env):
@@ -4912,7 +4951,7 @@ def test_mkv_utils_back_extract_id_returns_to_actions_fresh_picker_entrypoint(en
     extra = _integration_manifest(env, {source: model}, extraction={str(source): {'tracks': {'outputs': {'1': {'data': 'aac payload'}}}}})
     result = _run_mkv_utils(env, fzf_responses=[[str(source)], [str(source)]], input_data='3\n2\ne\n2\n1\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert result.stderr.count('Track IDs to extract (comma/range; e to go back):') == 2
+    assert result.stderr.count('Extract IDs:') == 2
     assert len(_command_argv(env, 'fzf')) == 2 and len(_command_argv(env, 'mkvmerge')) == 3
     assert all(call[:1] == ['-J'] for call in _command_argv(env, 'mkvmerge'))
     assert (source.parent / 'Extract Back - Track [1].aac').read_bytes() == b'aac payload'
@@ -4931,7 +4970,7 @@ def test_mkv_utils_back_mux_metadata_field_preserves_structure_and_selection(env
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Mux 1,2: remove + reorder; metadata 5" in result.stdout
     assert result.stdout.index("Mux 1,2: remove + reorder; metadata 5") < result.stdout.index(f"Processing: {source.name}")
-    assert result.stderr.count('Metadata choices (comma/range; blank for none):') == 2
+    assert result.stderr.count('Metadata [none]:') == 2
     assert len(_command_argv(env, 'fzf')) == 1
     writers = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
     assert len(writers) == 1 and writers[0][writers[0].index('--track-order') + 1] == '0:2,0:1,0:3'
@@ -5217,12 +5256,12 @@ esac
         else:
             answer(b"Category: ", {"edit": b"1\n", "mux": b"2\n", "analysis": b"4\n"}.get(category, b"3\n"))
         if category != "analysis":
-            answer(b"Operations (single/comma/range): ", {"edit": b"5\n", "mux": b"2\n", "extract": b"1,2\n", "attachments": b"1\n"}[category])
-            if category == "edit": answer(b"Title (empty to unset): ", b"Stop test\n")
+            answer(b"Actions: ", {"edit": b"5\n", "mux": b"2\n", "extract": b"1,2\n", "attachments": b"1\n"}[category])
+            if category == "edit": answer(b"Title [clear]: ", b"Stop test\n")
             elif category == "mux":
-                answer(b"Track order (e.g.", b"1,0\n")
-                answer(b"Metadata choices (comma/range; blank for none): ", b"\n")
-            elif category == "extract": answer(b"Track IDs to extract", b"3\n")
+                answer(b"Track order:", b"1,0\n")
+                answer(b"Metadata [none]: ", b"\n")
+            elif category == "extract": answer(b"Extract IDs:", b"3\n")
         analysis_scan = category == "analysis" and stop in ("complete", "dumb-complete")
         ready_marker = analysis_last_marker if analysis_scan else marker
         while not ready_marker.exists() and time.monotonic() < deadline:
@@ -5276,7 +5315,7 @@ esac
         assert "Review/change" not in text and "Preview resulting" not in text
         assert "Review choice:" not in text
         if category == "analysis":
-            assert "Final report" in text and "Operations (single/comma/range)" not in text
+            assert "Final report" in text and "Actions: " not in text
             if analysis_scan:
                 header_index = text.index("Analysis reference file: Active episode.mkv")
                 listing_index = text.index("mkvmerge JSON track listing")
@@ -5302,10 +5341,11 @@ esac
                 assert first.read_bytes() == second.read_bytes() == b"payload"
             else:
                 assert "Analysis interrupted." in text
-                assert "Not started due to stop: Missed episode.mkv" in text
+                _ascii_box_contains(text, "Not attempted", "Missed episode.mkv")
                 assert str(second) not in text
                 before_report, _, final_report = text.partition("Final report")
-                assert second.name not in before_report and "Not started due to stop: Missed episode.mkv" in final_report
+                assert second.name not in before_report
+                _ascii_box_contains(final_report, "Not attempted", "Missed episode.mkv")
                 report_index = text.index("Final report")
                 clear_index = text.rfind("\r\x1b[2K", 0, report_index)
                 assert 0 <= text.index("Analysing") < clear_index < report_index
@@ -5448,7 +5488,7 @@ def test_mkv_utils_working_indicator_during_delayed_inspection(env):
 
     try:
         answer(b"Category: ", b"1\n")
-        answer(b"Operations (single/comma/range): ", b"5\n")
+        answer(b"Actions: ", b"5\n")
         while not marker.exists() and time.monotonic() < deadline:
             receive()
             assert process.poll() is None, output.decode(errors="replace")
@@ -5462,9 +5502,9 @@ def test_mkv_utils_working_indicator_during_delayed_inspection(env):
         working_start = text.index("Working")
         assert text.rfind("\x1b[?25l", 0, working_start) > text.rfind("\x1b[?25h", 0, working_start)
         assert "\x1b[?25h" not in text[working_start:]
-        assert "Track configuration" not in text and "Title (empty to unset):" not in text
+        assert "Track configuration" not in text and "Title [clear]:" not in text
         release.write_text("release", encoding="utf-8")
-        answer(b"Title (empty to unset): ", b"Held inspection title\n")
+        answer(b"Title [clear]: ", b"Held inspection title\n")
         while process.poll() is None and time.monotonic() < deadline:
             receive()
         assert process.poll() == 0, output.decode(errors="replace")
@@ -5477,7 +5517,7 @@ def test_mkv_utils_working_indicator_during_delayed_inspection(env):
         assert text.rfind("\x1b[?25h") > text.rfind("\x1b[?25l")
         assert "Processing: Held inspection.mkv" in text
         assert "Final report" in text and "Held inspection.mkv" in text
-        assert not _indicator_frames(text[text.index("Track configuration"):text.index("Title (empty to unset):")], "Working")
+        assert not _indicator_frames(text[text.index("Track configuration"):text.index("Title [clear]:")], "Working")
         assert source.read_bytes() == b"edited-data\n"
         assert len(_command_argv(env, "mkvpropedit")) == 1
         assert all(call[1] == "tags" for call in _command_argv(env, "mkvextract"))

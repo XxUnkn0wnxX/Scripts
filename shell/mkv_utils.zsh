@@ -514,11 +514,11 @@ _mkvutil_metadata_define() {
   done
 }
 
-_mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Flag-forced (1 or 0) [0]: ' 0 boolean flag-forced --forced-display-flag forced_track forced_track ''
-_mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Flag-default (1 or 0) [1]: ' 1 boolean flag-default --default-track-flag default_track default_track ''
+_mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Forced (0/1) [0]: ' 0 boolean flag-forced --forced-display-flag forced_track forced_track ''
+_mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Default (0/1) [1]: ' 1 boolean flag-default --default-track-flag default_track default_track ''
 _mkvutil_metadata_define 3 'Set language for tracks' track 'Language: ' '' language language --language '' language language_ietf
 _mkvutil_metadata_define 4 'Set name for tracks' track 'Track name: ' '' text name --track-name '' track_name ''
-_mkvutil_metadata_define 5 'Set file title' container 'Title (empty to unset): ' '' text title --title '' title ''
+_mkvutil_metadata_define 5 'Set file title' container 'Title [clear]: ' '' text title --title '' title ''
 
 # BCP 47 structural syntax plus grandfathered tags; this deliberately does not
 # assert IANA/ISO membership or tool acceptance. Preserve the user's spelling.
@@ -683,7 +683,8 @@ _mkvutil_metadata_collect() {
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
       if [[ "$mode" == independent || -z "$shared_targets" ]]; then
-        _mkvutil_read_track_ids "${MKVUTIL_METADATA_REGISTRY[${choice}:label]} — Track IDs (comma/range; e to go back): " "${(j:,:)MKVUTIL_RETAINED_IDS}" || return $?
+        print -u2 -r -- "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
+        _mkvutil_read_track_ids 'Track IDs: ' "${(j:,:)MKVUTIL_RETAINED_IDS}" || return $?
         targets_csv="$REPLY"
         [[ "$mode" != shared ]] || shared_targets="$targets_csv"
       else
@@ -705,8 +706,8 @@ _mkvutil_metadata_collect() {
         [[ -n "$value" ]] || value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
         _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "$value" && break
         case "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" in
-          boolean) print -u2 -r -- 'Invalid flag. Enter 0 or 1, or e to go back.' ;;
-          language) print -u2 -r -- 'Invalid language tag. Use a tag such as eng or fr-CA, or e to go back.' ;;
+          boolean) print -u2 -r -- 'Invalid flag. Enter 0 or 1.' ;;
+          language) print -u2 -r -- 'Invalid language tag.' ;;
           *) return 1 ;;
         esac
       done
@@ -1265,12 +1266,11 @@ mkvutil_format_final_report() {
       elif .=="failed" then "Failed" elif .=="skipped" then "Skipped"
       elif .=="excluded" then "Excluded" elif .=="interrupted" then "Interrupted" else . end;
     def file_lines:
-      (if .attempts[-1].result.simulated==true then "Simulated: \(.source)"
+      (if .attempts[-1].result.simulated==true then "\(.source)"
        elif .status=="success" then
-         if (.destination!=null and .destination!=.source and (.attempts[-1].result.category // "")!="extract") then "Output: \(.source) => \(.destination)"
-         elif any(.attempts[].result.artifacts[]?; .kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) then "Outputs from: \(.source)"
-         else "Completed: \(.source)" end
-       else "\(.status): \(.source)\(if .destination and .destination!=.source and (.attempts[-1].result.category // "")!="extract" then " => "+.destination else "" end)" end),
+         if (.destination!=null and .destination!=.source and (.attempts[-1].result.category // "")!="extract") then "\(.source) => \(.destination)"
+         else "\(.source)" end
+       else "\(.source)\(if .destination and .destination!=.source and (.attempts[-1].result.category // "")!="extract" then " => "+.destination else "" end)" end),
       (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
          (if (.receipt.reason // "")!="" then "    \(.receipt.reason)" else empty end),
@@ -1499,7 +1499,7 @@ _mkvutil_read_track_ids() {
       return 0
     fi
     (( ! MKVUTIL_INTERRUPTED )) || return 2
-    print -u2 -r -- "Invalid track IDs. Use comma-separated IDs or ascending ranges. Available IDs: $domain"
+    print -u2 -r -- "Invalid IDs. Available: $domain"
   done
 }
 
@@ -1680,12 +1680,12 @@ _mkvutil_menu_choices() {
 
 _mkvutil_exclude() {
   while true; do
-    _mkvutil_read 'Exclude this file from the batch? (Y/N; e to go back) [N]: ' || return 2
+    _mkvutil_read 'Exclude file? [y/N]: ' || return 2
     case "$REPLY" in
       e|E) return 4 ;;
       [yY]|[yY][eE][sS]) return 0 ;;
       ''|[nN]|[nN][oO]) return 1 ;;
-      *) print -u2 -r -- 'Invalid answer. Enter Y, N, or e to go back.' ;;
+      *) print -u2 -r -- 'Invalid answer. Enter y or n.' ;;
     esac
   done
 }
@@ -1720,7 +1720,7 @@ mkvutil_analyze_files() {
   local file="" record="" raw="" ids="" signature="" listing="" reference="" expected="" result=0
   local reference_label="" stop_code=0
   local matching=0 analyzed=0
-  local -a mismatched=() failed=() missed=()
+  local -a mismatched=() failed=() missed=() mismatch_names=() error_names=() missed_names=()
   {
     _mkvutil_start_analysis_indicator || result=1
     for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
@@ -1760,9 +1760,12 @@ mkvutil_analyze_files() {
   print -r -- "Reference file: ${reference:t}"
   [[ -n "$reference" ]] || { print -r -- 'No usable reference file.'; result=1; }
   print -r -- "Files analyzed: $analyzed; Matching: $matching; Mismatched: ${#mismatched}; Failed: ${#failed}; Not attempted: ${#missed}"
-  for file in "${mismatched[@]}"; do print -r -- "Track ID/type/codec mismatch: ${file:t}"; done
-  for file in "${failed[@]}"; do print -r -- "Analysis failed: ${file:t}"; done
-  for file in "${missed[@]}"; do print -r -- "Not started due to stop: ${file:t}"; done
+  for file in "${mismatched[@]}"; do mismatch_names+=("${file:t}"); done
+  for file in "${failed[@]}"; do error_names+=("${file:t}"); done
+  for file in "${missed[@]}"; do missed_names+=("${file:t}"); done
+  (( ${#mismatch_names} == 0 )) || mkvutil_ascii_box 'Track ID/type/codec mismatch' "${mismatch_names[@]}" || result=1
+  (( ${#error_names} == 0 )) || mkvutil_ascii_box 'Errors' "${error_names[@]}" || result=1
+  (( ${#missed_names} == 0 )) || mkvutil_ascii_box 'Not attempted' "${missed_names[@]}" || result=1
   (( ! MKVUTIL_INTERRUPTED )) || { print -r -- 'Analysis interrupted.'; result=1; }
   return "$result"
 }
@@ -1898,11 +1901,11 @@ mkvutil_configure_category() {
     mux)
       if [[ ",$operations," == *,1,* ]]; then
         while true; do
-          _mkvutil_read_track_ids 'Track IDs to remove (comma/range; e to go back): ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
+          _mkvutil_read_track_ids 'Remove IDs: ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
           removal="$REPLY"
           removal_ids=("${(@s:,:)removal}")
           (( ${#removal_ids} < ${#MKVUTIL_INPUT_IDS} )) && break
-          print -u2 -r -- 'Invalid removal. Leave at least one track in the file.'
+          print -u2 -r -- 'Invalid removal. Keep one track.'
         done
         if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
           signature_diagnostics="$(mktemp "${TMPDIR:-/tmp}/mkvutil-signature.XXXXXXXX")" || return 1
@@ -1933,14 +1936,14 @@ mkvutil_configure_category() {
         fi
         while true; do
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          _mkvutil_read 'Track order (e.g. 4,3; at least two IDs; retained 0 prepended if omitted; e to go back): ' || return 2
+          _mkvutil_read 'Track order: ' || return 2
           case "$REPLY" in e|E) return 4 ;; esac
           if order="$(mkvutil_normalize_order "$REPLY" "$retained_csv")" && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
             (( ! MKVUTIL_INTERRUPTED )) || return 2
             break
           fi
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          print -u2 -r -- "Invalid track order. Supply at least two unique retained IDs (e.g. 4,3). Available IDs: $retained_csv"
+          print -u2 -r -- "Invalid order. Available: $retained_csv"
         done
         print -r -- "Track order: ${order//0:/}"
         for item in "${(@s:,:)order}"; do
@@ -1951,7 +1954,7 @@ mkvutil_configure_category() {
       fi
       while true; do
         mkvutil_batch_metadata_requested '' || return 1
-        _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' "${(j:,:)order_ids}" "$metadata_error" || return $?
+        _mkvutil_menu_read metadata mux 'Metadata [none]: ' "${(j:,:)order_ids}" "$metadata_error" || return $?
         metadata_error=""
         case "$REPLY" in e|E) return 6 ;; esac
         metadata="$REPLY"
@@ -1959,7 +1962,7 @@ mkvutil_configure_category() {
         result=0
         _mkvutil_menu_choices edit "$metadata" || result=$?
         if (( result == 3 )); then
-          metadata_error='Invalid metadata choices. Use the listed numbers, comma lists or ascending ranges; e goes back.'
+          metadata_error="Invalid choices. Available: ${(j:,:)MKVUTIL_METADATA_IDS}"
           continue
         fi
         (( result == 0 )) || return "$result"
@@ -1979,7 +1982,7 @@ mkvutil_configure_category() {
       ;;
     extract)
       if [[ ",$operations," == *,2,* ]]; then
-        _mkvutil_read_track_ids 'Track IDs to extract (comma/range; e to go back): ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
+        _mkvutil_read_track_ids 'Extract IDs: ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
         extract_ids="$REPLY"
       fi
       ;;
@@ -4193,8 +4196,8 @@ print_help() {
   print -r -- "       ${SCRIPT_NAME} --help"
   print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks\n  4) Matroska Analyze  List tracks and compare layouts'
   print -r -- $'\nChoose one action or a batch (1,2 or 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
-  print -r -- '--bypass skips only the removal total-track-count guard.'
-  print -r -- '--dry-run validates and simulates planned jobs without changing files; Analyze remains read-only.'
+  print -r -- '--bypass  Skip removal count guard.'
+  print -r -- '--dry-run Simulate; no writes.'
 }
 
 # The final required input commits the configuration. Complete the whole
@@ -4351,7 +4354,7 @@ _mkvutil_main_body() {
     fi
     while true; do
       result=0
-      _mkvutil_menu_read actions "$category" 'Operations (single/comma/range): ' '' "$action_error" || result=$?
+      _mkvutil_menu_read actions "$category" 'Actions: ' '' "$action_error" || result=$?
       action_error=""
       if (( result )); then
         if (( selected )); then

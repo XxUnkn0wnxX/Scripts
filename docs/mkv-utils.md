@@ -48,7 +48,7 @@ Configuration and planning still inspect the selected files and enforce the usua
 This illustrative, abbreviated transcript summarizes a dry-run after configuring a Mux that removes track `12`, reorders to `4,3`, and sets language for the resolved IDs `0,4,3`. Prompt and report wording is shortened for clarity:
 
 ```text
-Track IDs to remove: 12
+Remove IDs: 12
 Track order: 4,3
 Resolved track IDs for metadata: 0,4,3
 Language for original track ID 0: eng
@@ -67,7 +67,7 @@ Complete batch elapsed: 0h 0m 0s
 +----------------------------------------------+
 | Simulated                                    |
 +----------------------------------------------+
-| Simulated: Episode 01.mkv                    |
+| Episode 01.mkv                               |
 |   Would write: Episode 01.mkv                |
 | Files were not changed.                      |
 +----------------------------------------------+
@@ -249,13 +249,13 @@ A shortened, illustrative excerpt of the separate final **Skipped** block looks 
 +----------------------------------------------------------------------+
 | Skipped                                                              |
 +----------------------------------------------------------------------+
-| skipped: Episode02.mkv                                               |
+| Episode02.mkv                                                        |
 |     Track count mismatch: expected 5; actual 6                       |
-| skipped: Episode03.mkv                                               |
+| Episode03.mkv                                                        |
 |     Original ID 4: missing-id                                        |
-| skipped: Episode04.mkv                                               |
+| Episode04.mkv                                                        |
 |     Original ID 4: type-and-codec-mismatch                           |
-| skipped: Episode05.mkv                                               |
+| Episode05.mkv                                                        |
 |     Source changed after inspection/planning; file was not processed |
 +----------------------------------------------------------------------+
 ```
@@ -311,7 +311,7 @@ If you accidentally include removed ID `12`, a duplicate such as `4,3,1,1`, a si
 For example, the order prompt retries in place after a removed ID is entered. The lines below summarize the interaction rather than reproduce a captured terminal session; prompt and validation wording is illustrative:
 
 ```text
-Track IDs to remove: 12
+Remove IDs: 12
 Track order: 12,4,3
   Rejected: 12 is being removed.
 Track order: 4,3
@@ -380,14 +380,14 @@ Preflight starts automatically.
 
 Extract actions: 2
 Files selected: Episode01.mkv
-Track IDs: 44
+Extract IDs: 44
   Rejected: the reference only has IDs 0,1,2,3.
-Track IDs: 3
+Extract IDs: 3
 Preflight starts automatically for track ID 3.
 
 Extract actions: 1,2
 Files selected: Episode01.mkv, Episode02.mkv
-Track IDs: 3-7
+Extract IDs: 3-7
 Attachments and tracks run as one batch.
 ```
 
@@ -425,7 +425,12 @@ Track ID 0: video (V_MPEG4/ISO/AVC)
 
 Final report
 Analyzed: 3; Matching: 2; Mismatched: 1; Failed: 0; Not attempted: 0
-Track ID/type/codec mismatch: Episode 03.mkv
+
++----------------------------------------------+
+| Track ID/type/codec mismatch                 |
++----------------------------------------------+
+| Episode 03.mkv                               |
++----------------------------------------------+
 ```
 
 </details>
@@ -457,6 +462,13 @@ Common multi-pass work can now be configured as one batch:
 These are migration examples; choose any supported combination that fits the current job.
 
 ## Reports and outcomes
+
+Each outcome block names its status once in the heading. File rows contain the
+filename without repeating labels such as `skipped:` or `not_attempted:`.
+Useful output mappings, mismatch reasons and recovery details remain beneath
+the affected file. Analyze uses the same rule for its mismatch, error and
+not-attempted lists. A dry-run report keeps **Files were not changed.**, including
+when no file could be simulated.
 
 The processing report starts with a shared ASCII heading box, then shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Configuration outcome counts use readable labels, such as `Done: 3; Failed: 1`; an empty outcome set is shown as `none`. After **Complete batch elapsed**, meaningful per-file details appear in separately labelled ASCII blocks: **Simulated**, **Outputs**, **Errors**, **Warnings**, **Partial results**, **Skipped**, **Excluded**, **Interrupted**, **Not attempted**, **Completed** (for retained history), and **Attachments**, as applicable. Empty groups are omitted. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, codec and total-track-count details. Each original selected file contributes once to the final counts. Displayed source, destination, stage, and recovery-file references use filenames; the full path is shown for the working directory in `Current Work Dir` and the owned navigation menu's `Directory` line. A processed queue always ends here; starting another batch requires a new invocation.
 
@@ -536,7 +548,9 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The final-block and track/source-preflight changes passed **22 focused checks** on one frozen source/test pair. These cover per-category missing-ID/type guards, valid and malformed configuration, source replacement before planning and runtime preflight, mixed/all-skipped counts and histories, count-only removal bypass, dry-run safety, final report groups and indicator lifecycle. Native writers are controlled in these checks.
+The concise-prompt and filename-only report follow-up passed **11 focused checks**, covering shared outcome groups, the note-only simulated block, Analyze, prompt retries and metadata collection. Both zsh syntax checks and Python compilation passed. A direct formatter check reproduced the requested filename-only Not attempted block; no new interactive or native-write campaign was needed for this presentation change.
+
+The earlier final-block and track/source-preflight changes passed **22 focused checks** on one frozen source/test pair. These cover per-category missing-ID/type guards, valid and malformed configuration, source replacement before planning and runtime preflight, mixed/all-skipped counts and histories, count-only removal bypass, dry-run safety, final report groups and indicator lifecycle. Native writers are controlled in these checks.
 
 One additional quick controlling-terminal journey used installed v93 identification on five tiny real files, a controlled selector and `--dry-run`. It overwrote one selected fixture at the final title prompt. The result was **1 simulated, 4 skipped and 0 failed**: a total-count mismatch, a missing ID, a type/codec mismatch and a changed source. Five read-only identification calls and zero modifying-call attempts were recorded. The nonzero exit was expected for unresolved skips. The check also verified separate final blocks, no exclusion prompt, no Working after processing began, and no output/staging additions beyond the deliberate input replacement. It does not claim a new installed-fzf, loaded-alias or native-write campaign.
 
