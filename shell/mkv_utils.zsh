@@ -150,31 +150,61 @@ format_duration() {
     $((total_seconds % 60))
 }
 
-# Function to display track information safely, projecting only the fields we need
-display_track_info() {
-  local source_file="$1"
-  local mkv_json="${2-}"
+# A cached view is shared by listings and per-value metadata context. Native IDs
+# remain source IDs; only the final Mux view projects dense output positions.
+_mkvutil_track_view() {
+  local raw="$1" removed="${2-}" final_ids="${3-}" mode="${4:-source}"
+  jq -ec --arg removed "$removed" --arg final "$final_ids" --arg mode "$mode" '
+    def row($id):
+      (if $id==null then "Track:" else "Track ID \($id):" end) + " \(.type) (\(.properties.codec_id))"
+      + (if (.properties.track_name // "")!="" then " [\(.properties.track_name)]" else "" end)
+      + (if (.properties.language // .properties.language_ietf // "")!="" then
+          " [\(.properties.language // .properties.language_ietf)]" else "" end);
+    .tracks as $tracks | ($removed|split(",")|map(select(length>0))) as $removed |
+    [$tracks|to_entries[] | .key as $position | .value as $track |
+      {source_id:($track.id|tostring),source_position:$position,track:$track,
+       dropped:(($removed|index($track.id|tostring))!=null)}] as $rows |
+    (if $final=="" then [$rows[]|select(.dropped|not)|.source_id]
+     else $final|split(",") end) as $ids |
+    if ($mode!="source" and $mode!="output") or
+       ($ids|length)!=([$rows[]|select(.dropped|not)]|length) or
+       ($ids|unique|length)!=($ids|length) or
+       ($ids|sort)!=([$rows[]|select(.dropped|not)|.source_id]|sort)
+    then error("invalid track projection") else . end |
+    (reduce $rows[] as $row ({rows:[],next:0};
+      if $mode=="source" or $row.dropped then .rows+=[$row]
+      else .next as $next | .rows+=[($rows[]|select(.source_id==$ids[$next]))] | .next+=1 end) | .rows) as $view |
+    [$view[] | . as $row |
+      (if .dropped then null elif $mode=="output" then ($ids|index($row.source_id)|tostring) else .source_id end) as $id |
+      . + {display_id:$id,moved:($mode=="output" and (.dropped|not) and
+             ($ids|index($row.source_id))!=.source_position),
+           row:(.track|row($id))} | del(.track)]
+  ' <<< "$raw"
+}
 
-  echo "-----------------------  mkvmerge JSON track listing -----------------------"
-  if (( $# < 2 )); then
-    if ! mkv_json="$(mkvmerge -J "$source_file" < /dev/null)"; then
-      return 1
-    fi
+_mkvutil_track_colours() {
+  MKVUTIL_TRACK_RED="" MKVUTIL_TRACK_YELLOW=""
+  if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb && -z "${NO_COLOR-}" ]]; then
+    MKVUTIL_TRACK_RED=$'\033[2;31m'
+    if [[ "$TERM" == *256color* ]]; then MKVUTIL_TRACK_YELLOW=$'\033[38;5;220m'
+    else MKVUTIL_TRACK_YELLOW=$'\033[33m'; fi
   fi
+}
 
-  printf '%s\n' "$mkv_json" | jq -r '
-        .tracks[]
-        | {
-            id:    .id,
-            type:  .type,
-            codec: .properties.codec_id,
-            name:  (.properties.track_name // ""),
-            lang:  (.properties.language      // .properties.language_ietf // "")
-          }
-        | "Track ID \(.id): \(.type) (\(.codec))"
-          + (if .name != "" then " [\(.name)]" else "" end)
-          + (if .lang != "" then " [\(.lang)]" else "" end)
-      '
+_mkvutil_render_track_view() {
+  jq -r --arg red "${2-}" --arg yellow "${3-}" '
+    .[] | (if .dropped then $red elif .moved then $yellow else "" end) as $colour |
+    if $colour=="" then .row else $colour+.row+"\u001b[0m" end
+  ' <<< "$1"
+}
+
+display_track_info() {
+  local source_file="$1" mkv_json="${2-}" view=""
+  if (( $# < 2 )); then mkv_json="$(mkvmerge -J "$source_file" < /dev/null)" || return 1; fi
+  view="$(_mkvutil_track_view "$mkv_json" "${3-}" "${4-}" "${5:-source}")" || return 1
+  _mkvutil_track_colours
+  print -r -- '-----------------------  mkvmerge JSON track listing -----------------------'
+  _mkvutil_render_track_view "$view" "$MKVUTIL_TRACK_RED" "$MKVUTIL_TRACK_YELLOW"
 }
 
 collect_tracks_for_remux() {
@@ -665,8 +695,27 @@ _mkvutil_metadata_collect() {
   setopt localtraps
   trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
   local choices="" choice="" selection="" targets_csv="" target="" value=""
-  local mode="${2:-independent}" preset="${3-}" shared_targets=""
-  local -a chosen_targets=()
+  local mode="${2:-independent}" preset="${3-}" shared_targets="" projection="${4-}" context="${5-}"
+  local domain="${(j:,:)MKVUTIL_RETAINED_IDS}" display_id="" context_id="" context_row=""
+  local -a chosen_targets=() output_ids=()
+  local -A output_sources=() source_outputs=() context_rows=()
+  if [[ -n "$projection" ]]; then
+    [[ "$projection" == "${(j:,:)MKVUTIL_RETAINED_IDS}" ]] || return 1
+    local position=0
+    for target in "${MKVUTIL_RETAINED_IDS[@]}"; do
+      output_ids+=("$position")
+      output_sources[$position]="$target"
+      source_outputs[$target]="$position"
+      (( position+=1 ))
+    done
+    domain="${(j:,:)output_ids}"
+  fi
+  if [[ -n "$context" ]]; then
+    jq -e 'type=="array" and all(.[]; (.source_id|type)=="string" and (.row|type)=="string")' <<< "$context" >/dev/null || return 1
+    while IFS= read -r -d '' context_id && IFS= read -r -d '' context_row; do
+      context_rows[$context_id]="$context_row"
+    done < <(jq -j '.[]|select(.dropped|not)|.source_id,"\u0000",.row,"\u0000"' <<< "$context")
+  fi
   mkvutil_metadata_validate_registry || return 1
   choices="$(mkvutil_expand_ids "$1" "${(j:,:)MKVUTIL_METADATA_IDS}")" || return 1
   case "$mode" in
@@ -684,8 +733,13 @@ _mkvutil_metadata_collect() {
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
       if [[ "$mode" == independent || -z "$shared_targets" ]]; then
         print -u2 -r -- "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
-        _mkvutil_read_track_ids 'Track IDs: ' "${(j:,:)MKVUTIL_RETAINED_IDS}" || return $?
+        _mkvutil_read_track_ids 'Track IDs: ' "$domain" || return $?
         targets_csv="$REPLY"
+        if [[ -n "$projection" ]]; then
+          chosen_targets=()
+          for display_id in "${(@s:,:)targets_csv}"; do chosen_targets+=("${output_sources[$display_id]}"); done
+          targets_csv="${(j:,:)chosen_targets}"
+        fi
         [[ "$mode" != shared ]] || shared_targets="$targets_csv"
       else
         targets_csv="$shared_targets"
@@ -696,7 +750,11 @@ _mkvutil_metadata_collect() {
       while true; do
         _mkvutil_indicator_stop
         (( ! MKVUTIL_INTERRUPTED )) || return 2
-        [[ "$target" == info ]] || printf 'Original track ID %s — ' "$target" >&2
+        if [[ "$target" != info ]]; then
+          if [[ -n "${context_rows[$target]-}" ]]; then print -u2 -r -- "${context_rows[$target]}"
+          elif [[ -n "$projection" ]]; then printf 'Track ID %s — ' "${source_outputs[$target]}" >&2
+          else printf 'Original track ID %s — ' "$target" >&2; fi
+        fi
         printf '%s' "${MKVUTIL_METADATA_REGISTRY[${choice}:prompt]}" >&2
         IFS= read -r value || return 2
         case "$value" in e|E) return 4 ;; esac
@@ -722,7 +780,7 @@ _mkvutil_metadata_collect() {
 mkvutil_metadata_configure() {
   local result=0
   mkvutil_metadata_reset
-  _mkvutil_metadata_collect "${1-}" "${2:-independent}" "${3-}" || result=$?
+  _mkvutil_metadata_collect "${1-}" "${2:-independent}" "${3-}" "${4-}" "${5-}" || result=$?
   if (( result != 0 )); then
     mkvutil_metadata_reset
     return "$result"
@@ -1275,7 +1333,8 @@ mkvutil_format_final_report() {
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
          (if (.receipt.reason // "")!="" then "    \(.receipt.reason)" else empty end),
          (if .receipt.track_count_mismatch then "    Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
-         (.receipt.reasons[] | "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")),
+         (.receipt.reasons[] | (if .reason=="output-position-mismatch" then "    Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
+          else "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)" end))),
       (.attempts[] |
         (.result as $result | .result.planned_outputs[]? |
           "  Would \(if $result.category=="edit" then "update" elif $result.category=="mux" or .kind=="attachment" then "write" else "extract" end): \(.path)\(if .required==false then " (optional)" else "" end)"),
@@ -1608,7 +1667,7 @@ _mkvutil_indicator_stop() {
 # Pure rendering runs off-screen. Diagnostics are captured with the body and
 # replayed by the parent after leaving; a subshell never changes ACTIVE.
 _mkvutil_menu_body() {
-  local view="$1" category="${2-}" owned="${3:-0}" targets="${4-}" title=""
+  local view="$1" category="${2-}" owned="${3:-0}" targets="${4-}" preview="${5-}" title=""
   case "$view:$category" in
     actions:edit|metadata:mux) mkvutil_metadata_validate_registry || return 1 ;;
   esac
@@ -1622,29 +1681,56 @@ _mkvutil_menu_body() {
     main) print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract\n4) Matroska Analyze' ;;
     actions) mkvutil_category_menu "$category" ;;
     metadata)
+      if [[ -n "$preview" ]]; then print -r -- "$preview"; print; fi
       print -r -- 'Optional metadata edits:'
-      [[ -z "$targets" ]] || print -r -- "Original track IDs for each track edit: $targets"
+      [[ -z "$targets" ]] || print -r -- "Output IDs for each track edit: $targets"
       mkvutil_metadata_menu || return 1
       print -r -- 'e) Back to main categories' ;;
     *) return 1 ;;
   esac
 }
 
+# A preview must fit without wrapping or scrolling the alternate buffer. If the
+# TTY cannot supply its dimensions, ordinary scrollback keeps every row usable.
+_mkvutil_preview_fits() {
+  setopt localoptions extendedglob multibyte
+  local size="" height="" width="" line="" plain="" count=0
+  size="$(stty size <&0 2>/dev/null)" || return 1
+  local -a dimensions=( ${=size} )
+  (( ${#dimensions} == 2 )) || return 1
+  height="${dimensions[1]}" width="${dimensions[2]}"
+  [[ "$height" == <1-> && "$width" == <1-> ]] || return 1
+  for line in "${(@f)1}" "$2"; do
+    plain="${line//$'\e'\[[0-9\;]#m/}"
+    # Tabs/control characters and a last-column cursor are not safe to paint.
+    [[ "$plain" != *[$'\t\r\b\e']* ]] || return 1
+    (( ${(m)#plain} < width )) || return 1
+    (( count+=1 ))
+  done
+  (( count < height ))
+}
+
 _mkvutil_menu_read() {
   _mkvutil_indicator_stop
   (( ! MKVUTIL_INTERRUPTED )) || return 2
   setopt localtraps
-  local view="$1" category="${2-}" prompt="${3-}" targets="${4-}" result=0 owned=0 body="" validation_message="${5-}"
+  local view="$1" category="${2-}" prompt="${3-}" targets="${4-}" result=0 owned=0 body="" validation_message="${5-}" preview="${6-}"
   trap 'MKVUTIL_INTERRUPTED=1; result=2; return 2' INT TERM
   {
     _mkvutil_ui_owned && owned=1
-    body="$(_mkvutil_menu_body "$view" "$category" "$owned" "$targets" 2>&1)" || result=$?
+    body="$(_mkvutil_menu_body "$view" "$category" "$owned" "$targets" "$preview" 2>&1)" || result=$?
     if (( result )); then
       _mkvutil_ui_leave
       [[ -z "$body" ]] || print -u2 -r -- "$body"
     else
       [[ -z "$validation_message" ]] || body+=$'\n'"$validation_message"
-      _mkvutil_ui_enter
+      if (( owned )) && [[ -n "$preview" ]] && ! _mkvutil_preview_fits "$body" "$prompt"; then
+        owned=0
+        _mkvutil_ui_leave
+        body="$(_mkvutil_menu_body "$view" "$category" 0 "$targets" "$preview" 2>&1)" || return 1
+        [[ -z "$validation_message" ]] || body+=$'\n'"$validation_message"
+      fi
+      if (( owned )); then _mkvutil_ui_enter; fi
       if (( MKVUTIL_UI_ACTIVE )); then
         _mkvutil_ui_redraw "$body"
       else
@@ -1867,7 +1953,9 @@ mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=() removal_ids=()
-  local item="" retained_csv="" metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
+  local item="" retained_csv="" projection="" track_view="" metadata_preview="" metadata_targets="" output_map='{}'
+  local item_position=0
+  local metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
   MKVUTIL_CONFIG=""
   MKVUTIL_JOBS=()
   mkvutil_metadata_reset
@@ -1895,7 +1983,8 @@ mkvutil_configure_category() {
   case "$category" in
     edit)
       result=0
-      mkvutil_metadata_configure "$operations" shared || result=$?
+      track_view="$(_mkvutil_track_view "$raw")" || return 1
+      mkvutil_metadata_configure "$operations" shared '' '' "$track_view" || result=$?
       if (( result == 4 )); then mkvutil_batch_metadata_requested '' || return 1; fi
       (( result == 0 )) || return "$result" ;;
     mux)
@@ -1934,6 +2023,10 @@ mkvutil_configure_category() {
           print -u2 -r -- 'Cannot reorder: at least two retained tracks are required.'
           return 4
         fi
+        if [[ ",$operations," == *,1,* && -n "$removal" ]]; then
+          print || return 1
+          display_track_info "$source" "$raw" "$removal" || return 1
+        fi
         while true; do
           (( ! MKVUTIL_INTERRUPTED )) || return 2
           _mkvutil_read 'Track order: ' || return 2
@@ -1952,9 +2045,20 @@ mkvutil_configure_category() {
         done
         metadata_mode=preset
       fi
+      projection="${(j:,:)MKVUTIL_RETAINED_IDS}"
+      track_view="$(_mkvutil_track_view "$raw" "$removal" "$projection" output)" || return 1
+      _mkvutil_track_colours
+      metadata_preview=$'--------------------------  Output track layout --------------------------\n'
+      metadata_preview+="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$MKVUTIL_TRACK_YELLOW")" || return 1
+      for item in "${order_ids[@]}"; do
+        item_position="${MKVUTIL_RETAINED_IDS[(Ie)$item]}"
+        (( item_position > 0 )) || return 1
+        [[ -z "$metadata_targets" ]] || metadata_targets+=,
+        metadata_targets+="$(( item_position-1 ))"
+      done
       while true; do
         mkvutil_batch_metadata_requested '' || return 1
-        _mkvutil_menu_read metadata mux 'Metadata [none]: ' "${(j:,:)order_ids}" "$metadata_error" || return $?
+        _mkvutil_menu_read metadata mux 'Metadata [none]: ' "$metadata_targets" "$metadata_error" "$metadata_preview" || return $?
         metadata_error=""
         case "$REPLY" in e|E) return 6 ;; esac
         metadata="$REPLY"
@@ -1970,7 +2074,7 @@ mkvutil_configure_category() {
         _mkvutil_ui_leave
         mkvutil_batch_metadata_requested "$metadata" || return 1
         result=0
-        mkvutil_metadata_configure "$metadata" "$metadata_mode" "${(j:,:)order_ids}" || result=$?
+        mkvutil_metadata_configure "$metadata" "$metadata_mode" "${(j:,:)order_ids}" "$projection" "$track_view" || result=$?
         if (( result == 4 )); then
           metadata=""
           mkvutil_batch_metadata_requested '' || return 1
@@ -1989,15 +2093,23 @@ mkvutil_configure_category() {
     *) return 1 ;;
   esac
   settings="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_SETTINGS}")" || return 1
+  if [[ "$category" == mux ]]; then
+    output_map="$(jq -cn --argjson settings "$settings" --argjson view "$track_view" '
+      ([$settings|keys[]|split(":")[1]|select(.!="info")]|unique) as $targets |
+      reduce ($view[]|select(.dropped|not)|select(.source_id as $id|$targets|index($id))) as $row
+        ({}; .[$row.display_id]=$row.source_id)')" || return 1
+  fi
   MKVUTIL_CONFIG="$(jq -cn --arg category "$category" --arg operations "$operations" \
     --arg removal "$removal" --arg order "$order" --arg metadata "$metadata" --arg extract "$extract_ids" \
     --argjson order_ids "$(_mkvutil_json_array "${order_ids[@]}")" \
-    --argjson settings "$settings" --argjson expected_types "$expected" --arg reference "$source" --argjson signatures "$signatures" \
+    --argjson expected_codecs "$(jq -c '[.tracks[]|{key:(.id|tostring),value:.properties.codec_id}]|from_entries' <<< "$raw")" \
+    --argjson output_map "$output_map" --argjson settings "$settings" --argjson expected_types "$expected" --arg reference "$source" --argjson signatures "$signatures" \
     --argjson track_count "$(jq '.model.tracks|length' <<< "$reference")" --argjson bypass "$MKVUTIL_BYPASS_TRACK_COUNT" '
     {category:$category, operations:($operations|split(",")), removed_ids:($removal|split(",")|map(select(length>0))),
      order:$order, order_ids:$order_ids, metadata:$metadata, settings:$settings, expected_types:$expected_types,
      extract_ids:($extract|split(",")|map(select(length>0))), reference:$reference, removal_signatures:$signatures,
-     reference_track_count:$track_count,bypass_track_count:($bypass==1)}')" || return 1
+     reference_track_count:$track_count,bypass_track_count:($bypass==1)}
+     + (if $category=="mux" then {metadata_output_map:$output_map,expected_codecs:$expected_codecs} else {} end)')" || return 1
   MKVUTIL_REMOVAL_SKIPS=()
 }
 
@@ -2062,12 +2174,39 @@ mkvutil_target_mismatch() {
         (.type!="video" and .type!="audio" and .type!="subtitles")) or
       ($record.model.tracks|map(.id)|unique|length)!=($record.model.tracks|length)
     then error("invalid source track model") else . end |
-    [$ids[] as $id | ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
+    [(if ($config|has("metadata_output_map")) then empty else $ids[] end) as $id |
+      ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
       {original_id:$id,expected:{type:$config.expected_types[$id]},
        actual:(if $track==null then null else {type:$track.type} end),
        reason:(if $track==null then "missing-id"
          elif $track.type!=$config.expected_types[$id] then "type-mismatch" else null end)} |
-      select(.reason!=null)] as $reasons |
+      select(.reason!=null)] as $target_reasons |
+    ([$record.model.tracks[]|.id|tostring] as $actual_ids |
+      ($config.order_ids + [$actual_ids[] as $id |
+        select(($config.removed_ids|index($id))==null and ($config.order_ids|index($id))==null) | $id]) as $final_ids |
+      (reduce ($final_ids|to_entries[]) as $entry ({}; .[$entry.key|tostring]=$entry.value)) as $positions |
+      [($config.metadata_output_map // {} | to_entries[]) |
+        .key as $output | .value as $source | $positions[$output] as $actual |
+        select($actual!=$source) |
+        {output_id:$output,original_id:$source,reason:"output-position-mismatch",
+         expected:{original_id:$source},actual:(if $actual==null then null else {original_id:$actual} end)}]) as $output_reasons |
+    (if ($config|has("metadata_output_map")) then
+      [$config.expected_types|to_entries[] | .key as $id | .value as $type |
+        $config.expected_codecs[$id] as $codec |
+        ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
+        {original_id:$id,expected:{type:$type,codec_id:$codec},
+         actual:(if $track==null then null else {type:$track.type,codec_id:$track.properties.codec_id} end),
+         reason:(if $track==null then "missing-id"
+           elif $track.type!=$type and $track.properties.codec_id!=$codec then "type-and-codec-mismatch"
+           elif $track.type!=$type then "type-mismatch"
+           elif $track.properties.codec_id!=$codec then "codec-mismatch" else null end)} |
+        select(.reason!=null)] +
+      (if ($config.removed_ids|length)>0 and $config.bypass_track_count==true then [] else
+        [$record.model.tracks[] | . as $track | (.id|tostring) as $id |
+          select(($config.expected_types|has($id))|not) |
+          {original_id:$id,reason:"unexpected-id",expected:null,actual:{type:$track.type}}] end)
+     else [] end) as $tree_reasons |
+    ($target_reasons + $tree_reasons + $output_reasons) as $reasons |
     if ($reasons|length)==0 then empty else
       {schema:1,kind:"track-mismatch",source:$record.source,identity:$record.identity,
        reference:($config.reference // $record.source),requested_ids:$ids,reasons:$reasons,
@@ -2131,6 +2270,11 @@ PYCODE
 mkvutil_validate_config() {
   jq -e "$(_mkvutil_target_rules)"$'\n''
     . as $config |
+    def canonical_id: type=="string" and test("^(0|[1-9][0-9]*)$");
+    def unique_ids: all(.[]; canonical_id) and (unique|length)==length;
+    def output_positions: . as $config |
+      [.expected_types|keys[] | . as $id | select(($config.removed_ids|index($id))==null)] |
+      to_entries | map(.key|tostring);
     (.category=="edit" or .category=="mux" or .category=="extract") and
     (.operations|type)=="array" and (.operations|length)>0 and
     (.removed_ids|type)=="array" and (.order_ids|type)=="array" and (.extract_ids|type)=="array" and
@@ -2142,6 +2286,27 @@ mkvutil_validate_config() {
     (if .category=="edit" then (.removed_ids|length)==0 and .order=="" and (.extract_ids|length)==0
      elif .category=="mux" then (.extract_ids|length)==0 and all(.operations[]; .=="1" or .=="2")
      else (.removed_ids|length)==0 and .order=="" and (.settings|length)==0 and all(.operations[]; .=="1" or .=="2") end) and
+    (if has("metadata_output_map") then
+      .category=="mux" and (.metadata_output_map|type)=="object" and
+      (.removed_ids|unique_ids) and (.order_ids|unique_ids) and
+      all(.order_ids[]; . as $id | ($config.removed_ids|index($id))==null) and
+      .order==(.order_ids|map("0:"+.)|join(",")) and
+      (.expected_types|length)>0 and (.expected_codecs|type)=="object" and
+      (.expected_codecs|keys)==(.expected_types|keys) and
+      all(.expected_codecs[]; type=="string" and test("[^[:space:]]")) and
+      (.reference_track_count|type)=="number" and .reference_track_count>0 and
+      .reference_track_count==(.reference_track_count|floor) and
+      (.expected_types|length)==.reference_track_count and
+      all(.expected_types|to_entries[]; (.key|canonical_id) and
+        (.value=="video" or .value=="audio" or .value=="subtitles")) and
+      all(.settings|keys[]; (split(":")) as $key | ($key|length)==2 and
+        ($key[0]|canonical_id) and ($key[1]=="info" or ($key[1]|canonical_id))) and
+      all(.metadata_output_map|keys[]; . as $key | ($config|output_positions|index($key))!=null) and
+      all(.metadata_output_map|to_entries[]; (.key|canonical_id) and (.value|canonical_id) and
+        (.value as $id | ($config.removed_ids|index($id))==null)) and
+      ([.metadata_output_map[]]|unique|length)==(.metadata_output_map|length) and
+      ([.metadata_output_map[]]|sort)==([.settings|keys[]|split(":")[1]|select(.!="info")]|unique|sort)
+     else true end) and
     (if .category=="mux" and (.removed_ids|length)>0 then
       (.reference|type)=="string" and (.reference|length)>0 and (.removal_signatures|type)=="object" and
       (.reference_track_count|type)=="number" and .reference_track_count>0 and
@@ -2395,7 +2560,8 @@ mkvutil_report_removal_skips() {
       "Skipped \(if .kind=="source-changed" then "source changed" elif .kind=="track-mismatch" then "track mismatch" else "removal mismatch" end): \(.source)", "  Reference: \(.reference)",
       (if (.reason // "")!="" then "  \(.reason)" else empty end),
       (if .track_count_mismatch then "  Track count mismatch: expected \(.track_count_mismatch.expected); actual \(.track_count_mismatch.actual)" else empty end),
-      (.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")
+      (.reasons[] | (if .reason=="output-position-mismatch" then "  Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
+          else "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)" end))
     ' <<< "$display" || return 1
   done
 }
@@ -2554,7 +2720,8 @@ mkvutil_preview_jobs() {
         "Previous skip \(if .resolved then "resolved" else "unresolved" end): \($source)",
         (if (.receipt.reason // "")!="" then "  \(.receipt.reason)" else empty end),
         (if .receipt.track_count_mismatch then "  Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
-        (.receipt.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")' <<< "$display" || return 1
+        (.receipt.reasons[] | (if .reason=="output-position-mismatch" then "  Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
+          else "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)" end))' <<< "$display" || return 1
     done
   elif (( ${#MKVUTIL_REMOVAL_SKIP_HISTORY} > 0 )); then
     print -r -- 'Previous skipped-scope receipts (execution unresolved):'
@@ -2598,7 +2765,9 @@ _mkvutil_execution_skip() {
   reason="$(jq -er '
     if .kind=="source-changed" then .reason
     elif .kind=="removal-mismatch" then "Removal track requirements do not match; file was not processed"
-    elif .kind=="track-mismatch" then "Selected track IDs are missing or have incompatible types; file was not processed"
+    elif .kind=="track-mismatch" then
+      if any(.reasons[]; .reason=="output-position-mismatch") then "Output track positions do not match the configured layout; file was not processed"
+      else "Selected track IDs or the original track tree do not match; file was not processed" end
     else error("invalid skip receipt kind") end' <<< "$receipt")" || return 1
   _mkvutil_jq_records '.[0]+{skip_receipt:.[1],artifacts:[],planned_outputs:[],publications:[]}' \
     "$(_mkvutil_execution_failure "$job" "$reason" skipped)" "$receipt"

@@ -239,6 +239,332 @@ reject() { if "$@"; then fail "accepted invalid call: $*"; fi; }
     return result
 
 
+def test_mkv_utils_track_listing_removal_colour_is_terminal_only(tmp_path: Path):
+    import pty
+    import select
+
+    script_path = Path(__file__).resolve().parents[2] / "shell" / "mkv_utils.zsh"
+    model = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True),
+                          (4, "audio", "A_AAC", False),
+                          (12, "subtitles", "S_TEXT/ASS", False)])
+    render_script = r'''source "$1"
+display_track_info fixture.mkv "$2" "$3" "${4-}" "${5:-source}"
+'''
+    args = [
+        "/usr/local/bin/zsh", "-f", "-c", render_script, "track-render-test",
+        str(script_path), json.dumps(model), "4",
+    ]
+
+    def render_terminal(extra_env: dict[str, str] | None = None, *, final_ids: str | None = None) -> str:
+        terminal_env = os.environ.copy()
+        terminal_env.update({"TERM": "xterm-256color"})
+        terminal_env.pop("NO_COLOR", None)
+        terminal_env.update(extra_env or {})
+        master, slave = pty.openpty()
+        try:
+            command = args if final_ids is None else [*args, final_ids, "output"]
+            result = subprocess.run(command, cwd=tmp_path, env=terminal_env,
+                                    stdin=subprocess.DEVNULL, stdout=slave,
+                                    stderr=subprocess.PIPE, timeout=5, check=False)
+            assert result.returncode == 0, result.stderr.decode(errors="replace")
+            # macOS discards unread PTY output when the last slave closes.
+            assert select.select([master], [], [], 1)[0], "renderer produced no terminal output"
+            return os.read(master, 8192).decode()
+        finally:
+            if slave >= 0:
+                os.close(slave)
+            os.close(master)
+
+    coloured = render_terminal()
+    selected = "Track: audio (A_AAC) [Original 4] [eng]"
+    unselected = "Track ID 12: subtitles (S_TEXT/ASS) [Original 12] [eng]"
+    assert f"\x1b[2;31m{selected}\x1b[0m" in coloured
+    assert "\x1b[2;31mTrack ID 12:" not in coloured
+    assert "Track ID 0: video (V_MPEG4/ISO/AVC) [Original 0] [eng]" in coloured
+    assert unselected in coloured
+    assert coloured.count("\x1b[") == 2
+    final = render_terminal(final_ids="0,12")
+    assert f"\x1b[2;31m{selected}\x1b[0m" in final
+    assert "\x1b[38;5;220mTrack ID 1: subtitles (S_TEXT/ASS) [Original 12] [eng]\x1b[0m" in final
+    assert "\x1b[38;5;220mTrack ID 0:" not in final
+    assert "\x1b[33mTrack ID 1:" in render_terminal({"TERM": "xterm"}, final_ids="0,12")
+    assert "Track ID 4:" not in final and "Track ID 12:" not in final
+    assert "Removed" not in coloured
+    assert "\x1b[" not in render_terminal({"NO_COLOR": "1"})
+    assert "\x1b[" not in render_terminal({"TERM": "dumb"})
+    redirected_env = os.environ.copy()
+    redirected_env.update(TERM="xterm-256color")
+    redirected_env.pop("NO_COLOR", None)
+    redirected = subprocess.run(args, cwd=tmp_path, env=redirected_env,
+                                capture_output=True, text=True, timeout=5, check=False)
+    assert redirected.returncode == 0, redirected.stderr
+    assert selected in redirected.stdout and unselected in redirected.stdout
+    assert "\x1b[" not in redirected.stdout
+
+
+def test_mkv_utils_combined_removal_refreshes_original_track_listing_before_order(env):
+    source = _mkv_file(env, "refresh.mkv")
+    model = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True),
+                          (3, "subtitles", "S_TEXT/ASS", False),
+                          (4, "audio", "A_AAC", True),
+                          (11, "audio", "A_OPUS", False),
+                          (12, "audio", "A_AAC", True)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/refresh.mkv")"
+MKVUTIL_SOURCES=("$record")
+mkvutil_batch_request mux 2,1
+functions[original_read]="${functions[_mkvutil_read]}"
+_mkvutil_read() {
+  case "$1" in
+    'Remove IDs: '*) print -r -- '<REMOVE PROMPT>' ;;
+    'Track order: '*) print -r -- '<ORDER PROMPT>' ;;
+  esac
+  original_read "$@"
+}
+mkvutil_configure_category mux 2,1 <<< $'12\n12,0\n0,4,3\n3\nen\nfr-CA\nde'
+eq "$(jq -r '.removed_ids|join(",")' <<< "$MKVUTIL_CONFIG")" 12 'removal collected first'
+eq "$(jq -r '.order_ids|join(",")' <<< "$MKVUTIL_CONFIG")" 0,4,3 'removed ID rejected from order'
+eq "$(jq -r '.settings["3:0"]' <<< "$MKVUTIL_CONFIG")" en 'first retained metadata target'
+eq "$(jq -r '.settings["3:4"]' <<< "$MKVUTIL_CONFIG")" fr-CA 'second retained metadata target'
+eq "$(jq -r '.settings["3:3"]' <<< "$MKVUTIL_CONFIG")" de 'third retained metadata target'
+print -r -- 'combined refresh contracts passed'
+''', {str(source): model})
+    first_track = result.stdout.index("Track ID 12:")
+    remove_prompt = result.stdout.index("<REMOVE PROMPT>")
+    refreshed_track = result.stdout.index("Track: audio (A_AAC) [Original 12]", first_track + 1)
+    order_prompt = result.stdout.index("<ORDER PROMPT>")
+    assert first_track < remove_prompt < refreshed_track < order_prompt
+    assert result.stdout.count("Track ID 12:") == 1  # Dropped IDs cannot be selected after removal.
+    assert 'Track ID 1: audio (A_AAC) [Original 4] [eng]' in result.stderr
+    assert 'Track ID 2: subtitles (S_TEXT/ASS) [Original 3] [eng]' in result.stderr
+    assert "Track ID 4: audio (A_AAC) [Original 4] [eng]" in result.stdout
+    assert "Track ID 11: audio (A_OPUS) [Original 11] [eng]" in result.stdout
+    assert "Invalid order. Available: 0,3,4,11" in result.stderr
+    assert len(_command_argv(env, "mkvmerge")) == 1
+    assert _command_argv(env, "mkvmerge")[0][0] == "-J"
+
+
+def test_mkv_utils_removal_only_metadata_maps_output_ids_to_retained_sources(env):
+    source = _mkv_file(env, "removal metadata.mkv")
+    model = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True),
+                          (3, "subtitles", "S_TEXT/ASS", False),
+                          (4, "audio", "A_AAC", True),
+                          (11, "audio", "A_OPUS", False),
+                          (12, "audio", "A_AAC", True)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/removal metadata.mkv")"
+MKVUTIL_SOURCES=("$record")
+mkvutil_configure_category mux 1 <<< $'12\n3,4\n2,1\nfr-CA\nde\n3\nCommentary'
+eq "$(jq -r '.removed_ids|join(",")' <<< "$MKVUTIL_CONFIG")" 12 'removal retained'
+eq "$(jq -r '.order' <<< "$MKVUTIL_CONFIG")" '' 'removal-only has no requested reorder'
+jq -e '.settings=={"3:3":"de","3:4":"fr-CA","4:11":"Commentary"}' <<< "$MKVUTIL_CONFIG" >/dev/null
+job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")"
+jq -e '.retained_ids==["0","3","4","11"] and
+  (.merge_metadata_args|index("4:fr-CA"))!=null and
+  (.merge_metadata_args|index("3:de"))!=null and
+  (.merge_metadata_args|index("11:Commentary"))!=null' <<< "$job" >/dev/null
+print -r -- 'removal-only metadata contracts passed'
+''', {str(source): model})
+    assert result.stdout.rstrip().endswith("removal-only metadata contracts passed")
+    assert result.stdout.count("mkvmerge JSON track listing") == 1
+    assert 'Output track layout' in result.stdout
+    assert 'Track ID 2: audio (A_AAC) [Original 4] [eng]' in result.stderr
+    assert 'Track ID 1: subtitles (S_TEXT/ASS) [Original 3] [eng]' in result.stderr
+    assert 'Track ID 3: audio (A_OPUS) [Original 11] [eng]' in result.stderr
+    assert "Track order:" not in result.stdout + result.stderr
+    assert result.stderr.count("Track IDs:") == 2
+    assert source.read_bytes() == b"payload"
+
+
+def test_mkv_utils_projected_track_view_and_shared_value_context(tmp_path: Path):
+    model = _source_json([(0, "video", "V_VP9", True), (1, "audio", "A_AAC", False),
+                          (2, "subtitles", "S_TEXT/ASS", False), (3, "audio", "A_OPUS", True),
+                          (4, "subtitles", "S_TEXT/UTF8", False)])
+    result = _run_metadata_contract(tmp_path, r'''
+raw=''' + "'" + json.dumps(model) + "'" + r'''
+rows="$(collect_tracks_for_remux fixture.mkv "$raw")"
+mkvutil_plan_layout "$rows" 1 0:0,0:4,0:2 mkv
+view="$(_mkvutil_track_view "$raw" 1 0,4,2,3 output)"
+jq -e 'map(.source_id)==["0","1","4","2","3"] and
+  map(.display_id)==["0",null,"1","2","3"] and
+  map(.moved)==[false,false,true,false,false] and
+  .[1].row=="Track: audio (A_AAC) [Original 1] [eng]" and
+  .[2].row=="Track ID 1: subtitles (S_TEXT/UTF8) [Original 4] [eng]"' <<< "$view" >/dev/null
+print -r -- "VIEW $view"
+mkvutil_metadata_configure 3 preset 0,4,2 0,4,2,3 "$view" <<< $'en\nfr-CA\nde'
+eq "${MKVUTIL_METADATA_SETTINGS[3:4]}" fr-CA 'output one maps source four'
+(( ! ${+MKVUTIL_METADATA_SETTINGS[3:3]} )) || fail 'implicit appended track edited'
+reject mkvutil_metadata_configure 4 independent 0,4,2 0,2,4,3 "$view" < /dev/null
+(( ${#MKVUTIL_METADATA_SETTINGS}==0 )) || fail 'invalid full projection left settings'
+# Removal of source zero makes new output zero selectable; Edit still uses source IDs.
+mkvutil_plan_layout "$rows" 0 '' mkv
+view="$(_mkvutil_track_view "$raw" 0 1,2,3,4 output)"
+mkvutil_metadata_configure 4 independent '' 1,2,3,4 "$view" <<< $'0\nRetained audio'
+eq "${MKVUTIL_METADATA_SETTINGS[4:1]}" 'Retained audio' 'removed source zero does not block output zero'
+mkvutil_plan_layout "$rows" '' '' mkv
+view="$(_mkvutil_track_view "$raw")"
+mkvutil_metadata_configure 1,4 shared '' '' "$view" <<< $'4\n1\nSigns & Songs'
+eq "${MKVUTIL_METADATA_SETTINGS[1:4]}" 1 'Edit existing ID flag'
+eq "${MKVUTIL_METADATA_SETTINGS[4:4]}" 'Signs & Songs' 'Edit existing ID name'
+print -r -- 'projected view contracts passed'
+''')
+    assert result.stdout.rstrip().endswith("projected view contracts passed")
+    assert "Track ID 1: subtitles (S_TEXT/UTF8) [Original 4] [eng]\nLanguage:" in result.stderr
+    assert "Track ID 0: audio (A_AAC) [Original 1] [eng]\nTrack name:" in result.stderr
+    assert "Track ID 4: subtitles (S_TEXT/UTF8) [Original 4] [eng]\nForced" in result.stderr
+    assert "Track ID 4: subtitles (S_TEXT/UTF8) [Original 4] [eng]\nTrack name:" in result.stderr
+    assert "Original track ID" not in result.stderr
+
+
+def test_mkv_utils_mux_output_map_validation_is_exact_and_legacy_opt_in(env):
+    source = _mkv_file(env, "mapping.mkv")
+    model = _source_json([(0, "video", "V_VP9", True), (1, "audio", "A_AAC", False),
+                          (2, "subtitles", "S_TEXT/ASS", False), (3, "audio", "A_OPUS", True)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/mapping.mkv")"
+MKVUTIL_SOURCES=("$record")
+mkvutil_configure_category mux 2 <<< $'3,1,0\n4\nThree\nOne\nZero'
+config="$MKVUTIL_CONFIG"
+mkvutil_validate_config "$config"
+jq -e '.order=="0:3,0:1,0:0" and .order_ids==["3","1","0"] and
+  .metadata_output_map=={"0":"3","1":"1","2":"0"} and
+  .settings=={"4:3":"Three","4:1":"One","4:0":"Zero"} and
+  .expected_codecs=={"0":"V_VP9","1":"A_AAC","2":"S_TEXT/ASS","3":"A_OPUS"}' <<< "$config" >/dev/null
+for mutation in \
+  '.metadata_output_map=null' '.metadata_output_map=[]' \
+  '.metadata_output_map={"00":"3","1":"1","2":"0"}' \
+  '.metadata_output_map={"0":3,"1":"1","2":"0"}' \
+  '.metadata_output_map={"0":"3","1":"3","2":"0"}' \
+  '.metadata_output_map={"0":"3","1":"1"}' \
+  '.metadata_output_map={"0":"3","1":"1","2":"0","3":"2"}' \
+  '.order="0:0,0:1,0:3"' '.order_ids=["3","3","0"]' \
+  '.order_ids=["03","1","0"]' '.removed_ids=["1"]' \
+  '.expected_types={}' '.expected_types["01"]="audio"' \
+  '.reference_track_count=3' '.expected_codecs=null' \
+  '.expected_codecs["2"]=""' '.expected_codecs["4"]="A_AAC"'; do
+  invalid="$(jq "$mutation" <<< "$config")"
+  reject mkvutil_validate_config "$invalid"
+done
+# Sparse output keys are intentional when only selected output tracks are edited.
+sparse="$(jq '.settings={"4:1":"One"}|.metadata_output_map={"1":"1"}' <<< "$config")"
+mkvutil_validate_config "$sparse"
+mkvutil_target_mismatch "$record" "$sparse"
+# Validation never coerces huge output keys to a lossy floating-point index.
+huge="$(jq '.settings={"4:1":"One"}|.metadata_output_map={"999999999999999999999999999999999999999":"1"}' <<< "$config")"
+reject mkvutil_validate_config "$huge"
+code=0; mismatch="$(mkvutil_target_mismatch "$record" "$huge")" || code=$?
+eq "$code" 1 'out-of-domain huge output position is an invalid config'
+eq "$mismatch" '' 'invalid output map cannot create a skip receipt'
+for mutation in '.settings={}|.metadata_output_map={}' '.settings={"5:info":"Title"}|.metadata_output_map={}'; do
+  mkvutil_validate_config "$(jq "$mutation" <<< "$config")"
+done
+# Handcrafted legacy configs retain source-ID-only eligibility and their old schema.
+legacy="$(jq 'del(.metadata_output_map,.expected_codecs,.reference_track_count)' <<< "$config")"
+mkvutil_validate_config "$legacy"
+mkvutil_target_mismatch "$record" "$legacy"
+print -r -- 'output map validation passed'
+''', {str(source): model})
+    assert result.stdout.rstrip().endswith("output map validation passed")
+    assert "Track ID 0: audio (A_OPUS) [Original 3] [eng]\nTrack name:" in result.stderr
+    assert "Track ID 2: video (V_VP9) [Original 0] [eng]\nTrack name:" in result.stderr
+    assert not [call for call in _command_argv(env, "mkvmerge") if "-o" in call]
+
+
+def test_mkv_utils_mux_original_tree_and_output_binding_guards_before_writes(env):
+    source = _mkv_file(env, "tree.mkv")
+    model = _source_json([(0, "video", "V_VP9", True), (1, "audio", "A_AAC", False),
+                          (2, "subtitles", "S_TEXT/ASS", False), (3, "audio", "A_OPUS", True),
+                          (4, "subtitles", "S_TEXT/ASS", False)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/tree.mkv")"
+MKVUTIL_SOURCES=("$record")
+mkvutil_configure_category mux 1 <<< $'1\n4\n2\nCommentary'
+config="$MKVUTIL_CONFIG"
+jq -e '.metadata_output_map=={"2":"3"} and .settings=={"4:3":"Commentary"}' <<< "$config" >/dev/null
+job="$(mkvutil_plan_job "$record" "$config")"
+# Labels and flags are intentionally lax on every original track.
+labels="$(jq '.model.tracks[].properties|=. + {track_name:"Other",language:"jpn",forced_track:true,default_track:false}' <<< "$record")"
+mkvutil_target_mismatch "$labels" "$config"
+none="$(jq '.settings={}|.metadata_output_map={}' <<< "$config")"
+title="$(jq '.settings={"5:info":"Title"}|.metadata_output_map={}' <<< "$config")"
+for variant in missing type codec extra; do
+  case "$variant" in
+    missing) candidate="$(jq '.model.tracks|=map(select(.id!=4))' <<< "$record")" ;;
+    type) candidate="$(jq '.model.tracks[4].type="audio"' <<< "$record")" ;;
+    codec) candidate="$(jq '.model.tracks[4].properties.codec_id="S_TEXT/UTF8"' <<< "$record")" ;;
+    extra) candidate="$(jq '.model.tracks += [{id:5,type:"audio",properties:{codec_id:"A_AAC"}}]' <<< "$record")" ;;
+  esac
+  for guarded in "$config" "$none" "$title"; do
+    code=0; receipt="$(mkvutil_target_mismatch "$candidate" "$guarded")" || code=$?
+    eq "$code" 3 "original tree mismatch: $variant"
+    jq -e '.kind=="track-mismatch" and (.reasons|length)==1' <<< "$receipt" >/dev/null
+  done
+  bypass="$(jq '.bypass_track_count=true' <<< "$config")"
+  if [[ "$variant" == extra ]]; then mkvutil_target_mismatch "$candidate" "$bypass"
+  else reject mkvutil_target_mismatch "$candidate" "$bypass"; fi
+done
+# A source-array order is not itself a signature. It matters only if an edited
+# output position now refers to another original ID. Untouched labels stay lax.
+candidate="$(jq '.model.tracks=[.model.tracks[0],.model.tracks[1],.model.tracks[3],.model.tracks[2],.model.tracks[4]]' <<< "$record")"
+mkvutil_target_mismatch "$candidate" "$none"
+mkvutil_target_mismatch "$candidate" "$title"
+code=0; receipt="$(mkvutil_target_mismatch "$candidate" "$config")" || code=$?
+eq "$code" 3 'edited output binding mismatch'
+jq -e '.reasons==[{output_id:"2",original_id:"3",reason:"output-position-mismatch",expected:{original_id:"3"},actual:{original_id:"2"}}]' <<< "$receipt" >/dev/null
+# Both planning and the last fresh runtime preflight use this same guard.
+code=0; planned="$(mkvutil_plan_job "$candidate" "$config")" || code=$?
+eq "$code" 3 'planning skips changed output binding'
+engine_calls=0
+_mkvutil_execution_engine() { (( ++engine_calls )); fail 'native engine reached'; }
+_mkvutil_capture_execution_source() { REPLY="$candidate"; }
+reject mkvutil_execute_mux_job "$job"
+eq "$engine_calls" 0 'late output binding mismatch never entered engine'
+jq -e '.status=="skipped" and .phase=="preflight" and .artifacts==[] and .planned_outputs==[] and
+  .skip_receipt.reasons[0].reason=="output-position-mismatch"' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
+report="$(mkvutil_report_removal_skips "$receipt")"
+[[ "$report" == *'Output ID 2: expected source ID 3; actual source ID 2'* ]] || fail 'mapping skip is not readable'
+candidate="$(jq '.model.tracks[4].properties.codec_id="S_TEXT/UTF8"' <<< "$record")"
+reject mkvutil_execute_mux_job "$job"
+eq "$engine_calls" 0 'late original-format mismatch never entered engine'
+jq -e '.status=="skipped" and .artifacts==[] and .planned_outputs==[] and
+  .skip_receipt.reasons[0].original_id=="4" and .skip_receipt.reasons[0].reason=="codec-mismatch"' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
+# A reorder-only queue cannot use the removal-count bypass to admit extra IDs.
+reorder="$(jq '.removed_ids=[]|.order_ids=["0","2"]|.order="0:0,0:2"|.settings={}|.metadata_output_map={}|.bypass_track_count=true' <<< "$config")"
+extra="$(jq '.model.tracks += [{id:5,type:"audio",properties:{codec_id:"A_AAC"}}]' <<< "$record")"
+reject mkvutil_target_mismatch "$extra" "$reorder"
+print -r -- 'original tree and output binding guards passed'
+''', {str(source): model})
+    assert result.stdout.rstrip().endswith("original tree and output binding guards passed")
+    assert source.read_bytes() == b"payload"
+    assert not [call for call in _command_argv(env, "mkvmerge") if "-o" in call]
+    assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
+    assert not list(env["workdir"].glob(".mkvutil-*"))
+
+
+def test_mkv_utils_metadata_preview_uses_scrollback_if_view_cannot_fit(tmp_path: Path):
+    result = _run_metadata_contract(tmp_path, r'''
+_mkvutil_ui_owned() { return 0; }
+entered=0
+_mkvutil_ui_enter() { (( ++entered )); MKVUTIL_UI_ACTIVE=1; }
+stty() { [[ "$geometry" != unknown ]] || return 1; print -r -- "$geometry"; }
+preview=$'Output track layout\n\e[2;31mTrack: audio (A_AAC)\e[0m\nTrack ID 0: video (V_VP9)'
+geometry='40 240'
+_mkvutil_menu_read metadata mux 'Metadata [none]: ' 0 '' "$preview" <<< e
+eq "$entered" 1 'fitting complete preview uses owned view'
+_mkvutil_ui_leave
+for geometry in '10 120' '40 20' unknown; do
+  entered=0
+  _mkvutil_menu_read metadata mux 'Metadata [none]: ' 0 '' "$preview" <<< e
+  eq "$entered" 0 "overflow/unknown geometry does not enter alternate screen: $geometry"
+  eq "$MKVUTIL_UI_ACTIVE" 0 'preview stays in ordinary scrollback'
+done
+print -r -- 'preview fit contracts passed'
+''')
+    assert result.stdout.count("Output track layout") == 3
+    assert result.stderr.count("Output track layout") == 1
+    assert result.stdout.rstrip().endswith("preview fit contracts passed")
+
+
 def test_mkv_utils_metadata_registry_and_language_contract(tmp_path: Path):
     result = _run_metadata_contract(tmp_path, r'''
 mkvutil_metadata_validate_registry || fail 'initial registry incomplete'
@@ -2670,8 +2996,10 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     _ascii_box_contains(result.stdout, "File progress", "File: First source.mkv")
     final = result.stdout.split('Final report', 1)[1]
     assert '=> Attachments' not in final
-    assert 'Track output ID 0: First source - Track [0].idx (published)' in final
-    assert 'Track output ID 0: First source - Track [0].sub (published)' in final
+    _ascii_box_contains(final, "Outputs", "First source.mkv",
+                        "Track 0: First source - Track [0].idx",
+                        "Track 0: First source - Track [0].sub")
+    assert 'Track output ID ' not in final and 'published)' not in final
     assert "Files Attempted: 1" in result.stdout and "Estimated Time Remaining:" in result.stdout
     assert len(_command_argv(env,"fzf"))==1
     assert [argv[:2] for argv in _command_argv(env,"mkvextract")]==[[str(source),"attachments"],[str(source),"tracks"]]
@@ -2713,8 +3041,8 @@ def test_mkv_utils_category_edit_run_grouped_entrypoint(env: dict[str, Path]):
     assert result.returncode == 0, result.stdout + result.stderr
     _ascii_box_contains(result.stdout, "Final report")
     assert "Processed In:" not in result.stdout
-    assert "success:" in result.stdout
-    assert "success: Run title.mks" in result.stdout
+    assert "Processing: Run title.mks" in result.stdout
+    assert "success:" not in result.stdout
     assert source.name not in result.stdout.split("Final report", 1)[1]
     _assert_readable_outcomes(result.stdout, "Done: 1")
     assert len(_command_argv(env, "fzf")) == 1
@@ -3050,6 +3378,7 @@ def test_mkv_utils_public_order_normalizer_bare_ids_and_retained_zero(env):
     result = _run_planning_contract(env, r'''
 eq "$(mkvutil_normalize_order '3,4,1' '0,1,3,4,7')" '0:0,0:3,0:4,0:1' 'automatic zero prefix'
 eq "$(mkvutil_normalize_order '3,0,4' '0,1,3,4')" '0:3,0:0,0:4' 'explicit zero position'
+eq "$(mkvutil_normalize_order '3,1,0' '0,1,2,3')" '0:3,0:1,0:0' 'explicit video last'
 eq "$(mkvutil_normalize_order ' 03 , 4 ' '0,1,3,4')" '0:0,0:3,0:4' 'separator whitespace and canonical IDs'
 eq "$(mkvutil_normalize_order '3,4' '1,3,4')" '0:3,0:4' 'missing or removed zero stays absent'
 for invalid in '7' '0:7' '0:3,0:4' '3,4,1,1' '1,01' '3,3' '3,,4' '3 4' '3,4 1' '3,99' '3,x' '3-4' ''; do
@@ -3556,7 +3885,9 @@ def test_mkv_utils_option7_failure_cleans_temporary_file(env):
     assert result.returncode==1,result.stdout+result.stderr
     assert "Failed: 1" in result.stdout and "Candidate:" in result.stdout
     report = result.stdout[result.stdout.index("Final report"):]
-    assert report.count("Final report") == 1 and f"failed: {source.name}" in report
+    assert report.count("Final report") == 1
+    _ascii_box_contains(report, "Errors", f"{source.name} => {source.with_suffix('.mka').name}")
+    assert f"failed: {source.name}" not in report
     assert source.read_bytes()==b"payload" and not source.with_suffix(".mka").exists()
     assert not (env["workdir"]/"remove_fail_temp.mka").exists()
     assert len([a for a in _command_argv(env,"mkvmerge") if "-o" in a])==1
@@ -3566,7 +3897,7 @@ def test_mkv_utils_option7_failure_cleans_temporary_file(env):
 @pytest.mark.parametrize("extra_env",[
     {"TEST_FAKE_MKVMERGE_JSON_FAIL_CALL":"1"},
     {"TEST_FAKE_JQ_FAIL_QUERY_CONTAINS":"empty tracks array"},
-    {"TEST_FAKE_JQ_FAIL_QUERY_CONTAINS":"codec: .properties.codec_id"},
+    {"TEST_FAKE_JQ_FAIL_QUERY_CONTAINS":"def row($id):"},
 ],ids=("mkvmerge-json","jq-validation","jq-display"))
 def test_mkv_utils_option7_inspection_failure_skips_remux(env,extra_env):
     source=_mkv_file(env,"remove_fail_inspect.mkv")
@@ -3611,24 +3942,29 @@ def test_mkv_utils_option7_refuses_to_remove_every_track(env):
     assert "requested, not run" in result.stdout
 
 
-def test_mkv_utils_option7_multi_file_uses_per_file_track_layout(env):
+def test_mkv_utils_option7_bypass_keeps_original_track_guard(env):
     first,second=_mkv_file(env,"option7_default.mkv"),_mkv_file(env,"option7_alt.mkv")
     a=_integration_model();b=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(11,"audio","A_AAC",True),(12,"subtitles","S_TEXT/ASS",True)])
     extra=_integration_manifest(env,{first:a,second:b},stage={str(first):_integration_output(a,[1,2,3]),str(second):_integration_output(b,[11,12])})
-    # Counts differ intentionally; this legacy per-file layout case exercises
-    # the explicitly requested count-only bypass. Default skip is tested above.
+    # Bypass permits the count difference, while original IDs/types/codecs
+    # still have to match the reference tree before a source can be remuxed.
     result=_run_mkv_utils(env,"--bypass",fzf_responses=[[str(first),str(second)]],input_data="2\n1\n0\n\n",extra_env=extra)
-    assert result.returncode==0,result.stdout+result.stderr
+    assert result.returncode==1,result.stdout+result.stderr
     calls=[argv for argv in _command_argv(env,"mkvmerge") if "-o" in argv]
-    assert len(calls)==2 and all("--no-video" in c for c in calls)
-    assert [(c[c.index("--audio-tracks")+1],c[c.index("--subtitle-tracks")+1]) for c in calls]==[("1,2","3"),("11","12")]
-    assert not _command_argv(env,"mkvpropedit") and "Done: 2; Failed: 0" in result.stdout
-    assert all(f"Processing: {path.name}" in result.stdout for path in (first, second))
-    for path in (first, second):
-        assert f"File: {path.name}" in result.stdout
-    _assert_readable_outcomes(result.stdout, "Done: 2")
+    assert len(calls)==1 and calls[0][-1]==str(first) and "--no-video" in calls[0]
+    assert (calls[0][calls[0].index("--audio-tracks")+1],calls[0][calls[0].index("--subtitle-tracks")+1])==("1,2","3")
+    assert not _command_argv(env,"mkvpropedit") and "Done: 1; Failed: 0" in result.stdout
+    assert f"Processing: {first.name}" in result.stdout and f"Processing: {second.name}" not in result.stdout
+    assert f"File: {first.name}" in result.stdout and f"File: {second.name}" not in result.stdout
+    assert f"Skipped track mismatch: {second.name}" in result.stdout
+    assert "Track count mismatch:" not in result.stdout
+    assert "Original ID 1: missing-id" in result.stdout
+    assert "Original ID 2: missing-id" in result.stdout
+    assert "Original ID 3: missing-id" in result.stdout
+    _assert_readable_outcomes(result.stdout, "Done: 1", "Skipped: 1")
     assert _observed_fake_identification(env,first.with_suffix(".mka"))["tracks"]==_integration_output(a,[1,2,3])["tracks"]
-    assert _observed_fake_identification(env,second.with_suffix(".mka"))["tracks"]==_integration_output(b,[11,12])["tracks"]
+    assert first.with_suffix(".mka").read_bytes()==b"candidate-data\n"
+    assert second.read_bytes()==b"payload" and not second.with_suffix(".mka").exists()
     for internal in ("track_rows=","row=","track_type=","track_id=","track_rows_valid=","excluded_id=","requested_ids_valid="):
         assert internal not in result.stdout+result.stderr
 
@@ -3715,7 +4051,7 @@ def test_mkv_utils_integration_grouped_workflow_equivalents(env,workflow):
 def test_mkv_utils_integration_reject_or_cancel_before_modification(env,boundary):
     source=_mkv_file(env,"Untouched.mkv")
     selected=source
-    if boundary=="removed-metadata":inputs="2\n1\n0\n4\n0\n"
+    if boundary=="removed-metadata":inputs="2\n1\n0\n4\n99\n"
     elif boundary=="cancel":inputs="1\n4\n0\ne\n"
     elif boundary=="eof":inputs="1\n4\n0\n"
     else:
@@ -3728,7 +4064,7 @@ def test_mkv_utils_integration_reject_or_cancel_before_modification(env,boundary
     assert not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
     if boundary == "removed-metadata":
         assert result.stderr.count('Track IDs:') == 2
-        assert "Available: 1,2,3" in result.stderr
+        assert "Available: 0,1,2" in result.stderr
         assert "Cancelled; no media changes." in (result.stdout + result.stderr)
     elif boundary == "eof":
         assert "Cancelled; no media changes." in result.stdout
@@ -3763,7 +4099,8 @@ def test_mkv_utils_navigation_action_back_resets_and_reopens_picker(env):
     assert first.read_bytes() == b"payload" and not first.with_suffix(".mka").exists()
     assert not second.exists() and _observed_fake_identification(env, second.with_suffix(".mka")) == expected
     final = result.stdout.split("Final report", 1)[1]
-    assert "Selected: 1" in final and first.name not in final and second.name not in final
+    assert "Selected: 1" in final and first.name not in final
+    assert f"{second.name} => {second.with_suffix('.mka').name}" in final
     assert result.stdout.count("Final report") == 1
 
 
@@ -3795,7 +4132,8 @@ code=0
 mkvutil_configure_category edit 5 < /dev/null || code=$?
 eq "$code" 2 'data EOF remains bounded'
 print -r -- 'navigation data contracts passed'
-''', {str(source): _source_json([(0, "audio", "A_AAC", True)])})
+''', {str(source): _source_json([(0, "audio", "A_AAC", True),
+                                  (1, "audio", "A_OPUS", False)])})
     assert result.stdout.rstrip().endswith("navigation data contracts passed")
 
 
@@ -3841,7 +4179,12 @@ eq "$remaining" e 'post-run typeahead is not consumed'
         extra_env={"TEST_OUTCOME": outcome, "TEST_EXIT_CODE": exit_code})
     assert result.stdout.count("Final report") == 1
     assert result.stdout.count("1) Matroska Edit") == 1
-    assert "fresh-1.mka" in result.stdout and "fresh-2.mka" not in result.stdout
+    final = result.stdout.split("Final report", 1)[1]
+    if outcome == "success":
+        assert "fresh-1.mka" not in final
+    else:
+        assert "fresh-1.mka" in final
+    assert "fresh-2.mka" not in result.stdout
     assert "Skipped-subset choice:" not in result.stderr and "Press Enter to continue:" not in result.stderr
     assert "0) Exit" not in result.stdout and "0) Finish" not in result.stdout
 
@@ -4101,6 +4444,8 @@ class _OwnedMenuScreen:
                     self.row = int(position[0] or "1") - 1
                     self.col = int(position[1] or "1") - 1 if len(position) > 1 else 0
                     self.homes += 1
+                elif command == "m":
+                    pass  # Row styling changes colour, never cell/cursor position.
                 else:
                     raise AssertionError(f"unexpected UI escape {parameters}{command}")
             else:
@@ -4243,7 +4588,7 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
             normal_input(b"Track order:")
             os.write(master, b"0,1\n")
             line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
-            assert "Original track IDs for each track edit: 0,1" in screen.text
+            assert "Output IDs for each track edit: 0,1" in screen.text
             os.write(master, b"E\n"); shortcuts()
 
             os.write(master, b"2\n")
@@ -4572,6 +4917,7 @@ mkvutil_configure_category mux 1,2 <<< $'12\n12,0\n99,0\n4,4\nno-order\n0,4,3\n3
 eq "$(jq -r '.removed_ids|join(",")' <<< "$MKVUTIL_CONFIG")" 12 'removal survived retry/Back'
 eq "$(jq -r '.order_ids|join(",")' <<< "$MKVUTIL_CONFIG")" 0,4,3 'explicit order survived retry/Back'
 eq "$(jq -c '.settings' <<< "$MKVUTIL_CONFIG")" '{"5:info":"E"}' 'all earlier partial metadata discarded'
+eq "$(jq -c '.metadata_output_map' <<< "$MKVUTIL_CONFIG")" '{}' 'title-only has no stale track bindings'
 eq "$(jq -r '.metadata_ids' <<< "${MKVUTIL_BATCHES[2]}")" 5 'reselected choice attribution'
 eq "${MKVUTIL_BATCHES[1]}" "$prior" 'earlier batch unchanged'
 job="$(mkvutil_plan_job "$record" "$MKVUTIL_CONFIG")"
@@ -4580,6 +4926,7 @@ mkvutil_batch_request mux 1,2
 mkvutil_configure_category mux 1,2 <<< $'12\n4,0\n4\ne\n   '
 eq "$(jq -r '.metadata' <<< "$MKVUTIL_CONFIG")" '' 'blank skip normalized'
 eq "$(jq -c '.settings' <<< "$MKVUTIL_CONFIG")" '{}' 'field Back then skip discards metadata'
+eq "$(jq -c '.metadata_output_map' <<< "$MKVUTIL_CONFIG")" '{}' 'field Back then skip clears track bindings'
 eq "$(jq -r '.metadata_ids' <<< "${MKVUTIL_BATCHES[3]}")" '' 'skip clears active attribution'
 eq "$(jq -r '.order' <<< "$MKVUTIL_CONFIG")" 0:4,0:0 'skip preserves structure'
 mkvutil_batch_request mux 2
@@ -4599,7 +4946,7 @@ print -r -- 'configuration retries passed'
     assert result.stderr.count('Invalid order.') == 4
     assert result.stderr.count('Remove IDs:') == 4
     assert result.stderr.count('Track order:') == 8
-    assert 'Original track IDs for each track edit: 0,4,3' in result.stdout
+    assert 'Output IDs for each track edit: 0,1,2' in result.stdout
     assert not _command_argv(env, 'fzf') and source.read_text() == 'payload'
 
 
@@ -4705,7 +5052,7 @@ def test_mkv_utils_combined_mux_inherited_per_id_metadata_two_sources(env):
     result = _run_mkv_utils(env, fzf_responses=[[str(first), str(second)]],
                             input_data='2\n1,2\n12\n0,4,3\n1-5\n1\n0\n1\n0\n1\n0\neng\nfr-CA\nde\nzero\nfour\nthree\nBatch title\n', extra_env=extra)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert 'Original track IDs for each track edit: 0,4,3' in result.stdout
+    assert 'Output IDs for each track edit: 0,1,2' in result.stdout
     assert 'Track IDs:' not in result.stderr
     assert result.stdout.count('Final report') == 1 and 'Done: 2; Failed: 0' in result.stdout
     calls = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
@@ -4995,7 +5342,8 @@ def test_mkv_utils_back_mux_metadata_list_resets_and_reopens_picker(env):
     assert first.read_bytes() == b'payload' and not first.with_suffix('.mka').exists()
     assert not second.exists() and _observed_fake_identification(env, second.with_suffix('.mka')) == expected
     final = result.stdout.split('Final report', 1)[1]
-    assert 'Selected: 1' in final and first.name not in final and second.name not in final
+    assert 'Selected: 1' in final and first.name not in final
+    assert f'{second.name} => {second.with_suffix(".mka").name}' in final
     assert result.stdout.count('Final report') == 1
 
 

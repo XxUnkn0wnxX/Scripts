@@ -14,6 +14,48 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted Mux layout/output-ID metadata follow-up on develop
+
+- Latest user requirements are implemented: source-ID removal/reorder inputs;
+  dense output-ID layout/metadata translated to canonical source targets; muted
+  red ID-less dropped rows interleaved at source slots; warm gold position
+  shifts; full shared Edit/Mux track rows before per-ID values. Explicit `3,1,0`
+  retains source 0 at output 2; omitted retained tracks still append afterward.
+- Original reference IDs, kinds and literal native formats must match before
+  applying the output tree. ASS versus SRT skips; names, languages and flags
+  remain lax. Count-only removal bypass permits extra IDs, while missing/wrong
+  reference tracks or changed edited output bindings still skip. Existing source
+  identity, one-remux, safe-stop, Back/finality and publication engines remain.
+- Approved coordinated route B completed at T01.02/T01.03/T02.01/T02.02/T02.03/
+  T04.01/T04.02. **9/9 tasks and 4/4 checkpoints accepted**. Parent owns all
+  tracked files; workers handed back; no runtime/test job or product gate remains.
+- Frozen source SHA-256 `e51ee4bd2a9fa9f065442beaa00c2f2d62dfe51ad172a3fd0721a4ea24fce21d`.
+  Tests SHA-256 `1734b491fd54df4e589916835ef0f0a38a815298d51de424752ceb7e6a7c10a3`.
+  Helper SHA-256 `41648a36e36f95b2f1d78acb9ef681ed6964b352b5ce45ad25bde59a727b7480`.
+- 123 distinct focused cases are qualified across run-01 through run-04: main
+  114 passed / 9 failed; corrective expectations/fixtures then qualified 13 affected
+  cases, with 110 unchanged passing cases reconciled by function bytes. The
+  source stayed identical; failed attempts and exact snapshots are retained.
+  This is not a single all-green full-module or CI claim. Both zsh syntax checks,
+  Python AST, diff checks and protected native builder/engine comparisons pass.
+- Five logged serial IA journeys pass using installed fzf and native v93 read-only
+  identification plus --dry-run: removal/output0, reorder, combined invalid
+  input / metadata Back, explicit 0 positioning, and a fitting owned-screen view.
+  The four 100-column views exercise safe scrollback fallback; the 240-column view
+  shows preview and metadata together in the alternate buffer. Inputs, seed and
+  fixture inventories stayed unchanged; five read-only calls, zero writers.
+- Independent Astra final actual-code audit PASS WITH NOTES; parent reviewed
+  implementation, logs/SGR output, docs/examples, mirrored contracts, exact test
+  reconciliation and the unchanged parent-session ledger. Proof root:
+  `.tmp/mkvutil-rework/mux-layout/receipt.json`, `RESULTS.md`, per-run receipts,
+  `independent-audit.json`, `function-review.json`, and linked IA campaigns.
+- Main Scripts checkout remains develop; baseline is 105c59e and feature remains
+  deleted. No dependencies, downloads/upgrades, new worktree/branch, user-media
+  writes or master promotion. Signed commit/push to develop is authorized; actual
+  publication/ref outcome belongs to `mux-layout/publication.json`. Recovery must
+  inspect that receipt and actual Git refs before repeating any Git operation.
+  No new feature work or validation is required after successful publication.
+
 ### Rework accepted and integrated into stable branches
 
 - The user accepted their script testing and authorized final review, stable

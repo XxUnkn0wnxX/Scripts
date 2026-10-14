@@ -45,15 +45,18 @@ Configuration and planning still inspect the selected files and enforce the usua
 <details>
 <summary>Example: rehearse removal, reorder and metadata</summary>
 
-This illustrative, abbreviated transcript summarizes a dry-run after configuring a Mux that removes track `12`, reorders to `4,3`, and sets language for the resolved IDs `0,4,3`. Prompt and report wording is shortened for clarity:
+This illustrative, abbreviated transcript summarizes a dry-run after configuring a Mux that removes track `12`, reorders to `4,3`, and sets language for the corresponding output IDs `0,1,2`. Prompt and report wording is shortened for clarity:
 
 ```text
 Remove IDs: 12
 Track order: 4,3
-Resolved track IDs for metadata: 0,4,3
-Language for original track ID 0: eng
-Language for original track ID 4: fr-CA
-Language for original track ID 3: de
+Output IDs for metadata: 0,1,2
+Track ID 0: video (V_MPEG4/ISO/AVC) [eng]
+Language: eng
+Track ID 1: audio (A_AAC) [eng]
+Language: fr-CA
+Track ID 2: subtitles (S_TEXT/ASS) [eng]
+Language: de
 
 Mux (DRYRUN) 1,2: remove + reorder; metadata 3
 Processing: Episode 01.mkv
@@ -147,7 +150,7 @@ Names and titles are text, so words, numbers, commas and hyphens are literal val
 
 After choosing files, enter the requested settings. When the last required setting is complete, the utility runs its full preflight and automatically processes eligible jobs, then prints the final report and exits. Edit starts after its last per-ID value or title; Mux starts after its last selected metadata value, or after a blank optional-metadata choice; Extract with track actions starts after the track IDs, while attachments-only starts after file selection. A preflight with no eligible jobs prints the report and exits without writing outputs.
 
-Before a real file is written, preflight checks each requested original track ID against the expected track type for that action. If an ID is missing or has the wrong type in a selected file, that whole file is skipped; other eligible files can continue. Mux removal adds its codec and total-track-count checks below. Immediately before each real file, the utility also checks that the source still matches the inspected snapshot. A source changed during configuration or while waiting in the queue is omitted with the report reason **Source changed after inspection/planning; file was not processed**. These checks prevent a shifted or changed track layout from receiving edits or outputs intended for the earlier inspection.
+Before a real file is written, preflight checks each requested original track ID against the expected track type for that action. Mux also checks the complete original reference ID/type/native-format tree, as described below. If an ID is missing or has the wrong type in a selected file, that whole file is skipped; other eligible files can continue. Mux removal adds its codec and total-track-count checks below. Immediately before each real file, the utility also checks that the source still matches the inspected snapshot. A source changed during configuration or while waiting in the queue is omitted with the report reason **Source changed after inspection/planning; file was not processed**. These checks prevent a shifted or changed track layout from receiving edits or outputs intended for the earlier inspection.
 
 Track configuration shows its full working directory and reference filename in a shared ASCII header box before the track listing. A Mux removal header keeps the **Removal reference file** label and shows the bypass cue when that guard is disabled.
 
@@ -171,7 +174,7 @@ EOF or Ctrl+C before configuration is complete cancels the invocation. After con
 | 4 | Set a track name. |
 | 5 | Set the container title. Leave the title blank to clear it. |
 
-For example, choose category `1`, actions `3,4`, select one or more files, then enter the original track IDs once for both actions. Each action asks for a separate value for each ID in the order you entered them. Each value applies to that same original ID in every eligible selected file. A title is entered once for the whole batch, and title-only Edit asks for no track IDs. Edit changes the selected files in place. Multiple metadata changes for one file are grouped into a single `mkvpropedit` invocation.
+For example, choose category `1`, actions `3,4`, select one or more files, then enter the original track IDs once for both actions. Before each value, the utility shows the complete track description, including codec, name and language when present. Each action asks for a separate value for each ID in the order you entered them. Each value applies to that same original ID in every eligible selected file. A title is entered once for the whole batch, and title-only Edit asks for no track IDs. Edit changes the selected files in place. Multiple metadata changes for one file are grouped into a single `mkvpropedit` invocation.
 
 Edit is metadata-only: it does not print a between-file elapsed-time/ETA block. Its final report records the selected actions, files and outcomes.
 
@@ -188,11 +191,15 @@ For two selected files, enter the IDs once. This illustrative transcript shows h
 
 ```text
 Edit actions: 1,2
-Original track IDs: 4,3
-Forced flag for ID 4: 0
-Forced flag for ID 3: 1
-Default flag for ID 4: 1
-Default flag for ID 3: 0
+Track IDs: 4,3
+Track ID 4: subtitles (S_TEXT/ASS) [Signs & Songs] [eng]
+Forced (0/1) [0]: 0
+Track ID 3: subtitles (S_TEXT/UTF8) [Dialogue] [jpn]
+Forced (0/1) [0]: 1
+Track ID 4: subtitles (S_TEXT/ASS) [Signs & Songs] [eng]
+Default (0/1) [1]: 1
+Track ID 3: subtitles (S_TEXT/UTF8) [Dialogue] [jpn]
+Default (0/1) [1]: 0
 
 All required values entered; preflight starts automatically.
 Each eligible file receives both edits in one grouped metadata operation.
@@ -213,17 +220,53 @@ You can choose `1,2` to remove and reorder tracks in the same remux. You can als
 
 Successful Mux jobs validate a staged output and replace the selected source. If removal changes the extension, the old source path is removed after the new output is published. Warning, partial or interrupted jobs can retain candidates or leave publication incomplete; the final report identifies the actual state and recovery filenames to review before retrying.
 
-Track IDs shown by the utility are the original, zero-based IDs for that source file. Enter reorder IDs as a bare comma list, such as `1,0,2`: first track 1, then track 0, then track 2. At least two different IDs must be entered; `7` alone is invalid. If retained track 0 is omitted, it is prepended automatically: `4,3` becomes `0,4,3`. Explicit track 0 keeps its entered position; absent or removed track 0 is never added. Other retained IDs follow the listed tracks. The utility converts this to native `0:ID` syntax internally. Invalid, removed, unknown or duplicate IDs re-prompt without repeating removal selection. Removing every track is rejected before asking for an order; fewer than two retained tracks cannot be reordered and returns to the action list.
+Removal and reorder inputs use the **original source IDs**. Removal IDs are collected first even if you enter actions as `2,1`. Before the reorder prompt, dropped rows remain visible in muted red with a `Track:` prefix and no selectable ID. Retained rows still show their source IDs at this point.
 
-When reorder is selected, optional track metadata inherits the resolved listed IDs, including automatically prepended track 0, shown above the metadata list. No second track-ID entry is needed. For `0,4,3` or `4,3` with retained 0, each chosen track metadata action asks for values for original IDs `0`, `4`, then `3`; other appended tracks keep their original metadata. With removal alone, each optional track metadata action instead asks for its own retained track IDs; removed IDs cannot be targeted.
+Enter reorder IDs as a bare comma list. The first listed track comes first; other retained tracks append in their source order. At least two different IDs must be entered; `7` alone is invalid. If retained source track `0` is omitted, it is prepended: `4,3` becomes `0,4,3`. Explicit `0` keeps its entered position: **`3,1,0` places source video `0` third**, exactly where you entered it. Omitted retained tracks still append afterward; video is last only when no other tracks remain to append. Absent or removed track `0` is never added. Native `0:ID` syntax is handled internally. Removed, unknown, duplicate or malformed IDs re-prompt without repeating removal selection. Removing every track is rejected; fewer than two retained tracks cannot be reordered.
+
+After structural choices, **Output track layout** remains visible within the optional metadata menu and shows the **resulting output order and IDs**. Retained tracks are numbered from `0` in their new order. Dropped rows stay interleaved at their original row slots, muted red and without IDs; retained rows fill the other slots in output order. Tracks whose output position differs from their original source position appear in warm yellow/gold, including shifts caused by removal and automatically appended tracks. Tracks that keep their position retain the normal colour. Colour needs no extra dependency; redirected output, `TERM=dumb` and `NO_COLOR=1` stay plain. If the preview and metadata menu cannot fit the terminal, they use normal scrollback so the complete listing remains accessible.
+
+Optional Mux metadata uses the displayed **output IDs**. Before every per-track value, the same full track-description row used by Edit appears above the short action prompt. The utility translates the output ID back to its original source track before building the single remux command. Edit continues to display and accept existing source IDs.
+
+Before the new output layout is used, Mux checks every original reference track ID, track type and native format against each selected file. A mismatch skips that file; changing names, languages or default/forced flags does not make it incompatible. For example, ASS and SRT subtitles at the same ID do not match even when their language and flags agree. The existing removal guards still apply. Output-ID metadata also verifies that the requested output position resolves to the expected source track, both during planning and immediately before processing.
+
+With reorder selected, optional metadata inherits only the tracks explicitly listed in the resolved reorder input, including an automatically prepended source `0`. No second ID entry is needed. For `4,3` with retained `0`, canonical targets are source `0,4,3`, displayed as output `0,1,2`. Other retained tracks append without receiving those metadata edits. With removal alone, each optional track action asks for its own retained **output IDs**. After dropping source `0`, output `0` can legitimately select the first surviving track. A dropped row itself has no selectable output ID. Title remains one container-wide value.
+
+<details>
+<summary>Example: removal and reorder change the IDs used for metadata</summary>
+
+Suppose the original IDs are video `0`, audio `1`, audio `2`, subtitles `3` and subtitles `4`. Remove `1`, then reorder with `4,2`. Retained video `0` is prepended and source `3` appends. This illustrative output omits terminal colour escapes:
+
+```text
+Remove IDs: 1
+Track order: 4,2
+
+Track ID 0: video (V_AV1) [Main video] [jpn]
+Track: audio (A_AAC) [Japanese] [jpn]
+Track ID 1: subtitles (S_TEXT/ASS) [Signs & Songs] [eng]
+Track ID 2: audio (A_AAC) [English] [eng]
+Track ID 3: subtitles (S_TEXT/UTF8) [Dialogue] [jpn]
+
+Metadata [none]: 3
+Track ID 0: video (V_AV1) [Main video] [jpn]
+Language: jpn
+Track ID 1: subtitles (S_TEXT/ASS) [Signs & Songs] [eng]
+Language: eng
+Track ID 2: audio (A_AAC) [English] [eng]
+Language: eng
+```
+
+The ID-less dropped audio row is muted red. Output `1` is warm yellow because source `4` moved to position `1`; the other retained rows keep their original physical positions. Metadata answers apply to source `0,4,2` across eligible files; appended source `3` keeps its tags.
+
+</details>
 
 #### Removal compatibility and skipped files
 
-During preflight, the utility compares every requested original track ID with the corresponding track in the reference file. The first successfully identified selected file is displayed as that reference. For a file to be eligible, each requested ID must have the same track type and exact native `codec_id`. For example, an `.ass` subtitle track does not match an `.srt` track at the same ID. Differences in track names, languages, or flags do not by themselves make a file incompatible.
+During Mux preflight, the utility compares the complete original ID/type/native-format tree with the reference file. The first successfully identified selected file is displayed as that reference. Every reference ID must exist with the same track type and exact native `codec_id`, including tracks outside the selected removal, reorder or metadata targets. For example, an `.ass` subtitle track does not match an `.srt` track at the same ID. Differences in track names, languages, or flags do not by themselves make a file incompatible.
 
 An incompatible file is skipped as a whole for that removal run. The report names the file and shows the expected and actual track details. Compatible files can still run. After processing, the final report ends the invocation; unresolved skips or failed outcomes produce a nonzero exit status. To retry skipped files, start `mkvutil` again, select only those files, and configure a new batch.
 
-For removal, preflight also requires each selected file to have the same total number of original tracks as the reference. This guard catches unexpected layout differences beyond the requested IDs. `--bypass` skips only this total-track-count comparison; selected-ID presence, track type, exact native codec ID, source identity, configuration, collision, layout, and publication checks remain active. The flag is stored in that invocation's Mux configuration, defaults to off for each new invocation, and does not affect Analyze. The removal reference display shows a visible cue when it is enabled. This is currently the only bypassable guard; additional guards may become bypassable in the future.
+For removal, preflight also requires each selected file to have the same total number of original tracks as the reference. This guard catches unexpected layout differences beyond the requested IDs. `--bypass` skips only this total-track-count comparison. Extra original tracks can then be accepted; missing reference IDs or different types/formats still skip the file. Output-ID metadata must still resolve to the same source tracks. Source identity, configuration, collision, layout and publication checks remain active. The flag is stored in that invocation's Mux configuration, defaults to off for each new invocation, and does not affect Analyze. The removal reference display shows a visible cue when it is enabled. This is currently the only bypassable guard; additional guards may become bypassable in the future.
 
 <details>
 <summary>Example: bypass only the total-track-count guard</summary>
@@ -232,7 +275,7 @@ For removal, preflight also requires each selected file to have the same total n
 zsh shell/mkv_utils.zsh --bypass "/Volumes/Media/My Show"
 ```
 
-Choose **2. Matroska Mux**, select removal, and enter the original IDs to remove. The reference display includes `Bypass enabled: removal track-count guard only.` Files may then have a different total number of tracks, but every requested original ID must still exist with the same type and exact native `codec_id` as in the reference. Any file that fails those per-ID checks is skipped as a whole; compatible files can continue.
+Choose **2. Matroska Mux**, select removal, and enter the original IDs to remove. The reference display includes `Bypass enabled: removal track-count guard only.` Files may then contain additional tracks, but every original reference ID must still exist with the same type and exact native `codec_id`. Any file that fails those per-ID checks is skipped as a whole; compatible files can continue.
 
 </details>
 
@@ -293,16 +336,16 @@ Assume the reference listing has video ID `0`, subtitle ID `3`, audio ID `4`, an
 1. Press `2` at **Category**, then enter Mux actions `1,2`.
 2. Select the files once and enter removal ID `12`.
 3. Enter reorder sequence `0,4,3`, or `4,3` to prepend retained 0 automatically.
-4. The metadata menu shows **Original track IDs for each track edit: 0,4,3**. Select metadata actions `3,4` for language and track name.
+4. The metadata menu shows **Output IDs for each track edit: 0,1,2**. Select metadata actions `3,4` for language and track name.
 5. Enter values for each inherited ID:
 
-| Original ID | Language | Track name |
-| --- | --- | --- |
-| 0 | `eng` | `Main video` |
-| 4 | `fr-CA` | `French audio` |
-| 3 | `de` | `German subtitles` |
+| Output ID | Original source ID | Language | Track name |
+| --- | --- | --- | --- |
+| 0 | 0 | `eng` | `Main video` |
+| 1 | 4 | `fr-CA` | `French audio` |
+| 2 | 3 | `de` | `German subtitles` |
 
-Language prompts run through IDs 0, 4 and 3, followed by name prompts for those same IDs. The utility does not ask for another target list.
+Language prompts run through output IDs 0, 1 and 2, followed by name prompts for those same tracks. Each prompt includes the full track-description row. The utility does not ask for another target list.
 
 After entering the last track-name value, preflight runs and the batch starts automatically. Original ID 12 is removed and the resulting order is `0,4,3,11`; track 11 appends without receiving the requested language or name changes. Removal, reorder and metadata use one output-producing `mkvmerge` command per eligible file.
 
@@ -316,16 +359,22 @@ Track order: 12,4,3
   Rejected: 12 is being removed.
 Track order: 4,3
 Resolved order: 0,4,3
-Metadata actions: 3,4
-Language for ID 0: eng
-Language for ID 4: fr-CA
-Language for ID 3: de
-Track name for ID 0: Main video
-Track name for ID 4: French audio
-Track name for ID 3: German subtitles
+Metadata [none]: 3,4
+Track ID 0: video (V_MPEG4/ISO/AVC) [eng]
+Language: eng
+Track ID 1: audio (A_AAC) [eng]
+Language: fr-CA
+Track ID 2: subtitles (S_TEXT/ASS) [eng]
+Language: de
+Track ID 0: video (V_MPEG4/ISO/AVC) [eng]
+Track name: Main video
+Track ID 1: audio (A_AAC) [eng]
+Track name: French audio
+Track ID 2: subtitles (S_TEXT/ASS) [eng]
+Track name: German subtitles
 ```
 
-Here track 0 is retained and prepended because it was omitted. The metadata prompts follow the resolved IDs; the removed ID cannot be included in reorder or metadata.
+Here track 0 is retained and prepended because it was omitted. The metadata prompts follow the resulting output IDs; removed source ID 12 cannot appear in reorder and its dropped row has no metadata ID.
 
 </details>
 
@@ -335,7 +384,8 @@ Here track 0 is retained and prepended because it was omitted. The metadata prom
 With removal and reorder configured, choose metadata `3,4`. If you decide to change the metadata choices while entering a track name, enter `e` at that value prompt:
 
 ```text
-Original track ID 4 — Track name: e
+Track ID 1: audio (A_AAC) [eng]
+Track name: e
 ```
 
 The optional metadata menu returns. All language and name values from this unfinished attempt are cleared; removal IDs, reorder sequence and selected files remain configured.
@@ -547,6 +597,8 @@ To run only the `mkv_utils` test module:
 ```zsh
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
+
+The output-layout and metadata update qualified **123 focused cases across the main and corrective runs**, plus **five logged dry-run PTY journeys** using installed fzf and MKVToolNix v93 identification. These cover source/output ID translation, removal-first ordering, original ID/type/native-format and count checks, per-ID context, metadata Back, invalid-order retries, row colours and both fitting and scrollback previews. The source remained unchanged during qualification; nine stale test contracts were aligned and rechecked. The PTY journeys made no media writes and left all fixture files unchanged. Modifying-tool behavior and late runtime rejection use controlled integration checks; this update does not claim a new full native-write or CI campaign.
 
 The concise-prompt and filename-only report follow-up passed **11 focused checks**, covering shared outcome groups, the note-only simulated block, Analyze, prompt retries and metadata collection. Both zsh syntax checks and Python compilation passed. A direct formatter check reproduced the requested filename-only Not attempted block; no new interactive or native-write campaign was needed for this presentation change.
 
