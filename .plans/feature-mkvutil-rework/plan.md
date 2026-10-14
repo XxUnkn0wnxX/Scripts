@@ -114,6 +114,10 @@ review, replacement-action, and optional Mux metadata menus show `e) Back`.
 At an interactive terminal, main-menu choices `1`, `2`, `3`, and hidden `e`/`E`
 act on a single keypress without Enter. Submenu batch selections and data fields
 remain line-based; redirected input retains its existing line-based behavior.
+The interactive main menu displays shortcuts without a `Category:` input prompt.
+Hide the cursor only while that menu waits on a capable terminal, restoring it
+before submenu/data input and normal or interrupted exit. Main `e`/`E` remains
+hidden exit, and submenu `e`/`E` remains Back.
 Handle this at menu-choice call sites only: track IDs, flags, languages, names,
 and titles remain ordinary input fields. Literal `e` remains a valid name/title;
 other value fields retain their existing validation.

@@ -14,6 +14,33 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted direct shortcuts and cursor restoration
+
+- User clarified main categories are direct shortcuts, with hidden main e/E
+  exit and submenu e/E Back. Baseline signed/published
+  `f99b96e7a9ab6c2c46d207ab84f38a40035e2ed0`; stay in feature/main Scripts.
+- Interactive main no longer shows a Category input prompt. Cursor is hidden
+  during capable-terminal key wait and restored before submenu/data input,
+  hidden e exit and one keyboard Ctrl+C. Keys 1–3 remain immediate; optional
+  Enter remains harmless. Pipe input/collectors/queues and shared helper are
+  unchanged. No worktree, branch, AGENTS or dependency change.
+- Initial keyboard Ctrl+C failures are retained. Matching zsh primary source
+  explains interrupted unbounded key reads; local traps now use a 0.2s kernel
+  read wait to yield, a timeout/EOF sentinel and always cursor restoration.
+  Read-only explorer checked primary docs/source; parent integrated and proved
+  behavior on installed zsh. No idle busy loop, new tool or raised test guard.
+- Proof `.tmp/mkvutil-rework/menu-display.uJfcXR/receipt.json` / `accepted.log`:
+  4 passed, 1.55s wall / 1.23s measured CPU. Two controlling-PTY journeys cover
+  main keys, no Category prompt, correct hide/show ordering, ICANON/ECHO before
+  fields, hidden e and keyboard Ctrl+C; pipe exit/state checks also pass. Source
+  payloads are unchanged with zero media/fzf calls. Failed logs/minimal trace
+  are retained; no native/broad campaign was repeated.
+- Exact source comparison proves only main reader/call changed. Parent final
+  source/tests/guide/records and stable-ID/session-ledger checks pass; all 9 tasks
+  and 4 goals are accepted. Owners/processes are quiescent. Standing feature
+  commit/push permission applies. On resume verify the containing commit and
+  this proof folder's publication.json; no implementation/validation remains.
+
 ### Accepted immediate main-menu keys
 
 - User-directed follow-up on the same feature branch/main Scripts checkout,

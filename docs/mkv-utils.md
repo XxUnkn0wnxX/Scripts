@@ -47,7 +47,9 @@ If your existing repository environment already has its dependencies, keep using
 The main menu keeps the work areas separate:
 
 At the main menu, press `1`, `2`, or `3` to open a category immediately; no Enter
-is needed. Submenu batches and text fields still use Enter to confirm input.
+is needed. It displays direct shortcuts with the cursor hidden while waiting.
+Submenu batches and text fields still use Enter to confirm input, with the
+cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
 
 | Main menu | Actions | What it does |
 | --- | --- | --- |

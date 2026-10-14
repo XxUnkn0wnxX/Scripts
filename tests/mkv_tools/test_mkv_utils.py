@@ -2552,11 +2552,11 @@ print -r -- 'fresh subset navigation passed'
     assert result.stdout.rstrip().endswith("fresh subset navigation passed")
 
 
-def test_mkv_utils_main_menu_single_keys_terminal(env):
+@pytest.mark.parametrize("exit_key", [b"e", b"\x03"], ids=["hidden-exit", "ctrl-c"])
+def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
     import fcntl
     import pty
     import select
-    import signal
     import termios
     import time
 
@@ -2564,6 +2564,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env):
     run_env = os.environ.copy()
     run_env.update({
         "HOME": str(env["workdir"]),
+        "TERM": "xterm-256color",
         "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
         "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq",
         "TEST_REAL_PYTHON": sys.executable,
@@ -2577,11 +2578,17 @@ def test_mkv_utils_main_menu_single_keys_terminal(env):
         assert Path(shutil.which(tool, path=run_env["PATH"])).resolve() == (env["fake_bin"] / tool).resolve()
     master, terminal = pty.openpty()
     before = termios.tcgetattr(terminal)
+
+    def own_terminal():
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        os.tcsetpgrp(0, os.getpgrp())
+        assert os.tcgetpgrp(0) == os.getpgrp()
+
     process = subprocess.Popen(
         ["/usr/local/bin/zsh", "-f", str(env["mkv_utils_script"])],
         cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
         start_new_session=True,
-        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
+        preexec_fn=own_terminal,
     )
     output = bytearray()
 
@@ -2594,29 +2601,42 @@ def test_mkv_utils_main_menu_single_keys_terminal(env):
             assert process.poll() is None, output.decode(errors="replace")
         assert prompt in output[start:], output.decode(errors="replace")
 
+    def wait_for_shortcuts():
+        wait_for(b"\x1b[?25l")
+        # The hide escape precedes read's terminal setup. Send keys only once
+        # zsh is actually waiting in single-key mode, without line echo.
+        deadline = time.monotonic() + 10
+        while termios.tcgetattr(terminal)[3] & (termios.ICANON | termios.ECHO):
+            assert time.monotonic() < deadline, output.decode(errors="replace")
+            select.select([], [], [], 0.001)
+
     try:
-        wait_for(b"Category: ")
+        wait_for_shortcuts()
         for key in (b"1", b"2", b"3", b"1\n"):
             # First three need no Enter; an optional trailing Enter is harmless.
+            step = len(output)
             os.write(master, key)
             wait_for(b"Operations (single/comma/range): ")
+            assert output[step:].index(b"\x1b[?25h") < output[step:].index(b"Operations (single/comma/range): ")
             # Check before child exit: Darwin revokes its controlling PTY then.
             restored = termios.tcgetattr(terminal)
             mask = termios.ICANON | termios.ECHO
             assert before[3] & mask == restored[3] & mask
             os.write(master, b"e\n")  # Submenu input remains line-based.
-            wait_for(b"Category: ")
-        os.write(master, b"e")
+            wait_for_shortcuts()
+        os.write(master, exit_key)
         deadline = time.monotonic() + 10
         while process.poll() is None and time.monotonic() < deadline:
             if select.select([master], [], [], 0.1)[0]:
                 output.extend(os.read(master, 8192))
-        assert process.poll() == 0, output.decode(errors="replace")
+        assert process.poll() == (0 if exit_key == b"e" else 1), output.decode(errors="replace")
+        assert b"Category: " not in output
+        assert output.count(b"\x1b[?25l") == output.count(b"\x1b[?25h") == 5
     finally:
         os.close(master)
         os.close(terminal)
         if process.poll() is None:
-            os.killpg(process.pid, signal.SIGKILL)
+            process.kill()
             process.wait(timeout=10)
     assert source.read_text() == "payload"
     assert not any(_command_argv(env, tool) for tool in ("fzf", "mkvmerge", "mkvpropedit", "mkvextract"))

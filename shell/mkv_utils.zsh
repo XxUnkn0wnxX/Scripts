@@ -1178,10 +1178,27 @@ _mkvutil_read() {
 # Main choices are single keys at a terminal; pipes retain line-based input.
 # Submenu batches and metadata values continue through _mkvutil_read.
 _mkvutil_read_main() {
-  [[ -t 0 ]] || { _mkvutil_read "$1"; return $?; }
-  printf '%s' "$1" >&2
-  IFS= read -r -k 1 REPLY || return 2
-  printf '\n' >&2
+  [[ -t 0 ]] || { _mkvutil_read 'Category: '; return $?; }
+  setopt localtraps
+  local read_code=0 cursor_hidden=0 timeout_marker='mkvutil-waiting-for-key'
+  trap 'MKVUTIL_INTERRUPTED=1; read_code=2; return 2' INT TERM
+  {
+    if [[ -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+      cursor_hidden=1
+      printf '\e[?25l' >&2
+    fi
+    # Yield periodically so pending terminal signals can run their traps.
+    # Timeout leaves REPLY unchanged; EOF assigns an empty reply.
+    while (( ! MKVUTIL_INTERRUPTED )); do
+      REPLY="$timeout_marker"
+      if IFS= read -r -s -k 1 -t 0.2 REPLY; then break; fi
+      if [[ "$REPLY" != "$timeout_marker" ]]; then read_code=2; break; fi
+    done
+    (( ! MKVUTIL_INTERRUPTED )) || read_code=2
+  } always {
+    (( ! cursor_hidden )) || printf '\e[?25h' >&2
+  }
+  return "$read_code"
 }
 
 _mkvutil_exclude() {
@@ -2925,7 +2942,7 @@ mkvutil_main() {
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
     print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract'
-    _mkvutil_read_main 'Category: ' || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
+    _mkvutil_read_main || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
     case "$REPLY" in
       e|E|0) return "$sticky_code" ;;
       1) category=edit ;;
