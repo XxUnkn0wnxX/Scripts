@@ -108,6 +108,8 @@ operation settings.
   either one file or several through that same picker; remove the Y/N prompt
   and separate single-file mode. This is the user's approved selection change;
   other operation defaults and metadata prompts remain covered below.
+  Display and search filenames within the chosen directory, without their parent
+  paths; retain canonical full paths internally for selection and processing.
 - Category boundaries remain clear: configure Mux metadata inside the Mux
   workflow, using the same metadata choices and prompts as Edit. A general
   cross-category operation builder is outside the agreed design.

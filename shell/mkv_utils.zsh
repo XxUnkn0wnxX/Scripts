@@ -1413,6 +1413,7 @@ mkvutil_select_files() {
     selector=(--multi --read0 --print0 --height -1 --reverse --border --no-clear --sync)
     printf '\e[H' >&2
   fi
+  selector+=(--delimiter / --with-nth -1)
   {
     while IFS= read -r -d '' file; do selected+=("$file"); done < <(
       printf '%s\0' "${MKVUTIL_SCAN_FILES[@]}" | fzf "${selector[@]}"

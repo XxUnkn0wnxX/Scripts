@@ -8,6 +8,13 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The filename-only picker follow-up is accepted at T01.03 and affected T04 gates.
+Display and search filenames within the chosen directory, without their parent
+paths; retain canonical full paths internally for selection and processing.
+Installed-fzf filtering and the existing one/many selector test pass. Proof:
+`.tmp/mkvutil-rework/fzf-filenames/receipt.json`. No engine or screen-ownership
+change; prior accepted evidence remains applicable.
+
 The fzf handoff correction is accepted at T01.03 and affected T04 gates.
 Ten focused cases pass across separate runs, plus three final-source journeys
 with installed fzf 0.67.0: multi-selection/Back, Escape and Ctrl+C. Terminal

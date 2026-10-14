@@ -14,6 +14,22 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted filename-only picker follow-up
+
+- User requested no parent path in the picker. One display/search option pair
+  now shows filenames while fzf returns the original full NUL-delimited paths.
+  Both owned-screen and plain-input selection use it; processing is unchanged.
+- Installed fzf verifies filename-only search and exact original-path output;
+  the existing one/many selector test passes (1.07s). No new IA campaign or
+  dependencies. Initial filter assertion assumed sort order; corrected to check
+  exact selected paths without imposing an order the picker never promised.
+- Proof: `.tmp/mkvutil-rework/fzf-filenames/receipt.json`. Guide and plan/checklist
+  are synchronized; 9/9 tasks and 4/4 goals remain accepted. Parent owns all work.
+- Branch feature/mkvutil-rework in main Scripts, baseline signed/pushed
+  `8ae768fbd452deafdf482ce0d417ce40eac0d3a0`. Signed publication is authorized;
+  containing commit records this change. Verify exact ref/clean tree in this
+  proof root's publication.json before repeating a push.
+
 ### Accepted fzf handoff correction
 
 - User-reported menu-to-picker flash traced to leaving the alternate screen
