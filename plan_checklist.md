@@ -35,7 +35,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 | --- | --- | --- | --- | --- | --- | --- |
 | G01 | Checkpoint 1: menu and planning contract | T01.01, T01.02, T01.03 | All three tasks accepted; category configuration and preview consume the shared foundation and meet the existing no-mutation gate. | [x] | [x] | [x] |
 | G02 | Checkpoint 2: Edit + Mux execution | T02.01, T02.02, T02.03 | All three tasks accepted and combined Edit/Mux workflows meet their semantic, safety, and reporting gates; this is the approved stage gate before Extract implementation. | [x] | [x] | [x] |
-| G03 | Checkpoint 3: extraction integration | T03.01 | T03.01 accepted and both single and batched extraction outcomes verified. G02 acceptance is an existing execution-stage gate, not an assumed extraction API dependency. | [ ] | [ ] | [ ] |
+| G03 | Checkpoint 3: extraction integration | T03.01 | T03.01 accepted and both single and batched extraction outcomes verified. G02 acceptance is an existing execution-stage gate, not an assumed extraction API dependency. | [x] | [x] | [x] |
 | G04 | Checkpoint 4: integration and documentation | T04.01, T04.02 | Both tasks accepted; all required integration/verification evidence is current, help/docs match the implementation, and parent final review is complete. | [ ] | [ ] | [ ] |
 
 ### G01 — Checkpoint 1: menu and planning contract
@@ -58,7 +58,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 | Accepted | Task ID | Required result (mirror plan) | Required evidence / current status | Hard prerequisites | Shared/overlap |
 | --- | --- | --- | --- | --- | --- |
-| [ ] | T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, shared attachment collection with approved filename overwrites, track/companion collision protection, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | Required: Affected extraction tests across applicable formats, shared attachment overwrite/order/supersession and protected track/companion collision evidence, source-preservation/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. Status: not started; no acceptance evidence. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures |
+| [x] | T03.01 | Implement single/batched attachment and track extraction within Extract using one target selection, codec-aware names, deterministic stages, shared attachment collection with approved filename overwrites, track/companion collision protection, and partial-failure reporting without changing source media or claiming sidecar rollback. Reuse the shared final-report format and show between-file elapsed/count/ETA for attachment-only and track extraction; combined attachment-and-track jobs time only the track stage in that display. | Required: Affected extraction tests across applicable formats, shared attachment overwrite/order/supersession and protected track/companion collision evidence, source-preservation/failure evidence, selected-source real extraction proof, consistent final reports, and extraction timing with the requested stage scope. Status: accepted after parent source/receipt review and two critical checks (4.84s), 12 current audit contracts (26.70s), one notified CLI preview/Run probe (3.54s), two current consumer checks (9.71s), current native v93 attachment/text/VobSub proof, and Astra post-fix PASS WITH NOTES. Source hashes and payloads are verified; prior native-qualified Edit/Mux assembly is unchanged. Package receipt: `.tmp/mkvutil-rework/extract/package-receipt.json`; parent review: `.tmp/mkvutil-rework/extract-parent.2846jape/parent-integration.json`. Broad integrated/all-format/campaign gates remain T04. | T01.01, T01.03, G02 | T02.02, T02.03, T04.01; common source/output checks, final reporting and extraction test fixtures |
 
 ### G04 — Checkpoint 4: integration and documentation
 
@@ -83,12 +83,12 @@ pass. Planning-preparation history above is outside these implementation totals.
   allowing name/language/flag differences. Automatic mismatch skips retain
   exact filenames/reasons and the current source scope. Fresh skipped-subset
   planning is a G01 gate; post-execution continuation/reporting is a G02 gate.
-  The initial controller receipts and final selector/removal delta proof establish T01.03 planning acceptance; runtime continuation and result aggregation remain pending.
+  The initial controller receipts and final selector/removal delta proof establish T01.03 planning acceptance; accepted T02.03 proof separately establishes runtime continuation and result aggregation.
 - T02.01's missing normal multi-file Edit gate was reopened and closed by the
   focused two-file corrective proof. T02.02's focused executor, safety and
   small real-v93 semantic gates remain accepted at `f44cd98`.
   T02.03 reporting/continuation and the G02 goal gate are now accepted after
-  current consumer proof and independent integration review. Extract may begin.
+  current consumer proof and independent integration review. Extract is now accepted at its separate G03 gate.
   T04.01 consolidates valid slice receipts and integrated affected
   groups; it does not defer all prerequisite proof until the end.
 - T03.01 has G01 technical prerequisites plus the approved G02 acceptance-stage
@@ -154,4 +154,4 @@ All [track identity](plan.md#track-identity-and-preview),
 [file safety](plan.md#file-safety-and-queue-reporting), format, and acceptance
 contracts remain those in the authoritative plan.
 
-**Implementation tasks accepted: 6 / 9. Main goals/checkpoints accepted: 2 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02, T02.03; accepted goals: G01, G02. The code/evidence audit reopened and verified missing Edit proof, then current reporting/continuation checks closed G02. Extract, the integrated campaign and final gates remain pending.
+**Implementation tasks accepted: 7 / 9. Main goals/checkpoints accepted: 3 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02, T02.03, T03.01; accepted goals: G01, G02, G03. Extract passed current focused/native/entrypoint proof, parent critical review and independent post-fix audit. The six integrated validation groups, broad campaign and final help/docs remain pending in G04.

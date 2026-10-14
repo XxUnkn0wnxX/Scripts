@@ -142,6 +142,10 @@ typeset -A ext_override=(
   ["S_HDMV/PGS"]="pgs"           # PGS subtitles → .pgs
 )
 
+# Native PCM IDs need the canonical library map key; other native prefixes
+# translate generically (A_TRUEHD -> TRUEHD, S_VOBSUB -> VOBSUB, etc.).
+typeset -gA MKVUTIL_CODEC_ALIASES=(A_PCM/INT/LIT PCM A_PCM/FLOAT/IEEE PCM)
+
 format_duration() {
   local total_seconds="$1"
   printf "%02d:%02d:%02d" \
@@ -1011,7 +1015,24 @@ mkvutil_final_summary() {
     .counts=(reduce .files[] as $file
       ({done:0,failed:0,warning:0,partial:0,skipped:0,excluded:0,not_attempted:0,interrupted:0};
        (if $file.status=="success" then "done" elif $file.status=="pending" then "not_attempted" else $file.status end) as $key | .[$key]+=1)) |
-    .selected=(.files|length)|.required=([.files[]|select(.required)]|length)' \
+    .selected=(.files|length)|.required=([.files[]|select(.required)]|length) |
+    .attachments={processed:([.files[].attempts[].result.attachments_processed // 0]|add // 0),publications:[],winners:{},active:{}} |
+    reduce (.files[] as $file | $file.attempts[] as $attempt | $attempt.result.artifacts[]? |
+      select(.kind=="attachment" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
+      .+{source:$file.source,batch_id:$attempt.batch_id}) as $record
+      (. ; (.attachments.publications|length) as $index | $record.destination_key as $key |
+       .attachments.winners[$key] as $previous |
+       if $record.publication_state=="confirmed" then
+         reduce (.attachments.active[$key] // [])[] as $prior
+           (. ; .attachments.publications[$prior].outcome=(if .attachments.publications[$prior].publication_confirmed then "superseded" else "superseded_uncertain" end)) |
+         .attachments.active[$key]=[]
+       elif $previous!=null then .attachments.publications[$previous].outcome="winner_uncertain" else . end |
+       .attachments.publications += [$record+{outcome:(if $record.publication_state=="confirmed" then "winner" else "winner_uncertain" end)}] |
+       .attachments.winners[$key]=$index | .attachments.active[$key]=((.attachments.active[$key] // [])+[$index])) |
+    .attachments.unique_names=([.attachments.publications[]|select(.outcome=="winner")]|length) |
+    .attachments.uncertain_names=([.attachments.winners[] as $index|.attachments.publications[$index]|select(.outcome=="winner_uncertain")]|length) |
+    .attachments.published=([.attachments.publications[]|select(.publication_confirmed)]|length) |
+    .attachments.superseded=([.attachments.publications[]|select(.outcome=="superseded")]|length) | del(.attachments.active)' \
     "$header" "$batches" "${records[@]}"
 }
 
@@ -1028,13 +1049,24 @@ mkvutil_format_final_report() {
     "Done: \(.counts.done); Failed: \(.counts.failed); Warning: \(.counts.warning); Partial: \(.counts.partial); Skipped: \(.counts.skipped); Excluded: \(.counts.excluded); Not attempted: \(.counts.not_attempted); Interrupted: \(.counts.interrupted)",
     (if .interrupted then "Batch interrupted; remaining jobs not attempted." else empty end),
     "Complete batch elapsed: \(.elapsed_seconds|duration)",
+    (if any(.batches[];.category=="extract") then
+      "Attachments processed: \(.attachments.processed); published: \(.attachments.published); final unique published names: \(.attachments.unique_names); superseded: \(.attachments.superseded); uncertain names: \(.attachments.uncertain_names)",
+      (.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)") else empty end),
     (.files[] | . as $file |
       "\(.status): \(.source)\(if .destination then " => "+.destination else "" end)",
       (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
          (.receipt.reasons[] | "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")),
       (.attempts[] | "  Configuration \(.batch_id): phase=\(.result.phase); actual state=\(.result.actual_state)",
-        (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end)))
+        (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end),
+        (.result.stages[]? | "  Stage \(.kind): \(.status); code=\(.native_code)") ,
+        (.result.staged_paths[]? | "  Staged: \(.)"),
+        (.result.scratch_paths[]? | "  Native scratch: \(.)"),
+        (.result.unexpected_paths[]? | "  Unexpected artifact: \(.)"),
+        (if .result.cleanup_error then "  Cleanup failed: \(.result.cleanup_error)" else empty end),
+        (.result.inventory_errors[]? | "  Recovery inventory: \(.)"),
+        (.result.remaining_staging_directories[]? | "  Retained staging directory: \(.)"),
+        (.result.uncertain_artifacts[]? | "  Uncertain publication: \(.path)")))
   ' <<< "$1"
 }
 
@@ -1043,22 +1075,31 @@ mkvutil_final_report() { mkvutil_format_final_report "$(mkvutil_final_summary)";
 mkvutil_clock() { python3 -c 'import time; print(time.monotonic())'; }
 
 mkvutil_format_progress() {
-  local category="$1" operations="$2" elapsed="$3" attempted="$4" completed="$5" total="$6" work_elapsed="${7:-$3}" track_elapsed="${8-}" track_work="${9-}"
+  local category="$1" operations="$2" elapsed="$3" attempted="$4" completed="$5" total="$6" work_elapsed="${7:-$3}" track_elapsed="${8-}" track_work="${9-}" track_samples="${10:-$4}" mode=job
   [[ "$category" != edit ]] || return 0
   [[ "$category" == mux || "$category" == extract ]] || return 1
   if [[ "$category" == extract && ",$operations," == *,1,* && ",$operations," == *,2,* ]]; then
-    [[ -n "$track_elapsed" && -n "$track_work" ]] || return 1
-    elapsed="$track_elapsed"
+    [[ -n "$track_work" ]] || return 1
     work_elapsed="$track_work"
+    if [[ -n "$track_elapsed" ]]; then
+      elapsed="$track_elapsed";mode=track
+    else
+      (( $# >= 10 )) || return 1
+      mode=track_not_attempted
+    fi
   fi
   python3 -c '
 import sys
-elapsed=max(0,float(sys.argv[1])); work=max(0,float(sys.argv[2])); attempted,completed,total=map(int,sys.argv[3:])
-remaining=max(0,total-attempted); eta=work/attempted*remaining if attempted else 0
+elapsed=max(0,float(sys.argv[1]));work=max(0,float(sys.argv[2]));attempted,completed,total,samples=map(int,sys.argv[3:7]);mode=sys.argv[7]
+remaining=max(0,total-attempted);denominator=samples if mode.startswith("track") else attempted
+eta=work/denominator*remaining if denominator else None
+if not mode.startswith("track") and not denominator:eta=0
 def duration(value):
     value=int(value);return f"{value//3600}h {(value%3600)//60}m {value%60}s"
-print(f"Processed In: {duration(elapsed)}\nFiles Done: {completed}\nFiles Attempted: {attempted}\nFiles Remaining: {remaining}\nEstimated Time Remaining: {duration(eta)}")
-' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total"
+measured="Track stage: not attempted" if mode=="track_not_attempted" else f"Processed In: {duration(elapsed)}"
+estimated="unavailable (no track stages attempted)" if eta is None else duration(eta)
+print(f"{measured}\nFiles Done: {completed}\nFiles Attempted: {attempted}\nFiles Remaining: {remaining}\nEstimated Time Remaining: {estimated}")
+' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total" "$track_samples" "$mode"
 }
 
 mkvutil_source_identity() {
@@ -1344,7 +1385,7 @@ mkvutil_validate_config() {
 # and both argv arrays are embedded in the returned record, never shared by jobs.
 mkvutil_plan_job() {
   local record="$1" config="$2" file="" identity="" raw="" rows="" category="" removal="" order=""
-  local args="" input_ids="" retained="" selectors="" types="" flags="" codec_map='{}' overrides="" registry="" choices="" mismatch="" result=0
+  local args="" input_ids="" retained="" selectors="" types="" flags="" codec_map='{}' overrides="" registry="" choices="" mismatch="" aliases="" result=0
   _mkvutil_clear_plan_layout
   mkvutil_metadata_reset
   MKVUTIL_CURRENT_JOB=""
@@ -1396,14 +1437,24 @@ mkvutil_plan_job() {
   overrides="$(_mkvutil_json_map "${(@kv)ext_override}")" || return 1
   registry="$(_mkvutil_json_map "${(@kv)MKVUTIL_METADATA_REGISTRY}")" || return 1
   choices="$(_mkvutil_json_array "${MKVUTIL_METADATA_IDS[@]}")" || return 1
+  aliases="$(_mkvutil_json_map "${(@kv)MKVUTIL_CODEC_ALIASES}")" || return 1
   _mkvutil_jq_records '
     .[0] as $record | .[1] as $config | .[2] as $args | .[3] as $inputs |
     .[4] as $retained | .[5] as $selectors | .[6] as $types | .[7] as $flags |
     .[8] as $options | $options.extension as $extension | $options.track_order as $track_order |
-    .[9] as $codec_map | .[10] as $overrides | .[11] as $registry | .[12] as $choices |
+    .[9] as $codec_map | .[10] as $overrides | .[11] as $registry | .[12] as $choices | .[13] as $aliases |
     def codec_extension($cid):
-      ($cid|split("/")|last) as $key |
-      $overrides[$cid] // $overrides[$key] // $codec_map[$cid] // $codec_map[$key] // ($key|ascii_downcase|gsub("[^a-z0-9]";""));
+      ($cid|split("/")|last) as $key | ($aliases[$cid] // ($cid|sub("^[AVS]_";""))) as $canonical |
+      $overrides[$cid] // $overrides[$key] // $overrides[$canonical] //
+      $codec_map[$cid] // $codec_map[$key] // $codec_map[$canonical] // ($key|ascii_downcase|gsub("[^a-z0-9]";""));
+    def artifacts($path;$codec):
+      if $codec=="S_VOBSUB" then
+        [{path:($path|sub("\\.[^.]+$";".sub")),role:"vobsub_data",required:true},
+         {path:($path|sub("\\.[^.]+$";".idx")),role:"vobsub_index",required:true}]
+      elif $codec=="A_WAVPACK4" then
+        [{path:$path,role:"primary",required:true},
+         {path:($path|sub("\\.[^.]+$";".wvc")),role:"wavpack_correction",required:false}]
+      else [{path:$path,role:"primary",required:true}] end;
     $record + {schema:1, config:$config, removal_signatures:($config.removal_signatures // {}), input_ids:$inputs, retained_ids:$retained,
       selectors:$selectors, track_types:$types, source_flags:$flags,
       output_extension:$extension, track_order:$track_order,
@@ -1416,9 +1467,9 @@ mkvutil_plan_job() {
       [if ($config.operations|index("1")) then
          $record.model.attachments[] | . as $a |
          if ($a.file_name|type)!="string" or ($a.file_name|length)==0 or
-           ($a.file_name|test("[/\\\\]")) or $a.file_name=="." or $a.file_name==".."
+           ($a.file_name|test("[/\\\\]")) or ($a.file_name|contains("\u0000")) or $a.file_name=="." or $a.file_name==".."
          then error("unsafe attachment filename") else
-           {kind:"attachment", id:($a.id|tostring), codec:null,
+           {kind:"attachment", id:($a.id|tostring), codec:null,expected_size:($a.size // null),
             path:($job.destination+"/"+$a.file_name)} end
        else empty end,
        $config.extract_ids[] as $id | $record.model.tracks[] | select((.id|tostring)==$id) |
@@ -1426,6 +1477,7 @@ mkvutil_plan_job() {
        if ($ext|length)==0 or ($ext|test("^[a-zA-Z0-9]+$")|not) then error("unknown extraction extension")
        else {kind:"track", id:$id, codec:$cid, path:($job.source|sub("\\.[^.]+$";""))+" - Track ["+$id+"]."+$ext} end]
       end) |
+    .outputs |= map(if type=="object" then . + {artifacts:artifacts(.path;.codec)} else . end) |
     .requested_metadata=[$choices[] as $choice | $config.settings|to_entries[] |
       select((.key|split(":")[0])==$choice) |
       {choice:$choice, original_id:(.key|split(":")[1]), value:.value,
@@ -1440,7 +1492,7 @@ mkvutil_plan_job() {
          default:(if ($config.settings|has("2:"+$id)) then ($config.settings["2:"+$id]=="1") else .properties.default_track end)}]}
   ' "$record" "$config" "$args" "$input_ids" "$retained" "$selectors" "$types" "$flags" \
     "$(jq -cn --arg extension "$MKVUTIL_OUTPUT_EXTENSION" --arg track_order "$MKVUTIL_TRACK_ORDER" '{extension:$extension,track_order:$track_order}')" \
-    "$codec_map" "$overrides" "$registry" "$choices"
+    "$codec_map" "$overrides" "$registry" "$choices" "$aliases"
 }
 
 # Reload known job fields with NUL framing: empty arguments and trailing newlines
@@ -1477,11 +1529,14 @@ mkvutil_load_job() {
 # Validate every destination before offering Run. Same-source Edit/Mux is
 # intentional; cross-job collisions, existing sidecars and other inputs reject.
 mkvutil_check_destinations() {
-  printf '%s\0' "$@" | python3 -c '
-import json, os, sys, unicodedata
+  local protected='[]'
+  (( ! MKVUTIL_LEDGER_ENABLED )) || protected="$(_mkvutil_json_array "${MKVUTIL_SCOPE_KEYS[@]}")" || return 1
+  printf '%s\0' "$protected" "$@" | python3 -c '
+import json, os, stat, sys, unicodedata
 from pathlib import Path
 try:
-    jobs = [json.loads(record) for record in sys.stdin.buffer.read().split(b"\0") if record]
+    records = [json.loads(record) for record in sys.stdin.buffer.read().split(b"\0") if record]
+    protected, jobs = records[0], records[1:]
     def case_insensitive(source):
         alternate = source.with_name(source.name.swapcase())
         try:
@@ -1497,7 +1552,7 @@ try:
             tail.insert(0, parent.name)
             parent = parent.parent
         if not parent.is_dir():
-            raise ValueError(f"Output parent is not a directory: {parent}")
+            raise ValueError(f"Output parent is not a regular directory: {parent}")
         item = parent.stat()
         insensitive = case_insensitive(source)
         if item.st_dev != source.parent.stat().st_dev:
@@ -1514,20 +1569,38 @@ try:
         if key in sources:
             raise ValueError(f"Duplicate source alias: {source}")
         sources[key] = source
+    input_keys = set(sources)
+    input_inodes = set()
+    for path in {Path(value) for value in protected} | set(sources.values()):
+        input_keys.add(destination_key(path, path))
+        if os.path.lexists(path):
+            item = path.lstat()
+            if stat.S_ISREG(item.st_mode):
+                input_inodes.add((item.st_dev, item.st_ino))
     destinations = {}
     for job in jobs:
         source = Path(job["source"])
         source_key = destination_key(source, source)
         for output in job["outputs"]:
-            path = Path(output["path"] if isinstance(output, dict) else output)
-            key = destination_key(path, source)
-            if key in destinations:
-                raise ValueError(f"Destination collision or filename alias: {path}")
-            destinations[key] = path
-            if job["config"]["category"] != "extract" and key == source_key:
-                continue
-            if key in sources or os.path.lexists(path):
-                raise ValueError(f"Destination already exists or is another source: {path}")
+            kind = output.get("kind") if isinstance(output, dict) else None
+            artifacts = output.get("artifacts", [{"path": output["path"]}]) if isinstance(output, dict) else [{"path": output}]
+            for artifact in artifacts:
+                path = Path(artifact["path"])
+                key = destination_key(path, source)
+                previous = destinations.get(key)
+                if previous and not (kind == previous["kind"] == "attachment"):
+                    raise ValueError(f"Destination collision or filename alias: {path}")
+                destinations[key] = {"path": path, "kind": kind}
+                if job["config"]["category"] != "extract" and key == source_key:
+                    continue
+                if key in input_keys:
+                    raise ValueError(f"Destination aliases input media: {path}")
+                if os.path.lexists(path):
+                    item = path.lstat()
+                    if kind != "attachment" or not stat.S_ISREG(item.st_mode):
+                        raise ValueError(f"Destination already exists or is unsafe: {path}")
+                    if (item.st_dev, item.st_ino) in input_inodes:
+                        raise ValueError(f"Attachment destination inode aliases input media: {path}")
 except (OSError, ValueError, KeyError, TypeError) as error:
     print(str(error), file=sys.stderr)
     sys.exit(1)
@@ -1654,7 +1727,7 @@ mkvutil_review_menu() {
 }
 
 mkvutil_preview_jobs() {
-  local job=""
+  local job="" show_attachment_policy=1
   if (( MKVUTIL_LEDGER_ENABLED )); then
     local source="" entry=""
     for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do
@@ -1669,14 +1742,18 @@ mkvutil_preview_jobs() {
   fi
   mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
   for job in "${MKVUTIL_JOBS[@]}"; do
-    jq -r '
+    jq -r --argjson show_policy "$show_attachment_policy" '
+      (if $show_policy==1 and .config.category=="extract" and (.config.operations|index("1")) then
+        "Attachments: shared collection; overwrite regular same-name files in selected-source and embedded-list order; last successful publication wins." else empty end),
       "Source: \(.source)", "Category: \(.config.category)", "Destination: \(.destination)",
       "Title: \(.preview.title // "")",
       (.config.removed_ids[] | "Original ID \(.): removed"),
       (.requested_metadata[] | "Metadata: \(.label) — \(.original_id) \(.property)=\(.value|tojson)"),
       (.preview.tracks[] | "Original ID \(.original_id) => final position \(.final_position): \(.type) [\(.codec)] name=\(.name|tojson) language=\(.language|tojson) default=\(.default) forced=\(.forced)"),
-      (.outputs[] | select(type=="object") | "Extract \(.kind) \(.id): \(.path)")
+      (.outputs[] | select(type=="object") | "Extract \(.kind) \(.id): \(.path)",
+        (.artifacts[] | "  Artifact \(.role) (\(if .required then "required" else "optional" end)): \(.path)"))
     ' <<< "$job" || return 1
+    show_attachment_policy=0
   done
 }
 
@@ -1695,36 +1772,13 @@ _mkvutil_execution_failure() {
     "$job" "$(_mkvutil_json_array "$reason" | jq -c '.[0]')" "$(_mkvutil_json_array "$status_name" | jq -c '.[0]')"
 }
 
-_mkvutil_execution_engine() {
-  local action="$1" job="$2" fresh="$3" registry="$4" python_bin="" program="" aliases=""
-  aliases="$(_mkvutil_json_map "${(@kv)MKVUTIL_LANGUAGE_NATIVE_ALIASES}")" || return 1
-  python_bin="${VENV_PATH}/bin/python3"
-  [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
-  program="$(cat <<'PYCODE'
-import copy, json, os, re, signal, stat, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
-from pathlib import Path
-
-job, fresh, registry, language_aliases = [json.loads(value) for value in sys.stdin.buffer.read().decode().split("\0")[:-1]]
-action = sys.argv[1]
-started = time.monotonic()
-source, destination = Path(job["source"]), Path(job["destination"])
-original = json.loads(fresh["source_json"])
-config = job["config"]
-result = dict(source=str(source), destination=str(destination), category=action,
-              action_ids=config["operations"], metadata_ids=config["metadata"],
-              status="failed", native_code=None, phase="preflight", actual_state="unpublished",
-              reason="", candidate_path=None, staging_directory=None, validation_notes=[])
-stage_dir = candidate = None
-candidate_identity = None
+_mkvutil_execution_support() {
+  cat <<'PYCOMMON'
+import os, signal, stat, subprocess
 child = None
 interrupted = False
-publication_attempted = publication_committed = source_unlinked = False
-source_tags = ""
 
 class Interrupted(Exception):
-    pass
-
-class ValidationFailure(Exception):
     pass
 
 def identity(path):
@@ -1740,21 +1794,6 @@ def inode(path):
         return value["dev"], value["ino"]
     except (OSError, ValueError):
         return None
-
-def source_unchanged():
-    if identity(source) != job["identity"]:
-        raise ValueError("Source identity changed since planning")
-
-def phase(name):
-    result["phase"] = name
-    if stage_dir:
-        record = dict(result, source_original_identity=job["identity"], stage_identity=candidate_identity,
-                      publication_attempted=publication_attempted, publication_committed=publication_committed,
-                      source_unlinked=source_unlinked)
-        temporary = stage_dir / "phase.new"
-        temporary.write_text(json.dumps(record, ensure_ascii=False) + "\n")
-        os.replace(temporary, stage_dir / "phase.json")
-        result["phase_receipt"] = str(stage_dir / "phase.json")
 
 def stop_child():
     global child
@@ -1777,13 +1816,10 @@ def interrupt(signum, frame):
     interrupted = True
     raise Interrupted(f"Interrupted by signal {signum}")
 
-for signum in (signal.SIGINT, signal.SIGTERM):
-    signal.signal(signum, interrupt)
-
-def run(argv, timeout=None):
+def run(argv, timeout=None, cwd=None):
     global child
     child = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE, start_new_session=True)
+                             stderr=subprocess.PIPE, start_new_session=True, cwd=cwd)
     try:
         if timeout is not None:
             stdout, stderr = child.communicate(timeout=timeout)
@@ -1805,6 +1841,60 @@ def run(argv, timeout=None):
     code = child.returncode
     child = None
     return code, stdout.decode(errors="replace"), stderr.decode(errors="replace")
+
+for signum in (signal.SIGINT, signal.SIGTERM):
+    signal.signal(signum, interrupt)
+PYCOMMON
+}
+
+_mkvutil_execution_engine() {
+  local action="$1" job="$2" fresh="$3" registry="$4" python_bin="" program="" aliases=""
+  aliases="$(_mkvutil_json_map "${(@kv)MKVUTIL_LANGUAGE_NATIVE_ALIASES}")" || return 1
+  python_bin="${VENV_PATH}/bin/python3"
+  [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
+  program="$(_mkvutil_execution_support)"$'\n'"$(cat <<'PYCODE'
+import copy, json, os, re, signal, stat, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
+from pathlib import Path
+
+job, fresh, registry, language_aliases = [json.loads(value) for value in sys.stdin.buffer.read().decode().split("\0")[:-1]]
+action = sys.argv[1]
+started = time.monotonic()
+source, destination = Path(job["source"]), Path(job["destination"])
+original = json.loads(fresh["source_json"])
+config = job["config"]
+result = dict(source=str(source), destination=str(destination), category=action,
+              action_ids=config["operations"], metadata_ids=config["metadata"],
+              status="failed", native_code=None, phase="preflight", actual_state="unpublished",
+              reason="", candidate_path=None, staging_directory=None, validation_notes=[])
+stage_dir = candidate = None
+candidate_identity = None
+publication_attempted = publication_committed = source_unlinked = False
+source_tags = ""
+
+
+class ValidationFailure(Exception):
+    pass
+
+
+
+def source_unchanged():
+    if identity(source) != job["identity"]:
+        raise ValueError("Source identity changed since planning")
+
+def phase(name):
+    result["phase"] = name
+    if stage_dir:
+        record = dict(result, source_original_identity=job["identity"], stage_identity=candidate_identity,
+                      publication_attempted=publication_attempted, publication_committed=publication_committed,
+                      source_unlinked=source_unlinked)
+        temporary = stage_dir / "phase.new"
+        temporary.write_text(json.dumps(record, ensure_ascii=False) + "\n")
+        os.replace(temporary, stage_dir / "phase.json")
+        result["phase_receipt"] = str(stage_dir / "phase.json")
+
+
+
+
 
 def identify(path):
     code, raw, error = run(["mkvmerge", "-J", str(path)], 60)
@@ -2251,6 +2341,318 @@ _mkvutil_execute_job() {
   return "$result_code"
 }
 
+
+# Extract has its own artifact inventory/publication path. Native programs are
+# literal source; source models, paths and settings arrive only as NUL JSON.
+_mkvutil_extract_engine() {
+  local job="$1" fresh="$2" protected="$3" python_bin="${VENV_PATH}/bin/python3" program=""
+  [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
+  program="$(_mkvutil_execution_support)"$'\n'"$(cat <<'PYEXTRACT'
+import json, re, sys, tempfile, time, unicodedata
+from pathlib import Path
+job, fresh, protected = [json.loads(value) for value in sys.stdin.buffer.read().decode().split("\0")[:-1]]
+source = Path(job["source"])
+original = json.loads(job["source_json"])
+started = time.monotonic()
+result = dict(source=str(source),destination=job["destination"],category="extract",action_ids=job["config"]["operations"],metadata_ids="",
+              status="failed",native_code=None,phase="preflight",actual_state="not_modified_by_job",reason="",stages=[],
+              artifacts=[],staging_directories=[],phase_receipts=[],unexpected_paths=[],scratch_paths=[],track_stage_seconds=None)
+for kind in ("attachments","tracks"):
+    result["stages"].append(dict(kind=kind,status="not_attempted",attempted=False,native_code=None,elapsed_seconds=None,validated_count=0))
+parents = {}; directories = {}; directory_identities = {}; leaves = {}; active_stage = None
+source_inode = (job["identity"]["dev"],job["identity"]["ino"])
+input_inodes = {source_inode}
+input_paths = {str(Path(path).resolve()) for path in protected} | {str(source.resolve())}
+for path in protected:
+    try:
+        value=identity(path);input_inodes.add((value["dev"],value["ino"]))
+    except (OSError,ValueError):
+        pass
+
+def source_guard():
+    if identity(source)!=job["identity"]:
+        raise ValueError("Source identity changed since planning; no source write is performed by Extract")
+
+def parent_guard(lexical):
+    guard=parents[str(lexical)]
+    current=os.lstat(lexical)
+    if (str(current.st_dev),str(current.st_ino))!=guard["entry"] or str(lexical.resolve(strict=True))!=guard["resolved"]:
+        raise ValueError(f"Output parent changed: {lexical}")
+    target=os.stat(lexical)
+    if not stat.S_ISDIR(target.st_mode) or (str(target.st_dev),str(target.st_ino))!=guard["target"]:
+        raise ValueError(f"Output directory identity changed: {lexical}")
+
+def output_parent(path):
+    lexical=path.parent
+    if str(lexical) in parents:
+        parent_guard(lexical);return Path(parents[str(lexical)]["resolved"])
+    if not os.path.lexists(lexical):
+        # The only planned absent output parent is the shared collection.
+        if lexical!=source.parent/"Attachments":
+            raise ValueError(f"Unplanned missing output parent: {lexical}")
+        root=os.stat(lexical.parent)
+        os.mkdir(lexical)
+        now=os.stat(lexical.parent)
+        if (root.st_dev,root.st_ino)!=(now.st_dev,now.st_ino):
+            raise ValueError("Source directory changed while creating collection")
+    resolved=lexical.resolve(strict=True);entry=os.lstat(lexical);target=os.stat(resolved)
+    if not stat.S_ISDIR(target.st_mode):raise ValueError(f"Output parent is not a directory: {lexical}")
+    parents[str(lexical)]={"resolved":str(resolved),"entry":(str(entry.st_dev),str(entry.st_ino)),"target":(str(target.st_dev),str(target.st_ino))}
+    return resolved
+
+def case_insensitive(parent,path):
+    # After confirmed Run, the required unique stage directory provides an
+    # existing letter-bearing entry on the actual destination filesystem.
+    reference=directories[str(parent)]
+    try:return os.path.samefile(reference,reference.with_name(reference.name.swapcase()))
+    except FileNotFoundError:return False
+
+def key(parent,path):
+    name=path.name
+    insensitive=case_insensitive(parent,path)
+    if insensitive or sys.platform=="darwin":name=unicodedata.normalize("NFD",name)
+    if insensitive:name=name.casefold()
+    directory=parent.stat()
+    return json.dumps([str(directory.st_dev),str(directory.st_ino),name],ensure_ascii=False)
+
+def leaf(path):
+    if not os.path.lexists(path):return None
+    value=identity(path)
+    if (value["dev"],value["ino"]) in input_inodes:raise ValueError(f"Output inode aliases input media: {path}")
+    return value
+
+def owned_directory_guard(directory):
+    value=directory.lstat()
+    if not stat.S_ISDIR(value.st_mode) or (value.st_dev,value.st_ino)!=directory_identities[str(directory)]:
+        raise ValueError(f"Owned staging directory changed: {directory}")
+
+def receipt(phase):
+    result["phase"]=phase
+    for directory in directories.values():
+        owned_directory_guard(directory)
+        temporary=directory/"phase.new"
+        temporary.write_text(json.dumps(result,ensure_ascii=False)+"\n")
+        os.replace(temporary,directory/"phase.json")
+
+def directory_for(parent):
+    name=str(parent)
+    if name not in directories:
+        directory=Path(tempfile.mkdtemp(prefix=".mkvutil-extract-",dir=parent))
+        directories[name]=directory
+        value=directory.lstat();directory_identities[str(directory)]=(value.st_dev,value.st_ino)
+        result["staging_directories"].append(str(directory))
+        result["phase_receipts"].append(str(directory/"phase.json"))
+    return directories[name]
+
+def reconcile_artifact(artifact):
+    expected=artifact.get("stage_identity")
+    if not artifact["publication_attempted"] or not expected:return
+    if artifact["publication_state"]=="confirmed" and any(later["publication_order"]>artifact["publication_order"] and later["destination_key"]==artifact["destination_key"] and later["publication_attempted"] for later in result["artifacts"]):
+        return  # Historical successful publication may have been superseded.
+    expected_inode=(expected["dev"],expected["ino"])
+    if inode(artifact["path"])==expected_inode:
+        artifact["publication_state"]="confirmed" if identity(artifact["path"])==expected else "uncertain"
+        if artifact["publication_state"]=="confirmed":artifact["publication_confirmed"]=True
+    elif artifact["publication_returned"]:
+        artifact["publication_state"]="uncertain"
+    else:
+        try:current=leaf(Path(artifact["path"]))
+        except (OSError,ValueError):current="unsafe"
+        artifact["publication_state"]="unpublished" if current==artifact["previous_identity"] else "uncertain"
+
+def publish(artifact):
+    destination=Path(artifact["path"]);staged=Path(artifact["stage_path"])
+    expected=leaves[artifact["destination_key"]]
+    artifact["previous_identity"]=expected
+    artifact["publication_attempted"]=True
+    receipt("publishing")
+    source_guard();parent_guard(destination.parent)
+    if identity(staged)!=artifact["stage_identity"]:raise ValueError(f"Staged artifact changed: {staged}")
+    if leaf(destination)!=expected:raise ValueError(f"Output changed before publication: {destination}")
+    if artifact["kind"]=="attachment":os.replace(staged,destination)
+    else:os.link(staged,destination,follow_symlinks=False)
+    artifact["publication_returned"]=True
+    if identity(destination)!=artifact["stage_identity"]:raise ValueError(f"Published identity differs: {destination}")
+    parent_guard(destination.parent)
+    artifact["publication_state"]="confirmed";artifact["publication_confirmed"]=True
+    leaves[artifact["destination_key"]]=artifact["stage_identity"]
+    receipt("published")
+
+def inventory(directory,expected,kind):
+    owned_directory_guard(directory)
+    for entry in directory.iterdir():
+        if entry.name in ("phase.json","phase.new") or str(entry) in expected:continue
+        if kind=="tracks" and re.fullmatch(r"mkvextract-\d+-temp-tta-\d+",entry.name):
+            if str(entry) not in result["scratch_paths"]:result["scratch_paths"].append(str(entry))
+        elif str(entry) not in result["unexpected_paths"]:result["unexpected_paths"].append(str(entry))
+
+def refresh_recovery_inventory():
+    remaining=set();result["remaining_staging_directories"]=[]
+    for directory in directories.values():
+        if not os.path.lexists(directory):continue
+        try:
+            owned_directory_guard(directory)
+            result["remaining_staging_directories"].append(str(directory))
+            remaining.update(str(entry) for entry in directory.iterdir())
+        except BaseException as error:
+            result.setdefault("inventory_errors",[]).append(str(error))
+    result["staged_paths"]=[a["stage_path"] for a in result["artifacts"] if a["stage_path"] in remaining]
+    result["phase_receipts"]=[str(directory/"phase.json") for directory in directories.values() if str(directory/"phase.json") in remaining]
+    for field in ("scratch_paths","unexpected_paths"):
+        result[field]=[path for path in result[field] if path in remaining]
+
+def execute_stage(stage,outputs):
+    global active_stage
+    active_stage=stage
+    if not outputs:return
+    stage_started=time.monotonic();specs=[];stage_artifacts=[];expected=set();cwd=None
+    for logical_index,output in outputs:
+        destination=Path(output["path"]);parent=output_parent(destination);directory=directory_for(parent)
+        if cwd is None:cwd=directory
+        request=directory/f"{stage['kind']}-{logical_index:06d}{destination.suffix}"
+        specs.append(output["id"]+":"+str(request))
+        for family in output["artifacts"]:
+            physical=Path(family["path"]);physical_parent=output_parent(physical)
+            if physical_parent!=parent:raise ValueError("Artifact family spans unexpected directories")
+            if str(physical.resolve()) in input_paths:raise ValueError(f"Output aliases input path: {physical}")
+            namespace=key(parent,physical);existing=leaf(physical)
+            if output["kind"]!="attachment" and existing is not None:raise FileExistsError(f"Protected track output exists: {physical}")
+            if namespace not in leaves:leaves[namespace]=existing
+            staged=request.with_suffix(".sub") if family["role"]=="vobsub_data" else request.with_suffix(".idx") if family["role"]=="vobsub_index" else request.with_suffix(".wvc") if family["role"]=="wavpack_correction" else request
+            artifact=dict(logical_index=logical_index,kind=output["kind"],id=output["id"],role=family["role"],required=family["required"],
+                          path=str(physical),stage_path=str(staged),destination_key=namespace,stage_identity=None,
+                          previous_identity=existing,publication_attempted=False,publication_returned=False,publication_confirmed=False,publication_state="unpublished",present=False)
+            artifact["publication_order"]=len(result["artifacts"])
+            result["artifacts"].append(artifact);stage_artifacts.append(artifact);expected.add(str(staged))
+    source_guard()
+    for lexical in parents:parent_guard(Path(lexical))
+    stage["attempted"]=True;stage["status"]="running"
+    stage["argv"]=["mkvextract",str(source),stage["kind"],*specs]
+    try:
+        receipt("native_"+stage["kind"])
+        code,stdout,stderr=run(stage["argv"],cwd=cwd)
+        stage.update(native_code=code,native_stdout=stdout,native_stderr=stderr)
+        result["native_code"]=code
+        if code!=0:
+            stage["status"]="interrupted" if code<0 else "warning" if code==1 else "failed"
+            result["status"]=stage["status"]
+        for directory in directories.values():inventory(directory,{a["stage_path"] for a in result["artifacts"]},stage["kind"])
+        for artifact in stage_artifacts:
+            path=Path(artifact["stage_path"])
+            if os.path.lexists(path):
+                artifact["stage_identity"]=identity(path);artifact["present"]=True
+        if code!=0:
+            raise RuntimeError(f"Native {stage['kind']} returned {code}; staged outputs retained without stage publication")
+        source_guard()
+        if result["unexpected_paths"]:raise ValueError("Unexpected native artifacts; candidates retained")
+        attachments={str(item["id"]):item for item in original.get("attachments",[])}
+        for artifact in stage_artifacts:
+            if not artifact["present"]:
+                if artifact["required"]:raise ValueError(f"Required staged artifact missing: {artifact['stage_path']}")
+                continue
+            value=artifact["stage_identity"]
+            if (value["dev"],value["ino"]) in input_inodes:raise ValueError("Staged artifact inode aliases input media")
+            if artifact["kind"]=="attachment":
+                size=attachments[artifact["id"]].get("size")
+                if size is not None and (type(size) is not int or size<0 or str(size)!=value["size"]):
+                    raise ValueError(f"Attachment {artifact['id']} staged size differs from source identification")
+        stage["validated_count"]=len(outputs);stage["status"]="validated";receipt("validated_"+stage["kind"])
+        for artifact in stage_artifacts:
+            if artifact["present"]:publish(artifact)
+        stage["status"]="complete"
+    finally:
+        stage["elapsed_seconds"]=time.monotonic()-stage_started
+        if stage["kind"]=="tracks":result["track_stage_seconds"]=stage["elapsed_seconds"]
+
+try:
+    source_guard()
+    if json.loads(fresh["source_json"])!=original:raise ValueError("Source identification changed since planning")
+    outputs=list(enumerate(job["outputs"]))
+    for stage,kind in zip(result["stages"],("attachment","track")):
+        execute_stage(stage,[(index,out) for index,out in outputs if out["kind"]==kind])
+    source_guard()
+    for artifact in result["artifacts"]:reconcile_artifact(artifact)
+    if any(a["publication_state"]=="uncertain" for a in result["artifacts"]):
+        raise ValueError("Published output changed before final observation; publication outcome uncertain")
+    result["status"]="success";receipt("complete")
+except BaseException as error:
+    stop_child();result["reason"]=str(error)
+    # run() may raise before returning a code. Inspect only still-owned stage
+    # directories after bounded child shutdown; preserve scratch and unexpected
+    # candidates as evidence instead of omitting them from interruption records.
+    for directory in directories.values():
+        try:
+            inventory(directory,{a["stage_path"] for a in result["artifacts"]},active_stage["kind"] if active_stage else "")
+            for artifact in result["artifacts"]:
+                if Path(artifact["stage_path"]).parent==directory and os.path.lexists(artifact["stage_path"]):
+                    artifact["present"]=True
+                    if artifact["stage_identity"] is None:artifact["stage_identity"]=identity(artifact["stage_path"])
+        except BaseException as inventory_error:
+            result.setdefault("inventory_errors",[]).append(str(inventory_error))
+    if interrupted or isinstance(error,(Interrupted,KeyboardInterrupt)):
+        result["status"]="interrupted"
+    for artifact in result["artifacts"]:
+        try:reconcile_artifact(artifact)
+        except BaseException:artifact["publication_state"]="uncertain"
+    published=any(a["publication_state"] in ("confirmed","uncertain") for a in result["artifacts"])
+    if result["status"] not in ("warning","interrupted"):
+        result["status"]="partial" if published else "failed"
+    if active_stage and active_stage["attempted"] and active_stage["status"]!="complete":
+        active_kind="attachment" if active_stage["kind"]=="attachments" else "track"
+        stage_published=any(a["kind"]==active_kind and a["publication_state"] in ("confirmed","uncertain") for a in result["artifacts"])
+        if result["status"]=="interrupted":active_stage["status"]="interrupted"
+        elif active_stage["native_code"]==1:active_stage["status"]="warning"
+        elif active_stage["native_code"] not in (0,None):active_stage["status"]="failed"
+        else:active_stage["status"]="partial" if stage_published else "failed"
+finally:
+    signal.signal(signal.SIGINT,signal.SIG_IGN);signal.signal(signal.SIGTERM,signal.SIG_IGN)
+    result["elapsed_seconds"]=time.monotonic()-started
+    result["published_artifacts"]=[a for a in result["artifacts"] if a["publication_state"]=="confirmed"]
+    result["uncertain_artifacts"]=[a for a in result["artifacts"] if a["publication_state"]=="uncertain"]
+    refresh_recovery_inventory()
+    result["actual_state"]="publication_uncertain" if result["uncertain_artifacts"] else "sidecars_published" if result["published_artifacts"] else "staged_unpublished" if result["staged_paths"] else "no_outputs"
+    result["attachments_processed"]=next(s["validated_count"] for s in result["stages"] if s["kind"]=="attachments")
+    try:
+        if result["status"]=="success":
+            for directory in directories.values():
+                owned_directory_guard(directory)
+                for path in directory.iterdir():
+                    if str(path) in result["staged_paths"]:
+                        artifact=next(a for a in result["artifacts"] if a["stage_path"]==str(path))
+                        if identity(path)!=artifact["stage_identity"]:raise ValueError("Owned candidate changed before cleanup")
+                    if path.name in ("phase.json","phase.new") or str(path) in result["staged_paths"] or str(path) in result["scratch_paths"]:path.unlink()
+                directory.rmdir()
+        elif directories:receipt(result["phase"])
+    except BaseException as error:
+        result["cleanup_error"]=str(error)
+        result["reason"]=(result["reason"]+"; " if result["reason"] else "")+"Cleanup failed: "+str(error)
+        if result["status"]=="success":result["status"]="partial";result["phase"]="cleanup_failed"
+    refresh_recovery_inventory()
+    print(json.dumps(result,ensure_ascii=False))
+    sys.exit(0 if result["status"]=="success" else 1)
+PYEXTRACT
+)"
+  printf '%s\0' "$job" "$fresh" "$protected" | "$python_bin" -c "$program"
+}
+
+mkvutil_execute_extract_job() {
+  local job="$1" file="" fresh="" protected="" result=0
+  MKVUTIL_RESULT_JSON=""
+  file="$(jq -r '.source' <<< "$job")" || return 1
+  if ! mkvutil_check_destinations "$job" || ! fresh="$(mkvutil_capture_source "$file")"; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract preflight or source inspection failed')"
+    return 1
+  fi
+  protected="$(_mkvutil_json_array "${MKVUTIL_SCOPE_KEYS[@]}" "$file")" || return 1
+  MKVUTIL_RESULT_JSON="$(_mkvutil_extract_engine "$job" "$fresh" "$protected")" || result=$?
+  if [[ -z "$MKVUTIL_RESULT_JSON" ]]; then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract stopped without a result; inspect retained stage receipts' interrupted)"
+    MKVUTIL_RESULT_JSON="$(jq -c '.actual_state="unknown_inspect_filesystem"' <<< "$MKVUTIL_RESULT_JSON")"
+    return 1
+  fi
+  return "$result"
+}
+
 mkvutil_execute_edit_job() { _mkvutil_execute_job edit "$1"; }
 mkvutil_execute_mux_job() { _mkvutil_execute_job mux "$1"; }
 
@@ -2260,14 +2662,20 @@ mkvutil_report_result() {
     (if .reason!="" then "  \(.reason)" else empty end),
     (if .candidate_path then "  Candidate: \(.candidate_path)" else empty end),
     (if .phase_receipt then "  Phase receipt: \(.phase_receipt)" else empty end),
-    ((.observed_metadata // {})|to_entries[]|"  Actual metadata \(.key): \(.value|tojson)")' <<< "$1"
+    ((.observed_metadata // {})|to_entries[]|"  Actual metadata \(.key): \(.value|tojson)"),
+    (.staged_paths[]? | "  Staged: \(.)"),(.phase_receipts[]?|"  Phase receipt: \(.)"),
+    (.scratch_paths[]? | "  Native scratch: \(.)"),(.unexpected_paths[]? | "  Unexpected artifact: \(.)"),
+    (if .cleanup_error then "  Cleanup failed: \(.cleanup_error)" else empty end),
+    (.inventory_errors[]? | "  Recovery inventory: \(.)"),
+    (.remaining_staging_directories[]? | "  Retained staging directory: \(.)")' <<< "$1"
 }
 
 mkvutil_execute_queue() {
   setopt localtraps
   local job="" category="" operations="" source="" config="" outcome="" record="" status_name="" batch=""
   local result_code=0 queue_code=0 interrupted=0 attempted=0 completed=0 total=$# native_returned=0 result_recorded=1
-  local -F 6 queue_started=0 job_started=0 now=0 job_elapsed=0 work_elapsed=0 queue_elapsed=0
+  local -F 6 queue_started=0 job_started=0 now=0 job_elapsed=0 work_elapsed=0 queue_elapsed=0 track_work=0
+  local track_elapsed="" track_samples=0
   local -a paths=() outcomes=()
   trap 'interrupted=1; MKVUTIL_INTERRUPTED=1' INT TERM
   MKVUTIL_RESULTS=()
@@ -2312,6 +2720,7 @@ mkvutil_execute_queue() {
     case "$category" in
       edit) mkvutil_execute_edit_job "$job" || result_code=$? ;;
       mux) mkvutil_execute_mux_job "$job" || result_code=$? ;;
+      extract) mkvutil_execute_extract_job "$job" || result_code=$? ;;
       *) MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract execution is not available')"; result_code=1 ;;
     esac
     native_returned=1
@@ -2331,10 +2740,16 @@ mkvutil_execute_queue() {
       mkvutil_report_result "$MKVUTIL_RESULT_JSON" || return 1
       queue_code=1
     fi
-    # Fast and long Edit jobs share final-report-only behavior. The Extract
-    # formatter is ready, but its guarded executor cannot start here yet.
     if [[ "$category" == mux ]]; then
       mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" || return 1
+    elif [[ "$category" == extract ]]; then
+      track_elapsed="$(jq -r '.track_stage_seconds // empty' <<< "$MKVUTIL_RESULT_JSON")"
+      if [[ -n "$track_elapsed" ]]; then
+        track_samples=$((track_samples + 1));track_work=$((track_work + track_elapsed))
+      fi
+      mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" "$track_elapsed" "$track_work" "$track_samples" || {
+        print -u2 -r -- 'Progress formatting unavailable; independent files continue.';queue_code=1
+      }
     fi
     if [[ "$status_name" == interrupted ]]; then
       interrupted=1
@@ -2362,6 +2777,9 @@ mkvutil_execute_queue() {
     batch="${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}"
     outcome="$(mkvutil_batch_outcomes)" || queue_code=1
     MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(jq -c --argjson elapsed "$queue_elapsed" --argjson attempted "$attempted" --argjson completed "$completed" --argjson eligible "$total" --argjson outcomes "$outcome" --arg state "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print interrupted || print executed)" '.+{state:$state,elapsed_seconds:$elapsed,attempted:$attempted,completed:$completed,eligible:$eligible,outcomes:$outcomes}' <<< "$batch")" || queue_code=1
+    if [[ "$category" == extract ]]; then
+      MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(jq -c --argjson seconds "$track_work" --argjson samples "$track_samples" '.+{track_processing_seconds:$seconds,track_stages_attempted:$samples}' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" || queue_code=1
+    fi
     MKVUTIL_JOBS=()
     mkvutil_sync_unresolved_skips || queue_code=1
   }
@@ -2373,7 +2791,7 @@ mkvutil_execute_queue() {
 print_help() {
   print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
-  print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Edit and Mux execution are available; Extract execution is pending.'
+  print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Edit, Mux and Extract execute only after review and explicit Run.'
 }
 
 # Configuration/review can repeat, but each explicit Run archives and clears
@@ -2404,10 +2822,6 @@ mkvutil_controller() {
         2) mkvutil_preview_jobs || return 1 ;;
         3)
           (( ${#MKVUTIL_JOBS} > 0 )) || { print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'; continue; }
-          if [[ "$category" == extract ]]; then
-            print -u2 -r -- 'Extract execution is not available at this implementation checkpoint; no media changes.'
-            return 1
-          fi
           result=0
           mkvutil_execute_queue "${MKVUTIL_JOBS[@]}" || result=$?
           (( MKVUTIL_INTERRUPTED == 0 )) || return 1

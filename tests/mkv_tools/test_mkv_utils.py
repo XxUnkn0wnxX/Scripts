@@ -1125,6 +1125,404 @@ for record in "${MKVUTIL_RESULTS[@]}"; do print -r -- "$record"; done
     assert not (env["workdir"] / "successful.mk3d").exists()
 
 
+
+def test_mkv_utils_extract_planner_native_codec_families_and_shared_collection(env):
+    model = _source_json([(0,"audio","A_FLAC",False),(1,"audio","A_PCM/INT/LIT",False),(2,"audio","A_TRUEHD",False),(3,"subtitles","S_VOBSUB",False),(4,"audio","A_WAVPACK4",False)], attachments=[{"id":1,"file_name":"Font.ttf","size":2},{"id":2,"file_name":"Font.ttf","size":3}])
+    sources={str(_mkv_file(env,"Format."+ext)):model for ext in ("mkv","mka","mks","mk3d")}
+    collection=env["workdir"] / "Attachments";collection.mkdir();existing=collection/"Font.ttf";existing.write_bytes(b"older")
+    result=_run_planning_contract(env,r'''
+config='{"category":"extract","operations":["1","2"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{},"expected_types":{"0":"audio","1":"audio","2":"audio","3":"subtitles","4":"audio"},"extract_ids":["0","1","2","3","4"]}'
+MKVUTIL_CODEC_EXT_JSON='{"PCM":"wav","TRUEHD":"thd","FLAC":"flac","VOBSUB":"sub","WAVPACK4":"wv"}'
+typeset -a jobs=()
+for ext in mkv mka mks mk3d; do
+  record="$(mkvutil_capture_source "$PWD/Format.$ext")"
+  job="$(mkvutil_plan_job "$record" "$config")"
+  print -r -- "JOB $job"
+  jobs+=("$job")
+  mkvutil_check_destinations "$job"
+done
+# Different containers share the collection. Their track base names are equal,
+# so remove tracks here to isolate permitted attachment-overwrite collisions.
+for ((i=1;i<=${#jobs};i++));do jobs[$i]="$(jq -c '.outputs|=map(select(.kind=="attachment"))' <<< "${jobs[$i]}")";done
+mkvutil_check_destinations "${jobs[@]}"
+# Protected companions are reserved even when correction output is optional.
+record="$(mkvutil_capture_source "$PWD/Format.mkv")"
+job="$(mkvutil_plan_job "$record" "$config")"
+optional="$(jq -r '.outputs[]|.artifacts[]|select(.role=="wavpack_correction")|.path' <<< "$job")"
+print -r -- existing > "$optional"
+reject mkvutil_check_destinations "$job"
+# Attachment-vs-track aliases cannot use the attachment overwrite exception.
+conflict="$(jq --arg path "$PWD/Attachments/Font.ttf" '.outputs=[.outputs[0],.outputs[5]]|.outputs[1].artifacts[1].path=$path' <<< "$job")"
+reject mkvutil_check_destinations "$conflict"
+# Existing regular collections must also not alias any selected input inode.
+python3 -c 'import os,sys;os.link(sys.argv[1],sys.argv[2])' "$PWD/Format.mkv" "$PWD/Attachments/Input.mkv"
+aliasjob="$(jq --arg path "$PWD/Attachments/Input.mkv" '.outputs=[.outputs[0]]|.outputs[0].path=$path|.outputs[0].artifacts[0].path=$path' <<< "$job")"
+reject mkvutil_check_destinations "$aliasjob"
+''',sources)
+    jobs=[json.loads(line[4:]) for line in result.stdout.splitlines() if line.startswith("JOB ")]
+    assert len(jobs)==4
+    for job in jobs:
+        assert len(job["outputs"])==7
+        assert [Path(out["path"]).suffix for out in job["outputs"][2:]]==[".flac",".wav",".thd",".sub",".wv"]
+        assert all(out["path"]==str(existing) for out in job["outputs"][:2])
+        assert [out["expected_size"] for out in job["outputs"][:2]]==[2,3]
+        assert [a["role"] for a in job["outputs"][5]["artifacts"]]==["vobsub_data","vobsub_index"]
+        assert all(a["required"] for a in job["outputs"][5]["artifacts"])
+        assert job["outputs"][6]["artifacts"][1]["path"].endswith(".wvc") and not job["outputs"][6]["artifacts"][1]["required"]
+    assert existing.read_bytes()==b"older" and all(Path(p).read_text()=="payload" for p in sources)
+
+def _run_extract_contract(env, body, manifest, *, fault=""):
+    # Keep manifests outside state reset by actual entrypoint tests.
+    manifest_path = env["workdir"].parent / "extraction.json"
+    manifest_path.write_text(json.dumps(manifest))
+    run_env = os.environ.copy()
+    run_env.update({
+        "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq", "TEST_REAL_PYTHON": sys.executable,
+        "TEST_USE_REAL_JSON": "1", "TEST_COMMAND_LOG": str(env["command_log"]),
+        "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]), "TEST_FAKE_STATE_DIR": str(env["fake_state"]),
+        "TEST_FAKE_EXECUTION_JSON": str(manifest_path), "PYTHONDONTWRITEBYTECODE": "1",
+        "TEST_EXTRACTION_CWD_LOG": str(env["workdir"].parent / "cwd.jsonl"),
+    })
+    if fault:
+        fault_dir = env["workdir"].parent / "extract-faults"
+        fault_dir.mkdir()
+        (fault_dir / "sitecustomize.py").write_text(_EXTRACT_FAULTS)
+        run_env.update(PYTHONPATH=str(fault_dir), TEST_EXTRACT_FAULT=fault)
+    result = subprocess.run(
+        ["/usr/local/bin/zsh", "-f", "-c", r'''
+source "$1"
+setopt errexit
+fail() { print -u2 -r -- "Extract contract failure: $1"; return 1; }
+eq() { [[ "$1" == "$2" ]] || fail "$3: expected '$2', got '$1'"; }
+reject() { if "$@"; then fail "accepted invalid call: $*"; fi; }
+MKVUTIL_CODEC_EXT_JSON='{"VOBSUB":"sub","WAVPACK4":"wv","UTF8":"srt","TTA1":"tta"}'
+config='{"category":"extract","operations":["1","2"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{},"expected_types":{"0":"subtitles","1":"audio","2":"subtitles","3":"audio"},"extract_ids":["0","1","2","3"]}'
+''' + body, "extract-contract", str(env["mkv_utils_script"])],
+        cwd=env["workdir"], env=run_env, text=True, capture_output=True, timeout=35,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not _command_argv(env, "mkvpropedit")
+    assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
+    return result
+
+
+_EXTRACT_FAULTS = r'''
+import json, os, signal
+from pathlib import Path
+fault=os.environ.get("TEST_EXTRACT_FAULT", "")
+replace,link,rmdir=os.replace,os.link,os.rmdir
+def patched_replace(src,dst,*args,**kwargs):
+    staged=Path(src).name.startswith("attachments-")
+    if staged and fault=="second_attachment_fail" and Path(src).name.startswith("attachments-000001"):
+        raise PermissionError("injected second attachment publication failure")
+    value=replace(src,dst,*args,**kwargs)
+    if staged and fault=="after_replace_interrupt":os.kill(os.getpid(),signal.SIGINT)
+    if staged and fault=="after_replace_changed":
+        Path(dst).write_bytes(b"other writer")
+        raise RuntimeError("injected changed destination after replacement")
+    return value
+def patched_link(src,dst,*args,**kwargs):
+    if Path(src).name.startswith("tracks-") and fault=="second_vobsub_fail" and Path(src).suffix==".idx":
+        raise PermissionError("injected index publication failure")
+    return link(src,dst,*args,**kwargs)
+def patched_rmdir(path,*args,**kwargs):
+    target=Path(path)
+    if fault=="late_cleanup_fail" and target.name.startswith(".mkvutil-extract-") and target.parent.name!="Attachments":
+        raise PermissionError(f"injected late cleanup failure: {path}")
+    return rmdir(path,*args,**kwargs)
+os.replace,os.link,os.rmdir=patched_replace,patched_link,patched_rmdir
+'''
+
+
+def _extract_manifest(env, names=("First source.mkv",)):
+    model = _source_json([(0,"subtitles","S_VOBSUB",False),(1,"audio","A_WAVPACK4",False),
+                          (2,"subtitles","S_TEXT/UTF8",False),(3,"audio","A_TTA1",False)],
+                         attachments=[{"id":1,"file_name":"Font.ttf","size":2},
+                                      {"id":2,"file_name":"Font.ttf","size":3},
+                                      {"id":3,"file_name":"Empty.txt","size":0}])
+    sources = {str(_mkv_file(env,name)): json.loads(json.dumps(model)) for name in names}
+    extraction = {source: {
+        "attachments":{"outputs":{"1":{"data":"AA"},"2":{"data":"BBB"},"3":{"data":""}}},
+        "tracks":{"outputs":{"0":{"family":{".sub":"data",".idx":"index"}},
+                              "1":{"family":{".wv":"wave",".wvc":"correction"}},
+                              "2":{"data":""},"3":{"data":"tta"}},"scratch":True},
+    } for source in sources}
+    return {"sources":sources,"extraction":extraction}
+
+
+def test_mkv_utils_extract_grouped_artifacts_overwrites_and_cwd(env):
+    manifest = _extract_manifest(env, ("First source.mkv", "Second source.mka"))
+    collection=env["workdir"] / "Attachments";collection.mkdir();(collection/"Font.ttf").write_bytes(b"existing")
+    # Optional correction output is allowed to be absent in plain lossless.
+    manifest["extraction"][str(env["workdir"]/"Second source.mka")]["tracks"]["outputs"]["1"]={"data":"wave"}
+    result = _run_extract_contract(env,r'''
+first="$(mkvutil_capture_source "$PWD/First source.mkv")"
+second="$(mkvutil_capture_source "$PWD/Second source.mka")"
+a="$(mkvutil_plan_job "$first" "$config")";b="$(mkvutil_plan_job "$second" "$config")"
+mkvutil_check_destinations "$a" "$b"
+mkvutil_execute_queue "$a" "$b"
+for record in "${MKVUTIL_RESULTS[@]}";do print -r -- "RESULT $record";done
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+mkvutil_final_report
+''',manifest)
+    records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith("RESULT ")]
+    assert [r["status"] for r in records]==["success","success"]
+    assert all([s["status"] for s in r["stages"]]==["complete","complete"] for r in records)
+    assert all(r["track_stage_seconds"]>=0 and r["elapsed_seconds"]>=r["track_stage_seconds"] for r in records)
+    assert all(not r["staged_paths"] and not r["phase_receipts"] for r in records)
+    assert (collection/"Font.ttf").read_bytes()==b"BBB" and (collection/"Empty.txt").read_bytes()==b""
+    summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["counts"]["done"]==2
+    assert (summary["attachments"]["processed"],summary["attachments"]["published"],summary["attachments"]["unique_names"],summary["attachments"]["superseded"],summary["attachments"]["uncertain_names"])==(6,6,2,4,0)
+    winners=[r for r in summary["attachments"]["publications"] if r["outcome"]=="winner"]
+    assert {r["id"] for r in winners}=={"2","3"} and all(r["source"].endswith("Second source.mka") for r in winners)
+    calls=_command_argv(env,"mkvextract")
+    assert [c[1] for c in calls]==["attachments","tracks","attachments","tracks"]
+    assert all(len(c)==(5 if c[1]=="attachments" else 6) for c in calls)
+    stages=[json.loads(line) for line in (env["workdir"].parent/"cwd.jsonl").read_text().splitlines()]
+    assert all(Path(stage["cwd"]).name.startswith(".mkvutil-extract-") for stage in stages)
+    assert len({spec.split(":",1)[1] for stage in stages for spec in stage["specs"]})==14
+    assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+    assert len(list(env["workdir"].glob("*.idx")))==2 and len(list(env["workdir"].glob("*.wvc")))==1
+    assert len(list(env["workdir"].glob("*.srt")))==2 and all(p.stat().st_size==0 for p in env["workdir"].glob("*.srt"))
+
+
+def test_mkv_utils_extract_warning_preserves_winner_and_track_timing(env):
+    manifest=_extract_manifest(env,("First source.mkv","Later source.mks"))
+    second=str(env["workdir"]/"Later source.mks");manifest["extraction"][second]["attachments"]["code"]=1
+    result=_run_extract_contract(env,r'''
+a="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+b="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Later source.mks")" "$config")"
+reject mkvutil_execute_queue "$a" "$b"
+for record in "${MKVUTIL_RESULTS[@]}";do print -r -- "RESULT $record";done
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''',manifest)
+    records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith("RESULT ")]
+    assert [r["status"] for r in records]==["success","warning"]
+    warning=records[1]
+    assert warning["stages"][1]==dict(kind="tracks",status="not_attempted",attempted=False,native_code=None,elapsed_seconds=None,validated_count=0)
+    assert warning["track_stage_seconds"] is None and not warning["published_artifacts"] and len(warning["staged_paths"])==3
+    summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["batches"][0]["track_stages_attempted"]==1
+    assert summary["attachments"]["uncertain_names"]==0 and summary["attachments"]["unique_names"]==2
+    assert all(r["source"].endswith("First source.mkv") for r in summary["attachments"]["publications"] if r["outcome"]=="winner")
+    assert "Track stage: not attempted" in result.stdout and len(_command_argv(env,"mkvextract"))==3
+    assert (env["workdir"]/"Attachments"/"Font.ttf").read_bytes()==b"BBB"
+    assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+
+
+def test_mkv_utils_extract_duplicate_history_after_track_failure(env):
+    manifest=_extract_manifest(env);source=next(iter(manifest["sources"]))
+    manifest["extraction"][source]["tracks"]["code"]=2
+    result=_run_extract_contract(env,r'''
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+reject mkvutil_execute_extract_job "$job"
+print -r -- "RESULT $MKVUTIL_RESULT_JSON"
+''',manifest)
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]=="partial" and record["native_code"]==2 and record["actual_state"]=="sidecars_published"
+    assert len(record["published_artifacts"])==3 and not record["uncertain_artifacts"]
+    assert all(a["publication_confirmed"] for a in record["published_artifacts"])
+    assert record["stages"][0]["status"]=="complete" and record["stages"][1]["status"]=="failed"
+    assert (env["workdir"]/"Attachments"/"Font.ttf").read_bytes()==b"BBB" and Path(source).read_bytes()==b"payload"
+    assert len(record["staged_paths"])==6 and not list(env["workdir"].glob("*.sub"))
+
+
+@pytest.mark.parametrize("fault,expected",[("second_attachment_fail","partial"),("after_replace_interrupt","interrupted"),("after_replace_changed","partial"),("second_vobsub_fail","partial")])
+def test_mkv_utils_extract_publication_recovery(env,fault,expected):
+    manifest=_extract_manifest(env);collection=env["workdir"]/"Attachments";collection.mkdir();(collection/"Font.ttf").write_bytes(b"previous")
+    result=_run_extract_contract(env,r'''
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+reject mkvutil_execute_extract_job "$job"
+print -r -- "RESULT $MKVUTIL_RESULT_JSON"
+''',manifest,fault=fault)
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]==expected and record["staged_paths"] and record["phase_receipts"]
+    if fault=="after_replace_changed":
+        assert record["uncertain_artifacts"] and record["actual_state"]=="publication_uncertain"
+        assert (collection/"Font.ttf").read_bytes()==b"other writer"
+    else:
+        assert not record["uncertain_artifacts"]
+        assert (collection/"Font.ttf").read_bytes()==(b"BBB" if fault=="second_vobsub_fail" else b"AA")
+        assert len(record["published_artifacts"])==(4 if fault=="second_vobsub_fail" else 1)
+    if fault=="second_vobsub_fail":
+        assert len(list(env["workdir"].glob("*.sub")))==1 and not list(env["workdir"].glob("*.idx"))
+    else:
+        assert len(_command_argv(env,"mkvextract"))==1
+        assert record["track_stage_seconds"] is None
+    for path in manifest["sources"]:assert Path(path).read_bytes()==b"payload"
+    receipt=json.loads(Path(record["phase_receipts"][0]).read_text())
+    assert any(a["publication_attempted"] and a["stage_identity"] and a["previous_identity"] for a in receipt["artifacts"])
+
+
+def test_mkv_utils_extract_symlink_parent_zero_outputs_and_interruption(env):
+    manifest=_extract_manifest(env,("First source.mk3d","Pending.mkv"))
+    target=env["workdir"].parent/"resolved collection";target.mkdir();(env["workdir"]/"Attachments").symlink_to(target,target_is_directory=True)
+    source=str(env["workdir"]/"First source.mk3d");manifest["extraction"][source]["attachments"]["code"]=-15
+    result=_run_extract_contract(env,r'''
+a="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mk3d")" "$config")"
+b="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Pending.mkv")" "$config")"
+empty="$(jq '.outputs=[]' <<< "$a")"
+mkvutil_execute_extract_job "$empty"
+eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" success 'zero output success'
+reject mkvutil_execute_queue "$a" "$b"
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+print -r -- "RESULT ${MKVUTIL_RESULTS[1]}"
+''',manifest)
+    summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["counts"]["interrupted"]==1 and summary["counts"]["not_attempted"]==1
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]=="interrupted" and not record["published_artifacts"]
+    assert all(Path(p).parent==target for p in record["staging_directories"])
+    assert "Track stage: not attempted" in result.stdout and "unavailable (no track stages attempted)" in result.stdout
+    assert len(_command_argv(env,"mkvextract"))==1
+    assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+
+
+def test_mkv_utils_extract_engine_signal_inventories_owned_candidates(env):
+    manifest=_extract_manifest(env,("First source.mkv","Pending.mka"))
+    source=str(env["workdir"]/"First source.mkv")
+    manifest["extraction"][source]["tracks"].update(signal_engine=True,unexpected="unexpected.bin")
+    result=_run_extract_contract(env,r'''
+a="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+b="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Pending.mka")" "$config")"
+reject mkvutil_execute_queue "$a" "$b"
+print -r -- "RESULT ${MKVUTIL_RESULTS[1]}"
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''',manifest)
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]=="interrupted" and record["stages"][1]["native_code"] is None
+    assert record["stages"][1]["status"]=="interrupted"
+    assert record["stages"][1]["attempted"] and record["track_stage_seconds"]>=0
+    assert len(record["scratch_paths"])==1 and len(record["unexpected_paths"])==1
+    assert all(Path(p).is_file() for p in record["scratch_paths"]+record["unexpected_paths"])
+    assert len(record["staged_paths"])==6 and len(record["published_artifacts"])==3
+    assert all(a["stage_identity"] for a in record["artifacts"] if a["present"])
+    summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["interrupted"] and summary["counts"]["not_attempted"]==1
+    assert len(_command_argv(env,"mkvextract"))==2 and all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+    assert "Processed In:" in result.stdout  # An actual interrupted track attempt is a timing sample.
+
+
+def test_mkv_utils_extract_validation_and_protected_companions(env):
+    manifest=_extract_manifest(env)
+    source=str(env["workdir"]/"First source.mkv")
+    manifest["sources"][source]["attachments"][0]["size"]=99
+    result=_run_extract_contract(env,r'''
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+# Protected companion collisions fail before either grouped command.
+index="$(jq -r '.outputs[]|.artifacts[]|select(.role=="vobsub_index")|.path' <<< "$job")"
+print -r -- existing > "$index"
+reject mkvutil_execute_extract_job "$job"
+eq "$(jq -r '.phase' <<< "$MKVUTIL_RESULT_JSON")" preflight 'companion collision preflight'
+print -r -- "PROTECTED $index"
+''',manifest)
+    assert not _command_argv(env,"mkvextract")
+    index=Path(next(line[10:] for line in result.stdout.splitlines() if line.startswith("PROTECTED ")))
+    assert index.read_text()=="existing\n" and Path(source).read_bytes()==b"payload"
+    # A new source name avoids protected outputs; successful native staging
+    # still cannot publish an attachment that fails the known-size oracle.
+    second=_mkv_file(env,"Size mismatch.mka")
+    manifest["sources"][str(second)]=manifest["sources"][source]
+    manifest["extraction"][str(second)]=manifest["extraction"][source]
+    result=_run_extract_contract(env,r'''
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Size mismatch.mka")" "$config")"
+reject mkvutil_execute_extract_job "$job"
+print -r -- "RESULT $MKVUTIL_RESULT_JSON"
+''',manifest)
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]=="failed" and "staged size differs" in record["reason"]
+    assert not record["published_artifacts"] and record["track_stage_seconds"] is None
+    assert len(_command_argv(env,"mkvextract"))==1 and not list((env["workdir"]/"Attachments").glob("*.ttf"))
+    assert second.read_bytes()==b"payload"
+
+
+def test_mkv_utils_extract_progress_failure_continues_after_attachment_warning(env):
+    manifest=_extract_manifest(env,("First source.mkv","Later source.mka"))
+    manifest["extraction"][str(env["workdir"]/"First source.mkv")]["attachments"]["code"]=1
+    result=_run_extract_contract(env,r'''
+a="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+b="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Later source.mka")" "$config")"
+mkvutil_format_progress() { return 1; }
+reject mkvutil_execute_queue "$a" "$b"
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''',manifest)
+    summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["counts"]["warning"]==1 and summary["counts"]["done"]==1
+    assert summary["batches"][0]["attempted"]==2 and summary["batches"][0]["track_stages_attempted"]==1
+    assert len(_command_argv(env,"mkvextract"))==3 and "independent files continue" in result.stderr
+    assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+
+
+def test_mkv_utils_extract_missing_track_artifact_keeps_stage_failure(env):
+    manifest=_extract_manifest(env)
+    manifest["extraction"][next(iter(manifest["sources"]))]["tracks"]["outputs"]["0"]={"family":{".sub":"data"}}
+    result=_run_extract_contract(env,r'''
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+reject mkvutil_execute_extract_job "$job"
+print -r -- "RESULT $MKVUTIL_RESULT_JSON"
+''',manifest)
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]=="partial" and record["stages"][0]["status"]=="complete"
+    assert record["stages"][1]["status"]=="failed" and record["stages"][1]["native_code"]==0
+    assert "Required staged artifact missing" in record["reason"] and len(record["published_artifacts"])==3
+    assert not any(a["kind"]=="track" and a["publication_attempted"] for a in record["artifacts"])
+    assert not list(env["workdir"].glob("*.sub")) and all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+
+
+def test_mkv_utils_extract_late_cleanup_reports_current_inventory(env):
+    manifest=_extract_manifest(env)
+    result=_run_extract_contract(env,r'''
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/First source.mkv")" "$config")"
+reject mkvutil_execute_queue "$job"
+print -r -- "RESULT ${MKVUTIL_RESULTS[1]}"
+mkvutil_final_report
+''',manifest,fault="late_cleanup_fail")
+    record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    assert record["status"]=="partial" and record["phase"]=="cleanup_failed"
+    assert record["cleanup_error"] and "Cleanup failed:" in record["reason"] and "Cleanup failed:" in result.stdout
+    assert record["actual_state"]=="sidecars_published" and len(record["published_artifacts"])==9
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["scratch_paths"]
+    assert len(record["remaining_staging_directories"])==1
+    directory=Path(record["remaining_staging_directories"][0]);assert directory.is_dir() and not list(directory.iterdir())
+    assert f"Retained staging directory: {directory}" in result.stdout
+    assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
+
+
+def test_mkv_utils_extract_rejects_symlink_and_directory_leaves(env):
+    source=_mkv_file(env,"Protected source.mkv")
+    model=_source_json([(0,"subtitles","S_VOBSUB",False)],attachments=[{"id":1,"file_name":"Font.ttf","size":1}])
+    result=_run_planning_contract(env,r'''
+MKVUTIL_CODEC_EXT_JSON='{"VOBSUB":"sub"}'
+config='{"category":"extract","operations":["1","2"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{},"expected_types":{"0":"subtitles"},"extract_ids":["0"]}'
+job="$(mkvutil_plan_job "$(mkvutil_capture_source "$PWD/Protected source.mkv")" "$config")"
+leaf="$(jq -r '.outputs[]|.artifacts[]|select(.role=="vobsub_index")|.path' <<< "$job")"
+python3 -c 'import os,sys;os.symlink(sys.argv[2],sys.argv[1])' "$leaf" "$PWD/missing-target"
+reject mkvutil_check_destinations "$job"
+python3 -c 'import os,sys;os.unlink(sys.argv[1]);os.mkdir(sys.argv[1])' "$leaf"
+reject mkvutil_check_destinations "$job"
+print -r -- 'protected leaves rejected'
+''',{str(source):model})
+    assert result.stdout.strip()=="protected leaves rejected" and source.read_bytes()==b"payload"
+
+
+def test_mkv_utils_extract_summary_repeated_name_uncertainty_and_recovery(env):
+    result=_run_planning_contract(env,r'''
+mkvutil_ledger_reset "$PWD" "$PWD/selected.mkv"
+mkvutil_batch_request extract 1 '{"category":"extract","operations":["1"],"metadata":"","settings":{}}'
+record="$(jq -cn --arg source "$PWD/selected.mkv" '{source:$source,status:"partial",phase:"published",actual_state:"sidecars_published",attachments_processed:7,
+ artifacts:[range(0;7)|{kind:"attachment",id:(tostring),path:"Attachments/Same.ttf",destination_key:"filesystem-key",publication_state:(if .==3 or .==4 then "uncertain" else "confirmed" end),publication_confirmed:(.!=3 and .!=4)}]}')"
+mkvutil_ledger_result "$record" "$PWD/selected.mkv" partial
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''',{})
+    summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert [r["outcome"] for r in summary["attachments"]["publications"]]==["superseded"]*3+["superseded_uncertain"]*2+["superseded","winner"]
+    assert summary["attachments"]["unique_names"]==1 and summary["attachments"]["uncertain_names"]==0
+    assert summary["attachments"]["published"]==5 and summary["attachments"]["superseded"]==4
+    assert summary["attachments"]["publications"][-1]["id"]=="6"
+
+
 def test_mkv_utils_reporting_ledger_history_counts_and_configurations(env):
     result = _run_planning_contract(env, r'''
 MKVUTIL_SOURCES=()
@@ -1484,6 +1882,30 @@ def test_mkv_utils_category_preview_cancel_entrypoint(env: dict[str, Path]):
     assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
     assert [path.read_bytes() for path in (first, second)] == before
     assert sorted(path.name for path in env["workdir"].iterdir()) == sorted([first.name, second.name])
+
+
+def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path]):
+    manifest=_extract_manifest(env)
+    manifest_path=env["workdir"].parent/"execution.json"
+    manifest_path.write_text(json.dumps(manifest))
+    collection=env["workdir"]/"Attachments";collection.mkdir();(collection/"Font.ttf").write_bytes(b"old collection")
+    source=env["workdir"]/"First source.mkv"
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n1,2\n0-3\n2\n3\n",
+                          extra_env={"TEST_FAKE_EXECUTION_JSON":str(manifest_path)})
+    assert result.returncode==0,result.stdout+result.stderr
+    assert "Category: extract; Actions: 1,2" in result.stdout and "Directory: workdir" in result.stdout
+    assert "Artifact vobsub_index (required)" in result.stdout and "Artifact wavpack_correction (optional)" in result.stdout
+    assert result.stdout.count("Attachments: shared collection; overwrite regular same-name files in selected-source and embedded-list order; last successful publication wins.")==1
+    assert "Done: 1; Failed: 0" in result.stdout and "Attachments processed: 3; published: 3; final unique published names: 2; superseded: 1" in result.stdout
+    assert "Files Attempted: 1" in result.stdout and "Estimated Time Remaining:" in result.stdout
+    assert len(_command_argv(env,"fzf"))==1
+    assert [argv[:2] for argv in _command_argv(env,"mkvextract")]==[[str(source),"attachments"],[str(source),"tracks"]]
+    assert all(argv[:1]==["-J"] for argv in _command_argv(env,"mkvmerge")) and not _command_argv(env,"mkvpropedit")
+    assert (collection/"Font.ttf").read_bytes()==b"BBB" and source.read_bytes()==b"payload"
+    assert (env["workdir"]/"First source - Track [0].sub").read_bytes()==b"data"
+    assert (env["workdir"]/"First source - Track [0].idx").read_bytes()==b"index"
+    assert (env["workdir"]/"First source - Track [1].wvc").read_bytes()==b"correction"
+    assert not list(env["workdir"].glob(".mkvutil-extract-*")) and not list(collection.glob(".mkvutil-extract-*"))
 
 
 def test_mkv_utils_category_edit_run_grouped_entrypoint(env: dict[str, Path]):

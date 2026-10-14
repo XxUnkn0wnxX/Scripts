@@ -416,6 +416,43 @@ PY
   fi
   exit 0
 fi
+if [ "$2" = "attachments" ] || [ "$2" = "tracks" ]; then
+  TEST_EXTRACTION_ENGINE_PID="$PPID" "$TEST_REAL_PYTHON" - "$@" <<'PY'
+import json, os, signal, sys, time
+from pathlib import Path
+source, mode, specs = os.path.abspath(sys.argv[1]), sys.argv[2], sys.argv[3:]
+manifest = json.loads(Path(os.environ["TEST_FAKE_EXECUTION_JSON"]).read_text()) if os.environ.get("TEST_FAKE_EXECUTION_JSON") else {}
+stage = manifest.get("extraction", {}).get(source, {}).get(mode, {})
+if os.environ.get("TEST_EXTRACTION_CWD_LOG"):
+    with open(os.environ["TEST_EXTRACTION_CWD_LOG"], "a") as stream:
+        stream.write(json.dumps({"source":source,"mode":mode,"cwd":os.getcwd(),"specs":specs})+"\\n")
+for spec in specs:
+    tid, filename = spec.split(":", 1)
+    item = stage.get("outputs", {}).get(tid, {"data":""})
+    if item.get("omit"):
+        continue
+    output = Path(filename)
+    if "family" in item:
+        for extension, data in item["family"].items():
+            output.with_suffix(extension).write_bytes(data.encode())
+    else:
+        output.write_bytes(item.get("data", "").encode())
+if stage.get("scratch"):
+    Path("mkvextract-0-temp-tta-123").write_bytes(b"scratch")
+if stage.get("unexpected"):
+    Path(stage["unexpected"]).write_bytes(b"unexpected")
+if stage.get("source_change"):
+    with open(source,"ab") as stream:stream.write(b"external change")
+if stage.get("signal_engine"):
+    os.kill(int(os.environ["TEST_EXTRACTION_ENGINE_PID"]),signal.SIGTERM)
+    time.sleep(0.2)
+code = stage.get("code", 0)
+if code < 0:
+    os.kill(os.getppid(), -code)
+sys.exit(code)
+PY
+  exit $?
+fi
 mode="$1"
 if [ "$mode" = "tracks" ]; then
   shift
@@ -815,7 +852,7 @@ code=\"$(cat)\"
 
 if echo \"$code\" | grep -Fq 'from pymkv.TypeTrack import type_files'; then
   if echo "$code" | grep -Fq 'json.dumps(flat)'; then
-    printf '%s\\n' '{"A_TRUEHD":"thd","TRUEHD":"thd"}'
+    printf '%s\\n' '{"A_TRUEHD":"thd","TRUEHD":"thd","PCM":"wav","FLAC":"flac","WAVPACK4":"wv","VOBSUB":"sub","UTF8":"srt","USF":"usf","TTA1":"tta"}'
     exit 0
   fi
   cat <<'PY'

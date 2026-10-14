@@ -11,12 +11,15 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 
 ## Current state and safe restart point
 
-- G02 (Edit/Mux execution) is accepted after the T02.03 reporting/continuation
-  package passed parent source/receipt review, two independent critical tests,
-  and Astra's integration audit. Current acceptance is **6 / 9 tasks and
-  2 / 4 goals**. Extract (T03.01) is now dependency-ready; no Extract executor
-  has been implemented. Existing source/test owner is quiescent, with no active
-  subprocesses, after finishing T02.03. Parent owns these records.
+- G03 (Extract) and T03.01 are accepted after current affected/native proof,
+  one notified entrypoint probe, parent source/receipt review and two critical
+  tests, and Astra's post-fix PASS WITH NOTES. Current acceptance is
+  **7 / 9 tasks and 3 / 4 goals**. The sole source/test/helper writer
+  `mkv_metadata_foundation` is quiescent with no active test/native sessions.
+  Next: T04.01 harness/navigation and bounded campaign preparation, then its
+  separately gated interactive run and full integrated checks. T04.02 help/docs
+  follows verified integration. Inspect live runtime before reassignment;
+  parent owns these records.
 - The user-requested real code/checklist audit reopened missing normal
   multi-file Edit proof, added a focused passing test, and corrected stale
   progress/restart statements. Safe snapshot and findings remain under
@@ -68,8 +71,10 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   evidence; both worktrees were clean immediately afterward. Current uncommitted
   T02.03 source/test work and the audit's additional test are committed at
   signed `1bb755e1fd033d66dcefb6f431f826cafe89e262`; the tree was clean afterward.
-  The preceding audit record correction is signed `22eb849`. Current edits are
-  the user-approved attachment-policy and automatic-goal-push records.
+  The preceding audit record correction is signed `22eb849`. The attachment
+  policy is committed at signed `3567fe7`; current source/test/helper changes
+  are the accepted T03.01 package awaiting its goal checkpoint commit/push,
+  with parent-owned status records.
   Accepted G01/G02 implementation is now published on the feature branch;
   no promotion or live deployment has occurred. Prior G01 checkpoint is signed
   `6444e4cbbe65ffe1a81d18213582695ea242cb8e`; the reporting-plan checkpoint
@@ -91,17 +96,18 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 - T01.02 is accepted after parent review of the shared registry, configuration,
   flag snapshots and two pure argument builders, five focused unit contracts,
   and small native v93 builder proof. That package is complete; the same writer
-  now owns the active T02.03 source/test package.
+  completed T03.01 and is quiescent pending the next bounded assignment.
 - T01.03 and G01 are now accepted after parent review and final selector/removal
   proof below. Categories, configuration, per-file planning, skip receipts,
   preview and fresh skipped-subset preparation are implemented. Executors
   for Edit/Mux are implemented and their T02.01/T02.02 gates now accepted after
   focused/native proof, parent review and Astra's bounded post-fix PASS.
   T02.03's current reporting/continuation proof subsequently closed G02.
-  Extract execution remains guarded. Current totals: 6 / 9 tasks and 2 / 4 goals.
-- Next package: T03.01 Extract execution after the verified G02 gate, using
-  one coherent source/test/helper owner. Preserve the accepted Edit/Mux
-  semantics and common reports; parent owns all records.
+  Extract execution is accepted after its focused/native and review gates.
+  Current totals: 7 / 9 tasks and 3 / 4 goals.
+- Next package: T04.01 integrated harness/navigation and campaign preparation
+  after the verified G03 gate. Preserve accepted runtime behavior; parent owns
+  all records. Campaign execution approval remains pending.
 - T02.03's implementation draft uses an original-source-keyed final-outcome
   ledger separate from current scope/jobs/skip receipts, plus saved per-batch
   action/configuration/time attribution. History is provenance, not unresolved
@@ -110,9 +116,9 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   Astra audit returned PASS WITH NOTES before sole-writer implementation.
   Reuse `mkv_metadata_foundation` for the same three source/test paths after
   the audit handback. The completed T02.03 package is now accepted and its
-  writer quiescent; inspect runtime again before the next assignment. Full
-  Extract execution, final guides and broad menu campaigns stay outside this
-  package. Parent remains the only record writer.
+  writer was quiescent at the G02 checkpoint and has since resumed T03.01.
+  Extract execution, final guides and broad menu campaigns stayed outside
+  T02.03. Parent remains the only record writer.
 - The user requested always-multi selection and automatic removal mismatch
   skips with skipped-only follow-up batches. Astra verified this delta before
   any new requirement/code edits; the parent updated the authorized plan and
@@ -224,15 +230,16 @@ using a pre-publication handoff as proof that an amendment has been pushed.
   names/languages/flags may differ. Keep exact mismatch receipts and original
   batch scope, and later offer fresh configured batches for skipped files only.
 - Use Astra for intermittent focused audits at meaningful changes, as the user
-  requested. The current user instruction authorizes concurrent agents for this
-  task and active session; it does not authorize implementation or publication.
+  requested. Concurrent agents are authorized for this task and active session.
+  Implementation and accepted-goal pushes have their separate user grants;
+  concurrency itself grants neither action.
 
 ## Acceptance and unresolved implementation gates
 
 Planning preparation is verified and remains separate from implementation
 acceptance. The four existing checkpoints are now G01-G04, with nine stable
-task IDs; **6 / 9 tasks and 2 / 4 main goals** are accepted
-(T01.01-T01.03, T02.01-T02.03, G01-G02).
+task IDs; **7 / 9 tasks and 3 / 4 main goals** are accepted
+(T01.01-T01.03, T02.01-T02.03, T03.01, G01-G03).
 
 The executor checkpoint has now closed the following focused gates:
 
@@ -375,6 +382,21 @@ near-end interactive campaign remain later gates.
   within the existing precedence contract and add actual-ID proof before
   extraction acceptance; avoid treating synthetic short-code tests as native
   format evidence.
+- The bounded shared-support/interface audit passed. One static literal
+  Python support section in the same `.zsh` owns mechanical identity/inode,
+  child execution/shutdown and interruption initialization; engine-specific
+  oracles, phase receipts and publishers remain separate. Child `cwd=None`
+  preserves Edit/Mux defaults; Extract uses an owned cwd without process-wide
+  `chdir`. Current executor/signal/two-file Edit and small native Edit/Mux proof
+  are required after changing assembled runtime code; do not claim old whole
+  function hashes qualify a refactored engine.
+- Physical artifact records distinguish attempted/confirmed/uncertain
+  publication and reconcile captured identities. Confirmed attachment records
+  retain filesystem-aware destination keys and deterministic order for final
+  winner/supersession reporting. Never infer winners from timestamps.
+  Unstarted stages have null codes/times. Combined progress still shows file
+  counts if attachments fail before tracks, but records track timing as not
+  attempted; ETA uses actual track attempts, not artificial zero samples.
 - Provisional Extract interface: keep logical requested outputs/one native
   argument per selected item separate from physical artifact families. Reserve
   both VobSub outputs and possible WavPack companions before Run; contain native
@@ -382,7 +404,60 @@ near-end interactive campaign remain later gates.
   attachments first then tracks. Empty attachments/text outputs may be valid;
   require expected regular outputs and identified attachment sizes where known,
   rather than a blanket nonempty rule. Common final reporting/timing consumes
-  T02.03's accepted interfaces. No Extract source implementation has begun.
+  T02.03's accepted interfaces. The assigned writer has begun codec/artifact
+  planning and a focused four-format no-mutation case passed; this is diagnostic
+  evidence, not Extract acceptance. Shared-support/source code work remains
+  subject to its focused regression and small current native proof.
+- Parent prepared and native-validated a tiny VobSub fixture without changing
+  source/tests: `.tmp/mkvutil-rework/vobsub-native.88m3m7yy/tiny.mks`
+  (6,136 bytes; SHA-256
+  `57b1b13a4bff92f3537d28e3f26b5229a0bd75d779cd761a4b913cba52059a99`).
+  Installed v93 creation and source-first extraction both returned zero;
+  original `.idx`/`.sub` inputs were unchanged and extraction produced both
+  required physical artifacts. Track `0` is `S_VOBSUB`; exact commands,
+  identification and hashes are in `creation-receipt.json` beside the source.
+  This validates the reusable fixture, not the utility's Extract executor.
+  Writer receives a copy for current executor proof. The native slot was
+  released before the writer's next test/native run.
+
+### Accepted T03.01/G03 checkpoint
+
+- Candidate source SHA-256:
+  `997577ccbe412f451ac9cf0c9c4aa9a0604ef964c1d648d91ee38f3dd97e5408`.
+  Current package hashes, exact commands, saved logs/CPU timings, API and
+  evidence limits: `.tmp/mkvutil-rework/extract/package-receipt.json`.
+- The initial 29-case affected pass (93.86s) and one protected-leaf contract
+  remain scoped historical proof. After audit corrections, 12 affected cases
+  passed (26.70s), the same single notified CLI passed (3.54s), and two current
+  consumer checks passed (9.71s). Earlier failures are retained and labelled;
+  none is credited as a pass. Syntax/AST/whitespace checks passed.
+- Parent independently passed missing-track validation and late-cleanup
+  reporting (2 passed, 91 deselected in 4.84s; wall 5.62s, user 2.83s,
+  system 1.88s). Parent verified all three current package hashes and native
+  payload hashes on disk. Review record and log:
+  `.tmp/mkvutil-rework/extract-parent.2846jape/parent-integration.json` and
+  `critical-tests.log`. Intermediate assembly is explicitly retained separately.
+- Current native Extract proof:
+  `.tmp/mkvutil-rework/extract/native.6tkeny9a/native-receipt.json`.
+  Execution-start/after package hashes match; source hashes are unchanged;
+  selected text/attachment and VobSub pair succeed with installed v93. Native
+  SRT adds a UTF-8 BOM and rounds the tested 200ms cue end to 199ms; text/start
+  remain unchanged. WavPack/TTA use focused fake plus verified-source evidence,
+  not a native codec matrix. Genuine all-format integrated coverage is T04.
+- Edit/Mux's current captured program remains byte-identical to its initial
+  native requalification (`7687974306897bbb52370aa373eb48122a46a51c464c9a9e839158577acc4b92`).
+  Current Extract program:
+  `51fa85519fcab6426d19e4d17890af4a251c6e211fc3c4b7a9c4e0419fddd3da`.
+  Shared support and metadata/executor invariants are preserved; relevant
+  consumer checks passed. No unnecessary repeat native Edit/Mux campaign ran.
+- Astra first returned REVISE on active-stage classification, cleanup inventories
+  and preview overwrite disclosure. The sole writer fixed/proved these plus
+  full-identity reconciliation; independent post-fix review returned PASS WITH
+  NOTES. Parent's two checks and intermediate-record refresh close those notes.
+  G03's single/batched execution and goal-level integration gates are accepted.
+  T04 full affected suite, old navigation migration, broad interactive campaign
+  and final docs remain unchecked. No campaign grant, promotion or live change
+  is inferred from this milestone.
 
 ## Execution route and next actions
 
@@ -710,10 +785,10 @@ checks. New implementation packages follow the current approved route.
    verify branch, HEAD, worktree/index, pending approvals, and any live agents.
 2. Verify the published planning checkpoints and current implementation changes
    from actual Git state; respect the current package's exclusive writer.
-3. Preserve accepted G01/G02 and T01.01-T02.03 foundations/executors/reporting;
-   prepare T03.01 Extract from the verified stage boundary. Inspect the
-   target's prerequisites and overlap before selecting a bounded implementation
-   package; present A/B routes only when they materially change scope/order.
+3. Preserve accepted G01-G03 runtime tasks. Prepare T04.01 by adapting the
+   existing legacy menu tests, keeping semantic assertions, and assembling the
+   bounded real-format/menu/PTY campaign. Obtain its pending one-time execution
+   grant before broad runs; final help/docs follow T04.01 acceptance.
 
 ### Dependency-ready restart map
 
@@ -724,7 +799,7 @@ checks. New implementation packages follow the current approved route.
 | 3 | T01.03 | Accepted: actual category configuration, always-multi selection, per-file/skip/subset proof | Real category selection, planning, conflicts, and preview consumers |
 | 4 | T02.01, T02.02 | Accepted: focused/native executor gates, parent review and Astra post-fix PASS | Shared source and helpers verified; preserve corrected publication and result contracts |
 | 5 | T02.03 | Accepted: current queue/reporting/continuation proof and independent audit | G02 goal integration gate passed; preserve one-source accounting and timing |
-| 6 | T03.01 | Ready: G01 technical inputs and verified G02 acceptance | Implement Extract with one source/test owner and shared final reports |
+| 6 | T03.01 | Accepted: current Extract native/contracts/entrypoint, parent critical checks and independent post-fix audit | Preserve original-source safety, ordered attachment overwrites, protected tracks, stage/timing/recovery contracts |
 | 7 | T04.01, then T04.02 | Runtime task evidence accepted, then integrated candidate verified | Consolidate valid slice receipts; final help/docs follow validated behavior |
 
 The current user instruction authorizes implementation; this readiness map does
@@ -733,6 +808,34 @@ Both previous read-only review packages are complete; their planning receipts
 contain no media operations, product tests, or CI results.
 
 ## Validation evidence and next checks
+
+### T04 preparation while T03 implementation is active
+
+- The existing explorer `mkv_requirement_mapping` completed a read-only
+  inventory at `3567fe7` plus T03 work in progress. It ran no tests/media tools
+  and edited no files; parent records this finding. This prepares the final
+  gate and earns no T04 acceptance.
+- Preserve the legacy single-action assertions while adapting their flat-menu
+  navigation: flags/defaults, literal languages/names and paths, title clearing,
+  multi-file outcomes, attachments, removal/naming/retained layouts, invalid
+  inspections/IDs, reorder, and codec extensions. Correct the single-input
+  reorder example to file ID `0` throughout and verify observed output order.
+  Preserve both established two-file output regressions and the additional
+  per-source Edit selector/property test.
+- The T03 owner updates the existing fake extractor for source-first arguments,
+  requested paths, physical artifact families, and deterministic stage failures.
+  Keep those fixture changes in the same package; final navigation adaptation
+  waits for accepted T03. No second harness or overlapping writer is needed.
+- Proposed final campaign: the adapted legacy menu cases and a few batches
+  covering all Edit choices, Mux removal/reorder/optional metadata with a fresh
+  mismatch-only continuation, Extract attachments/tracks/combined partial
+  outcomes, and invalid/cancel/EOF/help/exit. Use tiny installed-v93 fixtures
+  for all four formats and representative semantic/preservation journeys;
+  add one bounded real-fzf PTY journey for terminal selection. Distinguish
+  mocked, native, and PTY evidence. Keep runs serial in fresh owned `.tmp`
+  children and use existing timeouts; obtain the pending bounded project-wide
+  interactive approval before campaign execution. Source/task proof proceeds
+  independently under the existing implementation permission.
 
 - Historical T01.01 foundation proof: pure helper plus three notified legacy
   journeys passed on the dirty source/test tree based on HEAD `96ae959`
