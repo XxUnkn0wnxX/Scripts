@@ -278,16 +278,18 @@ display_track_info fixture.mkv "$2" "$3" "${4-}" "${5:-source}"
     coloured = render_terminal()
     selected = "Track: audio (A_AAC) [Original 4] [eng]"
     unselected = "Track ID 12: subtitles (S_TEXT/ASS) [Original 12] [eng]"
-    assert f"\x1b[2;31m{selected}\x1b[0m" in coloured
-    assert "\x1b[2;31mTrack ID 12:" not in coloured
+    assert f"\x1b[38;5;203m{selected}\x1b[0m" in coloured
+    assert "\x1b[38;5;203mTrack ID 12:" not in coloured
     assert "Track ID 0: video (V_MPEG4/ISO/AVC) [Original 0] [eng]" in coloured
     assert unselected in coloured
     assert coloured.count("\x1b[") == 2
     final = render_terminal(final_ids="0,12")
-    assert f"\x1b[2;31m{selected}\x1b[0m" in final
+    assert f"\x1b[38;5;203m{selected}\x1b[0m" in final
     assert "\x1b[38;5;220mTrack ID 1: subtitles (S_TEXT/ASS) [Original 12] [eng]\x1b[0m" in final
     assert "\x1b[38;5;220mTrack ID 0:" not in final
-    assert "\x1b[33mTrack ID 1:" in render_terminal({"TERM": "xterm"}, final_ids="0,12")
+    fallback = render_terminal({"TERM": "xterm"}, final_ids="0,12")
+    assert f"\x1b[91m{selected}\x1b[0m" in fallback
+    assert "\x1b[33mTrack ID 1:" in fallback
     assert "Track ID 4:" not in final and "Track ID 12:" not in final
     assert "Removed" not in coloured
     assert "\x1b[" not in render_terminal({"NO_COLOR": "1"})

@@ -185,9 +185,13 @@ _mkvutil_track_view() {
 _mkvutil_track_colours() {
   MKVUTIL_TRACK_RED="" MKVUTIL_TRACK_YELLOW=""
   if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb && -z "${NO_COLOR-}" ]]; then
-    MKVUTIL_TRACK_RED=$'\033[2;31m'
-    if [[ "$TERM" == *256color* ]]; then MKVUTIL_TRACK_YELLOW=$'\033[38;5;220m'
-    else MKVUTIL_TRACK_YELLOW=$'\033[33m'; fi
+    if [[ "$TERM" == *256color* ]]; then
+      MKVUTIL_TRACK_RED=$'\033[38;5;203m'
+      MKVUTIL_TRACK_YELLOW=$'\033[38;5;220m'
+    else
+      MKVUTIL_TRACK_RED=$'\033[91m'
+      MKVUTIL_TRACK_YELLOW=$'\033[33m'
+    fi
   fi
 }
 

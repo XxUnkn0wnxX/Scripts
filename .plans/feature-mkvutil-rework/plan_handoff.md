@@ -14,6 +14,22 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted lighter dropped-track colour
+
+- User requested a lighter red. The shared renderer now uses soft light red 203
+  on 256-colour terminals and bright ANSI 91 otherwise, without dim styling.
+  Gold movement highlighting and track/metadata behavior remain unchanged.
+- The focused colour-render test passes (2.07s), covering both palettes, resets,
+  moved-track gold and plain-output fallback; both zsh syntax checks pass.
+  Prior logic/IA evidence remains tied to its original revision; no new broad
+  test or interactive campaign was needed for this palette adjustment.
+- Current source SHA-256 `ccae2444f3ba6ae9f5b365dbd6f1d05d3cc3d77fbba99fff5a60a0e38f3b2333`;
+  tests SHA-256 `eecc6d03636bc081c25672bfec4c3080cff895f810dec6abcd6765c78e4ab22d`.
+  Guide/approved colour requirements are updated; 9/9 tasks and 4/4 checkpoints
+  remain accepted. Proof: `.tmp/mkvutil-rework/lighter-red/receipt.json`.
+- Signed develop publication remains authorized. Inspect `lighter-red/publication.json`
+  and actual refs before repeating Git operations. No runtime jobs remain.
+
 ### Accepted Mux layout/output-ID metadata follow-up on develop
 
 - Latest user requirements are implemented: source-ID removal/reorder inputs;

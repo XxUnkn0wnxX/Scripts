@@ -220,11 +220,11 @@ You can choose `1,2` to remove and reorder tracks in the same remux. You can als
 
 Successful Mux jobs validate a staged output and replace the selected source. If removal changes the extension, the old source path is removed after the new output is published. Warning, partial or interrupted jobs can retain candidates or leave publication incomplete; the final report identifies the actual state and recovery filenames to review before retrying.
 
-Removal and reorder inputs use the **original source IDs**. Removal IDs are collected first even if you enter actions as `2,1`. Before the reorder prompt, dropped rows remain visible in muted red with a `Track:` prefix and no selectable ID. Retained rows still show their source IDs at this point.
+Removal and reorder inputs use the **original source IDs**. Removal IDs are collected first even if you enter actions as `2,1`. Before the reorder prompt, dropped rows remain visible in soft light red with a `Track:` prefix and no selectable ID. Retained rows still show their source IDs at this point.
 
 Enter reorder IDs as a bare comma list. The first listed track comes first; other retained tracks append in their source order. At least two different IDs must be entered; `7` alone is invalid. If retained source track `0` is omitted, it is prepended: `4,3` becomes `0,4,3`. Explicit `0` keeps its entered position: **`3,1,0` places source video `0` third**, exactly where you entered it. Omitted retained tracks still append afterward; video is last only when no other tracks remain to append. Absent or removed track `0` is never added. Native `0:ID` syntax is handled internally. Removed, unknown, duplicate or malformed IDs re-prompt without repeating removal selection. Removing every track is rejected; fewer than two retained tracks cannot be reordered.
 
-After structural choices, **Output track layout** remains visible within the optional metadata menu and shows the **resulting output order and IDs**. Retained tracks are numbered from `0` in their new order. Dropped rows stay interleaved at their original row slots, muted red and without IDs; retained rows fill the other slots in output order. Tracks whose output position differs from their original source position appear in warm yellow/gold, including shifts caused by removal and automatically appended tracks. Tracks that keep their position retain the normal colour. Colour needs no extra dependency; redirected output, `TERM=dumb` and `NO_COLOR=1` stay plain. If the preview and metadata menu cannot fit the terminal, they use normal scrollback so the complete listing remains accessible.
+After structural choices, **Output track layout** remains visible within the optional metadata menu and shows the **resulting output order and IDs**. Retained tracks are numbered from `0` in their new order. Dropped rows stay interleaved at their original row slots, soft light red and without IDs; retained rows fill the other slots in output order. Tracks whose output position differs from their original source position appear in warm yellow/gold, including shifts caused by removal and automatically appended tracks. Tracks that keep their position retain the normal colour. Colour needs no extra dependency; redirected output, `TERM=dumb` and `NO_COLOR=1` stay plain. If the preview and metadata menu cannot fit the terminal, they use normal scrollback so the complete listing remains accessible.
 
 Optional Mux metadata uses the displayed **output IDs**. Before every per-track value, the same full track-description row used by Edit appears above the short action prompt. The utility translates the output ID back to its original source track before building the single remux command. Edit continues to display and accept existing source IDs.
 
@@ -256,7 +256,7 @@ Track ID 2: audio (A_AAC) [English] [eng]
 Language: eng
 ```
 
-The ID-less dropped audio row is muted red. Output `1` is warm yellow because source `4` moved to position `1`; the other retained rows keep their original physical positions. Metadata answers apply to source `0,4,2` across eligible files; appended source `3` keeps its tags.
+The ID-less dropped audio row is soft light red. Output `1` is warm yellow because source `4` moved to position `1`; the other retained rows keep their original physical positions. Metadata answers apply to source `0,4,2` across eligible files; appended source `3` keeps its tags.
 
 </details>
 
