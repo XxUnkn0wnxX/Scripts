@@ -46,6 +46,9 @@ If your existing repository environment already has its dependencies, keep using
 
 The main menu keeps the work areas separate:
 
+At the main menu, press `1`, `2`, or `3` to open a category immediately; no Enter
+is needed. Submenu batches and text fields still use Enter to confirm input.
+
 | Main menu | Actions | What it does |
 | --- | --- | --- |
 | **1. Matroska Edit** | 1 forced flag, 2 default flag, 3 language, 4 name, 5 title | Applies metadata edits with `mkvpropedit`. |

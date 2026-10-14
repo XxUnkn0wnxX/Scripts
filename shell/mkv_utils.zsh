@@ -1175,6 +1175,15 @@ _mkvutil_read() {
   IFS= read -r REPLY || return 2
 }
 
+# Main choices are single keys at a terminal; pipes retain line-based input.
+# Submenu batches and metadata values continue through _mkvutil_read.
+_mkvutil_read_main() {
+  [[ -t 0 ]] || { _mkvutil_read "$1"; return $?; }
+  printf '%s' "$1" >&2
+  IFS= read -r -k 1 REPLY || return 2
+  printf '\n' >&2
+}
+
 _mkvutil_exclude() {
   _mkvutil_read 'Exclude this file from the batch? (Y/N) [N]: ' || return 2
   [[ "${REPLY:u}" == Y || "${REPLY:u}" == YES ]]
@@ -2916,7 +2925,7 @@ mkvutil_main() {
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
     print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract'
-    _mkvutil_read 'Category: ' || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
+    _mkvutil_read_main 'Category: ' || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
     case "$REPLY" in
       e|E|0) return "$sticky_code" ;;
       1) category=edit ;;
@@ -2949,6 +2958,8 @@ mkvutil_main() {
           mkvutil_discard_configuration
           break ;;
       esac
+      # Enter after a main-menu key can reach this prompt; keep waiting.
+      [[ -t 0 && -z "$REPLY" ]] && continue
       operations="$(mkvutil_category_choices "$category" "$REPLY")" || {
         (( ! selected )) || mkvutil_finish 1
         return 1

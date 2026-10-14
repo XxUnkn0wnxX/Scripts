@@ -111,6 +111,9 @@ operation settings.
 Ctrl+C exits the utility. Do not display a dedicated Exit or Cancel choice.
 The main menu also accepts hidden `e`/`E` for silent exit. Category action,
 review, replacement-action, and optional Mux metadata menus show `e) Back`.
+At an interactive terminal, main-menu choices `1`, `2`, `3`, and hidden `e`/`E`
+act on a single keypress without Enter. Submenu batch selections and data fields
+remain line-based; redirected input retains its existing line-based behavior.
 Handle this at menu-choice call sites only: track IDs, flags, languages, names,
 and titles remain ordinary input fields. Literal `e` remains a valid name/title;
 other value fields retain their existing validation.

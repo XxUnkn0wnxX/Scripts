@@ -14,6 +14,29 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted immediate main-menu keys
+
+- User-directed follow-up on the same feature branch/main Scripts checkout,
+  baseline signed/published `4d13de3088b5844465ca730208629a44efcadbf9`.
+  Main terminal choices now react to one `1`, `2`, `3`, or hidden `e`/`E`
+  keypress; no Enter is needed. An optional trailing Enter is harmless.
+  Submenu batch selections, text fields and piped input remain line-based.
+- Current proof: `.tmp/mkvutil-rework/main-keys.AVETLa/receipt.json` and
+  `accepted-final.log`: one real controlling-PTY journey, one piped hidden-exit
+  journey and one interruption contract passed (3 cases, 2.58s wall / 1.89s
+  measured CPU). PTY proof covers all categories without newline, submenu Back,
+  immediate hidden exit and restored ICANON/ECHO before subsequent line input.
+  Fake media/fzf boundaries recorded zero calls; source payload is untouched.
+- Exact source comparison proves only the new main reader, its call site and
+  harmless terminal blank-action reprompt changed. Media engines, data collectors
+  and the shared test helper are unchanged. Syntax, diff, docs and stable-ID
+  review passed; all 9 tasks and 4 goals remain accepted at current scope.
+  Four initial setup/reader/harness failures are preserved with causes; no
+  timeout was raised or native/broad campaign repeated. Workers are quiescent.
+- Commit/push is authorized. The proof folder's `publication.json` will contain
+  the verified signed commit/live feature ref. On resume verify that receipt and
+  the containing commit; no implementation/validation remains for this change.
+
 ### Accepted user-directed navigation follow-up
 
 - Stay in the main Scripts checkout on `feature/mkvutil-rework`; the user
@@ -50,11 +73,9 @@ and `.tmp` receipt paths below are relative to the repository root.
   IA source differs only by the subsequently checked registry-error propagation
   guard; parent independently proved that exact delta. All workers/processes
   are quiescent and source ownership is returned to parent.
-- Publication is the authorized final operation. Its verified full commit/live
-  feature ref will be recorded in the same proof folder's `publication.json`.
-  On resume, verify the containing commit and that receipt against the live
-  feature ref; no implementation or validation work remains for this amendment.
-  The small IA grant was used for three probes; it is not a renewed broad grant.
+- Published signed `4d13de3088b5844465ca730208629a44efcadbf9`; live feature ref
+  and clean checkout were verified in this proof folder's `publication.json`.
+  The small IA grant was used for three probes; it was not a renewed broad grant.
 
 ### Completed original rework and checkout return
 

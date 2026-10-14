@@ -2550,3 +2550,73 @@ eq "${#MKVUTIL_SOURCES}" 1 'replacement Back retains fresh subset'
 print -r -- 'fresh subset navigation passed'
 ''', {})
     assert result.stdout.rstrip().endswith("fresh subset navigation passed")
+
+
+def test_mkv_utils_main_menu_single_keys_terminal(env):
+    import fcntl
+    import pty
+    import select
+    import signal
+    import termios
+    import time
+
+    source = _mkv_file(env, "untouched.mkv")
+    run_env = os.environ.copy()
+    run_env.update({
+        "HOME": str(env["workdir"]),
+        "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq",
+        "TEST_REAL_PYTHON": sys.executable,
+        "TEST_USE_REAL_JSON": "1", "PYTHONDONTWRITEBYTECODE": "1",
+        "TEST_COMMAND_LOG": str(env["command_log"]),
+        "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
+        "TEST_FAKE_STATE_DIR": str(env["fake_state"]),
+        "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]),
+    })
+    for tool in ("mkvmerge", "mkvpropedit", "mkvextract", "fzf"):
+        assert Path(shutil.which(tool, path=run_env["PATH"])).resolve() == (env["fake_bin"] / tool).resolve()
+    master, terminal = pty.openpty()
+    before = termios.tcgetattr(terminal)
+    process = subprocess.Popen(
+        ["/usr/local/bin/zsh", "-f", str(env["mkv_utils_script"])],
+        cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
+        start_new_session=True,
+        preexec_fn=lambda: fcntl.ioctl(0, termios.TIOCSCTTY, 0),
+    )
+    output = bytearray()
+
+    def wait_for(prompt):
+        start = len(output)
+        deadline = time.monotonic() + 10
+        while prompt not in output[start:] and time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                output.extend(os.read(master, 8192))
+            assert process.poll() is None, output.decode(errors="replace")
+        assert prompt in output[start:], output.decode(errors="replace")
+
+    try:
+        wait_for(b"Category: ")
+        for key in (b"1", b"2", b"3", b"1\n"):
+            # First three need no Enter; an optional trailing Enter is harmless.
+            os.write(master, key)
+            wait_for(b"Operations (single/comma/range): ")
+            # Check before child exit: Darwin revokes its controlling PTY then.
+            restored = termios.tcgetattr(terminal)
+            mask = termios.ICANON | termios.ECHO
+            assert before[3] & mask == restored[3] & mask
+            os.write(master, b"e\n")  # Submenu input remains line-based.
+            wait_for(b"Category: ")
+        os.write(master, b"e")
+        deadline = time.monotonic() + 10
+        while process.poll() is None and time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                output.extend(os.read(master, 8192))
+        assert process.poll() == 0, output.decode(errors="replace")
+    finally:
+        os.close(master)
+        os.close(terminal)
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=10)
+    assert source.read_text() == "payload"
+    assert not any(_command_argv(env, tool) for tool in ("fzf", "mkvmerge", "mkvpropedit", "mkvextract"))
