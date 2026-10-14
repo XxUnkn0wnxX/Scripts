@@ -508,7 +508,7 @@ _mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Flag-forced (1 or
 _mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Flag-default (1 or 0) [1]: ' 1 boolean flag-default --default-track-flag default_track default_track ''
 _mkvutil_metadata_define 3 'Set language for tracks' track 'Language: ' '' language language --language '' language language_ietf
 _mkvutil_metadata_define 4 'Set name for tracks' track 'Track name: ' '' text name --track-name '' track_name ''
-_mkvutil_metadata_define 5 'Set title for MK file' container 'Title (empty to unset): ' '' text title --title '' title ''
+_mkvutil_metadata_define 5 'Set file title' container 'Title (empty to unset): ' '' text title --title '' title ''
 
 # BCP 47 structural syntax plus grandfathered tags; this deliberately does not
 # assert IANA/ISO membership or tool acceptance. Preserve the user's spelling.
@@ -661,7 +661,7 @@ _mkvutil_metadata_collect() {
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
       if [[ "$mode" == independent || -z "$shared_targets" ]]; then
-        printf '%s — Track IDs (comma/range; e to go back; cancel to return): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
+        printf '%s — Track IDs (comma/range; e to go back): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
         IFS= read -r selection || return 2
         case "$selection" in e|E) return 4 ;; cancel) return 2 ;; esac
         targets_csv="$(mkvutil_expand_ids "$selection" "${(j:,:)MKVUTIL_RETAINED_IDS}")" || return 1
@@ -1497,7 +1497,7 @@ mkvutil_configure_category() {
       if [[ ",$operations," == *,2,* ]]; then
         while true; do
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          _mkvutil_read 'Track order (e.g. 0:1,0:0; omitted retained tracks append; e to go back): ' || return 2
+          _mkvutil_read 'Track order (e.g. 0:1,0:0; unlisted tracks follow; e to go back): ' || return 2
           case "$REPLY" in e|E) return 4 ;; esac
           order="${REPLY//[[:space:]]/}"
           if [[ -n "$order" ]] && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
@@ -1505,7 +1505,7 @@ mkvutil_configure_category() {
             break
           fi
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          print -u2 -r -- "Invalid track order. Use 0:ID entries with distinct retained original IDs only: $retained_csv"
+          print -u2 -r -- "Invalid track order. Use retained IDs once each (0:ID). Available IDs: $retained_csv"
         done
         for item in "${(@s:,:)order}"; do
           _mkvutil_canonical_id "${item#0:}" || return 1
@@ -3275,7 +3275,7 @@ print_help() {
   print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
   print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks'
-  print -r -- $'\nChoose one action or a batch (1,2 / 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
+  print -r -- $'\nChoose one action or a batch (1,2 or 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
 }
 
 # Configuration/review can repeat, but each explicit Run archives and clears
@@ -3445,7 +3445,7 @@ _mkvutil_main_body() {
     # A new main-category scope sees files converted by a preceding Mux.
     mkvutil_scan_files "$PWD" || {
       _mkvutil_ui_leave
-      print -r -- 'Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again.'; return 1;
+      print -r -- 'No Matroska files found (.mkv, .mka, .mks, .mk3d).'; return 1;
     }
     while true; do
       result=0

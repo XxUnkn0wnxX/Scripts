@@ -18,6 +18,10 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 - Shortened the metadata hint to `e) Back` at the user's request. Input handling
   and the guide's literal-text escape instructions are unchanged.
+- Reviewed the remaining hints/help: removed misleading `cancel to return`,
+  clarified reorder wording and batch examples, shortened the empty-directory
+  message, and renamed `Set title for MK file` to `Set file title`. Updated the
+  two existing text assertions to match; no behavior changes or new tests.
 - This is a display-only edit; no tests run, as explicitly requested. Existing
   acceptance remains 9/9 tasks and 4/4 goals. Commit and push are authorized.
 

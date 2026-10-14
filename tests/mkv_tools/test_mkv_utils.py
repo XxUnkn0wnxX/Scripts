@@ -2148,7 +2148,7 @@ def test_mkv_utils_no_mkv_files_displays_guard(env: dict[str, Path]):
     (env["workdir"] / "notes.txt").write_text("plain", encoding="utf-8")
     result = _run_mkv_utils(env)
     assert result.returncode == 1
-    assert "Please check if there are Matroska files" in result.stdout
+    assert "No Matroska files found" in result.stdout
 
 
 def test_mkv_utils_query_failure_adapter_targets_readonly_query(env):
@@ -2903,7 +2903,7 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             os.write(master, b"2")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             assert (screen.enters, screen.leaves) == switches
-            assert "Set flag-forced" not in screen.text and "Set title" not in screen.text
+            assert "Set flag-forced" not in screen.text and "Set file title" not in screen.text
             os.write(master, b"1\n")
             normal_input(b"Track IDs to remove (comma/range; e to go back): ")
             os.write(master, b"1\n")
