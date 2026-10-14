@@ -14,6 +14,65 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted filename-display, Analyze and removal-count amendment
+
+- User-requested file references now display filename.extension throughout
+  configuration, processing and reports. Working-directory displays stay full;
+  internal jobs, ledger and recovery records retain full paths. Exact known-path
+  display projection preserves literal metadata and handles JSON-encoded quoted
+  filenames. No new dependencies or split runtime scripts.
+- Main choice 4 uses the existing filename/extension-searchable multi-picker,
+  lists tracks, compares complete original-ID/type/native-codec signature maps
+  against the first usable reference, reports mismatched/failed/unstarted
+  filenames plus full WorkDir/reference filename, then exits without writes.
+  Names/languages/flags and listing order do not affect comparison.
+- Removal binds the reference's original total track count. A count difference
+  skips the whole file at planning or fresh preflight, including its reorder and
+  metadata. --bypass before/after one directory disables only that count predicate;
+  it persists as a validated configuration boolean. ID/type/codec, source,
+  destination and publication checks remain. Analyze ignores the bypass.
+- Selective Astra audits PASS WITH NOTES. Parent adopted usable-signature
+  reference selection, stored boolean/count-only enforcement and optional count
+  receipt lines. Complete-map equality via existing removal_signatures is the
+  simpler adopted implementation; no queue adapter or bypass framework added.
+- Canonical 9 task IDs / 4 checkpoints preserved. T01.03/T02.02/T02.03/T04.01/
+  T04.02 and their goal gates are reaccepted after current proof and parent
+  review: 9/9 tasks and 4/4 goals. Prior native/all-format evidence is reused
+  at its original revision, without claiming a new native/full-suite/CI campaign.
+- Proof root: `.tmp/mkvutil-rework/file-references/`. Forty-three distinct affected
+  cases pass across separate runs, including nine controlling-terminal cases;
+  seven final-source cases cover display-helper correction and Analyze. Actual
+  installed fzf 0.67.0 also passes one read-only Analyze journey with controlled
+  media tools and unchanged disposable source bytes. Captures prove balanced
+  screen ownership with no normal-screen return before picker rendering; they
+  do not certify every emulator's visual frame timing.
+- Diagnostic failures remain recorded: override fixtures placed in a cleared
+  fake-state folder, Mux assertions rejecting allowed read-only tags/chapters,
+  and the shared final writer-count oracle expecting a writer for Analyze.
+  Corrections restored proper fixtures/observables without weakening modifying-
+  call or skip safety checks. One initial vacuous Analyze pass is excluded.
+  The test helper's misplaced intermediate edit was reverted and its exact AST
+  checked; only new-Mux-specific assertions were changed. The late quoted-path
+  display bug was reproduced, fixed and verified by an extended existing test.
+- Measured tests: diagnostic 41.33s wall / 38.86s user+system CPU; corrected
+  21.69s / 19.49s; affected 88.19s / 79.53s; final four 11.12s / 10.13s;
+  final Analyze three 5.20s / 4.12s. Installed-fzf probe 0.84s / 0.63s.
+  Aggregate including failed attempts: 168.37s wall / 152.76s CPU.
+  Exact commands, source/test hashes, node map and qualification boundaries are
+  in receipt.json; all logs and copied fixtures are preserved.
+- Source/tests are frozen; both Luna writers returned ownership. Parent owns
+  all six tracked changed files, records and publication; no active workers/jobs.
+  Source SHA-256: a644913fb096cd2d17ee23f21cf978e43571197fed6369172388c5b7f1930349.
+  Tests SHA-256: b061c6ad7c2d4a0a303b97663479f5f18c12ee3456e87381012190d5e39911e8.
+  Shared test helper is unchanged; original parent-session ledger is preserved.
+- Main Scripts remains on feature/mkvutil-rework, pre-amendment signed/pushed
+  baseline `8ff9560973326fdbd175c0c9878c6a87027d9a48`. The containing commit records
+  this amendment. No worktree, branch, AGENTS or tool/dependency changes.
+  User's standing signed-commit/push authorization applies, reaffirmed by
+  "push after your testing". Next: final static/integrity/diff review, sign and
+  push this branch; check publication.json and live refs before repeating any
+  publication. Completed pushes are recorded there with exact SHA and clean tree.
+
 ### Accepted filename-only picker follow-up
 
 - User requested no parent path in the picker. One display/search option pair

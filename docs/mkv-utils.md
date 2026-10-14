@@ -2,7 +2,7 @@
 
 [← Back to the toolkit](../README.md)
 
-`mkv_utils.zsh` is an interactive Matroska utility for editing metadata, remuxing tracks, and extracting attachments or tracks. It handles `.mkv`, `.mka`, `.mks`, and `.mk3d` files and lets you combine compatible actions into one batch.
+`mkv_utils.zsh` is an interactive Matroska utility for analyzing track layouts, editing metadata, remuxing tracks, and extracting attachments or tracks. It handles `.mkv`, `.mka`, `.mks`, and `.mk3d` files and lets you combine compatible actions into one batch.
 
 ## Quick start
 
@@ -27,6 +27,15 @@ The built-in help is available with:
 zsh shell/mkv_utils.zsh --help
 ```
 
+For a Mux removal run, `--bypass` can skip the total-track-count guard. Put it before or after the optional directory:
+
+```zsh
+zsh shell/mkv_utils.zsh --bypass "/Volumes/Media/My Show"
+zsh shell/mkv_utils.zsh "/Volumes/Media/My Show" --bypass
+```
+
+The bypass is off by default and applies only to Mux removal in that invocation. Its exact scope is described under [Mux](#mux).
+
 ## Requirements
 
 The script uses the installed `mkvmerge`, `mkvextract`, `mkvpropedit`, `jq`, `fzf`, and Python 3 with the existing `pymkv` module and `pymkv2` distribution. The rework adds no dependencies or separate runtime helper scripts. When the repository `.venv` exists, the script uses its Python interpreter, including when `.venv` is a symlink.
@@ -46,7 +55,7 @@ If your existing repository environment already has its dependencies, keep using
 
 The main menu keeps the work areas separate:
 
-At the main **Category:** selector, press `1`, `2`, or `3` to open a category immediately; no Enter is needed. The normal terminal cursor remains visible while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
+At the main **Category:** selector, press `1`, `2`, `3`, or `4` to open a category immediately; no Enter is needed. The normal terminal cursor remains visible while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
 
 When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Adjacent navigation menus share this screen. Each complete menu body is prepared first and printed together over the previous view, erasing old line endings and unused rows. Navigation redraws add no animation or intentional wait. The category and working directory stay visible, followed by the native input prompt. The file picker takes over the same screen and uses nearly its full height, avoiding a return to the old terminal view between the menu and fzf. The utility restores normal history after selection or cancellation, before configuration fields, processing, reports or validation errors. It never clears the normal screen or scrollback.
 
@@ -57,6 +66,7 @@ Removal-mismatch details and reports remain in normal terminal history. Redirect
 | **1. Matroska Edit** | 1 forced flag, 2 default flag, 3 language, 4 name, 5 title | Applies metadata edits with `mkvpropedit`. |
 | **2. Matroska Mux** | 1 remove tracks, 2 reorder tracks | Remuxes each eligible file once; optional metadata can be included in that remux. |
 | **3. Matroska Extract** | 1 attachments, 2 selected tracks | Extracts attachments, tracks, or both from each selected source. |
+| **4. Matroska Analyze** | Select files | Lists tracks and compares each file's original track ID, type, and codec with a reference file. |
 
 Within a category, enter one action, a comma-separated list, or an ascending range. For example, `1`, `1,2`, or `1-3`. The same format is used for optional Mux metadata choices. The file picker displays and searches filenames within the chosen directory, hiding the parent path. It is always multi-select: select one file or mark several with Tab, then confirm the selection.
 
@@ -118,7 +128,7 @@ After entering the final default-flag value, preflight runs and the batch starts
 
 You can choose `1,2` to remove and reorder tracks in the same remux. You can also select optional metadata actions `1` through `5`, using the same definitions and prompts as Edit. For example, choose Mux actions `1,2`, configure the removal and order, then choose optional metadata `3,4` to set languages and names. The track changes and metadata are passed to `mkvmerge` together in one output remux per file; Mux does not run a later `mkvpropedit` pass.
 
-Successful Mux jobs validate a staged output and replace the selected source. If removal changes the extension, the old source path is removed after the new output is published. Warning, partial or interrupted jobs can retain candidates or leave publication incomplete; the final report identifies the actual state and recovery paths to review before retrying.
+Successful Mux jobs validate a staged output and replace the selected source. If removal changes the extension, the old source path is removed after the new output is published. Warning, partial or interrupted jobs can retain candidates or leave publication incomplete; the final report identifies the actual state and recovery filenames to review before retrying.
 
 Track IDs shown by the utility are the original, zero-based IDs for that source file. For order entries, use the form `0:ID`, separated by commas, such as `0:1,0:0,0:2`. This example places original track 1 first, then track 0, then track 2. Any retained IDs left out of the order are appended. An invalid order, including a removed, unknown or duplicate ID, prompts for the order again without repeating removal selection. Removing every track is rejected before asking for an order.
 
@@ -129,6 +139,19 @@ When reorder is selected, optional track metadata inherits exactly the explicit 
 During preflight, the utility compares every requested original track ID with the corresponding track in the reference file. The first successfully identified selected file is displayed as that reference. For a file to be eligible, each requested ID must have the same track type and exact native `codec_id`. For example, an `.ass` subtitle track does not match an `.srt` track at the same ID. Differences in track names, languages, or flags do not by themselves make a file incompatible.
 
 An incompatible file is skipped as a whole for that removal run. The report names the file and shows the expected and actual track details. Compatible files can still run. After processing, the final report ends the invocation; unresolved skips or failed outcomes produce a nonzero exit status. To retry skipped files, start `mkvutil` again, select only those files, and configure a new batch.
+
+For removal, preflight also requires each selected file to have the same total number of original tracks as the reference. This guard catches unexpected layout differences beyond the requested IDs. `--bypass` skips only this total-track-count comparison; selected-ID presence, track type, exact native codec ID, source identity, configuration, collision, layout, and publication checks remain active. The flag is stored in that invocation's Mux configuration, defaults to off for each new invocation, and does not affect Analyze. The removal reference display shows a visible cue when it is enabled. This is currently the only bypassable guard; additional guards may become bypassable in the future.
+
+<details>
+<summary>Example: bypass only the total-track-count guard</summary>
+
+```zsh
+zsh shell/mkv_utils.zsh --bypass "/Volumes/Media/My Show"
+```
+
+Choose **2. Matroska Mux**, select removal, and enter the original IDs to remove. The reference display includes `Bypass enabled: removal track-count guard only.` Files may then have a different total number of tracks, but every requested original ID must still exist with the same type and exact native `codec_id` as in the reference. Any file that fails those per-ID checks is skipped as a whole; compatible files can continue.
+
+</details>
 
 If preflight leaves no eligible jobs, the utility prints the final report and exits without running a remux or writing outputs. To retry skipped files, start a new invocation and explicitly select them; their settings are collected afresh.
 
@@ -228,6 +251,24 @@ For this combined job, between-file timing covers track extraction. The final re
 
 </details>
 
+### Analyze
+
+Choose **4. Matroska Analyze**, then select files in the same multi-select picker used by the other categories. The utility prints each file's track listing and compares the complete original-ID/type/native-codec map against the first selected file with a usable listing. The reference is counted as matching. Track names, languages, flags, and listing order do not affect the comparison.
+
+Analyze ends after its report. It does not ask for actions or settings, create a processing queue, or write media. The report shows the full `Current Work Dir`, the reference filename, matching and mismatched counts, and the filenames that mismatched, failed inspection, or were not started after an interruption. A mismatch, failed inspection, or interruption returns a nonzero status.
+
+<details>
+<summary>Example: compare a selected batch with its first usable reference</summary>
+
+1. Choose `4` at **Category**.
+2. Mark the files in the picker and confirm.
+3. Review each filename and track listing. The first file with a usable track signature becomes the reference; later files are compared against its complete map.
+4. Check the final counts and any listed mismatched, failed, or not-started filenames.
+
+For example, tracks with the same IDs, types, and native codec IDs match even if their names or language flags differ. A different codec at original ID `3`, or an additional original track ID, makes that file a mismatch.
+
+</details>
+
 ## Mapping the old menu to the new categories
 
 The former individual actions map to the grouped menus as follows:
@@ -256,11 +297,11 @@ These are migration examples; choose any supported combination that fits the cur
 
 ## Reports and outcomes
 
-The final report shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, and codec details. Each original selected file contributes once to the final counts. Paths in per-file records identify the affected source and outputs. A processed queue always ends here; starting another batch requires a new invocation.
+The processing report shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, codec and total-track-count details. Each original selected file contributes once to the final counts. Displayed source, destination, stage, and recovery-file references use filenames; the full path is shown for the working directory in `Current Work Dir` and the owned navigation menu's `Directory` line. A processed queue always ends here; starting another batch requires a new invocation.
 
-Edit reports appear at the end and do not include a between-file ETA. Mux includes per-file progress and elapsed time. Extract includes per-file progress with the timing behavior described above. A report may include staged paths, native scratch paths, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
+Edit reports appear at the end and do not include a between-file ETA. Mux includes per-file progress and elapsed time. Extract includes per-file progress with the timing behavior described above. A report may include staged filenames, native scratch filenames, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
 
-Warnings, failed or partial jobs, unresolved removal skips, and interrupted batches produce a nonzero final exit status. Review the reported files and paths before repeating an operation, especially when the output state is uncertain.
+Warnings, failed or partial jobs, unresolved removal skips, and interrupted batches produce a nonzero final exit status. Review the reported filenames and recovery details before repeating an operation, especially when the output state is uncertain.
 
 ### Stopping a running batch
 
@@ -275,7 +316,7 @@ Press **Ctrl+C** after configuration completes and processing starts. The final 
 
 For Edit and Mux, pressing Ctrl+C again keeps the same stop request. The current file still receives its actual success, warning or failure result. A stopped invocation returns nonzero even when that current file completed successfully. During processing, `e` is not read as a command.
 
-Extraction cleanup is limited to identifiable partial track files in the run's own staging directory. Validated recovery files, uncertain publications and unexpected artifacts are retained and reported. If shutdown or cleanup cannot be confirmed, the report identifies the retained paths. Closing the terminal or sending TERM/HUP aborts processing and retains recoverable staging where possible; it does not request the graceful Edit/Mux finish.
+Extraction cleanup is limited to identifiable partial track files in the run's own staging directory. Validated recovery files, uncertain publications and unexpected artifacts are retained and reported. If shutdown or cleanup cannot be confirmed, the report identifies the retained filenames. Closing the terminal or sending TERM/HUP aborts processing and retains recoverable staging where possible; it does not request the graceful Edit/Mux finish.
 
 <details>
 <summary>Example: stop a three-file Mux batch after the active file</summary>
@@ -305,6 +346,8 @@ To run only the `mkv_utils` test module:
 ```zsh
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
+
+The filename-display, Analyze and removal-count follow-up passed 43 distinct affected cases across separate runs, including nine controlling-terminal journeys. Seven final-source cases cover Analyze and the corrected diagnostic display helper; one additional read-only journey uses installed fzf with controlled media tools. These checks cover whole-file count-mismatch skips, count-only `--bypass`, complete Analyze comparisons, filename-only reports, preserved raw paths and final exit. Earlier results are reused only for unchanged code/test scopes. No new full-suite, native codec matrix or CI run is claimed.
 
 The automatic-start follow-up passed 100 distinct affected cases across separate runs, including 15 controlling-terminal journeys. These cover final-input execution, full preflight before any write, Back and incomplete-input cancellation, exact mismatch/failure reports, final exit and runtime stopping. The final 26-case shutdown/consumer group also verifies transient and persistent macOS process-group probe denial: cleanup proceeds only after confirmed shutdown; otherwise candidates and recovery details remain. Earlier passing checks were reused only where their code and test bodies remained unchanged.
 

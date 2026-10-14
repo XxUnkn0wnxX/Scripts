@@ -1115,7 +1115,36 @@ mkvutil_final_summary() {
     "$header" "$batches" "${records[@]}"
 }
 
+# Project paths only for display; job, ledger and recovery records stay intact.
+_mkvutil_display_record() {
+  jq -c '
+    def filename: if type=="string" then split("/")[-1] else . end;
+    def file_field: IN("source","destination","reference","path","candidate_path",
+      "phase_receipt","staging_directory","active_original_source");
+    def file_array: IN("sources","not_started_sources","staged_paths","phase_receipts",
+      "scratch_paths","unexpected_paths","discarded_partial_tracks","remaining_staging_directories");
+    def diagnostic: IN("reason","error","cleanup_error","inventory_errors","exclusion_reason");
+    def replace_known_path($path):
+      split(($path|tojson))|join(($path|filename|tojson)) |
+      split($path)|join($path|filename);
+    def shorten($paths):
+      if type=="string" then reduce $paths[] as $path (. ; replace_known_path($path))
+      elif type=="array" then map(shorten($paths)) else . end;
+    . as $record | [..|objects|to_entries[]|
+      if (.key|file_field) then .value
+      elif (.key|file_array) then .value[]? else empty end|
+      select(type=="string" and startswith("/"))] |
+      unique|sort_by(length)|reverse as $paths |
+    $record | walk(if type=="object" then with_entries(
+      if (.key|file_field) then .value|=filename
+      elif (.key|file_array) then .value|=if type=="array" then map(filename) else . end
+      elif (.key|diagnostic) then .value|=shorten($paths) else . end) else . end)
+  ' <<< "$1"
+}
+
 mkvutil_format_final_report() {
+  local display=""
+  display="$(_mkvutil_display_record "$1")" || return 1
   jq -r '
     def duration: floor as $s | (($s/3600|floor|tostring)+"h "+(($s%3600)/60|floor|tostring)+"m "+($s%60|tostring)+"s");
     "Final report", "Directory: \(.directory)",
@@ -1139,6 +1168,7 @@ mkvutil_format_final_report() {
       "\(.status): \(.source)\(if .destination then " => "+.destination else "" end)",
       (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
+         (if .receipt.track_count_mismatch then "    Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
          (.receipt.reasons[] | "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")),
       (.attempts[] | "  Configuration \(.batch_id): phase=\(.result.phase); actual state=\(.result.actual_state)",
         (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end),
@@ -1151,7 +1181,7 @@ mkvutil_format_final_report() {
         (.result.inventory_errors[]? | "  Recovery inventory: \(.)"),
         (.result.remaining_staging_directories[]? | "  Retained staging directory: \(.)"),
         (.result.uncertain_artifacts[]? | "  Uncertain publication: \(.path)")))
-  ' <<< "$1"
+  ' <<< "$display"
 }
 
 mkvutil_final_report() { mkvutil_format_final_report "$(mkvutil_final_summary)"; }
@@ -1197,17 +1227,29 @@ try:
     print(json.dumps(dict(zip(("dev", "ino", "size", "mtime_ns"),
           map(str, (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)))), sort_keys=True))
 except (OSError, ValueError) as error:
-    print(f"Cannot inspect source identity: {error}", file=sys.stderr)
+    detail = error.strerror if isinstance(error, OSError) else str(error)
+    print(f"Cannot inspect source identity: {os.path.basename(sys.argv[1])}: {detail}", file=sys.stderr)
     sys.exit(1)
 PYCODE
+}
+
+# Identification errors are native text; replace only the supplied file paths.
+_mkvutil_display_file_errors() {
+  python3 -c '
+import os, sys
+text = sys.stdin.buffer.read()
+for path in sorted(sys.argv[1:], key=len, reverse=True):
+    text = text.replace(os.fsencode(path), os.fsencode(os.path.basename(path)))
+sys.stderr.buffer.write(text)
+' "$@"
 }
 
 mkvutil_capture_source() {
   local file="${1:A}" before="" after="" json="" rows=""
   before="$(mkvutil_source_identity "$file")" || return 1
-  json="$(mkvmerge -J "$file" < /dev/null)" || return 1
+  json="$(mkvmerge -J "$file" < /dev/null 2> >(_mkvutil_display_file_errors "$file"))" || return 1
   after="$(mkvutil_source_identity "$file")" || return 1
-  [[ "$before" == "$after" ]] || { print -u2 -r -- "Source changed during inspection: $file"; return 1; }
+  [[ "$before" == "$after" ]] || { print -u2 -r -- "Source changed during inspection: ${file:t}"; return 1; }
   rows="$(collect_tracks_for_remux "$file" "$json")" || return 1
   mkvutil_plan_layout "$rows" '' '' "${file:e}" || return 1
   printf '%s\0' "$file" "$before" "$json" | python3 -c '
@@ -1294,7 +1336,7 @@ _mkvutil_read_main() {
 
 # Navigation and its picker share a transient buffer. Pipes and dumb/redirected
 # terminals retain normal output and the original line-input protocol.
-typeset -gi MKVUTIL_UI_ACTIVE=0 MKVUTIL_UI_REPORT_SHOWN=0
+typeset -gi MKVUTIL_UI_ACTIVE=0 MKVUTIL_UI_REPORT_SHOWN=0 MKVUTIL_BYPASS_TRACK_COUNT=0
 _mkvutil_ui_owned() { [[ -t 0 && -t 1 && -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; }
 _mkvutil_ui_enter() {
   if _mkvutil_ui_owned && (( ! MKVUTIL_UI_ACTIVE )); then
@@ -1345,7 +1387,7 @@ _mkvutil_menu_body() {
     print
   fi
   case "$view" in
-    main) print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract' ;;
+    main) print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract\n4) Matroska Analyze' ;;
     actions) mkvutil_category_menu "$category" ;;
     metadata)
       print -r -- 'Optional metadata edits:'
@@ -1424,6 +1466,47 @@ mkvutil_select_files() {
   mkvutil_accept_files "${selected[@]}" || { print -u2 -r -- 'No valid scanned files selected.'; return 1; }
 }
 
+# Reuse identification, listing and the same ID/type/codec signatures as Mux.
+mkvutil_analyze_files() {
+  local file="" record="" raw="" ids="" signature="" reference="" expected="" result=0
+  local matching=0 analyzed=0
+  local -a mismatched=() failed=() missed=()
+  for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
+    if (( MKVUTIL_INTERRUPTED )); then missed+=("$file"); continue; fi
+    print -r -- "File: ${file:t}"
+    if ! record="$(mkvutil_capture_source "$file")"; then
+      failed+=("$file"); result=1; continue
+    fi
+    raw="$(jq -r '.source_json' <<< "$record")" || { failed+=("$file"); result=1; continue; }
+    display_track_info "$file" "$raw" || { failed+=("$file"); result=1; continue; }
+    ids="$(jq -r '.model.tracks|map(.id|tostring)|join(",")' <<< "$record")" || { failed+=("$file"); result=1; continue; }
+    if ! signature="$(mkvutil_removal_signatures "$record" "$ids")"; then
+      print -u2 -r -- "Cannot compare track signatures: ${file:t}"
+      failed+=("$file"); result=1; continue
+    fi
+    analyzed=$((analyzed + 1))
+    if [[ -z "$reference" ]]; then
+      reference="$file"; expected="$signature"
+      print -r -- "Analysis reference file: ${reference:t}"
+    fi
+    if jq -en --argjson expected "$expected" --argjson actual "$signature" '$expected==$actual' >/dev/null; then
+      matching=$((matching + 1))
+    else
+      mismatched+=("$file"); result=1
+    fi
+  done
+  print -r -- $'Final report\nCategory: analysis; Main choice: 4'
+  print -r -- "Current Work Dir: $PWD"
+  print -r -- "Reference file: ${reference:t}"
+  [[ -n "$reference" ]] || { print -r -- 'No usable reference file.'; result=1; }
+  print -r -- "Files analyzed: $analyzed; Matching: $matching; Mismatched: ${#mismatched}; Failed: ${#failed}; Not attempted: ${#missed}"
+  for file in "${mismatched[@]}"; do print -r -- "Track ID/type/codec mismatch: ${file:t}"; done
+  for file in "${failed[@]}"; do print -r -- "Analysis failed: ${file:t}"; done
+  for file in "${missed[@]}"; do print -r -- "Not started due to stop: ${file:t}"; done
+  (( ! MKVUTIL_INTERRUPTED )) || { print -r -- 'Analysis interrupted.'; result=1; }
+  return "$result"
+}
+
 mkvutil_inspect_sources() {
   local file="" record="" result=0
   local -a sources=()
@@ -1439,7 +1522,7 @@ mkvutil_inspect_sources() {
       jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
       sources+=("$record")
     else
-      print -u2 -r -- "Inspection failed: $file"
+      print -u2 -r -- "Inspection failed: ${file:t}"
       _mkvutil_exclude || { result=$?; return "$result"; }
       mkvutil_ledger_exclude "$file" 'Initial inspection failed' || return 1
     fi
@@ -1485,7 +1568,8 @@ mkvutil_configure_category() {
   mkvutil_plan_layout "$rows" '' '' "${source:e}" || return 1
   expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || return 1
   if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
-    print -r -- "Removal reference file: $source"
+    print -r -- "Removal reference file: ${source:t}"
+    (( ! MKVUTIL_BYPASS_TRACK_COUNT )) || print -r -- 'Bypass enabled: removal track-count guard only.'
   fi
   display_track_info "$source" "$raw" || return 1
   case "$category" in
@@ -1557,10 +1641,12 @@ mkvutil_configure_category() {
   MKVUTIL_CONFIG="$(jq -cn --arg category "$category" --arg operations "$operations" \
     --arg removal "$removal" --arg order "$order" --arg metadata "$metadata" --arg extract "$extract_ids" \
     --argjson order_ids "$(_mkvutil_json_array "${order_ids[@]}")" \
-    --argjson settings "$settings" --argjson expected_types "$expected" --arg reference "$source" --argjson signatures "$signatures" '
+    --argjson settings "$settings" --argjson expected_types "$expected" --arg reference "$source" --argjson signatures "$signatures" \
+    --argjson track_count "$(jq '.model.tracks|length' <<< "$reference")" --argjson bypass "$MKVUTIL_BYPASS_TRACK_COUNT" '
     {category:$category, operations:($operations|split(",")), removed_ids:($removal|split(",")|map(select(length>0))),
      order:$order, order_ids:$order_ids, metadata:$metadata, settings:$settings, expected_types:$expected_types,
-     extract_ids:($extract|split(",")|map(select(length>0))), reference:$reference, removal_signatures:$signatures}')" || return 1
+     extract_ids:($extract|split(",")|map(select(length>0))), reference:$reference, removal_signatures:$signatures,
+     reference_track_count:$track_count,bypass_track_count:($bypass==1)}')" || return 1
   MKVUTIL_REMOVAL_SKIPS=()
 }
 
@@ -1595,10 +1681,12 @@ mkvutil_removal_mismatch() {
            elif $actual.type!=$expected.type then "type-mismatch"
            elif $actual.codec_id!=$expected.codec_id then "codec-mismatch" else null end)} |
         select(.reason!=null)] as $reasons |
-      if ($reasons|length)==0 then empty else
+      (if $config.bypass_track_count!=true and ($record.model.tracks|length)!=$config.reference_track_count then
+         {expected:$config.reference_track_count,actual:($record.model.tracks|length)} else null end) as $count_mismatch |
+      if ($reasons|length)==0 and $count_mismatch==null then empty else
         {schema:1,kind:"removal-mismatch",source:$record.source,identity:$record.identity,
          reference:$config.reference,requested_ids:$config.removed_ids,reasons:$reasons,
-         outputs:[],propedit_args:[],merge_metadata_args:[]} end
+         track_count_mismatch:$count_mismatch,outputs:[],propedit_args:[],merge_metadata_args:[]} end
     end' "$1" "$2")" || return 1
   [[ -n "$receipt" ]] || return 0
   print -r -- "$receipt"
@@ -1639,6 +1727,10 @@ mkvutil_validate_config() {
      else (.removed_ids|length)==0 and .order=="" and (.settings|length)==0 and all(.operations[]; .=="1" or .=="2") end) and
     (if .category=="mux" and (.removed_ids|length)>0 then
       (.reference|type)=="string" and (.reference|length)>0 and (.removal_signatures|type)=="object" and
+      (.reference_track_count|type)=="number" and .reference_track_count>0 and
+      .reference_track_count==(.reference_track_count|floor) and
+      .reference_track_count>=(.removed_ids|length) and
+      (if has("bypass_track_count") then (.bypass_track_count|type)=="boolean" else true end) and
       all(.removed_ids[]; . as $id | $config.removal_signatures[$id] as $signature |
         ($signature.type=="video" or $signature.type=="audio" or $signature.type=="subtitles") and
         $config.expected_types[$id]==$signature.type and
@@ -1659,7 +1751,7 @@ mkvutil_plan_job() {
   file="$(jq -r '.source' <<< "$record")" || return 1
   identity="$(mkvutil_source_identity "$file")" || return 1
   jq -e --argjson identity "$identity" '.identity == $identity' <<< "$record" > /dev/null || {
-    print -u2 -r -- "Source changed after inspection: $file"; return 1;
+    print -u2 -r -- "Source changed after inspection: ${file:t}"; return 1;
   }
   mismatch="$(mkvutil_removal_mismatch "$record" "$config")" || result=$?
   if (( result != 0 )); then
@@ -1674,7 +1766,7 @@ mkvutil_plan_job() {
       [$config.settings|keys[]|split(":")[1]|select(. != "info")]|unique) as $targeted |
     all($targeted[]; . as $id | any($record.model.tracks[];
       (.id|tostring)==$id and .type==$config.expected_types[$id]))
-    ' "$record" "$config" | jq -e . > /dev/null || { print -u2 -r -- "Missing or incompatible original track IDs: $file"; return 1; }
+    ' "$record" "$config" | jq -e . > /dev/null || { print -u2 -r -- "Missing or incompatible original track IDs: ${file:t}"; return 1; }
   removal="$(jq -r '.removed_ids|join(",")' <<< "$config")" || return 1
   order="$(jq -r '.order' <<< "$config")" || return 1
   mkvutil_plan_layout "$rows" "$removal" "$order" "${file:e}" || return 1
@@ -1818,7 +1910,7 @@ try:
             tail.insert(0, parent.name)
             parent = parent.parent
         if not parent.is_dir():
-            raise ValueError(f"Output parent is not a regular directory: {parent}")
+            raise ValueError(f"Output parent is not a regular directory: {parent.name}")
         item = parent.stat()
         insensitive = case_insensitive(source)
         if item.st_dev != source.parent.stat().st_dev:
@@ -1833,7 +1925,7 @@ try:
         source = Path(job["source"])
         key = destination_key(source, source)
         if key in sources:
-            raise ValueError(f"Duplicate source alias: {source}")
+            raise ValueError(f"Duplicate source alias: {source.name}")
         sources[key] = source
     input_keys = set(sources)
     input_inodes = set()
@@ -1855,31 +1947,37 @@ try:
                 key = destination_key(path, source)
                 previous = destinations.get(key)
                 if previous and not (kind == previous["kind"] == "attachment"):
-                    raise ValueError(f"Destination collision or filename alias: {path}")
+                    raise ValueError(f"Destination collision or filename alias: {path.name}")
                 destinations[key] = {"path": path, "kind": kind}
                 if job["config"]["category"] != "extract" and key == source_key:
                     continue
                 if key in input_keys:
-                    raise ValueError(f"Destination aliases input media: {path}")
+                    raise ValueError(f"Destination aliases input media: {path.name}")
                 if os.path.lexists(path):
                     item = path.lstat()
                     if kind != "attachment" or not stat.S_ISREG(item.st_mode):
-                        raise ValueError(f"Destination already exists or is unsafe: {path}")
+                        raise ValueError(f"Destination already exists or is unsafe: {path.name}")
                     if (item.st_dev, item.st_ino) in input_inodes:
-                        raise ValueError(f"Attachment destination inode aliases input media: {path}")
+                        raise ValueError(f"Attachment destination inode aliases input media: {path.name}")
 except (OSError, ValueError, KeyError, TypeError) as error:
-    print(str(error), file=sys.stderr)
+    if isinstance(error, OSError):
+        names = [Path(value).name for value in (error.filename, error.filename2) if value]
+        print(f"{error.strerror}: " + ", ".join(names), file=sys.stderr)
+    else:
+        print(str(error), file=sys.stderr)
     sys.exit(1)
 '
 }
 
 mkvutil_report_removal_skips() {
-  local receipt=""
+  local receipt="" display=""
   for receipt in "$@"; do
+    display="$(_mkvutil_display_record "$receipt")" || return 1
     jq -r '
       "Skipped removal mismatch: \(.source)", "  Reference: \(.reference)",
+      (if .track_count_mismatch then "  Track count mismatch: expected \(.track_count_mismatch.expected); actual \(.track_count_mismatch.actual)" else empty end),
       (.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")
-    ' <<< "$receipt" || return 1
+    ' <<< "$display" || return 1
   done
 }
 
@@ -1915,7 +2013,7 @@ mkvutil_plan_queue() {
       scope+=("$record")
     else
       file="$(jq -r '.source' <<< "$record")"
-      print -u2 -r -- "Cannot plan source: $file"
+      print -u2 -r -- "Cannot plan source: ${file:t}"
       _mkvutil_exclude || { result=$?; return "$result"; }
       mkvutil_ledger_exclude "$file" 'Source could not be planned' || return 1
       _mkvutil_remove_scope_source "$file"
@@ -1974,14 +2072,14 @@ mkvutil_prepare_skipped_subset() {
       jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
       sources+=("$record")
     else
-      print -u2 -r -- "Fresh skipped-source inspection failed: $file"
+      print -u2 -r -- "Fresh skipped-source inspection failed: ${file:t}"
       _mkvutil_exclude || { result=$?; return "$result"; }
       mkvutil_ledger_exclude "$file" 'Fresh skipped-source inspection failed; mismatch remains unresolved' || return 1
     fi
   done
   (( ${#sources} > 0 )) || { print -u2 -r -- 'No valid skipped sources remain.'; return 1; }
   MKVUTIL_SOURCES=("${sources[@]}")
-  print -r -- "Fresh skipped-subset reference: $(jq -r '.source' <<< "${MKVUTIL_SOURCES[1]}")"
+  jq -r '"Fresh skipped-subset reference: \(.source|split("/")[-1])"' <<< "${MKVUTIL_SOURCES[1]}"
 }
 
 mkvutil_cancel_status() {
@@ -1990,14 +2088,16 @@ mkvutil_cancel_status() {
 }
 
 mkvutil_preview_jobs() {
-  local job="" show_attachment_policy=1
+  local job="" display="" show_attachment_policy=1
   if (( MKVUTIL_LEDGER_ENABLED )); then
     local source="" entry=""
     for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do
       entry="${MKVUTIL_LEDGER[$source]}"
+      display="$(_mkvutil_display_record "$entry")" || return 1
       jq -r '.source as $source | .skip_history[] |
         "Previous skip \(if .resolved then "resolved" else "unresolved" end): \($source)",
-        (.receipt.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")' <<< "$entry" || return 1
+        (if .receipt.track_count_mismatch then "  Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
+        (.receipt.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")' <<< "$display" || return 1
     done
   elif (( ${#MKVUTIL_REMOVAL_SKIP_HISTORY} > 0 )); then
     print -r -- 'Previous skipped-scope receipts (execution unresolved):'
@@ -2005,6 +2105,7 @@ mkvutil_preview_jobs() {
   fi
   mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
   for job in "${MKVUTIL_JOBS[@]}"; do
+    display="$(_mkvutil_display_record "$job")" || return 1
     jq -r --argjson show_policy "$show_attachment_policy" '
       (if $show_policy==1 and .config.category=="extract" and (.config.operations|index("1")) then
         "Attachments: shared collection; overwrite regular same-name files in selected-source and embedded-list order; last successful publication wins." else empty end),
@@ -2015,7 +2116,7 @@ mkvutil_preview_jobs() {
       (.preview.tracks[] | "Original ID \(.original_id) => final position \(.final_position): \(.type) [\(.codec)] name=\(.name|tojson) language=\(.language|tojson) default=\(.default) forced=\(.forced)"),
       (.outputs[] | select(type=="object") | "Extract \(.kind) \(.id): \(.path)",
         (.artifacts[] | "  Artifact \(.role) (\(if .required then "required" else "optional" end)): \(.path)"))
-    ' <<< "$job" || return 1
+    ' <<< "$display" || return 1
     show_attachment_policy=0
   done
 }
@@ -2235,7 +2336,7 @@ _mkvutil_launch_engine() {
     done
     if (( checker_code != 0 )); then
       MKVUTIL_RESULT_JSON=""
-      print -u2 -r -- "Executor result unavailable or invalid; recovery transport retained: $transport"
+      print -u2 -r -- "Executor result unavailable or invalid; recovery transport retained: ${transport:t}"
       [[ ! -s "$transport/errors" ]] || cat "$transport/errors" >&2
       transport=""
       return 1
@@ -3109,6 +3210,8 @@ mkvutil_execute_edit_job() { _mkvutil_execute_job edit "$1"; }
 mkvutil_execute_mux_job() { _mkvutil_execute_job mux "$1"; }
 
 mkvutil_report_result() {
+  local display=""
+  display="$(_mkvutil_display_record "$1")" || return 1
   jq -r '"\(.status): \(.source)", "  Destination: \(.destination)",
     "  Phase: \(.phase); actual state: \(.actual_state)",
     (if .reason!="" then "  \(.reason)" else empty end),
@@ -3119,7 +3222,7 @@ mkvutil_report_result() {
     (.scratch_paths[]? | "  Native scratch: \(.)"),(.unexpected_paths[]? | "  Unexpected artifact: \(.)"),
     (if .cleanup_error then "  Cleanup failed: \(.cleanup_error)" else empty end),
     (.inventory_errors[]? | "  Recovery inventory: \(.)"),
-    (.remaining_staging_directories[]? | "  Retained staging directory: \(.)")' <<< "$1"
+    (.remaining_staging_directories[]? | "  Retained staging directory: \(.)")' <<< "$display"
 }
 
 mkvutil_execute_queue() {
@@ -3157,7 +3260,7 @@ mkvutil_execute_queue() {
   for job in "$@"; do
     queue_index=$((queue_index + 1))
     source="$(jq -r '.source' <<< "$job")" || return 1
-    [[ -n "${MKVUTIL_LEDGER[$source]-}" ]] || { print -u2 -r -- "Job outside original selected scope: $source"; return 1; }
+    [[ -n "${MKVUTIL_LEDGER[$source]-}" ]] || { print -u2 -r -- "Job outside original selected scope: ${source:t}"; return 1; }
     if (( MKVUTIL_INTERRUPTED )); then
       MKVUTIL_LEDGER[$source]="$(jq -c 'if .status=="pending" then .status="not_attempted" else . end' <<< "${MKVUTIL_LEDGER[$source]}")"
       continue
@@ -3165,7 +3268,7 @@ mkvutil_execute_queue() {
     status_name="$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$source]}")"
     case "$status_name" in
       success|warning|failed|partial|interrupted|excluded|not_attempted)
-        print -u2 -r -- "Source already has an outcome; not retried: $source"
+        print -u2 -r -- "Source already has an outcome; not retried: ${source:t}"
         queue_code=1
         unstarted_offset=$queue_index
         continue ;;
@@ -3276,10 +3379,11 @@ mkvutil_execute_queue() {
 }
 
 print_help() {
-  print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
+  print -r -- "Usage: ${SCRIPT_NAME} [--bypass] [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
-  print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks'
+  print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks\n  4) Matroska Analyze  List tracks and compare layouts'
   print -r -- $'\nChoose one action or a batch (1,2 or 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
+  print -r -- '--bypass skips only the removal total-track-count guard.'
 }
 
 # The final required input commits the configuration. Complete the whole
@@ -3357,19 +3461,24 @@ mkvutil_close_scope() {
 _mkvutil_main_body() {
   setopt localtraps
   local directory="$PWD" category="" operations="" result=0 resolved_directory="" sticky_code=0 selected=0
+  local argument="" directory_set=0
   MKVUTIL_LEDGER_ENABLED=0
   MKVUTIL_INTERRUPTED=0
+  MKVUTIL_BYPASS_TRACK_COUNT=0
   trap 'MKVUTIL_INTERRUPTED=1' INT TERM
-  (( $# <= 1 )) || { print -u2 -r -- "Usage: ${SCRIPT_NAME} [working_directory]"; return 1; }
-  case "${1-}" in
-    --help|-h) print_help; return 0 ;;
-    -*) print -u2 -r -- "Usage: ${SCRIPT_NAME} [working_directory]"; return 1 ;;
-    '') ;;
-    *) directory="$1" ;;
-  esac
+  for argument in "$@"; do
+    case "$argument" in
+      --help|-h) print_help; return 0 ;;
+      --bypass) MKVUTIL_BYPASS_TRACK_COUNT=1 ;;
+      -*) print -u2 -r -- "Usage: ${SCRIPT_NAME} [--bypass] [working_directory]"; return 1 ;;
+      *)
+        (( ! directory_set )) || { print -u2 -r -- "Usage: ${SCRIPT_NAME} [--bypass] [working_directory]"; return 1; }
+        directory="$argument"; directory_set=1 ;;
+    esac
+  done
   resolved_directory="$(mkvutil_resolve_directory "$directory")" || return 1
   cd "$resolved_directory" || return 1
-  print -r -- "Current Work Dir: $directory"
+  print -r -- "Current Work Dir: $resolved_directory"
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
     result=0
@@ -3383,6 +3492,7 @@ _mkvutil_main_body() {
       1) category=edit ;;
       2) category=mux ;;
       3) category=extract ;;
+      4) category=analysis ;;
       *) _mkvutil_ui_leave; print -u2 -r -- 'Invalid category.'; return 1 ;;
     esac
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
@@ -3397,6 +3507,11 @@ _mkvutil_main_body() {
       _mkvutil_ui_leave
       print -r -- 'No Matroska files found (.mkv, .mka, .mks, .mk3d).'; return 1;
     }
+    if [[ "$category" == analysis ]]; then
+      mkvutil_select_files || return 1
+      mkvutil_analyze_files || sticky_code=1
+      return "$sticky_code"
+    fi
     while true; do
       result=0
       _mkvutil_menu_read actions "$category" 'Operations (single/comma/range): ' || result=$?
