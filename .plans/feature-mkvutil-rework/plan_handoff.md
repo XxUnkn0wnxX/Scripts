@@ -14,37 +14,46 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Final user validation accepted; stable promotion ready
+### Rework accepted and integrated into stable branches
 
-- User reports that the script passes their testing and authorizes one final
-  quick/deep review, promotion to master/develop, both pushes and removal of the
-  local/remote feature branch if no further issue remains. Existing runtime,
-  media/dependency and canonical-record boundaries remain in effect.
-- Reuse T04.01/T04.02 and approved coordinated route B. Product source/tests
-  are frozen at 5f1e96c; parent owns records/Git/integration. Final independent
-  Astra actual-code audit PASS, no blocking findings or extra matrix requested.
-  All 10 final controlled checks passed in20.44s (21.39s measured command wall;
-  10.31s user +9.93s system CPU) with identical pre/post/current source/test/helper
-  hashes. Both zsh syntax checks and Python compilation pass. Prior user/native/
-  interactive evidence remains revision-bound; no new media-write IA campaign.
-- Single main Scripts checkout; target refs were fetched and match their local
-  counterparts. Both targets have two earlier documentation commits outside the
-  feature ancestry. Git merge-tree rehearsal is clean for both and reproduces
-  the exact feature tree; no conflict resolution or product change is needed.
-- Next: final audit/check receipts, signed handoff checkpoint; merge feature into
-  develop, merge develop into master, then fast-forward develop to that result.
-  Verify final product bytes and both branches, push the two stable refs
-  atomically where supported, and verify their server SHAs match. Only then
-  delete the remote feature ref, verify its absence, and delete the fully merged
-  local feature ref. Leave the main checkout on develop. Preserve
-  the canonical plans and ignored recovery/test evidence.
-- Code acceptance is complete (9/9 tasks, 4/4 checkpoints); only authorized Git
-  publication and ref cleanup remain. Final test and independent audit receipts
-  are `final-promotion/run-01/receipt.json` and `independent-audit.json` beneath
-  `.tmp/mkvutil-rework/`; inspect the final publication receipt before repeating
-  an operation after interruption.
-- Promotion proof is under `.tmp/mkvutil-rework/final-promotion/`. No new worktree,
-  branch creation, AGENTS modification, force-push or history rewrite is planned.
+- The user accepted their script testing and authorized final review, stable
+  promotion, pushing master/develop, and deletion of feature/mkvutil-rework both
+  locally and on origin only after verifying the stable refs are synchronized.
+- Final independent Astra actual-code audit PASS: dry-run isolation, source/track
+  guards, metadata/order mapping, safe publication/stop behavior, queue finality,
+  filename-only outcome projection and Git promotion. No blocking finding or
+  additional implementation/test matrix. All10 final controlled checks passed
+  in20.44s on unchanged source/test/helper bytes; both zsh syntax checks and
+  Python compilation pass. User/native/interactive earlier receipts remain
+  revision-bound; this final check is not a new native-write or IA campaign.
+- Product source remains audited5f1e96c; SHA-256
+  `a1a2246b597dff01b284ed1d56e10ada73dcd8ae7d14f4f48f6a28e788d71756`.
+  Test SHA-256
+  `2d58f2b3f36e3b443934751a4f1caa84b8842268c84b91415919c7f3506e0af2`.
+- Feature checkpoint `4538ed7a9fc1cdbc4e8edc1a806341eab6b879f9` was merged into develop
+  by signed `32b46395aa8b596617a585c7c17f3d85b6d64716`. That integration was merged into master
+  by signed `40511d6a43c9836f470e3294e7b471b49259129a`, then develop was fast-forwarded to it.
+  Both original target histories and the complete feature history are retained.
+  All product/guide/helper/AGENTS/ignore bytes match the frozen reviewed manifest;
+  there were no conflicts or product edits during integration.
+- **9/9 tasks and 4/4 checkpoints accepted**. No active workers, runtime jobs,
+  code changes or feature gates remain. Main Scripts checkout stays on develop;
+  the final records commit is synchronized to master before publication.
+  Canonical plan/checklist/handoff stay tracked in this same folder even after
+  feature-ref deletion. Ignored fixture/log/recovery evidence is preserved.
+- Final operational order: push both stable refs, verify matching server SHAs,
+  then delete origin's feature ref and verify absence, then delete the fully
+  merged local feature ref with branch -d. This cleanup is explicitly authorized.
+  Exact final publication/cleanup outcome is recorded in
+  `.tmp/mkvutil-rework/final-promotion/publication.json`; verify that receipt and
+  actual branch/server refs first when recovering. If an operation was interrupted,
+  finish only its remaining authorized steps; do not repeat accepted tests or
+  already-completed merges. No force-push, new worktree/branch, AGENTS edit,
+  dependency/tool upgrade or user-media write is part of this closure.
+- Proof: `.tmp/mkvutil-rework/final-promotion/run-01/receipt.json`,
+  `independent-audit.json`, `integration.json`, `product-manifest.json` and final
+  review/publication receipts. Prior receipts and the parent-session ledger
+  remain intact.
 
 ### Accepted concise prompts and filename-only outcome rows
 
