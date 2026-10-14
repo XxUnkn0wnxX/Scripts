@@ -14,34 +14,42 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-- User-authorized final housekeeping: after the verified G04 feature push,
-  restore this same feature branch in the original `Scripts` checkout and
-  remove `Scripts-dev`. Carry only `.tmp/mkvutil-rework` into main `Scripts/.tmp`;
-  other retiring-worktree scratch may be discarded. Preserve the main checkout's
-  existing environment and unrelated `.tmp` contents. Remove the dedicated
-  worktree rule and propagate only the approved AGENTS policy change to feature,
-  develop and master, pushing each. No utility-code promotion is requested.
-  Planning files remain tracked in `.plans/feature-mkvutil-rework/` on the
-  feature branch. Operational migration is pending; do not claim teardown done.
+Migration evidence: `.tmp/mkvutil-rework/return-main/before-move-inventory.json`
+and `after-move-verification.json`. The pre-existing main project scratch was
+retained within `return-main/previous-main/`. Historical receipts and drivers
+still name Scripts-dev; their preserved artifacts now live under this checkout's
+`.tmp/mkvutil-rework`. Preserve original logs rather than rewriting tested paths.
 
+- Final housekeeping is complete: the original `Scripts` checkout now owns
+  `feature/mkvutil-rework`; `Scripts-dev` was removed with normal Git worktree
+  removal, without force or branch deletion. Only `.tmp/mkvutil-rework` was
+  carried back. Its 37,831 inventoried entries and 101,628,108 file bytes were
+  verified after the move, including literal symlinks and recovery directories.
+  Other retiring-worktree scratch was discarded as the user instructed.
+  The existing main `.venv` and unrelated `.tmp` contents remain in place.
+- Tracked plans are in `.plans/feature-mkvutil-rework/`. Approved AGENTS rules
+  match byte-for-byte on feature, develop and master and all were pushed:
+  feature policy `fd9bc72492abfabc5fcfdbeefedba23a2c235b48`,
+  develop `ce235f88f32acd620c63b4b906158e468f8b7156`,
+  master `b9eb27c883ea3cf57cb230660417baa2f96e0766`. Each policy commit changes
+  only AGENTS. The utility rework remains on the same feature branch.
 - All four main goals and nine tasks are accepted after parent review,
   current receipts and Astra's independent audits. Current acceptance is
   **9 / 9 tasks and 4 / 4 goals**. The campaign writer is quiescent, with no
   active sessions; source/test/helper hashes and immutable fixtures are verified.
-  Current128-case coverage is125 unchanged full-suite passes plus3 corrected
-  cases, with all assertions and existing guards retained. Three native v93
+  Current coverage comprises 128 cases: 125 unchanged full-suite passes plus 3
+  corrected cases, with all assertions and existing guards retained. Three native v93
   journeys and real-fzf two-file preview/Cancel are verified. Historical
   failures remain preserved and do not represent open runtime defects.
 - T04.02 is accepted after complete guide/README/source-help review and actual
   help/syntax/link checks. Executable bodies equal the native-qualified G03
   source byte-for-byte; only comments/help changed. Final parent receipt:
   `.tmp/mkvutil-rework/final-review.icdu2_ji/parent-final-review.json`.
-  All runtime/documentation goals are done. Next: commit/push the accepted G04
-  feature package, propagate the isolated AGENTS policy commit to develop/master,
-  move only `.tmp/mkvutil-rework` into main Scripts, retire Scripts-dev, restore
-  the same feature branch there, and record/verify the final state. Parent owns
-  all remaining writes/Git; all workers are quiescent. No code promotion to other
-  branches or branch deletion is requested.
+  All runtime/documentation goals and requested checkout operations are done.
+  This is the final administrative checkpoint. On resume, verify the commit
+  containing this record against the live feature ref; no runtime or
+  documentation work remains. All workers are quiescent and no test/native
+  process remains active.
 - The user-requested real code/checklist audit reopened missing normal
   multi-file Edit proof, added a focused passing test, and corrected stale
   progress/restart statements. Safe snapshot and findings remain under
@@ -56,36 +64,32 @@ and `.tmp` receipt paths below are relative to the repository root.
   `f44cd98` checkpoint. This is the historical G02 source binding; current G03
   source binding is in its Extract receipt below. Integrated legacy/all-format/
   campaign checks and final documentation remain pending.
-- Active workspace: sibling worktree `../Scripts-dev`, on
-  `feature/mkvutil-rework`, per the user's explicit instruction to work there
-  moving forward. The user confirmed this worktree is dedicated to this rework
-  and must remain attached to the current feature branch. The original
-  `../Scripts` checkout is clean on `develop`.
-  Resolve the current project root from Git rather than using old shell cwd.
-- All five pending tracked-file changes were copied and SHA-256 verified before
+- Active workspace: main `Scripts` checkout, on `feature/mkvutil-rework`,
+  explicitly requested by the user after final publication. Git inventories
+  exactly this one worktree. Resolve its root from Git; no sibling worktree
+  is required. The former dedicated-worktree AGENTS rule has been removed.
+- Historical initial move to Scripts-dev: all five pending tracked-file changes were copied and SHA-256 verified before
   restoring the original checkout. Existing approved local `AGENTS.md` was
   copied unchanged; current `.tmp/mkvutil-rework` fixtures/receipts were preserved.
   Local recovery snapshot: `.tmp/mkvutil-rework/migration.rbow6b82/manifest.json`
   and its five file copies. This is a pre-migration snapshot, not current code.
-- The new worktree reuses the original checkout's Python environment through
+- The former worktree reused the original checkout's Python environment through
   an ignored `.venv` link. A narrow `/.venv` entry was added to the common clone's
   local `info/exclude` because the tracked directory-only ignore doesn't cover
   a symlink. No tracked ignore rule or dependency installation changed.
-- Relocation verification passed: same pure foundation contract
+- Historical initial relocation verification passed: same pure foundation contract
   (`1 passed, 28 deselected in 0.15s`), script syntax/whitespace checks, and the
   existing Python package environment. Initial test setup lacked a temporary
   parent directory; rerunning in a fresh owned run directory passed without
   product changes.
-- Latest verified published feature HEAD:
-  `b749135cdfa52b7b1ec2fbe1a63de8f064700f1f`
-  (`feat(shell): integrate batched mkvutil extraction`), signed.
-  The user explicitly authorized automatic pushes after each accepted main
-  goal; G03's accepted checkpoint and preceding attachment-policy amendment
-  were pushed and the exact live remote ref verified. G02's earlier published
-  checkpoint remains `1bb755e1fd033d66dcefb6f431f826cafe89e262`.
-  `develop` and `master` remain at signed `e6dd2b94fd489796df80270814aa040bc19db8a8`
-  locally/remotely. Utility implementation is published on the feature branch;
-  no promotion or live alias/deployment change was made.
+- Verified published G04 feature checkpoint:
+  `c15f7c81187280dfe449b4a17581ef507e68894a`
+  (`test(shell): finish mkvutil integration and guide`), signed. The user
+  authorized automatic main-goal pushes; this completes the rework publication.
+  G03 remains `b749135cdfa52b7b1ec2fbe1a63de8f064700f1f`, and G02 remains
+  `1bb755e1fd033d66dcefb6f431f826cafe89e262`. Develop/master now contain the
+  matching AGENTS-only update above. Resolve latest feature HEAD from Git;
+  this final administrative handoff checkpoint follows the G04 code checkpoint.
 - Prior accepted execution checkpoint at the audit: signed
   `f44cd9841e00d9d86ffaffcae7b2a5ae520de278`
   (`feat(shell): execute grouped mkvutil edit and mux jobs`). It was four
@@ -134,7 +138,7 @@ and `.tmp` receipt paths below are relative to the repository root.
   Extract execution is accepted after its focused/native and review gates.
   Current totals: 9 / 9 tasks and 4 / 4 goals.
 - No runtime or documentation package remains pending. G04 is accepted;
-  only its authorized publication and checkout/record housekeeping remain.
+  this handoff records the completed publication and checkout operations.
   The approved campaign finished within budget; no repeated broad run is needed.
 - T02.03's implementation draft uses an original-source-keyed final-outcome
   ledger separate from current scope/jobs/skip receipts, plus saved per-batch
@@ -169,7 +173,7 @@ and `.tmp` receipt paths below are relative to the repository root.
   `plan_checklist.md`, and `plan_handoff.md`. The user explicitly requested
   this relocation on2026-10-14 while retaining `feature/mkvutil-rework`.
   The corresponding AGENTS-only policy is signed at `fd9bc72`; propagation
-  to develop/master is authorized and pending. Historical root copies in
+  to develop/master is complete and pushed at the matching commits above. Historical root copies in
   other branches are not competing project masters.
 - Runtime default cwd remains the original `../Scripts` checkout. Every tool
   command must explicitly use `../Scripts-dev`; workers must provide a verified
@@ -220,7 +224,7 @@ and `.tmp` receipt paths below are relative to the repository root.
 | `plan.md` | Authoritative requirements, goal/task IDs, dependencies, and four checkpoint identities | Tracked under `.plans/feature-mkvutil-rework/` |
 | `plan_checklist.md` | Mirrored checkpoint and validation acceptance evidence | Tracked companion under `.plans/feature-mkvutil-rework/` |
 | `plan_handoff.md` | Verified current state, approvals, lineage, and next actions | Tracked companion under `.plans/feature-mkvutil-rework/` |
-| `AGENTS.md` | Approved durable project instructions and planning-record locator | Updated on feature; approved matching develop/master propagation pending |
+| `AGENTS.md` | Approved durable project instructions and planning-record locator | Tracked, matching and pushed on feature/develop/master |
 
 On 2026-10-14 the user replied **"for repo plan etc can be tracked & ya
 approved"** to the proposal for project instructions. This approves creating
@@ -925,7 +929,7 @@ contain no media operations, product tests, or CI results.
   with no utility entrypoint runs. Fixture hashes/provenance and reference
   products are in `fixture-receipt.json` beside the preparation receipt.
 - The preparation handback was quiescent with no active sessions; parent has
-  now resumed the same sole writer for the approved campaign. Parent corrected only
+  subsequently resumed that writer for the now-completed approved campaign. Parent corrected only
   future campaign locations to the approved owned execution root
   `.tmp/mkvutil-rework/interactive/t04-campaign.vqvatjsp/`; immutable prepared
   fixtures remain in the preparation root. Pre-review manifest/receipt copies
