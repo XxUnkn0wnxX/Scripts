@@ -49,7 +49,7 @@ Repo layout:
 | --- | --- | --- |
 | [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) | Extract every attachment from each MKV in the current folder. | [Docs](docs/mkv-extract-tracks.md) |
 | [`mkv_mux.zsh`](shell/mkv_mux.zsh) | Interactive MKV remux and volume-boost helper. | [Docs](docs/mkv-mux.md) |
-| [`mkv_utils.zsh`](shell/mkv_utils.zsh) | Interactive MKV metadata, extraction, and track-edit helper. | [Docs](docs/mkv-utils.md) |
+| [`mkv_utils.zsh`](shell/mkv_utils.zsh) | Interactive Matroska Edit, Mux, and Extract utility with reviewed multi-action batches. | [Docs](docs/mkv-utils.md) |
 | [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) | Satisfactory splitter, balancer, and compressor planner. | [Docs](docs/satisfactory-balancer.md) |
 | [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) | macOS-only launcher and updater wrapper for Satisfactory Modeler. | [Docs](docs/satisfactory-modeler.md) |
 | [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) | macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. | [Docs](docs/discord-install-manager.md) |
