@@ -40,13 +40,13 @@ approach and require no full remux.
 - The inspected host reports macOS Big Sur **11.7.11**, build `20G1443`.
 - Tool upgrades and dependency installation are outside this rework. Version 93.0
   is the compatibility baseline, including its bundled manuals and local help.
-- [The script](../../shell/mkv_utils.zsh) currently accepts one main-menu choice per
-  invocation. Metadata helpers collect a value and immediately edit selected
+- At the initial review, [the script](../../shell/mkv_utils.zsh) accepted one main-menu choice per
+  invocation. Metadata helpers collected a value and immediately edited selected
   files before collecting the next value. Removal and reordering each perform
   their own remux.
 - File discovery already includes `.mkv`, `.mka`, `.mks`, and `.mk3d`; preserve
   that set consistently in every new entrypoint and shared file selector.
-- [Existing documentation](../../docs/mkv-utils.md) describes the nine choices and
+- The initial [documentation](../../docs/mkv-utils.md) described the nine choices and
   queue reporting. [The pytest suite](../../tests/mkv_tools/test_mkv_utils.py) and
   [shared helpers](../../tests/mkv_tools/_mkv_helpers.py) provide an existing isolated
   interactive test harness.
@@ -66,7 +66,6 @@ Main menu
   1) Matroska Edit      Flags, languages, track names, container title
   2) Matroska Mux       Remove and reorder tracks
   3) Matroska Extract   Attachments and selected tracks
-  0) Exit
 ```
 
 Each category allows a single number, a comma-separated list, or ascending
@@ -107,6 +106,35 @@ operation settings.
   they prompt and mutate immediately, which would repeat remuxes and keep the
   current interruptions.
 
+### Menu navigation
+
+Ctrl+C exits the utility. Do not display a dedicated Exit or Cancel choice.
+The main menu also accepts hidden `e`/`E` for silent exit. Category action,
+review, replacement-action, and optional Mux metadata menus show `e) Back`.
+Handle this at menu-choice call sites only: track IDs, flags, languages, names,
+and titles remain ordinary input fields. Literal `e` remains a valid name/title;
+other value fields retain their existing validation.
+
+Before selection, Back from category actions returns to main without opening
+the picker. After selection, Back from review or operation menus returns to the
+same category actions, retaining sources, exclusions and result history while
+discarding pending configuration. Each newly confirmed action selection gets a
+fresh requested-batch record with its own action numbers. Selecting Back again
+returns to main, preserving unresolved skip outcomes before starting a new
+selection scope. A new scope rescans the directory and opens a fresh picker.
+
+Fresh skipped-only preparation remains explicit. Back within an already prepared
+subset retains that subset. Back at the post-Run skipped-files menu finalizes and
+reports the original scope once, then returns to main; completed files are never
+automatically replayed. Earlier failures remain reflected in the invocation's
+exit status. Successful Run keeps its existing final-report-and-return behavior.
+EOF or Ctrl+C terminates before a new scope or ledger reset.
+
+This user-directed follow-up belongs to T01.03 and the affected T04 integration/
+documentation gates. Verify affected navigation and ledger boundaries with
+focused tests and the permitted small isolated interactive probe; reuse unchanged
+engine/native/campaign receipts rather than rerunning the completed broad campaign.
+
 ### Category batching and optional Mux metadata
 
 Each category owns its job configuration. Before execution, offer:
@@ -117,7 +145,7 @@ Each category owns its job configuration. Before execution, offer:
   Review or change configured operations
   Preview resulting tracks and outputs
   Run batch
-  Cancel
+  Back to category actions
 ```
 
 For example, select Mux `1,2` for removal and reordering, then optional metadata
@@ -426,7 +454,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | --- | --- | --- | --- | --- |
 | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
 | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
-| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence. |
+| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu-only Back, preserving scope and truthful result history. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
 

@@ -1209,11 +1209,12 @@ mkvutil_inspect_sources() {
 
 mkvutil_category_menu() {
   case "$1" in
-    edit) mkvutil_metadata_menu ;;
+    edit) mkvutil_metadata_menu || return 1 ;;
     mux) print -r -- $'1) Remove tracks\n2) Reorder tracks' ;;
     extract) print -r -- $'1) Extract attachments\n2) Extract selected tracks' ;;
     *) return 1 ;;
   esac
+  print -r -- 'e) Back'
 }
 
 mkvutil_category_choices() {
@@ -1267,7 +1268,9 @@ mkvutil_configure_category() {
       done
       print -r -- 'Optional metadata edits:'
       mkvutil_metadata_menu || return 1
+      print -r -- 'e) Back'
       _mkvutil_read 'Metadata choices (comma/range; blank for none): ' || return 2
+      case "$REPLY" in e|E|0) return 4 ;; esac
       metadata="$REPLY"
       if [[ -n "${metadata//[[:space:]]/}" ]]; then
         metadata="$(mkvutil_category_choices edit "$metadata")" || return 1
@@ -1719,7 +1722,7 @@ mkvutil_review_menu() {
   elif (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )); then
     print -r -- '4) Prepare a fresh batch for mismatch-skipped files'
   fi
-  print -r -- '0) Cancel'
+  print -r -- 'e) Back'
 }
 
 mkvutil_preview_jobs() {
@@ -2787,7 +2790,7 @@ mkvutil_execute_queue() {
 print_help() {
   print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
-  print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks\n  0) Exit'
+  print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks'
   print -r -- $'\nChoose one action or a batch (1,2 / 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
 }
 
@@ -2796,9 +2799,6 @@ print_help() {
 mkvutil_controller() {
   local category="$1" operations="$2" review="" result=0
   while true; do
-    if (( MKVUTIL_BATCH_ID == 0 )) || [[ "$(jq -r '.state' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" != requested ]]; then
-      mkvutil_batch_request "$category" "$operations" || return 1
-    fi
     mkvutil_configure_category "$category" "$operations" || return $?
     mkvutil_batch_configured "$MKVUTIL_CONFIG" || return 1
     result=0
@@ -2809,12 +2809,15 @@ mkvutil_controller() {
       _mkvutil_read 'Review choice: ' || return 2
       review="$REPLY"
       case "$review" in
+        e|E) return 4 ;;
         0) return 2 ;;
         1)
           mkvutil_category_menu "$category" || return 1
           _mkvutil_read 'Replacement operations: ' || return 2
+          case "$REPLY" in e|E) return 4 ;; esac
           [[ "$REPLY" != 0 ]] || return 2
           operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+          mkvutil_batch_request "$category" "$operations" || return 1
           break ;;
         2) mkvutil_preview_jobs || return 1 ;;
         3)
@@ -2827,9 +2830,10 @@ mkvutil_controller() {
             mkvutil_ledger_status; return $?
           fi
           mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
-          print -r -- $'1) Prepare a fresh batch for unresolved mismatch-skipped files\n0) Finish and keep recorded outcomes'
+          print -r -- $'1) Prepare a fresh batch for unresolved mismatch-skipped files\ne) Back'
           _mkvutil_read 'Skipped-subset choice: ' || return 2
           case "$REPLY" in
+            e|E) return 5 ;;
             0) mkvutil_ledger_status; return $? ;;
             1) review=4 ;;
             *) print -u2 -r -- 'Invalid skipped-subset choice.'; return 1 ;;
@@ -2841,8 +2845,10 @@ mkvutil_controller() {
           category=mux
           mkvutil_category_menu "$category" || return 1
           _mkvutil_read 'New skipped-subset operations: ' || return 2
+          case "$REPLY" in e|E) return 4 ;; esac
           [[ "$REPLY" != 0 ]] || return 2
           operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+          mkvutil_batch_request "$category" "$operations" || return 1
           break ;;
         *) print -u2 -r -- 'Invalid review choice.'; return 1 ;;
       esac
@@ -2867,16 +2873,36 @@ mkvutil_finish() {
   return "$final_code"
 }
 
-mkvutil_main() {
-  local directory="$PWD" category="" operations="" result=0 resolved_directory=""
-  MKVUTIL_LEDGER_ENABLED=0
-  MKVUTIL_SOURCES=()
-  MKVUTIL_JOBS=()
-  MKVUTIL_REMOVAL_SKIPS=()
-  MKVUTIL_REMOVAL_SKIP_HISTORY=()
+# Navigation returns are action-menu control flow only. Data collectors keep
+# literal input, including e. Back retains inspected scope and unresolved skips.
+mkvutil_discard_configuration() {
   MKVUTIL_CONFIG=""
   MKVUTIL_CURRENT_JOB=""
+  MKVUTIL_JOBS=()
   mkvutil_metadata_reset
+}
+
+mkvutil_close_scope() {
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  if (( ! MKVUTIL_HAS_RUN )); then
+    local source=""
+    local -a entries=()
+    for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do entries+=("${MKVUTIL_LEDGER[$source]}"); done
+    # A neutral abandoned request can leave quietly. Failures, exclusions and
+    # mismatch history still need the original-scope final report.
+    if printf '%s\n' "${entries[@]}" | jq -se 'all(.[]; .status=="pending" and (.skip_history|length)==0)' >/dev/null; then
+      return 0
+    fi
+  fi
+  mkvutil_finish 0
+}
+
+mkvutil_main() {
+  setopt localtraps
+  local directory="$PWD" category="" operations="" result=0 resolved_directory="" sticky_code=0 selected=0
+  MKVUTIL_LEDGER_ENABLED=0
+  MKVUTIL_INTERRUPTED=0
+  trap 'MKVUTIL_INTERRUPTED=1' INT TERM
   (( $# <= 1 )) || { print -u2 -r -- "Usage: ${SCRIPT_NAME} [working_directory]"; return 1; }
   case "${1-}" in
     --help|-h) print_help; return 0 ;;
@@ -2887,28 +2913,73 @@ mkvutil_main() {
   resolved_directory="$(mkvutil_resolve_directory "$directory")" || return 1
   cd "$resolved_directory" || return 1
   print -r -- "Current Work Dir: $directory"
-  mkvutil_scan_files "$PWD" || {
-    print -r -- 'Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again.'; return 1;
-  }
-  print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract\n0) Exit'
-  _mkvutil_read 'Category: ' || return 0
-  case "$REPLY" in
-    0) return 0 ;;
-    1) category=edit ;;
-    2) category=mux ;;
-    3) category=extract ;;
-    *) print -u2 -r -- 'Invalid category.'; return 1 ;;
-  esac
-  mkvutil_category_menu "$category" || return 1
-  _mkvutil_read 'Operations (single/comma/range): ' || return 0
-  [[ "$REPLY" != 0 ]] || return 0
-  operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
-  mkvutil_select_files || return $?
-  mkvutil_ledger_reset "$resolved_directory" "${MKVUTIL_SELECTED_FILES[@]}" || return 1
-  mkvutil_batch_request "$category" "$operations" || return 1
-  mkvutil_inspect_sources || { result=$?; mkvutil_finish "$result"; return $?; }
-  mkvutil_controller "$category" "$operations" || result=$?
-  mkvutil_finish "$result"
+  while true; do
+    (( MKVUTIL_INTERRUPTED == 0 )) || return 1
+    print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract'
+    _mkvutil_read 'Category: ' || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
+    case "$REPLY" in
+      e|E|0) return "$sticky_code" ;;
+      1) category=edit ;;
+      2) category=mux ;;
+      3) category=extract ;;
+      *) print -u2 -r -- 'Invalid category.'; return 1 ;;
+    esac
+    (( MKVUTIL_INTERRUPTED == 0 )) || return 1
+    MKVUTIL_LEDGER_ENABLED=0
+    MKVUTIL_SOURCES=()
+    MKVUTIL_REMOVAL_SKIPS=()
+    MKVUTIL_REMOVAL_SKIP_HISTORY=()
+    mkvutil_discard_configuration
+    selected=0
+    # A new main-category scope sees files converted by a preceding Mux.
+    mkvutil_scan_files "$PWD" || {
+      print -r -- 'Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again.'; return 1;
+    }
+    while true; do
+      mkvutil_category_menu "$category" || return 1
+      if ! _mkvutil_read 'Operations (single/comma/range): '; then
+        if (( selected )); then mkvutil_finish 2 || sticky_code=1; fi
+        (( MKVUTIL_INTERRUPTED == 0 )) || sticky_code=1
+        return "$sticky_code"
+      fi
+      (( MKVUTIL_INTERRUPTED == 0 )) || { (( ! selected )) || mkvutil_finish 1; return 1; }
+      case "$REPLY" in
+        e|E|0)
+          mkvutil_close_scope || sticky_code=1
+          mkvutil_discard_configuration
+          break ;;
+      esac
+      operations="$(mkvutil_category_choices "$category" "$REPLY")" || {
+        (( ! selected )) || mkvutil_finish 1
+        return 1
+      }
+      if (( ! selected )); then
+        mkvutil_select_files || return 1
+        (( MKVUTIL_INTERRUPTED == 0 )) || return 1
+        mkvutil_ledger_reset "$resolved_directory" "${MKVUTIL_SELECTED_FILES[@]}" || return 1
+        selected=1
+        mkvutil_batch_request "$category" "$operations" || return 1
+        mkvutil_inspect_sources || {
+          result=$?
+          mkvutil_finish "$result" || sticky_code=1
+          return "$sticky_code"
+        }
+      else
+        mkvutil_batch_request "$category" "$operations" || return 1
+      fi
+      result=0
+      mkvutil_controller "$category" "$operations" || result=$?
+      if (( MKVUTIL_INTERRUPTED )); then mkvutil_finish 1; return 1; fi
+      case "$result" in
+        4) mkvutil_discard_configuration; continue ;;
+        5)
+          mkvutil_finish 0 || sticky_code=1
+          mkvutil_discard_configuration
+          break ;;
+        *) mkvutil_finish "$result" || sticky_code=1; return "$sticky_code" ;;
+      esac
+    done
+  done
 }
 
 # Sourcing defines helpers without launching the real category entrypoint.

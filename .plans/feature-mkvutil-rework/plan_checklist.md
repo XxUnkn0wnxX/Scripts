@@ -8,6 +8,11 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The original rework reached 9/9 tasks and 4/4 goals. The user-directed menu
+navigation follow-up is now accepted at T01.03 and affected T04.01/T04.02 gates
+after current focused proof and parent review. Historical engine receipts remain
+valid; current navigation proof is recorded separately below.
+
 The user-requested code/evidence audit reconciled all nine mirrored contracts
 and the accepted task gates. Accepted boxes refer to the recorded revisions and
 corrective receipts. T02.03's affected-consumer proof and G02 integration review
@@ -44,7 +49,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 | --- | --- | --- | --- | --- | --- |
 | [x] | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | Required: Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. Status: accepted after parent review of the original-ID/output contract and source guard; focused pure-contract plus three baseline journeys passed (4 passed, 25 deselected in 2.70s), with syntax/whitespace checks. Consumer wiring remains T01.03. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures |
 | [x] | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | Required: Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. Status: accepted after parent source/contract review; five pure foundation/config/argv cases passed in 0.39s, and small native v93 builder integration passed. Shared consumers remain T01.03; full language registry/tool acceptance remains a later preflight/executor check. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders |
-| [x] | T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. | Required: Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence. Status: accepted after parent code/schema review, initial category/format/directory/argv/collision contracts, five final affected selector/removal cases, one notified mocked mismatch-report/Cancel journey, and two parent skip/subset cases (11.19s). Hash-bound receipt: `.tmp/mkvutil-rework/removal-delta.vyycYM/receipt.json`. No modifying media calls; runtime continuation remains T02.03. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview |
+| [x] | T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu-only Back, preserving scope and truthful result history. | Required: Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. Status: accepted for the approved menu-navigation amendment after parent source/test review, seven current function/state cases and three small mocked entrypoint probes. Same-scope selection/exclusions, fresh action attribution, prepared-subset Back, literal/invalid e values, pre-Run skip preservation, fresh main discovery, sticky failures, EOF and Ctrl+C are verified. Original removal proof remains `.tmp/mkvutil-rework/removal-delta.vyycYM/receipt.json`; current proof: `.tmp/mkvutil-rework/navigation.t1I48Y/receipt.json` and `parent-review.json`. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
 
@@ -64,11 +69,14 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 | Accepted | Task ID | Required result (mirror plan) | Required evidence / current status | Hard prerequisites | Shared/overlap |
 | --- | --- | --- | --- | --- | --- |
-| [x] | T04.01 | Verify every adapted single/batch action, shared metadata path, and removal skip-only continuation together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. | Required: Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. Status: accepted after parent review and Astra PASS WITH NOTES. Current128-case coverage combines125 unchanged full-suite passes (324.21s wall) with3 corrected/split cases (8.44s wall), preserving all assertions and10s guards; recovered prepared-source hash binds unchanged cases. Three real-v93 journeys and real-fzf two-file preview/Cancel passed, with native payload/property/source checks and all six integrated groups verified. Historical setup/timeouts/verifier failures remain preserved. Receipt: `.tmp/mkvutil-rework/interactive/t04-campaign.vqvatjsp/campaign-result-receipt.json`; exact binding: `parent-case-binding.json`. No single128-pass run or CI result is claimed. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures |
-| [x] | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | Required: Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. Status: accepted after full parent guide/README/source-help diff review, actual --help/syntax checks, verified local links and unchanged native-qualified executable bodies. Final review receipt: `.tmp/mkvutil-rework/final-review.icdu2_ji/parent-final-review.json`. Tracked planning records moved to the user-approved `.plans/feature-mkvutil-rework/`; final feature publication and worktree retirement are separate authorized operations. | T04.01 | none |
+| [x] | T04.01 | Verify every adapted single/batch action, shared metadata path, and removal skip-only continuation together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. | Required: Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. Status: accepted with original six-group/native/terminal receipts retained and affected navigation proof refreshed. Current combined focused evidence covers 10 new navigation cases plus 8 existing affected cases; serial runs total 32.79s wall / 26.65s measured CPU, with all existing guards retained and no failed attempts. Exactly three mocked entrypoint probes passed; the later registry-error propagation guard passed its negative contract. Parent independently verified the exact IA delta, package hashes and 21 unchanged protected sections. Current proof: `.tmp/mkvutil-rework/navigation.t1I48Y/receipt.json` and `parent-review.json`. Original campaign bindings remain in `.tmp/mkvutil-rework/interactive/t04-campaign.vqvatjsp/`; no new full-suite, native campaign or CI result is claimed. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures |
+| [x] | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | Required: Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. Status: accepted after current source/help/guide/test diff review and paired plan/checklist/handoff reconciliation. Compact help has no displayed Exit choice; guide explains menu-only Back, retained selection, prepared subsets, Ctrl+C and final reports. Parent verified helper and session-ledger preservation; 9 task IDs and 4 goal IDs remain intact. Current review: `.tmp/mkvutil-rework/navigation.t1I48Y/parent-review.json`. Plans stay in `.plans/feature-mkvutil-rework/`; checkout retirement and AGENTS synchronization remain complete. | T04.01 | none |
 
 ### Current readiness and acceptance limits
 
+- The menu-navigation amendment is accepted at T01.03 and T04 with its own
+  current focused receipts. The consumer and original campaign statements below
+  preserve earlier proof for unchanged engines.
 - T01.01's removal naming policy is user-approved and its pure helper accepted:
   retained video keeps an
   existing `.mkv`/`.mk3d`, audio without video uses `.mka`, and subtitle-only
@@ -99,7 +107,8 @@ pass. Planning-preparation history above is outside these implementation totals.
 ## Required validation
 
 These are the six existing [plan validation requirements](plan.md#validation-and-acceptance),
-accepted at T04.01 with current aggregated test/native/terminal evidence:
+accepted for the original rework at T04.01 with aggregated test/native/terminal
+evidence. Affected navigation proof for the follow-up is recorded in the task rows:
 
 1. [x] Preserve existing operation assertions, including free-form metadata,
    input defaults/ranges, extraction extensions, extension conversion,
@@ -147,12 +156,17 @@ accepted at T04.01 with current aggregated test/native/terminal evidence:
   candidate revision and distinguish mocked, real-tool, and terminal evidence.
 
 These items mirror [the plan's rehearsal](plan.md#near-end-interactive-rehearsal)
-within accepted T04.01. Their receipts preserve mocked, native and real-terminal
-evidence separately; T04.02 help/docs and final goal review are accepted.
+within the original accepted T04.01. Their receipts preserve mocked, native and
+real-terminal evidence separately; current navigation/help/docs follow-up
+acceptance is recorded in the task rows above.
 
 All [track identity](plan.md#track-identity-and-preview),
 [metadata](plan.md#metadata-contracts),
 [file safety](plan.md#file-safety-and-queue-reporting), format, and acceptance
 contracts remain those in the authoritative plan.
 
-**Implementation tasks accepted: 9 / 9. Main goals/checkpoints accepted: 4 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02, T02.03, T03.01, T04.01, T04.02; accepted goals: G01, G02, G03, G04. Extract passed current focused/native/entrypoint proof, parent critical review and independent post-fix audit. T04.01's six integrated validation groups and campaign are accepted; T04.02 help/docs and G04 final review are accepted. Publication and authorized checkout housekeeping remain operational follow-up.
+**Current amended-scope acceptance: 9 / 9 tasks and 4 / 4 goals.** The original
+receipts remain preserved; T01.03, T04.01 and T04.02 now also have current
+navigation acceptance. Existing engine/native proofs and completed checkout
+housekeeping remain valid. Feature publication is authorized; verify the live
+ref using the containing commit and the navigation publication receipt.

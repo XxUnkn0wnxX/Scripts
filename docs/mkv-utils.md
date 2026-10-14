@@ -51,11 +51,14 @@ The main menu keeps the work areas separate:
 | **1. Matroska Edit** | 1 forced flag, 2 default flag, 3 language, 4 name, 5 title | Applies metadata edits with `mkvpropedit`. |
 | **2. Matroska Mux** | 1 remove tracks, 2 reorder tracks | Remuxes each eligible file once; optional metadata can be included in that remux. |
 | **3. Matroska Extract** | 1 attachments, 2 selected tracks | Extracts attachments, tracks, or both from each selected source. |
-| **0. Exit** | — | Leaves without starting an operation. |
 
 Within a category, enter one action, a comma-separated list, or an ascending range. For example, `1`, `1,2`, or `1-3`. The same format is used for optional Mux metadata choices. The file picker is always multi-select: select one file or mark several with Tab, then confirm the selection.
 
-After choosing files, configure all selected operations. The review menu lets you change the configuration, preview planned changes and outputs, run the batch, or cancel. Media-changing commands start only after you choose **Run**. A preview is a review step; it does not perform the operation.
+After choosing files, configure all selected operations. The review menu lets you change the configuration, preview planned changes and outputs, or run the batch. Media-changing commands start only after you choose **Run**. A preview is a review step; it does not perform the operation.
+
+Action menus show **e) Back** and accept either `e` or `E`. Before selecting files, Back returns to the main categories. After selection, Back from review, replacement actions, or the optional Mux metadata list returns to the same category's action list, keeping the selected files and explicit exclusions. Choose new actions to configure them afresh; the file picker does not repeat. Back from that action list returns to the main categories. Choosing a new category then scans the directory and opens a fresh picker.
+
+Only action menus interpret `e` as Back. Names and titles can contain the literal value `e`; track IDs, flag values, and language values still use their normal validation. EOF or Ctrl+C ends the invocation. A successful Run prints its final report and ends the invocation.
 
 ### Edit
 
@@ -94,7 +97,7 @@ Track IDs shown by the utility are the original, zero-based IDs for that source 
 
 Before running a removal batch, the utility compares every requested original track ID with the corresponding track in the reference file. The first successfully identified selected file is displayed as that reference. For a file to be eligible, each requested ID must have the same track type and exact native `codec_id`. For example, an `.ass` subtitle track does not match an `.srt` track at the same ID. Differences in track names, languages, or flags do not by themselves make a file incompatible.
 
-An incompatible file is skipped as a whole for that removal run. The report names the file and shows the expected and actual track details. Compatible files can still run. After those eligible jobs finish, the review flow can prepare a fresh Mux batch containing only the unresolved mismatch-skipped files. It re-inspects those sources and asks for a new configuration; completed files are not included again. You can finish with the skip recorded instead.
+An incompatible file is skipped as a whole for that removal run. The report names the file and shows the expected and actual track details. Compatible files can still run. After those eligible jobs finish, the review flow can prepare a fresh Mux batch containing only the unresolved mismatch-skipped files. It re-inspects those sources and asks for a new configuration; completed files are not included again. Back at this post-run menu finalizes the original scope's report and returns to the main categories. Unresolved skips or failed outcomes remain reflected in the invocation's exit status. After explicitly preparing a skipped-only batch, Back keeps that subset selected; it does not restore completed files.
 
 Changing the removal configuration causes the selected sources to be checked again. Explicitly excluded files remain excluded. If no eligible jobs remain, the utility does not run a remux.
 
@@ -184,7 +187,7 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The fake media commands in the test harness record arguments and isolate the menu tests from user files. The current rework evidence is 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also includes three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. No full native codec matrix or CI result is implied.
+The fake media commands in the test harness record arguments and isolate the menu tests from user files. The original rework campaign established 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also included three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These historical results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. The later Back-navigation change was checked separately with focused state/regression tests and three small mocked entrypoint probes, including blocked-input interruption. The processing engines were unchanged. No full native codec matrix or CI result is implied.
 
 The tests cover the action registry and prompts, batching, removal eligibility and skip-only continuation, track order, destination validation, output extensions, publication outcomes, and final reporting. The real-tool journeys check observed media properties and source preservation for their specific scenarios; they do not represent every possible codec and metadata combination.
 

@@ -195,6 +195,8 @@ saved="${MKVUTIL_METADATA_REGISTRY[4:merge]}"
 unset 'MKVUTIL_METADATA_REGISTRY[4:merge]'
 captured="$(mkvutil_metadata_menu)" && fail 'offered an incomplete registry'
 eq "$captured" '' 'no partial menu'
+captured="$(mkvutil_category_menu edit)" && fail 'category menu masked incomplete registry'
+eq "$captured" '' 'no partial category menu'
 reject mkvutil_metadata_configure 4
 MKVUTIL_METADATA_REGISTRY[4:merge]="$saved"
 unset 'MKVUTIL_METADATA_REGISTRY[3:default]'
@@ -2285,3 +2287,266 @@ def test_mkv_utils_integration_native_child_signal_stops_menu_queue(env):
     assert first.read_bytes()==second.read_bytes()==b"payload"
     assert len([a for a in _command_argv(env,"mkvmerge") if "-o" in a])==1
     assert not _command_argv(env,"mkvpropedit") and len(_command_argv(env,"fzf"))==1
+
+
+def test_mkv_utils_navigation_same_scope_and_requested_action_attribution(env):
+    result = _run_planning_contract(env, r'''
+scan_count=0; picker_count=0; inspect_count=0; configure_count=0
+mkvutil_scan_files() { (( ++scan_count )); MKVUTIL_SCAN_FILES=("$PWD/first.mkv" "$PWD/excluded.mkv"); }
+mkvutil_select_files() { (( ++picker_count )); MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
+mkvutil_inspect_sources() {
+  (( ++inspect_count ))
+  MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/first.mkv" '{source:$source}')")
+  mkvutil_ledger_exclude "$PWD/excluded.mkv" 'Explicit initial exclusion'
+}
+mkvutil_configure_category() {
+  (( ++configure_count ))
+  if (( configure_count==1 )); then
+    MKVUTIL_METADATA_SETTINGS[5:info]='partial'
+    MKVUTIL_JOBS=(stale)
+    return 4
+  fi
+  (( ${#MKVUTIL_METADATA_SETTINGS}==0 )) || fail 'partial configuration survived Back'
+  MKVUTIL_CONFIG="$(jq -cn --arg category "$1" --arg actions "$2" '{category:$category,operations:($actions|split(",")),metadata:"",settings:{}}')"
+}
+mkvutil_plan_queue() { MKVUTIL_JOBS=('{}'); }
+mkvutil_main "$PWD"
+eq "$scan_count" 1 'same scope scans once'
+eq "$picker_count" 1 'same scope picks once'
+eq "$inspect_count" 1 'same scope inspects once'
+eq "${#MKVUTIL_SOURCES}" 1 'explicit exclusion retained'
+eq "${#MKVUTIL_SCOPE_KEYS}" 2 'original ledger scope retained'
+(( ${#MKVUTIL_JOBS}==0 && ${#MKVUTIL_METADATA_SETTINGS}==0 )) || fail 'Back retained partial plan'
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''', {}, input_data="2\n2\n1\n1\n2\ne\ne\nE\n")
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert [batch["action_ids"] for batch in summary["batches"]] == [["2"], ["1"], ["2"]]
+    assert [batch["state"] for batch in summary["batches"]] == ["requested", "configured", "configured"]
+    assert summary["counts"]["excluded"] == 1 and summary["selected"] == 2
+    assert result.stdout.count("Final report") == 1
+    assert "0) Exit" not in result.stdout and "0) Cancel" not in result.stdout and "e) Back" in result.stdout
+
+
+def test_mkv_utils_navigation_config_action_back_and_data_literals(env):
+    source = _mkv_file(env, "literal values.mkv")
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/literal values.mkv")"
+MKVUTIL_SOURCES=("$record")
+mkvutil_ledger_reset "$PWD" "$PWD/literal values.mkv"
+mkvutil_batch_request mux 2
+code=0
+mkvutil_configure_category mux 2 <<< $'0:0\nE' || code=$?
+eq "$code" 4 'optional metadata action Back'
+eq "$MKVUTIL_CONFIG" '' 'no partial config'
+mkvutil_discard_configuration
+mkvutil_batch_request edit 4,5
+mkvutil_configure_category edit 4,5 <<< $'0\ne\ne'
+eq "${MKVUTIL_METADATA_SETTINGS[4:0]}" e 'literal track name e'
+eq "${MKVUTIL_METADATA_SETTINGS[5:info]}" e 'literal title e'
+for actions in 1 3; do
+  code=0
+  mkvutil_configure_category edit "$actions" <<< $'0\ne' || code=$?
+  eq "$code" 1 'flag/language e rejected as data normally'
+done
+code=0
+mkvutil_configure_category mux 1 <<< e || code=$?
+eq "$code" 1 'numeric e is invalid data'
+code=0
+mkvutil_configure_category edit 5 < /dev/null || code=$?
+eq "$code" 2 'data EOF remains bounded'
+print -r -- 'navigation data contracts passed'
+''', {str(source): _source_json([(0, "audio", "A_AAC", True)])})
+    assert result.stdout.rstrip().endswith("navigation data contracts passed")
+
+
+@pytest.mark.parametrize("second_scope_end", ["back", "inspection-eof"])
+def test_mkv_utils_navigation_post_run_back_reports_once_and_fresh_scan(env, second_scope_end):
+    result = _run_planning_contract(env, r'''
+scan_count=0; picker_count=0; inspect_count=0; modifier_count=0
+mkvutil_scan_files() { (( ++scan_count )); MKVUTIL_SCAN_FILES=("$PWD/fresh-${scan_count}.mka"); }
+mkvutil_select_files() { (( ++picker_count )); MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
+mkvutil_inspect_sources() {
+  (( ++inspect_count ))
+  if (( inspect_count==2 )) && [[ "$TEST_SECOND_SCOPE_END" == inspection-eof ]]; then return 2; fi
+  MKVUTIL_SOURCES=("$(jq -cn --arg source "${MKVUTIL_SELECTED_FILES[1]}" '{source:$source}')")
+}
+mkvutil_configure_category() { MKVUTIL_CONFIG="$(jq -cn --arg category "$1" --arg actions "$2" '{category:$category,operations:($actions|split(",")),metadata:"",settings:{}}')"; }
+mkvutil_plan_queue() { MKVUTIL_JOBS=('{}'); }
+mkvutil_execute_queue() {
+  (( ++modifier_count ))
+  MKVUTIL_HAS_RUN=1
+  local receipt="$(jq -cn --arg source "${MKVUTIL_SELECTED_FILES[1]}" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"0",reason:"codec-mismatch",expected:{type:"audio",codec_id:"A_AAC"},actual:{type:"audio",codec_id:"A_OPUS"}}]}')"
+  mkvutil_ledger_skip "$receipt"
+  MKVUTIL_REMOVAL_SKIPS=("$receipt")
+  MKVUTIL_JOBS=()
+  return 1
+}
+code=0
+mkvutil_main "$PWD" || code=$?
+eq "$code" 1 'sticky unresolved outcome after later hidden exit'
+eq "$scan_count" 2 'new main category rescans'
+eq "$picker_count" 2 'new scope selects afresh'
+eq "$inspect_count" 2 'new scope inspected independently'
+eq "$modifier_count" 1 'completed scope never replayed'
+eq "${MKVUTIL_SCOPE_KEYS[1]}" "$PWD/fresh-2.mka" 'new scope uses refreshed filenames'
+''', {}, input_data="2\n1\n3\ne\n1\n5\ne\ne\ne\n",
+        extra_env={"TEST_SECOND_SCOPE_END": second_scope_end})
+    assert result.stdout.count("Final report") == (2 if second_scope_end == "inspection-eof" else 1)
+    assert "Skipped: 1" in result.stdout and "fresh-1.mka" in result.stdout
+    assert "0) Exit" not in result.stdout and "0) Finish" not in result.stdout
+
+
+def test_mkv_utils_navigation_pre_run_skips_back_sticky_and_eof(env):
+    result = _run_planning_contract(env, r'''
+mkvutil_scan_files() { MKVUTIL_SCAN_FILES=("$PWD/skipped.mkv"); }
+mkvutil_select_files() { MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
+mkvutil_inspect_sources() { MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/skipped.mkv" '{source:$source}')"); }
+mkvutil_configure_category() { MKVUTIL_CONFIG='{"category":"mux","operations":["1"],"metadata":"","settings":{}}'; }
+mkvutil_plan_queue() {
+  local receipt="$(jq -cn --arg source "$PWD/skipped.mkv" '{kind:"removal-mismatch",source:$source,reference:$source,reasons:[{original_id:"1",reason:"missing-id",expected:{type:"subtitles",codec_id:"S_TEXT/ASS"},actual:null}]}')"
+  mkvutil_ledger_skip "$receipt"
+  MKVUTIL_REMOVAL_SKIPS=("$receipt")
+  MKVUTIL_JOBS=()
+  return 3
+}
+code=0
+mkvutil_main "$PWD" || code=$?
+eq "$code" 1 'pre-Run unresolved skip sticky after main EOF'
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 1 'skip receipt preserved'
+eq "$MKVUTIL_HAS_RUN" 0 'no execution'
+''', {}, input_data="2\n1\ne\ne\n")
+    assert result.stdout.count("Final report") == 1 and "Skipped: 1" in result.stdout
+    assert "No media changes" not in result.stdout
+
+
+def test_mkv_utils_navigation_back_and_literal_e_entrypoint(env):
+    source = _mkv_file(env, "Back literal.mkv")
+    result = _run_mkv_utils(env, fzf_responses=[[str(source)]],
+                            input_data="1\n4\n0\ne\ne\n5\ne\n2\n0\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Category: edit; Actions: 4" in result.stdout and "Category: edit; Actions: 5" in result.stdout
+    assert 'title="e"' in result.stdout
+    assert "e) Back" in result.stdout and "0) Exit" not in result.stdout and "0) Cancel" not in result.stdout
+    assert len(_command_argv(env, "fzf")) == 1
+    assert len(_command_argv(env, "mkvmerge")) == 1 and _command_argv(env, "mkvmerge")[0][0] == "-J"
+    assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
+    assert source.read_text() == "payload"
+
+
+def test_mkv_utils_navigation_hidden_exit_before_selection_entrypoint(env):
+    _mkv_file(env, "untouched.mkv")
+    result = _run_mkv_utils(env, input_data="2\nE\ne\n")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.count("1) Matroska Edit") == 2
+    assert "e) Back" in result.stdout and "Exit" not in result.stdout and "Cancel" not in result.stdout
+    assert not _command_argv(env, "fzf") and not _command_argv(env, "mkvmerge")
+    assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
+
+
+def test_mkv_utils_navigation_interrupt_preserves_ledger_and_ends(env):
+    result = _run_planning_contract(env, r'''
+read_count=0; scan_count=0
+_mkvutil_read() {
+  (( ++read_count ))
+  case "$read_count" in
+    1) REPLY=1 ;;
+    2) REPLY=5 ;;
+    *) kill -s INT $$; return 2 ;;
+  esac
+}
+mkvutil_scan_files() { (( ++scan_count )); MKVUTIL_SCAN_FILES=("$PWD/pending.mkv"); }
+mkvutil_select_files() { MKVUTIL_SELECTED_FILES=("${MKVUTIL_SCAN_FILES[@]}"); }
+mkvutil_inspect_sources() { MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/pending.mkv" '{source:$source}')"); }
+mkvutil_configure_category() {
+  MKVUTIL_HAS_RUN=1
+  MKVUTIL_CONFIG='{"category":"edit","operations":["5"],"metadata":"","settings":{}}'
+}
+mkvutil_plan_queue() { MKVUTIL_JOBS=('{}'); }
+code=0
+mkvutil_main "$PWD" || code=$?
+eq "$code" 1 'interruption nonzero'
+eq "$MKVUTIL_INTERRUPTED" 1 'interruption never reset'
+eq "$scan_count" 1 'no outer restart'
+eq "$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$PWD/pending.mkv]}")" not_attempted 'pending finalized'
+''', {})
+    assert result.stdout.count("Final report") == 1 and "Not attempted: 1" in result.stdout
+    assert "Cancelled; no media changes." not in result.stdout
+
+
+def test_mkv_utils_navigation_ctrl_c_blocked_input_entrypoint(env):
+    import select
+    import signal
+    import time
+
+    source = _mkv_file(env, "interrupt title.mkv")
+    _set_fake_fzf_responses(env, [[str(source)]])
+    run_env = os.environ.copy()
+    run_env.update({
+        "HOME": str(env["workdir"]),
+        "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq",
+        "TEST_REAL_PYTHON": sys.executable,
+        "TEST_USE_REAL_JSON": "1", "PYTHONDONTWRITEBYTECODE": "1",
+        "TEST_COMMAND_LOG": str(env["command_log"]),
+        "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
+        "TEST_FAKE_STATE_DIR": str(env["fake_state"]),
+        "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]),
+    })
+    for tool in ("mkvmerge", "mkvpropedit", "mkvextract", "fzf"):
+        assert Path(shutil.which(tool, path=run_env["PATH"])).resolve() == (env["fake_bin"] / tool).resolve()
+    process = subprocess.Popen(["/usr/local/bin/zsh", "-f", str(env["mkv_utils_script"])],
+                               cwd=env["workdir"], env=run_env, stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    assert process.stdin and process.stderr
+    seen = b""
+    try:
+        process.stdin.write(b"1\n5\n"); process.stdin.flush()
+        deadline = time.monotonic() + 10
+        while b"Title (empty to unset): " not in seen and time.monotonic() < deadline:
+            if select.select([process.stderr], [], [], 0.1)[0]:
+                data = os.read(process.stderr.fileno(), 8192)
+                assert data, seen.decode(errors="replace")
+                seen += data
+        assert b"Title (empty to unset): " in seen, seen.decode(errors="replace")
+        process.send_signal(signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=10)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL); process.communicate()
+    output = stdout.decode()
+    assert process.returncode == 1, output + (seen + stderr).decode(errors="replace")
+    assert output.count("1) Matroska Edit") == 1 and output.count("Final report") == 1
+    assert "Not attempted: 1" in output and "Cancelled; no media changes." not in output
+    assert len(_command_argv(env, "fzf")) == 1 and len(_command_argv(env, "mkvmerge")) == 1
+    assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
+    assert source.read_text() == "payload"
+
+
+def test_mkv_utils_navigation_fresh_subset_and_replacement_action_back(env):
+    result = _run_planning_contract(env, r'''
+MKVUTIL_SOURCES=('{}' '{}')
+mkvutil_ledger_reset "$PWD" "$PWD/completed.mka" "$PWD/skipped.mkv"
+mkvutil_batch_request mux 1
+mkvutil_configure_category() { MKVUTIL_CONFIG='{"category":"mux","operations":["1"],"metadata":"","settings":{}}'; }
+mkvutil_plan_queue() { MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=('{}'); return 3; }
+mkvutil_prepare_skipped_subset() {
+  MKVUTIL_SOURCES=('{"source":"fresh-skipped-only"}')
+  MKVUTIL_CONFIG=''; MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=()
+  mkvutil_metadata_reset
+}
+code=0
+mkvutil_controller mux 1 <<< $'4\nE' || code=$?
+eq "$code" 4 'fresh subset action Back'
+eq "${#MKVUTIL_SOURCES}" 1 'fresh subset retained'
+eq "${MKVUTIL_SOURCES[1]}" '{"source":"fresh-skipped-only"}' 'completed sources not restored'
+eq "${#MKVUTIL_SCOPE_KEYS}" 2 'original report scope retained'
+mkvutil_discard_configuration
+mkvutil_batch_request mux 2
+mkvutil_plan_queue() { MKVUTIL_JOBS=('{}'); }
+code=0
+mkvutil_controller mux 2 <<< $'1\ne' || code=$?
+eq "$code" 4 'replacement action Back'
+eq "${#MKVUTIL_SOURCES}" 1 'replacement Back retains fresh subset'
+print -r -- 'fresh subset navigation passed'
+''', {})
+    assert result.stdout.rstrip().endswith("fresh subset navigation passed")

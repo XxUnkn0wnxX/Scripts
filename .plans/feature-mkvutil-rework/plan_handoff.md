@@ -14,6 +14,50 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted user-directed navigation follow-up
+
+- Stay in the main Scripts checkout on `feature/mkvutil-rework`; the user
+  authorized these changes and their push. No worktree, branch, AGENTS or
+  dependency change is part of this follow-up. Baseline short-help checkpoint:
+  `a30e88cfa09ae3c5149bdeb2a13b5ddbc238bac4`, signed and published.
+- The approved Ctrl+C/Back amendment is implemented and accepted. Main lists
+  categories 1–3 only; hidden `e`/`E` silently exits. Submenu Back retains the
+  current selected sources/exclusions/history and discards configuration/jobs.
+  Newly confirmed actions create separate requested-batch rows. Main reentry
+  rescans files. Post-Run Back reports the old scope once; fresh skipped-only
+  preparation remains explicit, and completed files are never replayed.
+- Input fields are unchanged: literal `e` works as a name/title, while IDs,
+  flags and languages validate it normally. EOF/Ctrl+C ends without restarting
+  or resetting interrupted state. Earlier unresolved failures remain nonzero
+  even after a later neutral cancellation. Successful Run reports and returns.
+- Astra's intermittent design audit passed with notes; its action-attribution,
+  fresh-discovery and pre-Run skip-preservation corrections were incorporated.
+  Parent reviewed source, test oracles and guide, independently checked package
+  hashes, 21 unchanged protected function sections, unchanged test helper and
+  unchanged parent-session ledger, and reconciled all stable plan/checklist IDs.
+- T01.03 and affected T04.01/T04.02 gates are accepted with current proof.
+  **Current amended-scope acceptance: 9/9 tasks and 4/4 goals.** Combined focused
+  evidence: 10 new navigation cases plus 8 existing affected cases; recorded
+  serial runs total 32.79s wall / 26.65s measured CPU, no failed attempts and
+  no raised guards. Exactly three permitted mocked entrypoint IA probes passed
+  with disposable payloads and zero media modifiers. No native/broad campaign
+  was repeated; historical unchanged-engine receipts remain reusable.
+- Proof: `.tmp/mkvutil-rework/navigation.t1I48Y/receipt.json`, exact logs and
+  `parent-review.json`. Final source SHA-256:
+  `7c47095dc9eb0c43c26b426597f570d6a924e9c5c6e1c4d8bd43bdf6042561c9`.
+  Tests: `209a931b5e7a239aa2ed166c44217c1e4f4390cbd5270548018eeff5ac9654ba`.
+  Guide: `3799f989dd2b29d2524c6abb8a6747b49a63df674fd53987a6775422c41397ff`.
+  IA source differs only by the subsequently checked registry-error propagation
+  guard; parent independently proved that exact delta. All workers/processes
+  are quiescent and source ownership is returned to parent.
+- Publication is the authorized final operation. Its verified full commit/live
+  feature ref will be recorded in the same proof folder's `publication.json`.
+  On resume, verify the containing commit and that receipt against the live
+  feature ref; no implementation or validation work remains for this amendment.
+  The small IA grant was used for three probes; it is not a renewed broad grant.
+
+### Completed original rework and checkout return
+
 Migration evidence: `.tmp/mkvutil-rework/return-main/before-move-inventory.json`
 and `after-move-verification.json`. The pre-existing main project scratch was
 retained within `return-main/previous-main/`. Historical receipts and drivers
