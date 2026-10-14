@@ -14,6 +14,26 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted indicator cursor follow-up
+
+- User reported the typing cursor hovering over Working and requested exactly
+  one quick interactive check, without a full suite. The shared Working/Analysing
+  helper now hides the cursor with its first painted frame. Parent cleanup
+  restores it after helper reaping even on an unexpected helper exit. Existing
+  first-frame deferral, row clearing, prompt boundaries and main cursor remain.
+- T01.03/T04.01/T04.02 are accepted for this narrow follow-up; **9/9 tasks and
+  4/4 goals** remain accepted. One existing held-inspection controlling-PTY
+  journey passed in 5.22s: hidden while Working, restored before the next prompt
+  and processing, visible on completion. Media tools/fzf were controlled; no
+  native-media, full-suite or CI run was performed. Both installed zsh syntax
+  checks passed. A read-only lifecycle review passed; no agent/job remains.
+- Source, existing test, one guide sentence and these canonical records are the
+  only changes. Proof and raw/readable terminal transcript:
+  `.tmp/mkvutil-rework/indicator-cursor/receipt.json`, `test.log` and `run-01/`.
+  Existing native/output evidence remains valid for unchanged code. No dependency,
+  tool, worktree, branch, AGENTS or permission change. Signed publication follows
+  under standing approval; `publication.json` will bind the verified remote SHA.
+
 ### Accepted Back reset, Working status and native verbosity
 
 - Latest user instructions authorize this amendment: public e/E Back resets

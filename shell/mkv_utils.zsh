@@ -1503,7 +1503,7 @@ _mkvutil_indicator_start() {
         defer_first_frame=0
         kill -0 "$owner_pid" 2>/dev/null || break
       fi
-      printf '\r  %s %s' "${frames[$frame]}" "$label" || { (( painted )) && exit 73; exit 0; }
+      printf '\e[?25l\r  %s %s' "${frames[$frame]}" "$label" || { (( painted )) && exit 73; exit 0; }
       painted=1
       while kill -0 "$owner_pid" 2>/dev/null; do
         if (( use_zselect )); then zselect -t10 || true; else sleep 0.1; fi
@@ -1529,6 +1529,8 @@ _mkvutil_indicator_stop() {
     kill -0 "$helper_pid" 2>/dev/null || break
   done
   (( wait_status != 73 )) || printf '\r\033[2K' || true
+  # Restore even if the helper exited unexpectedly after hiding the cursor.
+  printf '\e[?25h' || true
   return 0
 }
 

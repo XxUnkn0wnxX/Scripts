@@ -4867,6 +4867,11 @@ def test_mkv_utils_working_indicator_during_delayed_inspection(env):
             receive()
         text = output.decode(errors="replace")
         assert len(set(_indicator_frames(text, "Working"))) >= 2, text
+        # Working is a status display: the input cursor stays hidden until
+        # inspection finishes and the next interactive prompt becomes ready.
+        working_start = text.index("Working")
+        assert text.rfind("\x1b[?25l", 0, working_start) > text.rfind("\x1b[?25h", 0, working_start)
+        assert "\x1b[?25h" not in text[working_start:]
         assert "Track configuration" not in text and "Title (empty to unset):" not in text
         release.write_text("release", encoding="utf-8")
         answer(b"Title (empty to unset): ", b"Held inspection title\n")
@@ -4876,6 +4881,10 @@ def test_mkv_utils_working_indicator_during_delayed_inspection(env):
         text = output.decode(errors="replace")
         clear_index = text.rfind("\r\x1b[2K", 0, text.index("Track configuration"))
         assert 0 <= text.index("Working") < clear_index < text.index("Track configuration")
+        assert "\x1b[?25h" in text[clear_index:text.index("Track configuration")]
+        processing_start = text.index("Processing: Held inspection.mkv")
+        assert text.rfind("\x1b[?25h", 0, processing_start) > text.rfind("\x1b[?25l", 0, processing_start)
+        assert text.rfind("\x1b[?25h") > text.rfind("\x1b[?25l")
         assert "Processing: Held inspection.mkv" in text
         assert "Final report" in text and "Held inspection.mkv" in text
         assert not _indicator_frames(text[text.index("Track configuration"):text.index("Title (empty to unset):")], "Working")
