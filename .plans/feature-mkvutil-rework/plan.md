@@ -9,6 +9,20 @@ For this rework, use the Astra planner for intermittent, focused audits at
 meaningful planning or risk changes. The parent maintains this document and owns
 design decisions, implementation integration, and final review.
 
+## Latest approved execution trigger
+
+The user's 2026-10-15 instruction removes the Review/change, Preview and Run
+menu from every category. Confirming the final required setting starts the batch
+after the existing complete preflight. Mux starts when optional metadata is
+left blank or its final value is entered; Edit starts after its final value;
+Extract starts after its selected-track IDs, or file selection for attachments
+alone. Before that boundary, e/E, EOF and Ctrl+C retain their cancellation/Back
+behavior. All-skipped/no-eligible configurations report and exit without writing.
+There is no extra acknowledgement or retry menu. Final reports preserve exact
+skipped/failed filenames and removal ID/type/codec mismatch details. Processing
+still ends the invocation. These instructions supersede the earlier review/preview, explicit-Run and
+skipped-subset-menu requirements; current contracts below follow this trigger.
+
 ## Purpose
 
 Turn `mkvutil` into a utility that can collect several operations and process a
@@ -109,8 +123,8 @@ operation settings.
 ### Menu navigation
 
 Ctrl+C exits the utility. Do not display a dedicated Exit or Cancel choice.
-The main menu also accepts hidden `e`/`E` for silent exit. Category action,
-review, replacement-action, and optional Mux metadata menus show `e) Back`.
+The main menu also accepts hidden `e`/`E` for silent exit. Category action
+and optional Mux metadata menus show `e) Back`.
 At an interactive terminal, main-menu choices `1`, `2`, `3`, and hidden `e`/`E`
 act on a single keypress without Enter. Submenu batch selections and data fields
 remain line-based; redirected input retains its existing line-based behavior.
@@ -125,16 +139,16 @@ normal terminal cursor visible while waiting, retaining its existing style and
 blinking behavior. Restore terminal state before submenu/data input and normal
 or interrupted exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains Back.
 
-Keep file selection, track models/value collection, previews, processing output
+Keep file selection, track models/value collection, processing output
 and final reports in normal terminal history. Leave the owned screen before
 validation errors or durable output, including picker, configuration, planning
 and execution boundaries. Capture navigation diagnostics and restore the screen
 in the parent shell before displaying them. Successful navigation reads retain
 the view; failed reads, EOF, interruption and final exit restore normal screen/
 cursor without changing queue handlers or exit status.
-Interactive previews and scope reports that will be followed by another owned
-menu require an acknowledgement so the user can read them; every processed queue
-prints its final report and exits. Redirected/unsupported operation keeps
+A scope report produced by configuration Back may require acknowledgement
+before navigation resumes. Completing configuration has no acknowledgement:
+validate all jobs, process eligible files, then print the final report and exit. Redirected/unsupported operation keeps
 the existing plain protocol, without alternate-screen escapes or added reads.
 Metadata configuration also accepts exact `e`/`E` at its track-ID and value
 prompts. Clear all pending metadata when returning: Edit returns to its action
@@ -148,7 +162,7 @@ File-exclusion prompts during inspection/planning accept the same Back control.
 EOF, Ctrl+C and existing ID-prompt `cancel` keep their termination semantics.
 
 Before selection, Back from category actions returns to main without opening
-the picker. After selection, Back from review or operation menus returns to the
+the picker. After selection, Back from configuration fields returns to the
 same category actions, retaining sources, exclusions and result history while
 discarding pending configuration. Each newly confirmed action selection gets a
 fresh requested-batch record with its own action numbers. Selecting Back again
@@ -173,8 +187,7 @@ These shortcuts apply to the utility's prompts and menus. The file picker's
 search uses its own controls. While a processing command runs, add no `e`
 reader or polling: Ctrl+C remains the stop control.
 
-Fresh skipped-only preparation remains explicit and is available only before
-processing. Back within an already prepared subset retains that subset. Once a
+The interactive entrypoint has no skipped-subset preparation menu. Once a
 queue has processed, print the final report once and end the invocation: no main
 menu, acknowledgement, retry menu or further configuration. This applies to
 success, warning, failure, partial and skipped outcomes. Preserve their exit
@@ -188,16 +201,21 @@ engine/native/campaign receipts rather than rerunning the completed broad campai
 
 ### Category batching and optional Mux metadata
 
-Each category owns its job configuration. Before execution, offer:
+Each category collects its required settings, then starts automatically after
+all selected sources pass planning/preflight or receive explicit exclusions or
+removal-mismatch skips. No Review/change, Preview or Run menu appears.
 
-```text
-  Configure selected category operations
-  Configure optional metadata edits (Mux)
-  Review or change configured operations
-  Preview resulting tracks and outputs
-  Run batch
-  Back to category actions
-```
+| Category | Final input that starts processing |
+| --- | --- |
+| Edit | Last per-ID metadata value or container title. |
+| Mux without metadata | Blank optional metadata selection. |
+| Mux with metadata | Last value for the selected metadata actions. |
+| Extract tracks or tracks + attachments | Track-ID selection. |
+| Extract attachments only | File-picker selection. |
+
+Back remains available at configuration fields before that input is accepted.
+The final input is the execution boundary; later typed e/EOF does not cancel a
+completed configuration. Existing preflight exclusion questions still apply.
 
 For example, select Mux `1,2` for removal and reordering, then optional metadata
 `3,4` for languages and names within that Mux workflow. Select metadata by a
@@ -221,7 +239,7 @@ or file selection. Cancellation during configuration performs no media writes.
 - Each track metadata action asks for a separate value for each original ID,
   with the action and ID clearly identified in the prompt. Reuse each value for
   that same original ID in every eligible selected file. For targets `0,4,3`,
-  ask ID 0, then 4, then 3 for each choice. Collect values before explicit Run.
+  ask ID 0, then 4, then 3 for each choice. Collect all values before automatic processing.
 - Mux removal and reordering keep separate inputs. Validate removal first;
   reject removing every track. If the proposed order includes a removed ID,
   unknown ID, duplicate or malformed entry, explain the error and ask for the
@@ -247,6 +265,9 @@ terminal probe. Reuse unchanged builders/engines and their native receipts.
 
 ## Track identity and preview
 
+The internal preview data describes each planned result for validation and
+diagnostic tests; it is not an interactive preview or confirmation step.
+
 Use each file's original track listing as the reference for configuring a job.
 Store that file's input track IDs and the expected final retained-track sequence.
 Names, languages, and flags stay attached to the selected original track even
@@ -262,7 +283,7 @@ For example, an illustrative source contains:
 | 3 | Full subtitles | Keep fourth |
 | 4 | Extra subtitles | Remove |
 
-The plan produces order `0:0,0:2,0:1,0:3`. Preview both original IDs and final
+The plan produces order `0:0,0:2,0:1,0:3`. Record both original IDs and final
 positions, along with requested metadata and output filenames. Editing original
 track 1 still edits the English audio after it becomes the third output track.
 
@@ -321,15 +342,15 @@ nonempty codec IDs; two missing values do not constitute a match.
 - After a run, report mismatch-skipped files and end the invocation. To retry,
   the user starts a new invocation and explicitly selects the skipped files.
   Reinspect that selection, clear/recollect settings, and require complete
-  preflight and explicit Run. Do not automatically replay completed files.
-- An all-skipped batch has no Run option but retains its report and the
-  pre-run skipped-subset reconfiguration path. Cancellation/EOF is bounded and
-  leaves the skipped list visible. Count each original selected source once in the final
-  outcome; preserve historical skip receipts. Unresolved skips/failures require
-  a nonzero result; pre-run reconfiguration may resolve earlier skips.
+  preflight before automatic processing. Do not automatically replay completed files.
+- An all-skipped batch prints its final report and exits nonzero without
+  writing or showing another menu. Count each selected source once and preserve
+  its skip reason. Retrying requires a new invocation. Cancellation/EOF before
+  the final required input remains bounded and leaves recorded outcomes intact.
 
 T01.03 establishes eligibility, skip receipts, and fresh subset planning without
-media mutation. T02.03 connects final reporting and termination after processing;
+media mutation until final input and preflight succeed. T02.03 connects final
+reporting and termination after processing;
 processing is not a prerequisite for G01 acceptance.
 
 ## Execution model
@@ -468,7 +489,7 @@ remux actions to it.
   `.mkv`); no-video results with audio use `.mka`; subtitle-only results use
   `.mks`. This deliberately refines choice 7's old blanket no-video `.mka` rule
   while preserving its audio conversion. Reject empty or unsupported retained
-  layouts rather than guessing an extension. Preview the final destination and
+  layouts rather than guessing an extension. Plan the final destination and
   preflight collisions before execution.
 - Recheck source identity, size, and modification time before mutation and
   promotion to detect a changed input since preflight.
@@ -537,7 +558,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 
 | Goal ID | Preserved checkpoint | Required task IDs | Goal-level acceptance gate |
 | --- | --- | --- | --- |
-| G01 | Checkpoint 1: menu and planning contract | T01.01, T01.02, T01.03 | All three tasks accepted; category configuration and preview consume the shared foundation and meet the existing no-mutation gate. |
+| G01 | Checkpoint 1: menu and planning contract | T01.01, T01.02, T01.03 | All three tasks accepted; category configuration consumes the shared foundation, with no media mutation until all required input and preflight succeed. |
 | G02 | Checkpoint 2: Edit + Mux execution | T02.01, T02.02, T02.03 | All three tasks accepted and combined Edit/Mux workflows meet their semantic, safety, and reporting gates; this is the approved stage gate before Extract implementation. |
 | G03 | Checkpoint 3: extraction integration | T03.01 | T03.01 accepted and both single and batched extraction outcomes verified. G02 acceptance is an existing execution-stage gate, not an assumed extraction API dependency. |
 | G04 | Checkpoint 4: integration and documentation | T04.01, T04.02 | Both tasks accepted; all required integration/verification evidence is current, help/docs match the implementation, and parent final review is complete. |
@@ -546,17 +567,17 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
+| T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete job plans are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
 | T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. Apply the metadata batch-target and Back contracts through this shared collector. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
-| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu and metadata Back, preserving scope and truthful result history. Apply the metadata batch-target contract, retry invalid reorder entries while retaining removal, and preserve scope when metadata Back clears pending settings. Support e/E at all utility configuration and preflight-exclusion prompts with atomic full-cohort inspection recovery; Mux metadata-list Back returns directly to main. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
+| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete job plans. Start automatically after the final required input and complete preflight; remove Review/change, Preview and Run menus from every category, including post-configuration acknowledgement and skipped-subset menus. All-skipped/no-eligible configurations report and exit without writes. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and internal skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu and metadata Back, preserving scope and truthful result history. Apply the metadata batch-target contract, retry invalid reorder entries while retaining removal, and preserve scope when metadata Back clears pending settings. Support e/E at all utility configuration and preflight-exclusion prompts with atomic full-cohort inspection recovery; Mux metadata-list Back returns directly to main. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and per-file plans | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip contracts, final-input automatic execution and no-write incomplete-configuration/Back/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. Apply each collected per-ID value to the same original ID in every eligible selected file. During Run, Ctrl+C finishes the active Edit file and its actual-state validation, then stops before another file; repeated Ctrl+C keeps the same stop request. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
-| T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. Reorder metadata targets only the explicit original reorder IDs; appended retained tracks keep unrequested metadata. During Run, Ctrl+C finishes the active Mux file including validation and checked promotion, then stops before another file; repeated Ctrl+C keeps the same stop request. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
-| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each configuration attributed to its own choices. Allow skipped-only reconfiguration before processing, counting each source once. Once a queue has processed, print its final report and exit without menus, acknowledgement or retry prompts; retry skipped files only in a new invocation. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. Clear abandoned current metadata choices on Back without losing requested EOF attribution or earlier outcomes. Preserve complete current-cohort request attribution, exclusions, skip history and sticky outcomes across Back and reinspection. Preserve the active file outcome independently from a stop request and print the exact ordered filenames not started due to stopping, including skipped-only retry cohorts. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, final action/directory reporting for single/batch/pre-run scopes, mixed/all-skipped reporting, pre-run subset replanning and separate-invocation skipped-file retries, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
+| T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. Apply each collected per-ID value to the same original ID in every eligible selected file. During processing, Ctrl+C finishes the active Edit file and its actual-state validation, then stops before another file; repeated Ctrl+C keeps the same stop request. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
+| T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. Reorder metadata targets only the explicit original reorder IDs; appended retained tracks keep unrequested metadata. During processing, Ctrl+C finishes the active Mux file including validation and checked promotion, then stops before another file; repeated Ctrl+C keeps the same stop request. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
+| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each configuration attributed to its own choices. Report skipped/failed files and mismatch details, counting each source once; all-skipped/no-eligible configurations report and exit without writes. Once a queue has processed, print its final report and exit without menus, acknowledgement or retry prompts; retry skipped files only in a new invocation. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. Clear abandoned current metadata choices on Back without losing requested EOF attribution or earlier outcomes. Preserve complete current-cohort request attribution, exclusions, skip history and sticky outcomes across Back and reinspection. Preserve the active file outcome independently from a stop request and print the exact ordered filenames not started due to stopping, including skipped-only retry cohorts. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, final action/directory reporting for single/batch/pre-run scopes, mixed/all-skipped reporting, automatic-start/all-skipped behavior and separate-invocation skipped-file retries, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
 
 ### G03 — Checkpoint 3: extraction integration
 
@@ -568,19 +589,19 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T04.01 | Verify every adapted single/batch action, shared metadata path, pre-run removal skip-only reconfiguration and final exit after processing together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. Verify the runtime-stop contract using focused controlling-terminal signal journeys, owned-process cleanup checks and small installed-v93 qualification on fresh disposable fixtures. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
+| T04.01 | Verify every adapted single/batch action, shared metadata path, automatic start after complete input/preflight, removal mismatch reporting and final exit after processing together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. Verify the runtime-stop contract using focused controlling-terminal signal journeys, owned-process cleanup checks and small installed-v93 qualification on fresh disposable fixtures. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
 | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. Include polished, collapsible examples for Edit batches, combined Mux metadata, metadata Back and extraction. Document all configuration Back destinations and the processing Ctrl+C boundary in the collapsible examples. Explain graceful Edit/Mux stopping, immediate Extract stopping and missed-file reporting using the validated behavior. | T04.01 | none | Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. |
 
 ### Foundations, stage gates, and shared ownership
 
 - T01.01 owns the original-file job/output contract. Removal output naming must
-  be settled here before T01.03 can earn complete-preview acceptance; its
-  currently unresolved policy is not a license to accept provisional filenames.
+  be settled here before T01.03 can earn complete-plan acceptance; any
+  unresolved policy is not a license to accept provisional filenames.
 - T01.02 is the single canonical owner of shared metadata definitions,
   configuration, and both argument builders. Edit and Mux reuse this work;
   neither consumer receives automatic acceptance from foundation completion.
 - T01.03 owns shared file selection, per-file identity/planning, conflicts, and
-  preview. Runtime consumers depend on this contract and real configuration
+  the automatic-start boundary. Runtime consumers depend on this contract and real configuration
   wiring. A wireframe or stub alone does not establish an integrated menu.
 - T02.02 owns remux-specific staging/promotion; T03.01 owns its extraction output
   handling. Shared file paths and helper edits are overlaps requiring one writer,
@@ -678,8 +699,9 @@ required.
   invalid selections, defaults, cancellation/EOF, interruption, collisions, and
   partial failures through controlled cases rather than every permutation.
   Include always-multi selection of one/several files, removal mismatch skips,
-  and pre-run reconfiguration for skipped sources. Verify that processing ends
-  the invocation and that any later retry uses a new invocation.
+  and mixed/all-skipped final reports. Verify automatic start after complete
+  input/preflight, no review or confirmation prompt, final exit after processing,
+  and any later retry through a new invocation.
 - Use mocked tool boundaries for deterministic menu/failure churn, then a few
   serial installed-v93 journeys for real output and retained-property checks.
   Verify combined Mux jobs produce one remux per file and no `mkvpropedit` call.

@@ -2,7 +2,7 @@
 
 [← Back to the toolkit](../README.md)
 
-`mkv_utils.zsh` is an interactive Matroska utility for editing metadata, remuxing tracks, and extracting attachments or tracks. It handles `.mkv`, `.mka`, `.mks`, and `.mk3d` files and lets you combine compatible actions into one reviewed batch.
+`mkv_utils.zsh` is an interactive Matroska utility for editing metadata, remuxing tracks, and extracting attachments or tracks. It handles `.mkv`, `.mka`, `.mks`, and `.mk3d` files and lets you combine compatible actions into one batch.
 
 ## Quick start
 
@@ -48,9 +48,9 @@ The main menu keeps the work areas separate:
 
 At the main **Category:** selector, press `1`, `2`, or `3` to open a category immediately; no Enter is needed. The normal terminal cursor remains visible while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
 
-When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Adjacent navigation menus share this screen. Each complete menu body is prepared first and printed together over the previous view, erasing old line endings and unused rows. Navigation redraws add no animation or intentional wait. The category and working directory stay visible, followed by the native input prompt. The utility leaves this screen before the file picker, configuration fields, processing, previews, reports or validation errors. It never clears the normal screen or scrollback.
+When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Adjacent navigation menus share this screen. Each complete menu body is prepared first and printed together over the previous view, erasing old line endings and unused rows. Navigation redraws add no animation or intentional wait. The category and working directory stay visible, followed by the native input prompt. The utility leaves this screen before the file picker, configuration fields, processing, reports or validation errors. It never clears the normal screen or scrollback.
 
-Previews, removal-mismatch details and reports remain in normal terminal history. Before processing, press Enter after these views when navigation will resume. Once a queue has processed, its final report ends the invocation without another menu or pause, regardless of the outcome. Redirected streams and empty or `dumb` terminal settings disable owned views and these acknowledgements. Piped input retains the line-based protocol.
+Removal-mismatch details and reports remain in normal terminal history. Redirected streams and empty or `dumb` terminal settings disable owned navigation views. Piped input retains the line-based protocol.
 
 | Main menu | Actions | What it does |
 | --- | --- | --- |
@@ -60,15 +60,15 @@ Previews, removal-mismatch details and reports remain in normal terminal history
 
 Within a category, enter one action, a comma-separated list, or an ascending range. For example, `1`, `1,2`, or `1-3`. The same format is used for optional Mux metadata choices. The file picker is always multi-select: select one file or mark several with Tab, then confirm the selection.
 
-After choosing files, configure all selected operations. The review menu lets you change the configuration, preview planned changes and outputs, or run the batch. Media-changing commands start only after you choose **Run**. A preview is a review step; it does not perform the operation.
+After choosing files, enter the requested settings. When the last required setting is complete, the utility runs its full preflight and automatically processes eligible jobs, then prints the final report and exits. Edit starts after its last per-ID value or title; Mux starts after its last selected metadata value, or after a blank optional-metadata choice; Extract with track actions starts after the track IDs, while attachments-only starts after file selection. A preflight with no eligible jobs prints the report and exits without writing outputs.
 
-Before processing, utility configuration and recovery prompts accept exact `e` or `E` as Back. At removal IDs, track order, extraction IDs, review, or replacement actions, Back returns to the category's action list with the selected files and explicit exclusions retained. Choose new actions to configure them afresh; the picker does not repeat. Back from that action list returns to the main categories. The optional Mux metadata list's **e) Back to main categories** also returns directly there. Choosing a new category scans the directory and opens a fresh picker.
+While configuration is incomplete, prompts that support Back accept exact `e` or `E`. At removal IDs, track order, or extraction IDs, Back returns to the category's action list with the selected files and explicit exclusions retained. Choose new actions to configure them afresh; the picker does not repeat. Back from that action list returns to the main categories. The optional Mux metadata list's **e) Back to main categories** also returns directly there. Choosing a new category scans the directory and opens a fresh picker. Once configuration is complete and processing starts, `e` is not a cancellation key.
 
 At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list with the selected files retained. In Mux, it returns to the optional metadata list while retaining removal and reorder settings; choose metadata again or leave the list blank to skip it. Back from the optional metadata list itself returns directly to the main categories.
 
-To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. At a metadata track-ID prompt, `cancel` still cancels the invocation. Back at an inspection or planning exclusion question keeps the selection for another attempt. Confirm new actions to retry every eligible selected file, including those not yet inspected; confirmed exclusions remain excluded. A prepared skipped-only selection retains that subset and its earlier outcomes.
+To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. At a metadata track-ID prompt, `cancel` still cancels the invocation. Inspection or planning errors retain their existing Y/N/`e` exclusion prompts. An excluded file stays excluded for that invocation; retry it by starting a new invocation and explicitly selecting it.
 
-EOF or Ctrl+C ends configuration. During processing, Ctrl+C requests the category's stop behavior described below; `e` is not read as a cancellation key. In the file picker, `e` remains a search character under fzf's own controls. Processing always ends with the final report and exit.
+EOF or Ctrl+C before configuration is complete cancels the invocation. After configuration completes, Ctrl+C requests the category's stop behavior described below. In the file picker, `e` remains a search character under fzf's own controls. Processing ends with the final report and exit.
 
 ### Edit
 
@@ -105,7 +105,7 @@ Edit is metadata-only: it does not print a between-file elapsed-time/ETA block. 
 
 The prompts identify the original ID and action. Forced values are collected for ID 4, then ID 3; default values follow in the same order. Each value applies to that ID in every eligible selected file. The second action does not ask for IDs again.
 
-Choose **2) Preview** to inspect the plan, then **3) Run batch** to apply it. Both actions use one grouped `mkvpropedit` command per file.
+After entering the final default-flag value, preflight runs and the batch starts automatically. Both actions use one grouped `mkvpropedit` command per eligible file.
 
 </details>
 
@@ -126,13 +126,11 @@ When reorder is selected, optional track metadata inherits exactly the explicit 
 
 #### Removal compatibility and skipped files
 
-Before running a removal batch, the utility compares every requested original track ID with the corresponding track in the reference file. The first successfully identified selected file is displayed as that reference. For a file to be eligible, each requested ID must have the same track type and exact native `codec_id`. For example, an `.ass` subtitle track does not match an `.srt` track at the same ID. Differences in track names, languages, or flags do not by themselves make a file incompatible.
+During preflight, the utility compares every requested original track ID with the corresponding track in the reference file. The first successfully identified selected file is displayed as that reference. For a file to be eligible, each requested ID must have the same track type and exact native `codec_id`. For example, an `.ass` subtitle track does not match an `.srt` track at the same ID. Differences in track names, languages, or flags do not by themselves make a file incompatible.
 
 An incompatible file is skipped as a whole for that removal run. The report names the file and shows the expected and actual track details. Compatible files can still run. After processing, the final report ends the invocation; unresolved skips or failed outcomes produce a nonzero exit status. To retry skipped files, start `mkvutil` again, select only those files, and configure a new batch.
 
-Before any processing, a batch with no eligible jobs can still prepare a fresh configuration for its skipped files. Those sources are inspected again and settings are collected afresh. Back keeps that prepared subset selected.
-
-Changing the removal configuration causes the selected sources to be checked again. Explicitly excluded files remain excluded. If no eligible jobs remain, the utility does not run a remux.
+If preflight leaves no eligible jobs, the utility prints the final report and exits without running a remux or writing outputs. To retry skipped files, start a new invocation and explicitly select them; their settings are collected afresh.
 
 #### Output extension
 
@@ -174,7 +172,7 @@ Assume the reference listing has video ID `0`, subtitle ID `3`, audio ID `4`, an
 
 Language prompts run through IDs 0, 4 and 3, followed by name prompts for those same IDs. The utility does not ask for another target list.
 
-Preview shows original ID 12 removed and final order `0,4,3,11`. Track 11 appends without receiving the requested language or name changes. **Run batch** combines removal, reorder and metadata in one output-producing `mkvmerge` command per eligible file.
+After entering the last track-name value, preflight runs and the batch starts automatically. Original ID 12 is removed and the resulting order is `0,4,3,11`; track 11 appends without receiving the requested language or name changes. Removal, reorder and metadata use one output-producing `mkvmerge` command per eligible file.
 
 If you accidentally include `0:12` in the order, the utility rejects that order and asks again. The removal selection and file picker do not repeat. Files whose removal ID/type/codec does not match the reference remain skipped as described above.
 
@@ -192,7 +190,7 @@ Original track ID 4 — Track name: e
 The optional metadata menu returns. All language and name values from this unfinished attempt are cleared; removal IDs, reorder sequence and selected files remain configured.
 
 - Enter a new selection, such as `1,2`, to collect forced and default values afresh for the inherited reorder IDs.
-- Press Enter on a blank metadata selection to proceed without metadata edits.
+- Press Enter on a blank metadata selection to start preflight without metadata edits.
 - Enter `e` at the metadata menu itself to return directly to the main categories.
 
 In Edit, `e` at a metadata prompt instead returns to Edit actions with the files still selected. To set an actual name or title of `e`, enter `\e`; uppercase `\E` sets `E`.
@@ -210,7 +208,7 @@ Choose `1,2` to collect attachments and selected tracks in the same batch. Attac
 
 Track outputs use the source stem and original track ID, for example `Episode - Track [2].srt`. Track outputs are not overwritten. Formats with companion artifacts are handled as a group: VobSub requires both `.sub` and `.idx`; WavPack may also produce an optional `.wvc` correction file.
 
-The utility checks planned destinations before Run. It rejects unsafe attachment names, destinations that alias selected media, unsafe existing destination types, and track/companion filename collisions. Extraction stages outputs before publication. If an extraction or publication has a warning or partial result, the final report distinguishes what was processed, published, superseded, uncertain, or left staged; inspect any reported retained staging directory before removing it.
+The utility checks planned destinations during preflight. It rejects unsafe attachment names, destinations that alias selected media, unsafe existing destination types, and track/companion filename collisions. Extraction stages outputs before publication. If an extraction or publication has a warning or partial result, the final report distinguishes what was processed, published, superseded, uncertain, or left staged; inspect any reported retained staging directory before removing it.
 
 Extract reports between-file progress. For attachments-only or tracks-only batches, that timing covers the selected stage. For a combined batch, the between-file timing and ETA cover the track-extraction stage; the final report covers the complete job. If a combined job never attempts a track stage, the report says so and does not invent a track ETA.
 
@@ -222,7 +220,7 @@ The attachment collection folder is shared for the whole selected batch. It is n
 1. Press `3` at **Category**, then enter Extract actions `1,2`.
 2. Mark the episodes in the picker and confirm.
 3. Enter subtitle IDs, such as `3-7`, after checking the displayed listing.
-4. Preview the attachment collection and track outputs, then choose **Run batch**.
+4. After entering the last track ID, preflight runs and the batch starts automatically.
 
 Attachments from all selected sources collect into one `Attachments/` folder. A later successful `Font.ttf` publication replaces an earlier regular file of that name. Subtitle tracks are written beside each source with its stem and original ID, such as `Episode01 - Track [3].ass`; those track outputs retain collision protection.
 
@@ -258,7 +256,7 @@ These are migration examples; choose any supported combination that fits the cur
 
 ## Reports and outcomes
 
-The final report shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. It records unresolved and resolved removal-skip history, including expected and actual track details. Each original selected file contributes once to the final counts, including after pre-run reconfiguration. Paths in per-file records identify the affected source and outputs. A processed queue always ends here; starting another batch requires a new invocation.
+The final report shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, and codec details. Each original selected file contributes once to the final counts. Paths in per-file records identify the affected source and outputs. A processed queue always ends here; starting another batch requires a new invocation.
 
 Edit reports appear at the end and do not include a between-file ETA. Mux includes per-file progress and elapsed time. Extract includes per-file progress with the timing behavior described above. A report may include staged paths, native scratch paths, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
 
@@ -266,7 +264,7 @@ Warnings, failed or partial jobs, unresolved removal skips, and interrupted batc
 
 ### Stopping a running batch
 
-Press **Ctrl+C** during Run. The final report lists the exact filenames that were not started because of the stop, including files waiting in a skipped-file retry.
+Press **Ctrl+C** after configuration completes and processing starts. The final report lists the exact filenames that were not started because of the stop.
 
 | Category | What happens after Ctrl+C |
 | --- | --- |
@@ -275,14 +273,14 @@ Press **Ctrl+C** during Run. The final report lists the exact filenames that wer
 | Extract tracks | Stop the active extraction tool and discard its unfinished, unvalidated track files. Previously published outputs remain. |
 | Extract attachments | Stop the active extraction tool. Completed attachments remain; no rollback is attempted. |
 
-For Edit and Mux, pressing Ctrl+C again keeps the same stop request. The current file still receives its actual success, warning or failure result. A stopped invocation returns nonzero even when that current file completed successfully. `e` has no processing action.
+For Edit and Mux, pressing Ctrl+C again keeps the same stop request. The current file still receives its actual success, warning or failure result. A stopped invocation returns nonzero even when that current file completed successfully. During processing, `e` is not read as a command.
 
 Extraction cleanup is limited to identifiable partial track files in the run's own staging directory. Validated recovery files, uncertain publications and unexpected artifacts are retained and reported. If shutdown or cleanup cannot be confirmed, the report identifies the retained paths. Closing the terminal or sending TERM/HUP aborts processing and retains recoverable staging where possible; it does not request the graceful Edit/Mux finish.
 
 <details>
 <summary>Example: stop a three-file Mux batch after the active file</summary>
 
-Suppose `Episode 01.mkv` has finished and `Episode 02.mkv` is being remuxed. Press Ctrl+C once. The utility prints:
+Complete the Mux settings; preflight runs and processing starts automatically. Suppose `Episode 01.mkv` has finished and `Episode 02.mkv` is being remuxed. Press Ctrl+C once. The utility prints:
 
 ```text
 Stop requested; finishing the current file before stopping.
@@ -308,15 +306,19 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The fake media commands in the test harness record arguments and isolate the menu tests from user files. The original rework campaign established 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also included three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These historical results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. The later Back-navigation change was checked separately with focused state/regression tests and three small mocked entrypoint probes, including blocked-input interruption. The owned-menu follow-up was checked separately using an active-screen ANSI model on a real controlling terminal, with mocked media tools, plus focused pipe regressions. These checks cover menu replacement, normal-history preservation, acknowledgement boundaries and keyboard interruption. That menu-only follow-up left processing engines unchanged. No full native codec matrix or CI result is implied.
+The automatic-start follow-up passed 100 distinct affected cases across separate runs, including 15 controlling-terminal journeys. These cover final-input execution, full preflight before any write, Back and incomplete-input cancellation, exact mismatch/failure reports, final exit and runtime stopping. The final 26-case shutdown/consumer group also verifies transient and persistent macOS process-group probe denial: cleanup proceeds only after confirmed shutdown; otherwise candidates and recovery details remain. Earlier passing checks were reused only where their code and test bodies remained unchanged.
 
-The tests cover the action registry and prompts, batching, removal eligibility and pre-run skipped-file reconfiguration, track order, destination validation, output extensions, publication outcomes, and final reporting. The real-tool journeys check observed media properties and source preservation for their specific scenarios; they do not represent every possible codec and metadata combination.
+These checks use controlled media tools and disposable fixtures. No single 100-case invocation, new native codec matrix, full-suite run or CI result is implied. The results below are historical evidence from earlier iterations; they do not independently validate the current automatic-start flow.
 
-The shared-ID and metadata-Back follow-up passed 47 affected checks and two controlling-terminal journeys. A strengthened two-file Mux argument check passed separately after adding explicit per-ID flag assertions. Those checks used isolated fake media tools to cover shared targets, inherited reorder IDs, invalid-order retry, metadata reset, source-specific arguments and terminal restoration. That change reused the unchanged processing engines' earlier native evidence.
+The fake media commands in the test harness record arguments and isolate the menu tests from user files. Historical evidence from the original rework campaign established 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also included three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These historical results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. The later Back-navigation change was checked separately with focused state/regression tests and three small mocked entrypoint probes, including blocked-input interruption. The owned-menu follow-up was checked separately using an active-screen ANSI model on a real controlling terminal, with mocked media tools, plus focused pipe regressions. These checks cover menu replacement, normal-history preservation, acknowledgement boundaries and keyboard interruption. That menu-only follow-up left processing engines unchanged. No full native codec matrix or CI result is implied. The preview-and-cancel fzf journey records historical behavior and does not describe the current automatic-start flow.
 
-The subsequent runtime-stop change passed 79 affected cases against the final script across separate runs. These include eight controlling-terminal journeys for graceful Edit/Mux stopping, immediate extraction stopping, repeated Ctrl+C, late interruption during result checking, and owned-process shutdown. Further fault checks cover stopping before a file starts, parent-process loss, retained recovery artifacts and exact missed-file reporting. Three small installed-v93 menu journeys separately verified Edit, combined removal/reorder/title Mux, and attachment-plus-track Extract on fresh fixtures. The terminal signal checks use controlled native-tool substitutes; the real-tool journeys verify normal processing, not signal timing across every codec. No new full-suite or CI result is implied.
+Historical tests cover the action registry and prompts, batching, removal eligibility, pre-run skipped-file reconfiguration, track order, destination validation, output extensions, publication outcomes, and final reporting. The real-tool journeys check observed media properties and source preservation for their specific scenarios; they do not represent every possible codec and metadata combination.
 
-The final-after-processing follow-up passed 13 affected checks. These verify one final report without further prompts across all three categories, untouched mismatch-skipped files, retry through a separate invocation, and preserved pre-run navigation, grouped processing and interruption behavior. These checks use controlled media tools; the processing engines were unchanged.
+Historically, the shared-ID and metadata-Back follow-up passed 47 affected checks and two controlling-terminal journeys. A strengthened two-file Mux argument check passed separately after adding explicit per-ID flag assertions. Those checks used isolated fake media tools to cover shared targets, inherited reorder IDs, invalid-order retry, metadata reset, source-specific arguments and terminal restoration. That change reused the unchanged processing engines' earlier native evidence.
+
+Historically, the runtime-stop change passed 79 affected cases against the then-final script across separate runs. These include eight controlling-terminal journeys for graceful Edit/Mux stopping, immediate extraction stopping, repeated Ctrl+C, late interruption during result checking, and owned-process shutdown. Further fault checks cover stopping before a file starts, parent-process loss, retained recovery artifacts and exact missed-file reporting. Three small installed-v93 menu journeys separately verified Edit, combined removal/reorder/title Mux, and attachment-plus-track Extract on fresh fixtures. The terminal signal checks use controlled native-tool substitutes; the real-tool journeys verify normal processing, not signal timing across every codec. No new full-suite or CI result is implied.
+
+The final-after-processing follow-up historically passed 13 affected checks. These verify one final report without further prompts across all three categories, untouched mismatch-skipped files, retry through a separate invocation, and preserved pre-run navigation, grouped processing and interruption behavior. These checks use controlled media tools; the processing engines were unchanged.
 
 The script and tests use the repository's installed tools and environment. To inspect tool resolution without changing anything:
 
@@ -337,6 +339,6 @@ Metadata choices are declared once through `_mkvutil_metadata_define` in the scr
 | No Matroska files were found | Confirm the directory contains top-level `.mkv`, `.mka`, `.mks`, or `.mk3d` files. The scan is not recursive. |
 | No file selected | Mark at least one entry in the `fzf` picker and confirm. |
 | The Python runtime reports missing `pymkv` or `pymkv2` | Confirm the repository `.venv` points to a working interpreter and has the packages from `requirements.txt`. |
-| A file is skipped for a removal mismatch | Compare the requested original track ID, type, and exact codec shown against the reference. Use the skipped-subset flow to configure those unresolved files separately. |
+| A file is skipped for a removal mismatch | Compare the requested original track ID, type, and exact codec shown against the reference. Start a new invocation and explicitly select the files to retry. |
 | An output destination already exists | Review the planned path. Track outputs are not overwritten; attachment extraction may overwrite an existing regular same-name file. |
 | An interrupted or partial extraction reports retained staging paths | Review the final report and those paths before retrying or cleaning them up. |

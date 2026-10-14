@@ -14,7 +14,59 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Accepted final-after-processing amendment
+### Accepted automatic-start amendment
+
+- The user's requested Review/change, Preview and Run menus are removed from
+  every category. Final required input commits configuration: complete queue
+  preflight runs before any writer, then eligible jobs process and the invocation
+  prints one final report and exits. Edit starts after its last per-ID value or
+  title; Mux after its last metadata value or blank metadata choice; Extract after
+  track IDs, or file selection for attachments-only.
+- Final reports retain exact skipped/failed filenames and expected/actual removal
+  original-ID/type/codec details. Mismatched sources remain untouched. No eligible
+  jobs means nonzero report/exit without writes or acknowledgement. Incomplete
+  configuration still supports Back/EOF/Ctrl+C; runtime stop behavior is retained.
+- Acceptance is 9/9 tasks and 4/4 goals. Proof root:
+  `.tmp/mkvutil-rework/automatic-start/`. `receipt.json`, `parent-review.json` and
+  `accepted-nodes.json` bind the current amendment and evidence scopes.
+- 100 distinct affected cases pass across separate runs: 71 normal cases, six
+  navigation PTY cases and 26 final-source shutdown/consumer cases, with three
+  overlaps. The final group includes nine runtime PTY journeys, giving 15 terminal
+  cases in total. Final group: 115.33s pytest, 115.95s wall, 45.49s user + 43.18s
+  system CPU. No peak/descendant CPU accounting claim or single 100-case run.
+- Initial normal failures were obsolete preview/input/fixture expectations;
+  `corrections.json` and corrected.log preserve their resolutions. Initial
+  terminal evidence was 13 pass/one failure: extractor/descendant exit coincided
+  with macOS PermissionError in the post-kill existence probe. The copied-source
+  diagnostic captured it in stop-error.log; its pass is diagnostic only.
+- The deterministic regression failed old source (permission-red.log), then
+  passed the bounded fix (permission-green.log). Astra audited that correction
+  PASS. PermissionError now falls through the existing 0.5s deadline/sleep; only
+  ESRCH confirms group disappearance. Final transient/persistent-denial cases
+  prove confirmed cleanup versus retained candidates and explicit uncertainty.
+  No signal policy, timeout, requirement or permission was expanded.
+- Final source SHA-256:
+  `47de824635d748a19d6b7fe09032a87fef80dc041a7d1e1bd3ed68577f523c48`.
+  Three functions changed (menu body, controller, shared shutdown support), the
+  review-menu function was removed, and 96 others remain byte-identical. Earlier
+  passing automatic-start/navigation scopes are qualified by unchanged functions
+  and test bodies; the final 26 cover the shared shutdown delta. Prior native v93
+  semantics remain separately qualified; no new full suite/native campaign/CI run.
+- Guide and five collapsible examples, help/source claims, links/fences/privacy,
+  nine mirrored task contracts, six inline Python blocks and preserved session
+  ledger pass parent review. Shared test helper is unchanged. Both Luna workers
+  returned ownership; the read-only Astra audits are complete. No active writer.
+  Coding stayed in the parent; no Sol6.1 agents, dependencies, tool installations,
+  AGENTS, worktrees or user-media changes.
+- Main Scripts remains on feature/mkvutil-rework; prior signed/pushed baseline
+  `d4674e46a7c6b28866aad12d2ad12b5636c8b9e4`. This containing commit carries the
+  amendment and reconciled records. Signed commit/push remains authorized.
+  Next: verify final six-file diff/integrity, sign and push this branch, then
+  record exact remote SHA, signature and clean tree in this proof root's
+  `publication.json`. If it already records a verified push, reconcile live Git
+  before repeating publication. No implementation or validation gate remains.
+
+### Historical: Accepted final-after-processing amendment
 
 - User instruction on 2026-10-15: processing is final; do not return to menus
   after a queue/batch. This supersedes post-run skipped-file continuation.

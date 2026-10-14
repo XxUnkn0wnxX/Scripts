@@ -1352,7 +1352,6 @@ _mkvutil_menu_body() {
       [[ -z "$targets" ]] || print -r -- "Original track IDs for each track edit: $targets"
       mkvutil_metadata_menu || return 1
       print -r -- 'e) Back to main categories' ;;
-    review) mkvutil_review_menu ;;
     *) return 1 ;;
   esac
 }
@@ -1882,7 +1881,7 @@ _mkvutil_remove_scope_source() {
   MKVUTIL_SOURCES=("${remaining[@]}")
 }
 
-# The scope pool survives automatic skips and Review/change. Only an explicit
+# The scope pool survives automatic skips and configuration Back. Only an explicit
 # exclusion removes a source. Status 3 means an all-mismatch queue, with receipts
 # still available; any other planning error requires the ordinary exclude policy.
 mkvutil_plan_queue() {
@@ -1924,8 +1923,8 @@ mkvutil_plan_queue() {
 }
 
 # Prepare a fresh scope from mismatch receipts only. Pending eligible jobs may
-# not be discarded. G02's post-execution controller can archive/clear those jobs
-# before calling this helper; configuration and confirmation remain separate.
+# not be discarded. This internal planning helper does not execute jobs or
+# provide a continuation menu in the interactive entrypoint.
 mkvutil_prepare_skipped_subset() {
   local receipt="" file="" record="" result=0
   local -a paths=() sources=()
@@ -1977,16 +1976,6 @@ mkvutil_prepare_skipped_subset() {
 mkvutil_cancel_status() {
   (( ! MKVUTIL_LEDGER_ENABLED )) || { mkvutil_ledger_status; return $?; }
   (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 && ${#MKVUTIL_REMOVAL_SKIP_HISTORY} == 0 ))
-}
-
-mkvutil_review_menu() {
-  print -r -- $'1) Review/change configured operations\n2) Preview resulting tracks and outputs'
-  if (( ${#MKVUTIL_JOBS} > 0 )); then
-    print -r -- '3) Run batch'
-  elif (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )); then
-    print -r -- '4) Prepare a fresh batch for mismatch-skipped files'
-  fi
-  print -r -- 'e) Back'
 }
 
 mkvutil_preview_jobs() {
@@ -2096,6 +2085,10 @@ def stop_child():
             except ProcessLookupError:
                 native_stopped = True
                 break
+            except PermissionError:
+                # A retiring group can temporarily deny the probe on macOS.
+                # Keep shutdown unconfirmed until it disappears or times out.
+                pass
             if time.monotonic() >= deadline:
                 shutdown_error = "Owned native process group shutdown could not be confirmed; candidates retained"
                 break
@@ -3278,65 +3271,23 @@ print_help() {
   print -r -- $'\nChoose one action or a batch (1,2 or 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
 }
 
-# Configuration/review can repeat before Run. Processing always ends this
-# invocation; skipped-file reconfiguration is available only before processing.
+# The final required input commits the configuration. Complete the whole
+# preflight before starting; the caller prints one final report and exits.
 mkvutil_controller() {
-  local category="$1" operations="$2" review="" result=0
-  while true; do
-    _mkvutil_ui_leave
-    mkvutil_configure_category "$category" "$operations" || return $?
-    mkvutil_batch_configured "$MKVUTIL_CONFIG" || return 1
-    result=0
-    mkvutil_plan_queue || result=$?
-    (( result == 0 || result == 3 )) || return "$result"
-    # Planning already printed exact mismatch details in normal history.
-    if (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )); then _mkvutil_ui_acknowledge || return $?; fi
-    while true; do
-      _mkvutil_menu_read review "$category" 'Review choice: ' || return $?
-      review="$REPLY"
-      case "$review" in
-        e|E) return 4 ;;
-        0) return 2 ;;
-        1)
-          _mkvutil_menu_read actions "$category" 'Replacement operations: ' || return $?
-          case "$REPLY" in e|E) return 4 ;; esac
-          [[ "$REPLY" != 0 ]] || return 2
-          _mkvutil_menu_choices "$category" "$REPLY" || return 1
-          operations="$REPLY"
-          _mkvutil_ui_leave
-          mkvutil_batch_request "$category" "$operations" || return 1
-          break ;;
-        2) _mkvutil_ui_leave; mkvutil_preview_jobs || return 1; _mkvutil_ui_acknowledge || return $? ;;
-        3)
-          if (( ${#MKVUTIL_JOBS} == 0 )); then
-            _mkvutil_ui_leave
-            print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'
-            _mkvutil_ui_acknowledge || return $?
-            continue
-          fi
-          result=0
-          _mkvutil_ui_leave
-          mkvutil_execute_queue "${MKVUTIL_JOBS[@]}" || result=$?
-          (( MKVUTIL_INTERRUPTED == 0 )) || return 1
-          (( result == 0 )) || return 1
-          mkvutil_ledger_status; return $? ;;
-        4)
-          # This action is never offered while eligible jobs remain pending.
-          _mkvutil_ui_leave
-          mkvutil_prepare_skipped_subset || return $?
-          category=mux
-          _mkvutil_menu_read actions "$category" 'New skipped-subset operations: ' || return $?
-          case "$REPLY" in e|E) return 4 ;; esac
-          [[ "$REPLY" != 0 ]] || return 2
-          _mkvutil_menu_choices "$category" "$REPLY" || return 1
-          operations="$REPLY"
-          _mkvutil_ui_leave
-          mkvutil_batch_request "$category" "$operations" || return 1
-          break ;;
-        *) _mkvutil_ui_leave; print -u2 -r -- 'Invalid review choice.'; return 1 ;;
-      esac
-    done
-  done
+  local category="$1" operations="$2" result=0
+  _mkvutil_ui_leave
+  mkvutil_configure_category "$category" "$operations" || return $?
+  mkvutil_batch_configured "$MKVUTIL_CONFIG" || return 1
+  mkvutil_plan_queue || result=$?
+  case "$result" in
+    0) ;;
+    3) return 1 ;; # All removal mismatches: report without starting a writer.
+    *) return "$result" ;;
+  esac
+  (( MKVUTIL_INTERRUPTED == 0 && ${#MKVUTIL_JOBS} > 0 )) || return 1
+  mkvutil_execute_queue "${MKVUTIL_JOBS[@]}" || result=$?
+  (( MKVUTIL_INTERRUPTED == 0 && result == 0 )) || return 1
+  mkvutil_ledger_status
 }
 
 mkvutil_finish() {
