@@ -863,6 +863,59 @@ print -r -- "$MKVUTIL_RESULT_JSON"
     assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
 
 
+def test_mkv_utils_executor_two_file_edit_keeps_source_selectors_and_properties(env):
+    first, manifest = _executor_manifest(env, converted=False)
+    second = _mkv_file(env, "Second source.mk3d")
+    original = json.loads(json.dumps(manifest["sources"][str(first)]))
+    # Original ID 11 is listing position 2 in the first file and 3 in the
+    # second. Untargeted flags and names also differ between the two inputs.
+    original["tracks"] = [original["tracks"][2], original["tracks"][0], original["tracks"][1]]
+    original["tracks"][2]["properties"].update(default_track=True, forced_track=True)
+    original["tracks"][0]["properties"]["track_name"] = "Second untouched name"
+    manifest["sources"][str(second)] = original
+    literal = '@literal $cash: "quote"\n\n'
+    for source in (first, second):
+        actual = json.loads(json.dumps(manifest["sources"][str(source)]))
+        for track in actual["tracks"]:
+            if track["id"] == 11:
+                track["properties"].update(forced_track=False, track_name=literal)
+            if track["id"] == 12:
+                track["properties"]["default_track"] = True
+        actual["container"]["properties"]["title"] = ""
+        manifest["post_edit"][str(source)] = actual
+    result = _run_executor_contract(env, r'''
+config="$(jq '.category="edit"|.operations=["1","2","4","5"]|.metadata="1,2,4,5"|.removed_ids=[]|.order=""|.order_ids=[]|.settings={"1:11":"0","2:12":"1","4:11":"@literal $cash: \"quote\"\n\n","5:info":""}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+second="$(mkvutil_capture_source "$PWD/Second source.mk3d")"
+secondjob="$(mkvutil_plan_job "$second" "$config")"
+mkvutil_execute_queue "$job" "$secondjob"
+eq "${#MKVUTIL_RESULTS}" 2 'both Edit sources completed'
+for result in "${MKVUTIL_RESULTS[@]}"; do
+  eq "$(jq -r '.status' <<< "$result")" success 'per-file Edit result'
+  eq "$(jq -r '.applied_metadata|all(.==true)' <<< "$result")" true 'all grouped fields observed'
+  print -r -- "$result"
+done
+''', manifest)
+    records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+    assert [record["source"] for record in records] == [str(first), str(second)]
+    assert [record["actual_state"] for record in records] == ["edited_observed", "edited_observed"]
+    assert "Processed In:" not in result.stdout
+    calls = _command_argv(env, "mkvpropedit")
+    assert calls == [
+        [str(first), "--normalize-language-ietf", "off", "--edit", "track:2",
+         "--set", "flag-forced=0", "--set", f"name={literal}", "--edit", "track:3",
+         "--set", "flag-default=1", "--edit", "info", "--delete", "title"],
+        [str(second), "--normalize-language-ietf", "off", "--edit", "track:1",
+         "--set", "flag-default=1", "--edit", "track:3", "--set", "flag-forced=0",
+         "--set", f"name={literal}", "--edit", "info", "--delete", "title"],
+    ]
+    assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
+    # The retained-property oracle may read tags; it must not create sidecars.
+    assert all(args[0] in (str(first), str(second)) and args[1:] == ["tags"]
+               for args in _command_argv(env, "mkvextract"))
+    assert first.read_bytes() == second.read_bytes() == b"edited-data\n"
+
+
 def test_mkv_utils_executor_one_mux_validated_conversion(env):
     source, manifest = _executor_manifest(env)
     result = _run_executor_contract(env, r'''
@@ -1070,6 +1123,319 @@ for record in "${MKVUTIL_RESULTS[@]}"; do print -r -- "$record"; done
     assert source.read_text() == "payload"
     assert Path(bad).read_text() == "payload"
     assert not (env["workdir"] / "successful.mk3d").exists()
+
+
+def test_mkv_utils_reporting_ledger_history_counts_and_configurations(env):
+    result = _run_planning_contract(env, r'''
+MKVUTIL_SOURCES=()
+mkvutil_ledger_reset "$PWD/Input directory" "$PWD/first.mkv" "$PWD/Skipped file.mk3d" "$PWD/excluded.mkv" "$PWD/warning.mkv" "$PWD/partial.mkv" "$PWD/failed.mkv"
+config='{"category":"mux","operations":["1","2"],"metadata":"3,4,5","settings":{"4:11":"@literal $cash\n\n","5:info":""}}'
+mkvutil_batch_request mux 1,2 "$config"
+mkvutil_ledger_exclude "$PWD/excluded.mkv" 'Initial inspection declined'
+receipt="$(jq -cn --arg source "$PWD/Skipped file.mk3d" --arg reference "$PWD/first.mkv" '{kind:"removal-mismatch",source:$source,reference:$reference,reasons:[{original_id:"12",reason:"codec-mismatch",expected:{type:"subtitles",codec_id:"S_TEXT/ASS"},actual:{type:"subtitles",codec_id:"S_TEXT/UTF8"}}]}')"
+mkvutil_ledger_skip "$receipt"
+mkvutil_ledger_skip "$receipt"
+record_result() {
+  local record="$(jq -cn --arg source "$1" --arg status "$2" --arg destination "${3:-$1}" '{source:$source,destination:$destination,status:$status,phase:"complete",actual_state:"observed",reason:"native receipt",native_code:0}')"
+  mkvutil_ledger_result "$record" "$1" "$2"
+}
+MKVUTIL_HAS_RUN=1
+record_result "$PWD/first.mkv" success
+record_result "$PWD/warning.mkv" warning
+record_result "$PWD/partial.mkv" partial
+record_result "$PWD/failed.mkv" failed
+MKVUTIL_BATCHES[1]="$(jq --argjson outcomes "$(mkvutil_batch_outcomes)" '.+{state:"executed",eligible:4,attempted:4,completed:1,elapsed_seconds:8,outcomes:$outcomes}' <<< "${MKVUTIL_BATCHES[1]}")"
+MKVUTIL_SOURCES=("$(jq -cn --arg source "$PWD/Skipped file.mk3d" '{source:$source}')")
+mkvutil_batch_request mux 1 '{"category":"mux","operations":["1"],"metadata":"5","settings":{"5:info":""}}'
+# The identical late receipt is deduplicated across cohorts, while attribution
+# records both configurations. History itself is not a permanent failure.
+mkvutil_ledger_skip "$receipt"
+record_result "$PWD/Skipped file.mk3d" success "$PWD/Skipped file.mka"
+MKVUTIL_BATCHES[2]="$(jq --argjson outcomes "$(mkvutil_batch_outcomes)" '.+{state:"executed",eligible:1,attempted:1,completed:1,elapsed_seconds:2,outcomes:$outcomes}' <<< "${MKVUTIL_BATCHES[2]}")"
+MKVUTIL_TOTAL_ELAPSED=10
+mkvutil_ledger_finalize
+reject mkvutil_ledger_status
+mkvutil_sync_unresolved_skips
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 0 'resolved skips not offered again'
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+mkvutil_final_report
+''', {})
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["directory"] == "Input directory" and summary["selected"] == 6 and summary["required"] == 5
+    assert summary["counts"] == dict(done=2, warning=1, partial=1, failed=1, excluded=1, skipped=0, not_attempted=0, interrupted=0)
+    skipped = next(record for record in summary["files"] if record["source"].endswith("Skipped file.mk3d"))
+    assert skipped["destination"].endswith("Skipped file.mka")
+    assert len(skipped["skip_history"]) == 1 and skipped["skip_history"][0]["resolved"]
+    assert skipped["skip_history"][0]["batch_ids"] == [1, 2]
+    assert len(skipped["attempts"]) == 1
+    assert summary["batches"][0]["action_ids"] == ["1", "2"] and summary["batches"][0]["metadata_ids"] == "3,4,5"
+    assert summary["batches"][1]["action_ids"] == ["1"] and summary["batches"][1]["metadata_ids"] == "5"
+    assert summary["batches"][0]["config"]["settings"] == {"4:11": "@literal $cash\n\n", "5:info": ""}
+    assert summary["batches"][0]["outcomes"]["skipped"] == 1 and summary["batches"][1]["outcomes"] == {"done": 1}
+    assert "Directory: Input directory" in result.stdout and f"Directory: {env['workdir']}" not in result.stdout
+    assert "Skip history: resolved; configurations 1,2" in result.stdout
+
+
+def test_mkv_utils_reporting_cancel_eof_and_excluded_unresolved_retry(env):
+    first, skipped = _mkv_file(env, "completed.mk3d"), _mkv_file(env, "Unresolved source.mkv")
+    sources = {str(skipped): _source_json([(0, "audio", "A_AAC", True), (12, "subtitles", "S_TEXT/UTF8", False)])}
+    result = _run_planning_contract(env, r'''
+MKVUTIL_SOURCES=()
+mkvutil_ledger_reset "$PWD" "$PWD/neutral.mkv"
+mkvutil_batch_request edit 1,2
+mkvutil_finish 2
+print -r -- 'NEUTRAL-END'
+# All skipped before Run offers no Run and cancellation stays unresolved.
+mkvutil_ledger_reset "$PWD" "$PWD/Unresolved source.mkv"
+mkvutil_batch_request mux 1
+receipt="$(jq -cn --arg source "$PWD/Unresolved source.mkv" --arg reference "$PWD/completed.mk3d" '{kind:"removal-mismatch",source:$source,reference:$reference,reasons:[{original_id:"12",reason:"codec-mismatch",expected:{type:"subtitles",codec_id:"S_TEXT/ASS"},actual:{type:"subtitles",codec_id:"S_TEXT/UTF8"}}]}')"
+mkvutil_ledger_skip "$receipt"
+MKVUTIL_JOBS=()
+MKVUTIL_REMOVAL_SKIPS=("$receipt")
+menu="$(mkvutil_review_menu)"
+[[ "$menu" != *'Run batch'* ]] || fail 'all skipped offered Run'
+reject mkvutil_finish 2
+print -r -- 'ALL-SKIPPED-END'
+# Prior success and unresolved skip survive fresh configuration EOF. Original
+# source key stays counted once after conversion; no settings blindly survive.
+MKVUTIL_SOURCES=()
+mkvutil_ledger_reset "$PWD" "$PWD/completed.mk3d" "$PWD/Unresolved source.mkv"
+mkvutil_batch_request mux 1,2
+MKVUTIL_HAS_RUN=1
+successful="$(jq -cn --arg source "$PWD/completed.mk3d" --arg destination "$PWD/completed.mka" '{source:$source,destination:$destination,status:"success",phase:"complete",actual_state:"published_complete",reason:""}')"
+mkvutil_ledger_result "$successful"
+mkvutil_ledger_skip "$receipt"
+MKVUTIL_JOBS=()
+MKVUTIL_REMOVAL_SKIPS=("$receipt")
+MKVUTIL_METADATA_SETTINGS[4:0]='old setting'
+mkvutil_prepare_skipped_subset
+(( ${#MKVUTIL_METADATA_SETTINGS}==0 )) || fail 'old settings leaked'
+eq "${#MKVUTIL_SOURCES}" 1 'only unresolved subset refreshed'
+mkvutil_batch_request mux 2
+code=0
+mkvutil_configure_category mux 2 <<< $'0:0\n3,4' || code=$?
+eq "$code" 2 'configuration EOF'
+reject mkvutil_finish 2
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+# Exclusion from retry does not resolve an earlier required mismatch.
+mkvutil_ledger_exclude "$PWD/Unresolved source.mkv" 'Fresh inspection explicitly excluded'
+mkvutil_sync_unresolved_skips
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 0 'excluded retry not offered'
+reject mkvutil_ledger_status
+print -r -- "EXCLUDED $(mkvutil_final_summary)"
+''', sources)
+    neutral, remainder = result.stdout.split("NEUTRAL-END", 1)
+    assert "Cancelled; no media changes." in neutral and "Actions: 1,2" in neutral
+    all_skipped, after_run = remainder.split("ALL-SKIPPED-END", 1)
+    assert "Skipped: 1" in all_skipped and "requested, not run" in all_skipped
+    assert "Continuation cancelled; recorded outcomes retained." in after_run
+    assert "Cancelled; no media changes." not in after_run
+    summary = json.loads(next(line[8:] for line in after_run.splitlines() if line.startswith("SUMMARY ")))
+    excluded = json.loads(next(line[9:] for line in after_run.splitlines() if line.startswith("EXCLUDED ")))
+    assert summary["counts"]["done"] == 1 and summary["counts"]["skipped"] == 1
+    assert summary["selected"] == 2 and len(summary["batches"]) == 2
+    assert summary["batches"][1]["action_ids"] == ["2"] and summary["batches"][1]["state"] == "requested"
+    assert summary["batches"][1]["metadata_ids"] == "3,4"
+    unresolved = next(record for record in excluded["files"] if record["source"] == str(skipped))
+    assert unresolved["required"] and unresolved["status"] == "skipped" and unresolved["excluded_from_retry"]
+    assert excluded["counts"]["excluded"] == 0 and excluded["counts"]["skipped"] == 1
+    assert len(_command_argv(env, "mkvmerge")) == 1 and first.read_text() == "payload"
+
+
+def test_mkv_utils_reporting_between_job_signal_stops_continuation_and_pending_success(env):
+    result = _run_planning_contract(env, r'''
+MKVUTIL_SOURCES=()
+mkvutil_ledger_reset "$PWD" "$PWD/first.mkv" "$PWD/pending.mkv" "$PWD/skipped.mkv"
+config='{"category":"mux","operations":["1","2"],"metadata":"3,4"}'
+mkvutil_batch_request mux 1,2 "$config"
+first="$(jq -cn --arg source "$PWD/first.mkv" --argjson config "$config" '{source:$source,config:$config}')"
+second="$(jq -cn --arg source "$PWD/pending.mkv" --argjson config "$config" '{source:$source,config:$config}')"
+receipt="$(jq -cn --arg source "$PWD/skipped.mkv" --arg reference "$PWD/first.mkv" '{kind:"removal-mismatch",source:$source,reference:$reference,reasons:[{original_id:"12",reason:"missing-id",expected:{type:"subtitles",codec_id:"S_TEXT/ASS"},actual:null}]}')"
+MKVUTIL_REMOVAL_SKIPS=("$receipt")
+mkvutil_ledger_skip "$receipt"
+typeset -a modifier_sources=()
+mkvutil_configure_category() { MKVUTIL_CONFIG="$config"; }
+mkvutil_plan_queue() { MKVUTIL_JOBS=("$first" "$second"); }
+mkvutil_execute_mux_job() {
+  modifier_sources+=("$(jq -r '.source' <<< "$1")")
+  MKVUTIL_RESULT_JSON="$(jq -c '{source:.source,destination:.source,status:"success",phase:"complete",actual_state:"replaced_complete",reason:""}' <<< "$1")"
+}
+mkvutil_format_progress() { kill -TERM $$; }
+code=0
+mkvutil_controller mux 1,2 <<< 3 || code=$?
+eq "$code" 1 'between-job interruption exit'
+eq "$MKVUTIL_INTERRUPTED" 1 'global queue interruption'
+eq "${#modifier_sources}" 1 'no later modifier'
+eq "${modifier_sources[1]}" "$PWD/first.mkv" 'first modifier source'
+reject mkvutil_finish "$code"
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+# Even without the interruption bit, later skip resolution cannot conceal the
+# required pending job that was finalized as not attempted.
+MKVUTIL_INTERRUPTED=0
+resolved="$(jq -cn --arg source "$PWD/skipped.mkv" '{source:$source,destination:$source,status:"success",phase:"complete",actual_state:"observed",reason:""}')"
+mkvutil_ledger_result "$resolved"
+reject mkvutil_ledger_status
+''', {})
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["interrupted"] and summary["counts"]["done"] == 1
+    assert summary["counts"]["not_attempted"] == 1 and summary["counts"]["skipped"] == 1
+    assert summary["batches"][0]["state"] == "interrupted" and summary["batches"][0]["attempted"] == 1
+    assert "Skipped-subset choice:" not in result.stderr and "New skipped-subset operations:" not in result.stderr
+    assert "Batch interrupted; remaining jobs not attempted." in result.stdout
+
+
+
+def test_mkv_utils_reporting_processing_exit_keeps_actual_outcome_and_pending(env):
+    result = _run_planning_contract(env, r'''
+MKVUTIL_SOURCES=()
+mkvutil_ledger_reset "$PWD" "$PWD/first.mkv" "$PWD/pending.mkv"
+config='{"category":"mux","operations":["2"],"metadata":""}'
+mkvutil_batch_request mux 2 "$config"
+first="$(jq -cn --arg source "$PWD/first.mkv" --argjson config "$config" '{source:$source,config:$config}')"
+second="$(jq -cn --arg source "$PWD/pending.mkv" --argjson config "$config" '{source:$source,config:$config}')"
+MKVUTIL_JOBS=("$first" "$second")
+typeset -a modifiers=()
+mkvutil_execute_mux_job() {
+  modifiers+=("$(jq -r '.source' <<< "$1")")
+  MKVUTIL_RESULT_JSON="$(jq -c '{source:.source,destination:.source,status:"success",phase:"complete",actual_state:"replaced_complete",reason:""}' <<< "$1")"
+}
+# The first post-tool clock read fails. The always block must archive the
+# tool's actual outcome, finalize the untouched pending job and remain nonzero.
+mkvutil_clock() {
+  local count=0
+  [[ ! -f "$PWD/clock.count" ]] || count="$(< "$PWD/clock.count")"
+  count=$(( count + 1 ))
+  print -r -- "$count" > "$PWD/clock.count"
+  (( count != 3 )) || return 1
+  print -r -- "$count"
+}
+reject mkvutil_execute_queue "$first" "$second"
+eq "${#modifiers}" 1 'only first tool invoked'
+eq "${#MKVUTIL_JOBS}" 0 'completed queue cleared on early exit'
+reject mkvutil_finish 1
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''', {})
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["counts"]["done"] == 1 and summary["counts"]["not_attempted"] == 1
+    assert summary["batches"][0]["attempted"] == 1 and summary["batches"][0]["completed"] == 1
+    first = next(record for record in summary["files"] if record["source"].endswith("first.mkv"))
+    assert first["attempts"][0]["result"]["actual_state"] == "replaced_complete"
+    assert "actual state=replaced_complete" in result.stdout
+
+def test_mkv_utils_reporting_progress_and_extract_formatter_contract(env):
+    result = _run_planning_contract(env, r'''
+eq "$(mkvutil_format_progress edit 1,2 9 1 1 2 9)" '' 'all Edit progress silent'
+print -r -- "MUX-BEGIN"
+mkvutil_format_progress mux 1,2 2 2 1 3 8
+print -r -- "MUX-END"
+print -r -- "ZERO-BEGIN"
+mkvutil_format_progress mux 2 0 0 0 0 0
+print -r -- "ZERO-END"
+for action in 1 2; do
+  output="$(mkvutil_format_progress extract "$action" 5 1 1 2 5)"
+  [[ "$output" == *'Processed In: 0h 0m 5s'* && "$output" == *'Estimated Time Remaining: 0h 0m 5s'* ]] || fail 'single Extract timing'
+done
+print -r -- "COMBINED-BEGIN"
+mkvutil_format_progress extract 1,2 30 2 2 3 65 3 8
+print -r -- "COMBINED-END"
+reject mkvutil_format_progress extract 1,2 30 2 2 3 65
+MKVUTIL_SOURCES=()
+mkvutil_ledger_reset "$PWD/Extract directory" "$PWD/one.mkv"
+mkvutil_batch_request extract 1,2
+mkvutil_finish 2
+''', {})
+    mux = result.stdout.split("MUX-BEGIN\n")[1].split("MUX-END")[0]
+    assert "Processed In: 0h 0m 2s" in mux and "Estimated Time Remaining: 0h 0m 4s" in mux
+    assert "Files Attempted: 2" in mux and "Files Done: 1" in mux and "Files Remaining: 1" in mux
+    zero = result.stdout.split("ZERO-BEGIN\n")[1].split("ZERO-END")[0]
+    assert "Estimated Time Remaining: 0h 0m 0s" in zero and "Files Remaining: 0" in zero
+    combined = result.stdout.split("COMBINED-BEGIN\n")[1].split("COMBINED-END")[0]
+    assert "Processed In: 0h 0m 3s" in combined and "Estimated Time Remaining: 0h 0m 4s" in combined
+    assert "Category:" not in mux and "Directory:" not in mux
+    assert "Directory: Extract directory" in result.stdout and "Category: extract; Actions: 1,2" in result.stdout
+
+
+@pytest.mark.parametrize("workflow", ["edit_flags", "mux_reorder_metadata", "mux_remove_reorder_metadata"])
+def test_mkv_utils_reporting_legacy_workflow_equivalents(env, workflow):
+    source, manifest = _executor_manifest(env, converted=False)
+    original = manifest["sources"][str(source)]
+    actual = json.loads(json.dumps(original))
+    if workflow == "edit_flags":
+        actual["tracks"][1]["properties"].update(forced_track=False, default_track=True)
+        config_update = '.category="edit"|.operations=["1","2"]|.removed_ids=[]|.order=""|.order_ids=[]|.metadata=""|.settings={"1:11":"0","2:11":"1"}'
+        manifest["post_edit"][str(source)] = actual
+    else:
+        audio = actual["tracks"][1]
+        audio["properties"].update(language="fre", language_ietf="fr-CA", track_name='@Name $cash: "literal"')
+        actual["tracks"] = [actual["tracks"][2], audio] if workflow == "mux_remove_reorder_metadata" else [actual["tracks"][2], actual["tracks"][0], audio]
+        config_update = r'.operations=["1","2"]|.metadata="3,4"|.settings={"3:11":"fr-CA","4:11":"@Name $cash: \"literal\""}'
+        if workflow == "mux_reorder_metadata":
+            config_update += '|.operations=["2"]|.removed_ids=[]'
+        manifest["stage"][str(source)] = actual
+    result = _run_executor_contract(env, 'config="$(jq \'' + config_update + '\' <<< "$config")"\njob="$(mkvutil_plan_job "$record" "$config")"\n' + r'''
+mkvutil_execute_queue "$job"
+mkvutil_finish 0
+print -r -- "SUMMARY $(mkvutil_final_summary)"
+''', manifest)
+    summary = json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
+    assert summary["counts"]["done"] == 1 and summary["batches"][0]["completed"] == 1
+    assert summary["elapsed_seconds"] >= summary["files"][0]["attempts"][0]["result"]["processing_seconds"] >= 0
+    edits = _command_argv(env, "mkvpropedit")
+    merges = [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
+    if workflow == "edit_flags":
+        assert len(edits) == 1 and not merges
+        assert edits[0][-6:] == ["--edit", "track:2", "--set", "flag-forced=0", "--set", "flag-default=1"]
+        assert "Actions: 1,2" in result.stdout and "Processed In:" not in result.stdout
+    else:
+        assert len(merges) == 1 and not edits
+        assert "--language" in merges[0] and "11:fr-CA" in merges[0]
+        assert '11:@Name $cash: "literal"' in merges[0]
+        assert "Optional Mux metadata: 3,4" in result.stdout and "Files Done: 1" in result.stdout
+        assert summary["batches"][0]["action_ids"] == (["1", "2"] if workflow == "mux_remove_reorder_metadata" else ["2"])
+
+
+def test_mkv_utils_reporting_mux_skip_fresh_subset_run_entrypoint(env):
+    first, skipped = _mkv_file(env, "Reference ASS.mkv"), _mkv_file(env, "Skipped SRT.mk3d")
+    original = _source_json([(0, "video", "V_MPEG4/ISO/AVC", True), (11, "audio", "A_PCM/INT/LIT", False), (12, "subtitles", "S_TEXT/ASS", False)])
+    for position, track in enumerate(original["tracks"]):
+        track["properties"]["uid"] = 18446744073709551000 + position
+    other = json.loads(json.dumps(original))
+    other["tracks"][2]["properties"]["codec_id"] = "S_TEXT/UTF8"
+    first_output, second_output = json.loads(json.dumps(original)), json.loads(json.dumps(other))
+    first_output["tracks"] = [first_output["tracks"][1], first_output["tracks"][0]]
+    first_output["tracks"][0]["properties"].update(language="fre", language_ietf="fr-CA", track_name="@literal $name")
+    second_output["tracks"] = second_output["tracks"][:2]
+    second_output["container"]["properties"]["title"] = ""
+    for output in (first_output, second_output):
+        for position, track in enumerate(output["tracks"]):
+            track["id"] = position
+    manifest = env["workdir"].parent / "continuation-execution.json"
+    manifest.write_text(json.dumps({"sources": {str(first): original, str(skipped): other}, "stage": {str(first): first_output, str(skipped): second_output}}))
+    result = _run_mkv_utils(
+        env, fzf_responses=[[str(first), str(skipped)]],
+        input_data="2\n1,2\n12\n0:11\n3,4\n11\nfr-CA\n11\n@literal $name\n3\n1\n1\n12\n5\n\n2\n3\n",
+        extra_env={"TEST_FAKE_EXECUTION_JSON": str(manifest)},
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"Skipped removal mismatch: {skipped}" in result.stdout
+    assert f"Fresh skipped-subset reference: {skipped}" in result.stdout
+    assert result.stdout.count("Final report") == 1 and "Directory: workdir" in result.stdout
+    assert "Done: 2; Failed: 0" in result.stdout and "Skipped: 0; Excluded: 0; Not attempted: 0" in result.stdout
+    assert "Skip history: resolved" in result.stdout
+    assert "Category: mux; Actions: 1,2" in result.stdout and "Optional Mux metadata: 3,4" in result.stdout
+    assert "Category: mux; Actions: 1" in result.stdout and "Optional Mux metadata: 5" in result.stdout
+    assert "Files Done: 1" in result.stdout and "Cancelled; no media changes." not in result.stdout
+    assert len(_command_argv(env, "fzf")) == 1
+    merges = [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
+    assert len(merges) == 2 and not _command_argv(env, "mkvpropedit")
+    first_call = next(argv for argv in merges if argv[-1] == str(first))
+    skipped_call = next(argv for argv in merges if argv[-1] == str(skipped))
+    assert first_call[first_call.index("--track-order") + 1] == "0:11,0:0"
+    assert "--language" in first_call and "11:fr-CA" in first_call and "11:@literal $name" in first_call
+    assert "--language" not in skipped_call and "--track-name" not in skipped_call
+    assert skipped_call[skipped_call.index("--title") + 1] == ""
+    assert first.read_bytes() == skipped.read_bytes() == b"candidate-data\n"
+    assert not list(env["workdir"].glob(".mkvutil-*"))
 
 def test_mkv_utils_removal_mismatch_report_cancel_entrypoint(env: dict[str, Path]):
     models = _removal_models()

@@ -10,8 +10,8 @@ or passing diagnostic check does not establish implementation acceptance.
 
 The user-requested code/evidence audit reconciled all nine mirrored contracts
 and the accepted task gates. Accepted boxes refer to the recorded revisions and
-corrective receipts; the unfinished T02.03 controller/reporting draft requires
-its own affected-consumer proof. Audit: `.tmp/mkvutil-rework/checklist-audit.wni4h33r/audit-receipt.json`.
+corrective receipts. T02.03's affected-consumer proof and G02 integration review
+subsequently passed. Audit: `.tmp/mkvutil-rework/checklist-audit.wni4h33r/audit-receipt.json`.
 
 ## Planning preparation
 
@@ -34,7 +34,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 | Goal ID | Preserved checkpoint | Required task IDs | Goal-level acceptance gate | Tasks accepted | Goal gate passed | Goal accepted |
 | --- | --- | --- | --- | --- | --- | --- |
 | G01 | Checkpoint 1: menu and planning contract | T01.01, T01.02, T01.03 | All three tasks accepted; category configuration and preview consume the shared foundation and meet the existing no-mutation gate. | [x] | [x] | [x] |
-| G02 | Checkpoint 2: Edit + Mux execution | T02.01, T02.02, T02.03 | All three tasks accepted and combined Edit/Mux workflows meet their semantic, safety, and reporting gates; this is the approved stage gate before Extract implementation. | [ ] | [ ] | [ ] |
+| G02 | Checkpoint 2: Edit + Mux execution | T02.01, T02.02, T02.03 | All three tasks accepted and combined Edit/Mux workflows meet their semantic, safety, and reporting gates; this is the approved stage gate before Extract implementation. | [x] | [x] | [x] |
 | G03 | Checkpoint 3: extraction integration | T03.01 | T03.01 accepted and both single and batched extraction outcomes verified. G02 acceptance is an existing execution-stage gate, not an assumed extraction API dependency. | [ ] | [ ] | [ ] |
 | G04 | Checkpoint 4: integration and documentation | T04.01, T04.02 | Both tasks accepted; all required integration/verification evidence is current, help/docs match the implementation, and parent final review is complete. | [ ] | [ ] | [ ] |
 
@@ -52,7 +52,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 | --- | --- | --- | --- | --- | --- |
 | [x] | T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. | Required: Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. Status: reaccepted after the user-requested audit reopened missing normal multi-file proof. A two-file grouped Edit queue passed (1 test, 11.44s), with different original listing positions, source-specific expected properties, exactly one propedit per source and no output remux. Existing single-file/native/partial-state evidence remains bound to `f44cd98`. Full reporting/continuation remains T02.03. Receipts: `.tmp/mkvutil-rework/executors.yGdnvt/`; audit and corrective proof: `.tmp/mkvutil-rework/checklist-audit.wni4h33r/audit-receipt.json`. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers |
 | [x] | T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. | Required: Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. Status: accepted after source/receipt review, 21 focused executor cases (67.59s), four parent critical cases (11.35s), and real-v93 grouped flags/titles/order/conversion/stereo/codec/chapter/attachment/user-tag proof. All runtime/hash and immutable-source bindings verified; Astra post-fix audit passed. TrackUID-zero tags are refused before modification; conversion SRT end 200ms to 199ms is documented. Receipt: `.tmp/mkvutil-rework/executors.yGdnvt/native/executor-native-receipt.json`. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion |
-| [ ] | T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each continuation attributed to its own choices. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | Required: Affected queue/consumer tests, final action/directory reporting for single/batch/continuation scopes, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. Status: implementation in progress after accepted executor prerequisites and Astra workflow PASS WITH NOTES; reporting/continuation acceptance evidence remains pending. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures |
+| [x] | T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each continuation attributed to its own choices. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | Required: Affected queue/consumer tests, final action/directory reporting for single/batch/continuation scopes, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. Status: accepted after source/receipt review, 12 focused contracts (37.38s), one notified mocked fresh-subset Run journey (7.15s), two parent interruption/bookkeeping cases (3.59s), and Astra integration PASS. Original-source counts, per-configuration action/metadata/directory reporting, Edit final-only display, Mux timing/ETA, resolved/unresolved skips and all three legacy workflow equivalents are verified. Receipts: `.tmp/mkvutil-rework/reporting/t02.03-receipt.json` and `parent-integration.json`. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures |
 
 ### G03 — Checkpoint 3: extraction integration
 
@@ -87,7 +87,8 @@ pass. Planning-preparation history above is outside these implementation totals.
 - T02.01's missing normal multi-file Edit gate was reopened and closed by the
   focused two-file corrective proof. T02.02's focused executor, safety and
   small real-v93 semantic gates remain accepted at `f44cd98`.
-  T02.03 reporting/continuation and the G02 goal gate remain pending.
+  T02.03 reporting/continuation and the G02 goal gate are now accepted after
+  current consumer proof and independent integration review. Extract may begin.
   T04.01 consolidates valid slice receipts and integrated affected
   groups; it does not defer all prerequisite proof until the end.
 - T03.01 has G01 technical prerequisites plus the approved G02 acceptance-stage
@@ -150,4 +151,4 @@ All [track identity](plan.md#track-identity-and-preview),
 [file safety](plan.md#file-safety-and-queue-reporting), format, and acceptance
 contracts remain those in the authoritative plan.
 
-**Implementation tasks accepted: 5 / 9. Main goals/checkpoints accepted: 1 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02; accepted goal: G01. The code/evidence audit reopened and verified T02.01's missing multi-file proof before restoring its checkbox. Full reporting/post-execution continuation, Extract, the integrated campaign, and final gates remain pending. The dirty T02.03 controller/queue is only partially checked and remains unaccepted.
+**Implementation tasks accepted: 6 / 9. Main goals/checkpoints accepted: 2 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02, T02.03; accepted goals: G01, G02. The code/evidence audit reopened and verified missing Edit proof, then current reporting/continuation checks closed G02. Extract, the integrated campaign and final gates remain pending.

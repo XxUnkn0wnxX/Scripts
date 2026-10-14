@@ -842,6 +842,225 @@ _mkvutil_jq_records() {
   printf '%s\n' "$@" | jq -sc "$query"
 }
 
+
+# Session outcomes are keyed by ORIGINAL canonical selected source path. Current
+# scope/jobs may shrink or be rebuilt without rewriting these required outcomes.
+typeset -gi MKVUTIL_LEDGER_ENABLED=0 MKVUTIL_HAS_RUN=0 MKVUTIL_INTERRUPTED=0 MKVUTIL_BATCH_ID=0
+typeset -g MKVUTIL_DIRECTORY_NAME=""
+typeset -gF 6 MKVUTIL_TOTAL_ELAPSED=0
+typeset -ga MKVUTIL_SCOPE_KEYS=() MKVUTIL_BATCHES=()
+typeset -gA MKVUTIL_LEDGER=()
+
+mkvutil_ledger_reset() {
+  local directory="$1" source=""
+  shift
+  MKVUTIL_LEDGER_ENABLED=1
+  MKVUTIL_HAS_RUN=0
+  MKVUTIL_INTERRUPTED=0
+  MKVUTIL_BATCH_ID=0
+  MKVUTIL_TOTAL_ELAPSED=0
+  MKVUTIL_DIRECTORY_NAME="${directory:A:t}"
+  MKVUTIL_SCOPE_KEYS=()
+  MKVUTIL_BATCHES=()
+  MKVUTIL_LEDGER=()
+  for source in "$@"; do
+    source="${source:A}"
+    (( ! ${+MKVUTIL_LEDGER[$source]} )) || continue
+    MKVUTIL_SCOPE_KEYS+=("$source")
+    MKVUTIL_LEDGER[$source]="$(jq -cn --arg source "$source" '{schema:1,source:$source,required:true,
+      status:"pending",destination:null,attempts:[],skip_history:[],excluded_from_retry:false}')" || return 1
+  done
+}
+
+# A configured cohort is archived before its prompts can end with EOF. Requested
+# action numbers remain visible even when the cohort never reaches Run.
+mkvutil_batch_request() {
+  local category="$1" operations="$2" config="${3:-null}" sources="" record=""
+  local -a paths=()
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  for record in "${MKVUTIL_SOURCES[@]}"; do paths+=("$(jq -r '.source' <<< "$record")"); done
+  (( ${#paths} > 0 )) || paths=("${MKVUTIL_SCOPE_KEYS[@]}")
+  sources="$(_mkvutil_json_array "${paths[@]}")" || return 1
+  MKVUTIL_BATCH_ID=$(( ${#MKVUTIL_BATCHES} + 1 ))
+  MKVUTIL_BATCHES+=("$(_mkvutil_jq_records '
+    .[0] as $fields | {id:$fields.id,category:$fields.category,action_ids:($fields.operations|split(",")),
+      metadata_ids:(.[1].metadata // ""),config:.[1],sources:.[2],state:"requested",eligible:0,
+      attempted:0,completed:0,elapsed_seconds:0,outcomes:{}}' \
+    "$(jq -cn --argjson id "$MKVUTIL_BATCH_ID" --arg category "$category" --arg operations "$operations" '{id:$id,category:$category,operations:$operations}')" "$config" "$sources")")
+}
+
+mkvutil_batch_configured() {
+  (( MKVUTIL_LEDGER_ENABLED && MKVUTIL_BATCH_ID > 0 )) || return 0
+  MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(_mkvutil_jq_records '.[0]+{config:.[1],metadata_ids:(.[1].metadata // ""),state:"configured"}' \
+    "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}" "$1")"
+}
+
+mkvutil_batch_metadata_requested() {
+  (( MKVUTIL_LEDGER_ENABLED && MKVUTIL_BATCH_ID > 0 )) || return 0
+  local updated=""
+  updated="$(jq -c --arg choices "$1" '.metadata_ids=$choices' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" || return 1
+  MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$updated"
+}
+
+mkvutil_batch_outcomes() {
+  local source=""
+  local -a entries=()
+  for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do entries+=("${MKVUTIL_LEDGER[$source]}"); done
+  _mkvutil_jq_records '
+    .[0].sources as $sources | reduce (.[1:][] | select(.source as $source | $sources|index($source))) as $file
+      ({}; (if $file.status=="success" then "done" elif $file.status=="pending" then "not_attempted" else $file.status end) as $key |
+       .[$key] = ((.[$key] // 0)+1))' "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}" "${entries[@]}"
+}
+
+mkvutil_batch_planned() {
+  (( MKVUTIL_LEDGER_ENABLED && MKVUTIL_BATCH_ID > 0 )) || return 0
+  local outcomes="$(mkvutil_batch_outcomes)"
+  MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(jq -c --argjson eligible "$1" --argjson outcomes "$outcomes" '.+{state:"planned",eligible:$eligible,outcomes:$outcomes}' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")"
+}
+
+mkvutil_ledger_exclude() {
+  local source="${1:A}" reason="$2" entry=""
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  entry="${MKVUTIL_LEDGER[$source]-}"
+  [[ -n "$entry" ]] || return 1
+  MKVUTIL_LEDGER[$source]="$(jq -c --arg reason "$reason" '
+    if .status=="skipped" or (.skip_history|length)>0 then
+      .excluded_from_retry=true | .exclusion_reason=$reason
+    elif (.attempts|length)==0 then .required=false|.status="excluded"|.exclusion_reason=$reason
+    else .excluded_from_retry=true|.exclusion_reason=$reason end' <<< "$entry")"
+}
+
+mkvutil_ledger_skip() {
+  local receipt="$1" source="" entry="" updated=""
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  source="$(jq -r '.source' <<< "$receipt")" || return 1
+  entry="${MKVUTIL_LEDGER[$source]-}"
+  [[ -n "$entry" ]] || return 1
+  updated="$(_mkvutil_jq_records '
+    .[0] as $entry | .[1] as $receipt | .[2] as $batch |
+    ($entry.skip_history|map(.receipt==$receipt)|index(true)) as $existing |
+    $entry|.status="skipped"|
+    if $existing==null then .skip_history += [{receipt:$receipt,batch_ids:[$batch],resolved:false}]
+    else .skip_history[$existing].batch_ids += [$batch] | .skip_history[$existing].batch_ids |= unique end' \
+    "$entry" "$receipt" "$MKVUTIL_BATCH_ID")" || return 1
+  MKVUTIL_LEDGER[$source]="$updated"
+}
+
+mkvutil_ledger_result() {
+  local result="$1" source="${2-}" status_name="${3-}" entry="" updated=""
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  [[ -n "$source" ]] || source="$(jq -r '.source' <<< "$result")" || return 1
+  [[ -n "$status_name" ]] || status_name="$(jq -r '.status' <<< "$result")" || return 1
+  entry="${MKVUTIL_LEDGER[$source]-}"
+  [[ -n "$entry" ]] || return 1
+  if [[ "$status_name" == skipped ]]; then
+    mkvutil_ledger_skip "$(jq -c '.skip_receipt' <<< "$result")" || return 1
+    entry="${MKVUTIL_LEDGER[$source]}"
+  fi
+  updated="$(_mkvutil_jq_records '
+    .[0] as $entry | .[1] as $result | .[2] as $batch |
+    $entry + {status:$result.status,destination:$result.destination} |
+    .attempts += [{batch_id:$batch,result:$result}] |
+    if $result.status=="success" then .skip_history |= map(.resolved=true) else . end' \
+    "$entry" "$result" "$MKVUTIL_BATCH_ID")" || return 1
+  MKVUTIL_LEDGER[$source]="$updated"
+}
+
+mkvutil_sync_unresolved_skips() {
+  local source="" receipt=""
+  local -a entries=()
+  (( MKVUTIL_LEDGER_ENABLED )) || return 0
+  MKVUTIL_REMOVAL_SKIPS=()
+  for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do entries+=("${MKVUTIL_LEDGER[$source]}"); done
+  while IFS= read -r receipt; do MKVUTIL_REMOVAL_SKIPS+=("$receipt"); done < <(
+    _mkvutil_jq_records '.[]|select(.required and .status=="skipped" and (.excluded_from_retry|not))|.skip_history[-1].receipt' "${entries[@]}"
+  )
+}
+
+mkvutil_ledger_status() {
+  local source=""
+  local -a entries=()
+  (( MKVUTIL_INTERRUPTED == 0 )) || return 1
+  for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do entries+=("${MKVUTIL_LEDGER[$source]}"); done
+  printf '%s\n' "${entries[@]}" | jq -se --argjson has_run "$MKVUTIL_HAS_RUN" '
+    all(.[]; (.required|not) or
+      (.status=="success") or
+      ($has_run==0 and (.status=="pending" or .status=="not_attempted")))' >/dev/null
+}
+
+mkvutil_ledger_finalize() {
+  local source="" entry=""
+  local -a entries=()
+  for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do entries+=("${MKVUTIL_LEDGER[$source]}"); done
+  while IFS= read -r -d '' source && IFS= read -r -d '' entry; do
+    MKVUTIL_LEDGER[$source]="$entry"
+  done < <(printf '%s\n' "${entries[@]}" | jq -sj '
+    .[]|select(.status=="pending")|.status="not_attempted"|.source,"\u0000",tojson,"\u0000"')
+}
+
+# Pure summary/formatters are shared with the future Extract consumer. JSON
+# records are streamed; a large selection never becomes one process argument.
+mkvutil_final_summary() {
+  local source="" header="" batches=""
+  local -a records=()
+  for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do records+=("${MKVUTIL_LEDGER[$source]}"); done
+  batches="$(_mkvutil_jq_records '.' "${MKVUTIL_BATCHES[@]}")" || return 1
+  header="$(jq -cn --arg directory "$MKVUTIL_DIRECTORY_NAME" --argjson elapsed "$MKVUTIL_TOTAL_ELAPSED" --argjson interrupted "$MKVUTIL_INTERRUPTED" '{directory:$directory,elapsed_seconds:$elapsed,interrupted:($interrupted==1)}')" || return 1
+  _mkvutil_jq_records '
+    .[0]+{batches:.[1],files:.[2:]} | . as $summary |
+    .counts=(reduce .files[] as $file
+      ({done:0,failed:0,warning:0,partial:0,skipped:0,excluded:0,not_attempted:0,interrupted:0};
+       (if $file.status=="success" then "done" elif $file.status=="pending" then "not_attempted" else $file.status end) as $key | .[$key]+=1)) |
+    .selected=(.files|length)|.required=([.files[]|select(.required)]|length)' \
+    "$header" "$batches" "${records[@]}"
+}
+
+mkvutil_format_final_report() {
+  jq -r '
+    def duration: floor as $s | (($s/3600|floor|tostring)+"h "+(($s%3600)/60|floor|tostring)+"m "+($s%60|tostring)+"s");
+    "Final report", "Directory: \(.directory)",
+    (.batches[] | "Configuration \(.id) (\(.state)\(if .state=="executed" or .state=="interrupted" then "" else "; requested, not run" end)):",
+      "  Category: \(.category); Actions: \(.action_ids|join(","))",
+      (if .category=="mux" then "  Optional Mux metadata: \(if .metadata_ids=="" then "none" else .metadata_ids end)" else empty end),
+      "  Requested files: \(.sources|length); eligible: \(.eligible); attempted: \(.attempted); completed: \(.completed); elapsed: \(.elapsed_seconds|duration)",
+      "  Outcomes: \(.outcomes|tojson)"),
+    "Selected: \(.selected); required: \(.required)",
+    "Done: \(.counts.done); Failed: \(.counts.failed); Warning: \(.counts.warning); Partial: \(.counts.partial); Skipped: \(.counts.skipped); Excluded: \(.counts.excluded); Not attempted: \(.counts.not_attempted); Interrupted: \(.counts.interrupted)",
+    (if .interrupted then "Batch interrupted; remaining jobs not attempted." else empty end),
+    "Complete batch elapsed: \(.elapsed_seconds|duration)",
+    (.files[] | . as $file |
+      "\(.status): \(.source)\(if .destination then " => "+.destination else "" end)",
+      (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
+      (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
+         (.receipt.reasons[] | "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")),
+      (.attempts[] | "  Configuration \(.batch_id): phase=\(.result.phase); actual state=\(.result.actual_state)",
+        (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end)))
+  ' <<< "$1"
+}
+
+mkvutil_final_report() { mkvutil_format_final_report "$(mkvutil_final_summary)"; }
+
+mkvutil_clock() { python3 -c 'import time; print(time.monotonic())'; }
+
+mkvutil_format_progress() {
+  local category="$1" operations="$2" elapsed="$3" attempted="$4" completed="$5" total="$6" work_elapsed="${7:-$3}" track_elapsed="${8-}" track_work="${9-}"
+  [[ "$category" != edit ]] || return 0
+  [[ "$category" == mux || "$category" == extract ]] || return 1
+  if [[ "$category" == extract && ",$operations," == *,1,* && ",$operations," == *,2,* ]]; then
+    [[ -n "$track_elapsed" && -n "$track_work" ]] || return 1
+    elapsed="$track_elapsed"
+    work_elapsed="$track_work"
+  fi
+  python3 -c '
+import sys
+elapsed=max(0,float(sys.argv[1])); work=max(0,float(sys.argv[2])); attempted,completed,total=map(int,sys.argv[3:])
+remaining=max(0,total-attempted); eta=work/attempted*remaining if attempted else 0
+def duration(value):
+    value=int(value);return f"{value//3600}h {(value%3600)//60}m {value%60}s"
+print(f"Processed In: {duration(elapsed)}\nFiles Done: {completed}\nFiles Attempted: {attempted}\nFiles Remaining: {remaining}\nEstimated Time Remaining: {duration(eta)}")
+' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total"
+}
+
 mkvutil_source_identity() {
   python3 - "$1" <<'PYCODE'
 import json, os, stat, sys
@@ -945,6 +1164,7 @@ mkvutil_inspect_sources() {
     else
       print -u2 -r -- "Inspection failed: $file"
       _mkvutil_exclude || { result=$?; return "$result"; }
+      mkvutil_ledger_exclude "$file" 'Initial inspection failed' || return 1
     fi
   done
   (( ${#MKVUTIL_SOURCES} > 0 )) || { print -u2 -r -- 'No valid sources remain.'; return 1; }
@@ -1014,6 +1234,7 @@ mkvutil_configure_category() {
       metadata="$REPLY"
       if [[ -n "${metadata//[[:space:]]/}" ]]; then
         metadata="$(mkvutil_category_choices edit "$metadata")" || return 1
+        mkvutil_batch_metadata_requested "$metadata" || return 1
         mkvutil_metadata_configure "$metadata" || return $?
       fi
       ;;
@@ -1351,16 +1572,19 @@ mkvutil_plan_queue() {
       scope+=("$record")
     elif (( result == 3 )); then
       MKVUTIL_REMOVAL_SKIPS+=("$job")
+      mkvutil_ledger_skip "$job" || return 1
       scope+=("$record")
     else
       file="$(jq -r '.source' <<< "$record")"
       print -u2 -r -- "Cannot plan source: $file"
       _mkvutil_exclude || { result=$?; return "$result"; }
+      mkvutil_ledger_exclude "$file" 'Source could not be planned' || return 1
       _mkvutil_remove_scope_source "$file"
     fi
   done
   MKVUTIL_SOURCES=("${scope[@]}")
   mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
+  mkvutil_batch_planned "${#jobs}" || return 1
   if (( ${#jobs} == 0 )); then
     (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )) && return 3
     print -u2 -r -- 'No valid jobs remain.'
@@ -1384,7 +1608,14 @@ mkvutil_prepare_skipped_subset() {
     file="$(jq -r '.source' <<< "$receipt")" || return 1
     paths+=("$file")
   done
-  MKVUTIL_REMOVAL_SKIP_HISTORY+=("${MKVUTIL_REMOVAL_SKIPS[@]}")
+  local previous="" duplicate=0
+  for receipt in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do
+    duplicate=0
+    for previous in "${MKVUTIL_REMOVAL_SKIP_HISTORY[@]}"; do
+      _mkvutil_jq_records '.[0]==.[1]' "$receipt" "$previous" | jq -e . >/dev/null && duplicate=1
+    done
+    (( duplicate )) || MKVUTIL_REMOVAL_SKIP_HISTORY+=("$receipt")
+  done
   MKVUTIL_CONFIG=""
   MKVUTIL_CURRENT_JOB=""
   MKVUTIL_JOBS=()
@@ -1399,6 +1630,7 @@ mkvutil_prepare_skipped_subset() {
     else
       print -u2 -r -- "Fresh skipped-source inspection failed: $file"
       _mkvutil_exclude || { result=$?; return "$result"; }
+      mkvutil_ledger_exclude "$file" 'Fresh skipped-source inspection failed; mismatch remains unresolved' || return 1
     fi
   done
   (( ${#sources} > 0 )) || { print -u2 -r -- 'No valid skipped sources remain.'; return 1; }
@@ -1407,6 +1639,7 @@ mkvutil_prepare_skipped_subset() {
 }
 
 mkvutil_cancel_status() {
+  (( ! MKVUTIL_LEDGER_ENABLED )) || { mkvutil_ledger_status; return $?; }
   (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 && ${#MKVUTIL_REMOVAL_SKIP_HISTORY} == 0 ))
 }
 
@@ -1422,7 +1655,15 @@ mkvutil_review_menu() {
 
 mkvutil_preview_jobs() {
   local job=""
-  if (( ${#MKVUTIL_REMOVAL_SKIP_HISTORY} > 0 )); then
+  if (( MKVUTIL_LEDGER_ENABLED )); then
+    local source="" entry=""
+    for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do
+      entry="${MKVUTIL_LEDGER[$source]}"
+      jq -r '.source as $source | .skip_history[] |
+        "Previous skip \(if .resolved then "resolved" else "unresolved" end): \($source)",
+        (.receipt.reasons[] | "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")' <<< "$entry" || return 1
+    done
+  elif (( ${#MKVUTIL_REMOVAL_SKIP_HISTORY} > 0 )); then
     print -r -- 'Previous skipped-scope receipts (execution unresolved):'
     mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIP_HISTORY[@]}" || return 1
   fi
@@ -2018,30 +2259,114 @@ mkvutil_report_result() {
     "  Phase: \(.phase); actual state: \(.actual_state)",
     (if .reason!="" then "  \(.reason)" else empty end),
     (if .candidate_path then "  Candidate: \(.candidate_path)" else empty end),
-    (if .phase_receipt then "  Phase receipt: \(.phase_receipt)" else empty end)' <<< "$1"
+    (if .phase_receipt then "  Phase receipt: \(.phase_receipt)" else empty end),
+    ((.observed_metadata // {})|to_entries[]|"  Actual metadata \(.key): \(.value|tojson)")' <<< "$1"
 }
 
 mkvutil_execute_queue() {
   setopt localtraps
-  local job="" category="" result_code=0 queue_code=0 interrupted=0
-  trap 'interrupted=1' INT TERM
+  local job="" category="" operations="" source="" config="" outcome="" record="" status_name="" batch=""
+  local result_code=0 queue_code=0 interrupted=0 attempted=0 completed=0 total=$# native_returned=0 result_recorded=1
+  local -F 6 queue_started=0 job_started=0 now=0 job_elapsed=0 work_elapsed=0 queue_elapsed=0
+  local -a paths=() outcomes=()
+  trap 'interrupted=1; MKVUTIL_INTERRUPTED=1' INT TERM
   MKVUTIL_RESULTS=()
+  (( MKVUTIL_INTERRUPTED == 0 )) || return 1
+  (( total > 0 )) || return 0
+  if (( ! MKVUTIL_LEDGER_ENABLED )); then
+    for job in "$@"; do paths+=("$(jq -r '.source' <<< "$job")"); done
+    for record in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do paths+=("$(jq -r '.source' <<< "$record")"); done
+    mkvutil_ledger_reset "$PWD" "${paths[@]}" || return 1
+  fi
+  config="$(jq -c '.config' <<< "$1")" || return 1
+  category="$(jq -r '.category' <<< "$config")" || return 1
+  operations="$(jq -r '.operations|join(",")' <<< "$config")" || return 1
+  if (( MKVUTIL_BATCH_ID == 0 )) || [[ "$(jq -r '.state' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" == executed || "$(jq -r '.state' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" == interrupted ]]; then
+    mkvutil_batch_request "$category" "$operations" "$config" || return 1
+  fi
+  for record in "${MKVUTIL_REMOVAL_SKIPS[@]}"; do mkvutil_ledger_skip "$record" || return 1; done
+  MKVUTIL_HAS_RUN=1
+  # Always preserve pending outcomes and archive timing, including a signal
+  # between jobs or a bookkeeping failure after a tool has already returned.
+  {
+  queue_started="$(mkvutil_clock)" || return 1
   for job in "$@"; do
-    (( interrupted == 0 )) || break
-    category="$(jq -r '.config.category' <<< "$job")" || return 1
+    source="$(jq -r '.source' <<< "$job")" || return 1
+    [[ -n "${MKVUTIL_LEDGER[$source]-}" ]] || { print -u2 -r -- "Job outside original selected scope: $source"; return 1; }
+    if (( interrupted )); then
+      MKVUTIL_LEDGER[$source]="$(jq -c 'if .status=="pending" then .status="not_attempted" else . end' <<< "${MKVUTIL_LEDGER[$source]}")"
+      continue
+    fi
+    status_name="$(jq -r '.status' <<< "${MKVUTIL_LEDGER[$source]}")"
+    case "$status_name" in
+      success|warning|failed|partial|interrupted|excluded|not_attempted)
+        print -u2 -r -- "Source already has an outcome; not retried: $source"
+        queue_code=1
+        continue ;;
+    esac
+    job_started="$(mkvutil_clock)" || return 1
     result_code=0
+    attempted=$(( attempted + 1 ))
+    native_returned=0
+    result_recorded=0
     case "$category" in
       edit) mkvutil_execute_edit_job "$job" || result_code=$? ;;
       mux) mkvutil_execute_mux_job "$job" || result_code=$? ;;
       *) MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract execution is not available')"; result_code=1 ;;
     esac
+    native_returned=1
     MKVUTIL_RESULTS+=("$MKVUTIL_RESULT_JSON")
-    mkvutil_report_result "$MKVUTIL_RESULT_JSON" || return 1
-    (( result_code == 0 )) || queue_code=1
-    [[ "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" != interrupted ]] || { interrupted=1; break; }
+    now="$(mkvutil_clock)" || return 1
+    job_elapsed=$(( now - job_started ))
+    (( job_elapsed >= 0 )) || job_elapsed=0
+    work_elapsed=$(( work_elapsed + job_elapsed ))
+    MKVUTIL_RESULT_JSON="$(jq -c --argjson elapsed "$job_elapsed" '.+{processing_seconds:$elapsed}' <<< "$MKVUTIL_RESULT_JSON")" || return 1
+    MKVUTIL_RESULTS[-1]="$MKVUTIL_RESULT_JSON"
+    status_name="$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" || return 1
+    mkvutil_ledger_result "$MKVUTIL_RESULT_JSON" "$source" "$status_name" || return 1
+    result_recorded=1
+    if [[ "$status_name" == success ]]; then
+      completed=$(( completed + 1 ))
+    else
+      mkvutil_report_result "$MKVUTIL_RESULT_JSON" || return 1
+      queue_code=1
+    fi
+    # Fast and long Edit jobs share final-report-only behavior. The Extract
+    # formatter is ready, but its guarded executor cannot start here yet.
+    if [[ "$category" == mux ]]; then
+      mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" || return 1
+    fi
+    if [[ "$status_name" == interrupted ]]; then
+      interrupted=1
+      MKVUTIL_INTERRUPTED=1
+    fi
   done
-  (( interrupted == 0 )) || queue_code=1
-  (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 && ${#MKVUTIL_REMOVAL_SKIP_HISTORY} == 0 )) || queue_code=1
+  } always {
+    (( interrupted == 0 )) || MKVUTIL_INTERRUPTED=1
+    if (( native_returned && ! result_recorded )); then
+      # A post-tool bookkeeping failure must not relabel changed media as an
+      # unattempted file. Retain the executor's actual-state record first.
+      status_name="$(jq -r '.status' <<< "${MKVUTIL_RESULTS[-1]}")" || queue_code=1
+      if mkvutil_ledger_result "${MKVUTIL_RESULTS[-1]}" "$source" "$status_name"; then
+        [[ "$status_name" != success ]] || completed=$(( completed + 1 ))
+      else
+        queue_code=1
+      fi
+    fi
+    mkvutil_ledger_finalize || queue_code=1
+    now="$(mkvutil_clock)" || queue_code=1
+    if (( queue_started > 0 && now >= queue_started )); then
+      queue_elapsed=$(( now - queue_started ))
+    fi
+    MKVUTIL_TOTAL_ELAPSED=$(( MKVUTIL_TOTAL_ELAPSED + queue_elapsed ))
+    batch="${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}"
+    outcome="$(mkvutil_batch_outcomes)" || queue_code=1
+    MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]="$(jq -c --argjson elapsed "$queue_elapsed" --argjson attempted "$attempted" --argjson completed "$completed" --argjson eligible "$total" --argjson outcomes "$outcome" --arg state "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print interrupted || print executed)" '.+{state:$state,elapsed_seconds:$elapsed,attempted:$attempted,completed:$completed,eligible:$eligible,outcomes:$outcomes}' <<< "$batch")" || queue_code=1
+    MKVUTIL_JOBS=()
+    mkvutil_sync_unresolved_skips || queue_code=1
+  }
+  (( MKVUTIL_INTERRUPTED == 0 )) || queue_code=1
+  mkvutil_ledger_status || queue_code=1
   return "$queue_code"
 }
 
@@ -2051,8 +2376,89 @@ print_help() {
   print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Edit and Mux execution are available; Extract execution is pending.'
 }
 
+# Configuration/review can repeat, but each explicit Run archives and clears
+# its completed jobs. Only unresolved removal mismatches form a fresh cohort.
+mkvutil_controller() {
+  local category="$1" operations="$2" review="" result=0
+  while true; do
+    if (( MKVUTIL_BATCH_ID == 0 )) || [[ "$(jq -r '.state' <<< "${MKVUTIL_BATCHES[$MKVUTIL_BATCH_ID]}")" != requested ]]; then
+      mkvutil_batch_request "$category" "$operations" || return 1
+    fi
+    mkvutil_configure_category "$category" "$operations" || return $?
+    mkvutil_batch_configured "$MKVUTIL_CONFIG" || return 1
+    result=0
+    mkvutil_plan_queue || result=$?
+    (( result == 0 || result == 3 )) || return "$result"
+    while true; do
+      mkvutil_review_menu
+      _mkvutil_read 'Review choice: ' || return 2
+      review="$REPLY"
+      case "$review" in
+        0) return 2 ;;
+        1)
+          mkvutil_category_menu "$category" || return 1
+          _mkvutil_read 'Replacement operations: ' || return 2
+          [[ "$REPLY" != 0 ]] || return 2
+          operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+          break ;;
+        2) mkvutil_preview_jobs || return 1 ;;
+        3)
+          (( ${#MKVUTIL_JOBS} > 0 )) || { print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'; continue; }
+          if [[ "$category" == extract ]]; then
+            print -u2 -r -- 'Extract execution is not available at this implementation checkpoint; no media changes.'
+            return 1
+          fi
+          result=0
+          mkvutil_execute_queue "${MKVUTIL_JOBS[@]}" || result=$?
+          (( MKVUTIL_INTERRUPTED == 0 )) || return 1
+          if (( ${#MKVUTIL_REMOVAL_SKIPS} == 0 )); then
+            (( result == 0 )) || return 1
+            mkvutil_ledger_status; return $?
+          fi
+          mkvutil_report_removal_skips "${MKVUTIL_REMOVAL_SKIPS[@]}" || return 1
+          print -r -- $'1) Prepare a fresh batch for unresolved mismatch-skipped files\n0) Finish and keep recorded outcomes'
+          _mkvutil_read 'Skipped-subset choice: ' || return 2
+          case "$REPLY" in
+            0) mkvutil_ledger_status; return $? ;;
+            1) review=4 ;;
+            *) print -u2 -r -- 'Invalid skipped-subset choice.'; return 1 ;;
+          esac
+          ;&
+        4)
+          # This action is never offered while eligible jobs remain pending.
+          mkvutil_prepare_skipped_subset || return $?
+          category=mux
+          mkvutil_category_menu "$category" || return 1
+          _mkvutil_read 'New skipped-subset operations: ' || return 2
+          [[ "$REPLY" != 0 ]] || return 2
+          operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
+          break ;;
+        *) print -u2 -r -- 'Invalid review choice.'; return 1 ;;
+      esac
+    done
+  done
+}
+
+mkvutil_finish() {
+  local code="$1" final_code=0
+  if (( code == 2 )); then
+    if (( MKVUTIL_HAS_RUN )); then
+      print -r -- 'Continuation cancelled; recorded outcomes retained.'
+    else
+      print -r -- 'Cancelled; no media changes.'
+    fi
+  elif (( code != 0 )); then
+    final_code=1
+  fi
+  mkvutil_ledger_finalize || final_code=1
+  mkvutil_ledger_status || final_code=1
+  mkvutil_final_report || final_code=1
+  return "$final_code"
+}
+
 mkvutil_main() {
-  local directory="$PWD" category="" choice="" operations="" review="" result=0
+  local directory="$PWD" category="" operations="" result=0 resolved_directory=""
+  MKVUTIL_LEDGER_ENABLED=0
   MKVUTIL_SOURCES=()
   MKVUTIL_JOBS=()
   MKVUTIL_REMOVAL_SKIPS=()
@@ -2067,7 +2473,6 @@ mkvutil_main() {
     '') ;;
     *) directory="$1" ;;
   esac
-  local resolved_directory=""
   resolved_directory="$(mkvutil_resolve_directory "$directory")" || return 1
   cd "$resolved_directory" || return 1
   print -r -- "Current Work Dir: $directory"
@@ -2087,42 +2492,12 @@ mkvutil_main() {
   _mkvutil_read 'Operations (single/comma/range): ' || return 0
   [[ "$REPLY" != 0 ]] || return 0
   operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
-  mkvutil_select_files || { result=$?; (( result == 2 )) && return 0; return "$result"; }
-  mkvutil_inspect_sources || { result=$?; (( result == 2 )) && return 0; return "$result"; }
-  while true; do
-    mkvutil_configure_category "$category" "$operations" || { result=$?; (( result == 2 )) && { mkvutil_cancel_status; return $?; }; return "$result"; }
-    result=0
-    mkvutil_plan_queue || result=$?
-    (( result == 0 || result == 3 )) || { (( result == 2 )) && { mkvutil_cancel_status; return $?; }; return "$result"; }
-    while true; do
-      mkvutil_review_menu
-      _mkvutil_read 'Review choice: ' || { mkvutil_cancel_status; return $?; }
-      review="$REPLY"
-      case "$review" in
-        0) print -r -- 'Cancelled; no media changes.'; mkvutil_cancel_status; return $? ;;
-        1)
-          mkvutil_category_menu "$category" || return 1
-          _mkvutil_read 'Replacement operations: ' || { mkvutil_cancel_status; return $?; }
-          operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
-          break ;;
-        2) mkvutil_preview_jobs || return 1 ;;
-        3)
-          (( ${#MKVUTIL_JOBS} > 0 )) || { print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'; continue; }
-          if [[ "$category" == extract ]]; then
-            print -u2 -r -- 'Extract execution is not available at this implementation checkpoint; no media changes.'; return 1
-          fi
-          mkvutil_execute_queue "${MKVUTIL_JOBS[@]}"; return $? ;;
-        4)
-          mkvutil_prepare_skipped_subset || return 1
-          category=mux
-          mkvutil_category_menu "$category" || return 1
-          _mkvutil_read 'New skipped-subset operations: ' || return 1
-          operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
-          break ;;
-        *) print -u2 -r -- 'Invalid review choice.'; return 1 ;;
-      esac
-    done
-  done
+  mkvutil_select_files || return $?
+  mkvutil_ledger_reset "$resolved_directory" "${MKVUTIL_SELECTED_FILES[@]}" || return 1
+  mkvutil_batch_request "$category" "$operations" || return 1
+  mkvutil_inspect_sources || { result=$?; mkvutil_finish "$result"; return $?; }
+  mkvutil_controller "$category" "$operations" || result=$?
+  mkvutil_finish "$result"
 }
 
 # Sourcing defines helpers without launching the real category entrypoint.

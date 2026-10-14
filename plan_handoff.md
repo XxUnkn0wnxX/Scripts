@@ -11,19 +11,25 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 
 ## Current state and safe restart point
 
-- The user-requested code/checklist audit is complete. Its safe snapshot,
-  contract mapping, independent findings and corrective proof are retained in
-  `.tmp/mkvutil-rework/checklist-audit.wni4h33r/`. T02.01 was reopened for missing
-  normal multi-file Edit evidence, then reaccepted after a focused two-file
-  test passed. Current accepted totals are **5 / 9 tasks and 1 / 4 goals**.
-  T02.03 remains unaccepted; two reporting/continuation defects require fixes.
-  The source/test writer was paused and quiescent during the audit, then
-  resumed on the existing T02.03 package with the corrective brief below.
-  Runtime confirmed `mkv_metadata_foundation` running after the handback;
-  the parent remains sole owner of these records.
-  Dirty source SHA-256 at audit is
-  `312ff6f7067f90e0b312f785635736315f56c806559013e1aac36d7f08fab2ae`.
-  Parent added the focused test only; accepted engine/builders were unchanged.
+- G02 (Edit/Mux execution) is accepted after the T02.03 reporting/continuation
+  package passed parent source/receipt review, two independent critical tests,
+  and Astra's integration audit. Current acceptance is **6 / 9 tasks and
+  2 / 4 goals**. Extract (T03.01) is now dependency-ready; no Extract executor
+  has been implemented. Existing source/test owner is quiescent, with no active
+  subprocesses, after finishing T02.03. Parent owns these records.
+- The user-requested real code/checklist audit reopened missing normal
+  multi-file Edit proof, added a focused passing test, and corrected stale
+  progress/restart statements. Safe snapshot and findings remain under
+  `.tmp/mkvutil-rework/checklist-audit.wni4h33r/`; the parent-session ledger is
+  unchanged. The two discovered reporting defects were subsequently fixed and
+  independently tested; do not treat their historical audit notes as open bugs.
+- T02.03 accepted candidate hashes and exact checks are saved in
+  `.tmp/mkvutil-rework/reporting/t02.03-receipt.json`, with parent review in
+  `parent-integration.json`. Script SHA-256:
+  `fed393cdb7c729f219ca1d5d51f059ccdbededd60e840e3bacc245e471d2cc8c`.
+  The accepted metadata/executor bodies are unchanged from the native-qualified
+  `f44cd98` checkpoint. Full Extract, integrated legacy/all-format/campaign
+  checks and final documentation remain pending.
 - Active workspace: sibling worktree `../Scripts-dev`, on
   `feature/mkvutil-rework`, per the user's explicit instruction to work there
   moving forward. The user confirmed this worktree is dedicated to this rework
@@ -49,7 +55,7 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   share signed `e6dd2b94fd489796df80270814aa040bc19db8a8`; remote refs match.
   Only the instruction file and root ignore exception were synchronized to
   those branches. Utility implementation remains in this feature worktree.
-- Accepted execution checkpoint at the audit: signed
+- Prior accepted execution checkpoint at the audit: signed
   `f44cd9841e00d9d86ffaffcae7b2a5ae520de278`
   (`feat(shell): execute grouped mkvutil edit and mux jobs`). It was four
   commits ahead of the published feature ref. Resolve latest local HEAD from
@@ -57,8 +63,9 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   This execution checkpoint commits only
   the six approved source/test/planning paths and accepted T02.01/T02.02
   evidence; both worktrees were clean immediately afterward. Current uncommitted
-  source/test work comprises the T02.03 draft and the parent audit's additional
-  test. The checklist/handoff audit correction is saved separately. No implementation publication/promotion
+  source/test work now comprises the accepted T02.03 package and the audit's
+  additional test, ready for a local implementation checkpoint. The preceding
+  audit record correction is committed separately at signed `22eb849`. No implementation publication/promotion
   has occurred. Prior G01 checkpoint is signed
   `6444e4cbbe65ffe1a81d18213582695ea242cb8e`; the reporting-plan checkpoint
   is signed `66dab50d610d4f011bdae0e685d3fca492c107f3`.
@@ -85,11 +92,11 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   preview and fresh skipped-subset preparation are implemented. Executors
   for Edit/Mux are implemented and their T02.01/T02.02 gates now accepted after
   focused/native proof, parent review and Astra's bounded post-fix PASS.
-  Extract execution remains guarded. Current totals: 5 / 9 tasks and 1 / 4 goals.
-- Active package: T02.03 full reporting and skipped-only continuation, reusing
-  the verified executors with one coherent source/test/helper owner. G02 remains
-  pending until this task and its goal-level integration gate pass; Extract
-  implementation still waits for G02. Parent owns all records.
+  T02.03's current reporting/continuation proof subsequently closed G02.
+  Extract execution remains guarded. Current totals: 6 / 9 tasks and 2 / 4 goals.
+- Next package: T03.01 Extract execution after the verified G02 gate, using
+  one coherent source/test/helper owner. Preserve the accepted Edit/Mux
+  semantics and common reports; parent owns all records.
 - T02.03's implementation draft uses an original-source-keyed final-outcome
   ledger separate from current scope/jobs/skip receipts, plus saved per-batch
   action/configuration/time attribution. History is provenance, not unresolved
@@ -97,9 +104,8 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   fresh inspection/configuration/review/Run is required each time. The bounded
   Astra audit returned PASS WITH NOTES before sole-writer implementation.
   Reuse `mkv_metadata_foundation` for the same three source/test paths after
-  the audit handback; its T02.03 draft remains unaccepted. It was quiescent
-  during the audit and is now resumed; inspect runtime for any current test
-  process rather than inheriting that historical no-process state. Full
+  the audit handback. The completed T02.03 package is now accepted and its
+  writer quiescent; inspect runtime again before the next assignment. Full
   Extract execution, final guides and broad menu campaigns stay outside this
   package. Parent remains the only record writer.
 - The user requested always-multi selection and automatic removal mismatch
@@ -220,8 +226,8 @@ using a pre-publication handoff as proof that an amendment has been pushed.
 
 Planning preparation is verified and remains separate from implementation
 acceptance. The four existing checkpoints are now G01-G04, with nine stable
-task IDs; **5 / 9 tasks and 1 / 4 main goals** are accepted
-(T01.01-T01.03, T02.01-T02.02, G01).
+task IDs; **6 / 9 tasks and 2 / 4 main goals** are accepted
+(T01.01-T01.03, T02.01-T02.03, G01-G02).
 
 The executor checkpoint has now closed the following focused gates:
 
@@ -235,10 +241,38 @@ The executor checkpoint has now closed the following focused gates:
   interruption behavior, and correct success reporting.
 
 T02.03's complete final reporting, timing and fresh skipped-only continuation
-remain pending. G02 is not accepted yet; integrated all-format/legacy navigation
-qualification and the near-end interactive campaign remain later gates.
+are accepted. G02's combined workflow gate passed parent and independent review.
+Extract execution, integrated all-format/legacy navigation qualification and the
+near-end interactive campaign remain later gates.
 
-### User-requested code/checklist audit
+### T02.03 and G02 accepted integration checkpoint
+
+- Worker is quiescent; candidate source/test/helper hashes match its receipt
+  and all copied final-contract/CLI runtime files. Its 12 focused contracts
+  passed in 37.38s (37.95s wall, 35.02s combined user/system CPU); one notified
+  mocked continuation journey passed in 7.15s (7.78s wall, 7.18s CPU).
+- Parent reviewed the accumulated ledger, category controller, queue/reporting
+  code and shared accepted foundations. Two critical independent cases passed
+  in 3.59s (4.41s wall, 2.78s CPU): between-job TERM with pending sources and
+  mismatch skips; post-tool clock failure with actual completed state retained.
+  Exact command/log is in `reporting/parent-integration.json` above.
+- Astra independently returned PASS for T02.03 and reviewed G02 gates. Current
+  tests prove unique original-source counts, resolved history, distinct initial
+  versus retry exclusions, preserved results after cancellation/EOF, separate
+  action/optional metadata attribution, directory basename, Mux timing/ETA,
+  all Edit choices' final-only reporting and old 1+2 / 8+4+3 / 7+8+4+3 equivalents.
+- The actual mocked continuation path selects once, runs one initial eligible
+  source, refreshes only the mismatched source, clears old settings, and requires
+  a new Preview/explicit Run: two total output remuxes, zero propedit, final
+  Done 2/Skipped 0, resolved history. Identification/tag reads are counted
+  separately. No broad or new native campaign ran.
+- All eight recorded native-qualified core functions plus the shared metadata/
+  language prefix remain byte-identical; prior native proof remains scoped to
+  those internals. Extract's reporting formatter contract is ready, while its
+  executor and real extraction proof remain pending. G02 acceptance does not
+  credit the six final validation groups or near-end rehearsal.
+
+### User-requested code/checklist audit — prior correction checkpoint
 
 - Trigger: a stale aggregate checklist count, followed by the user's request
   to pause for a real audit. The sole source/test writer stopped safely with
@@ -272,12 +306,13 @@ qualification and the near-end interactive campaign remain later gates.
   planner/builder/executor bodies remain unchanged in the draft; their globals
   and call sites were reviewed. Historical native proof does not qualify the
   changed queue/controller/reporters.
-- Two concrete T02.03 defects remain: its queue trap sets only a local
-  interruption flag, while the controller uses the global flag to suppress
-  continuation; and ledger status does not reject required not-attempted work
-  after Run. Fix both and prove a signal between jobs leaves later sources
-  untouched, offers no continuation, reports pending outcomes and returns
-  nonzero. Preserve neutral cancellation before any Run.
+- That audit identified two concrete T02.03 defects: its queue trap set only
+  a local interruption flag, while the controller used the global flag to
+  suppress continuation; and ledger status did not reject required not-attempted
+  work after Run. Both were subsequently fixed and verified at the accepted
+  G02 checkpoint above: a signal between jobs stops later sources/continuation,
+  pending outcomes remain visible and the result is nonzero. Neutral cancellation
+  before any Run is preserved.
 - Legacy flat-menu journeys remain unmigrated and cannot establish current
   navigation behavior. Their semantic assertions and all six validation groups
   remain required at the existing integration gate. Extract remains guarded.
@@ -626,8 +661,8 @@ checks. New implementation packages follow the current approved route.
    verify branch, HEAD, worktree/index, pending approvals, and any live agents.
 2. Verify the published planning checkpoints and current implementation changes
    from actual Git state; respect the current package's exclusive writer.
-3. Preserve accepted G01/T01.01-T01.03 and T02.01/T02.02's verified Edit/Mux
-   executors; implement T02.03 reporting and skipped-only continuation. Inspect the
+3. Preserve accepted G01/G02 and T01.01-T02.03 foundations/executors/reporting;
+   prepare T03.01 Extract from the verified stage boundary. Inspect the
    target's prerequisites and overlap before selecting a bounded implementation
    package; present A/B routes only when they materially change scope/order.
 
@@ -639,8 +674,8 @@ checks. New implementation packages follow the current approved route.
 | 2 | T01.02 | Accepted: registry/configuration/argv contracts and small native builder proof | Canonical shared metadata definitions/configuration/builders |
 | 3 | T01.03 | Accepted: actual category configuration, always-multi selection, per-file/skip/subset proof | Real category selection, planning, conflicts, and preview consumers |
 | 4 | T02.01, T02.02 | Accepted: focused/native executor gates, parent review and Astra post-fix PASS | Shared source and helpers verified; preserve corrected publication and result contracts |
-| 5 | T02.03 | Both Edit and Mux executors accepted | Integrated reporting and single/batch workflows; G02 goal gate checked |
-| 6 | T03.01 | G01 inputs plus G02 goal acceptance | Preserve approved Extract-after-Edit+Mux stage gate |
+| 5 | T02.03 | Accepted: current queue/reporting/continuation proof and independent audit | G02 goal integration gate passed; preserve one-source accounting and timing |
+| 6 | T03.01 | Ready: G01 technical inputs and verified G02 acceptance | Implement Extract with one source/test owner and shared final reports |
 | 7 | T04.01, then T04.02 | Runtime task evidence accepted, then integrated candidate verified | Consolidate valid slice receipts; final help/docs follow validated behavior |
 
 The current user instruction authorizes implementation; this readiness map does
