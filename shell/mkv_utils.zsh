@@ -897,7 +897,7 @@ _mkvutil_jq_records() {
 
 # Session outcomes are keyed by ORIGINAL canonical selected source path. Current
 # scope/jobs may shrink or be rebuilt without rewriting these required outcomes.
-typeset -gi MKVUTIL_LEDGER_ENABLED=0 MKVUTIL_HAS_RUN=0 MKVUTIL_INTERRUPTED=0 MKVUTIL_BATCH_ID=0
+typeset -gi MKVUTIL_LEDGER_ENABLED=0 MKVUTIL_HAS_RUN=0 MKVUTIL_INTERRUPTED=0 MKVUTIL_BATCH_ID=0 MKVUTIL_DRY_RUN=0
 typeset -g MKVUTIL_DIRECTORY_NAME=""
 typeset -gF 6 MKVUTIL_TOTAL_ELAPSED=0
 typeset -ga MKVUTIL_SCOPE_KEYS=() MKVUTIL_BATCHES=()
@@ -999,8 +999,8 @@ mkvutil_batch_request() {
   MKVUTIL_BATCHES+=("$(_mkvutil_jq_records '
     .[0] as $fields | {id:$fields.id,category:$fields.category,action_ids:($fields.operations|split(",")),
       metadata_ids:(.[1].metadata // ""),config:.[1],sources:.[2],state:"requested",eligible:0,
-      attempted:0,completed:0,elapsed_seconds:0,outcomes:{}}' \
-    "$(jq -cn --argjson id "$MKVUTIL_BATCH_ID" --arg category "$category" --arg operations "$operations" '{id:$id,category:$category,operations:$operations}')" "$config" "$sources")")
+      attempted:0,completed:0,elapsed_seconds:0,outcomes:{},dry_run:$fields.dry_run}' \
+    "$(jq -cn --argjson id "$MKVUTIL_BATCH_ID" --arg category "$category" --arg operations "$operations" --argjson dry "$MKVUTIL_DRY_RUN" '{id:$id,category:$category,operations:$operations,dry_run:($dry==1)}')" "$config" "$sources")")
 }
 
 mkvutil_batch_configured() {
@@ -1075,7 +1075,7 @@ mkvutil_ledger_result() {
     .[0] as $entry | .[1] as $result | .[2] as $batch |
     $entry + {status:$result.status,destination:$result.destination} |
     .attempts += [{batch_id:$batch,result:$result}] |
-    if $result.status=="success" then .skip_history |= map(.resolved=true) else . end' \
+    if $result.status=="success" and ($result.simulated // false | not) then .skip_history |= map(.resolved=true) else . end' \
     "$entry" "$result" "$MKVUTIL_BATCH_ID")" || return 1
   MKVUTIL_LEDGER[$source]="$updated"
 }
@@ -1119,7 +1119,7 @@ mkvutil_final_summary() {
   local -a records=()
   for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do records+=("${MKVUTIL_LEDGER[$source]}"); done
   batches="$(_mkvutil_jq_records '.' "${MKVUTIL_BATCHES[@]}")" || return 1
-  header="$(jq -cn --arg directory "$MKVUTIL_DIRECTORY_NAME" --argjson elapsed "$MKVUTIL_TOTAL_ELAPSED" --argjson interrupted "$MKVUTIL_INTERRUPTED" '{directory:$directory,elapsed_seconds:$elapsed,interrupted:($interrupted==1)}')" || return 1
+  header="$(jq -cn --arg directory "$MKVUTIL_DIRECTORY_NAME" --argjson elapsed "$MKVUTIL_TOTAL_ELAPSED" --argjson interrupted "$MKVUTIL_INTERRUPTED" --argjson dry "$MKVUTIL_DRY_RUN" '{directory:$directory,elapsed_seconds:$elapsed,interrupted:($interrupted==1),dry_run:($dry==1)}')" || return 1
   _mkvutil_jq_records '
     .[0]+{batches:.[1],files:.[2:]} | . as $summary |
     .counts=(reduce .files[] as $file
@@ -1161,6 +1161,22 @@ _mkvutil_display_record() {
     def shorten($paths):
       if type=="string" then reduce $paths[] as $path (. ; replace_known_path($path))
       elif type=="array" then map(shorten($paths)) else . end;
+    def state_description:
+      {not_modified_by_job:"Original file was not modified.",
+       unpublished:"No replacement was published.",
+       edited_observed:"Current metadata was inspected; changes may already be present.",
+       edit_unknown:"Metadata changes could not be confirmed; inspect the file.",
+       replaced_complete:"The replacement file was saved.",
+       published_complete:"The output was saved and the original source removed.",
+       published_source_retained:"The output was saved; the original source remains.",
+       published_destination_changed:"The output changed after publication; inspect the files.",
+       publication_outcome_unknown:"Publication could not be confirmed; inspect the files.",
+       publication_uncertain:"Some extracted outputs need inspection.",
+       sidecars_published:"Extracted outputs were saved.",
+       staged_unpublished:"Unpublished extraction files remain for inspection.",
+       no_outputs:"No extracted outputs were saved.",
+       unknown_inspect_filesystem:"File state could not be confirmed; inspect retained files."}[.] //
+       "File state could not be confirmed; inspect retained files.";
     . as $record | [..|objects|to_entries[]|
       if (.key|file_field) then .value
       elif (.key|file_array) then .value[]? else empty end|
@@ -1169,7 +1185,9 @@ _mkvutil_display_record() {
     $record | walk(if type=="object" then with_entries(
       if (.key|file_field) then .value|=filename
       elif (.key|file_array) then .value|=if type=="array" then map(filename) else . end
-      elif (.key|diagnostic) then .value|=shorten($paths) else . end) else . end)
+      elif (.key|diagnostic) then .value|=shorten($paths) else . end) else . end) |
+    walk(if type=="object" and has("actual_state") then
+      .state_description=(.actual_state|state_description) else . end)
   ' <<< "$1"
 }
 
@@ -1200,11 +1218,14 @@ mkvutil_ascii_box() {
 mkvutil_format_final_report() {
   local display=""
   display="$(_mkvutil_display_record "$1")" || return 1
-  mkvutil_ascii_box 'Final report' || return 1
+  local heading='Final report'
+  [[ "$(jq -r '.dry_run // false' <<< "$display")" != true ]] || heading+=' (DRYRUN)'
+  mkvutil_ascii_box "$heading" || return 1
   jq -r '
+    (.dry_run // false) as $dry |
     def duration: floor as $s | (($s/3600|floor|tostring)+"h "+(($s%3600)/60|floor|tostring)+"m "+($s%60|tostring)+"s");
     def outcome_label:
-      if .=="done" then "Done" elif .=="not_attempted" then "Not attempted"
+      if .=="done" then (if $dry then "Simulated" else "Done" end) elif .=="not_attempted" then "Not attempted"
       elif .=="warning" then "Warning" elif .=="partial" then "Partial"
       elif .=="failed" then "Failed" elif .=="skipped" then "Skipped"
       elif .=="excluded" then "Excluded" elif .=="interrupted" then "Interrupted"
@@ -1213,30 +1234,43 @@ mkvutil_format_final_report() {
     (.batches[] | "Configuration \(.id) (\(.state)\(if .state=="executed" or .state=="interrupted" then "" else "; requested, not run" end)):",
       "  Category: \(.category); Actions: \(.action_ids|join(","))",
       (if .category=="mux" then "  Optional Mux metadata: \(if .metadata_ids=="" then "none" else .metadata_ids end)" else empty end),
-      "  Requested files: \(.sources|length); eligible: \(.eligible); attempted: \(.attempted); completed: \(.completed); elapsed: \(.elapsed_seconds|duration)",
+      "  Requested files: \(.sources|length); eligible: \(.eligible); attempted: \(.attempted); \(if $dry then "simulated" else "completed" end): \(.completed); elapsed: \(.elapsed_seconds|duration)",
       "  Outcomes: \(.outcomes | if length==0 then "none" else to_entries | sort_by(.key as $key | [(["done","failed","warning","partial","skipped","excluded","not_attempted","interrupted"] | index($key) // 8), $key]) | map((.key|outcome_label)+": "+(.value|tostring)) | join("; ") end)"),
     (.batches[] | select(.stop!=null) |
       "Stopped configuration \(.id): \(.stop.mode)",
       "  Files not started due to stop: \(.stop.not_started_sources|length)",
       (.stop.not_started_sources[] | "    \(.)")),
     "Selected: \(.selected); required: \(.required)",
-    "Done: \(.counts.done); Failed: \(.counts.failed); Warning: \(.counts.warning); Partial: \(.counts.partial); Skipped: \(.counts.skipped); Excluded: \(.counts.excluded); Not attempted: \(.counts.not_attempted); Interrupted: \(.counts.interrupted)",
+    "\(if $dry then "Simulated" else "Done" end): \(.counts.done); Failed: \(.counts.failed); Warning: \(.counts.warning); Partial: \(.counts.partial); Skipped: \(.counts.skipped); Excluded: \(.counts.excluded); Not attempted: \(.counts.not_attempted); Interrupted: \(.counts.interrupted)",
     (if .interrupted then "Batch interrupted; remaining jobs not attempted." else empty end),
     "Complete batch elapsed: \(.elapsed_seconds|duration)",
-    (if any(.batches[];.category=="extract") then
+    (if $dry then "Files were not changed." else empty end),
+    (if ($dry|not) and any(.batches[];.category=="extract") then
       "Attachments processed: \(.attachments.processed); published: \(.attachments.published); final unique published names: \(.attachments.unique_names); superseded: \(.attachments.superseded); uncertain names: \(.attachments.uncertain_names)",
       (.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)") else empty end),
     (.files[] | . as $file |
-      "\(.status): \(.source)\(if .destination and (.attempts[-1].result.category // "")!="extract" then " => "+.destination else "" end)",
+      select(.status!="success" or any(.attempts[]; .result.simulated==true) or
+        (.destination!=null and .destination!=.source and (.attempts[-1].result.category // "")!="extract") or
+        any(.attempts[].result.artifacts[]?; .kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) or
+        (.skip_history|length)>0 or any(.attempts[]; .result.status!="success")) |
+      (if .attempts[-1].result.simulated==true then "Simulated: \(.source)"
+       elif .status=="success" then
+         if (.attempts[-1].result.category // "")=="extract" then "Outputs from: \(.source)"
+         elif .destination!=null and .destination!=.source then "Output: \(.source) => \(.destination)"
+         else "Completed: \(.source)" end
+       else "\(.status): \(.source)\(if .destination and .destination!=.source and (.attempts[-1].result.category // "")!="extract" then " => "+.destination else "" end)" end),
       (if .exclusion_reason then "  Excluded\(if .required then " from retry; unresolved outcome retained" else " from required scope" end): \(.exclusion_reason)" else empty end),
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
          (if .receipt.track_count_mismatch then "    Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
          (.receipt.reasons[] | "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)")),
-      (.attempts[] | "  Configuration \(.batch_id): phase=\(.result.phase); actual state=\(.result.actual_state)",
-        (if .result.status!="success" then "  \(.result.status): \(.result.reason)" else empty end),
-        (.result.stages[]? | "  Stage \(.kind): \(.status); code=\(.native_code)") ,
+      (.attempts[] |
+        (.result as $result | .result.planned_outputs[]? |
+          "  Would \(if $result.category=="edit" then "update" elif $result.category=="mux" or .kind=="attachment" then "write" else "extract" end): \(.path)\(if .required==false then " (optional)" else "" end)"),
+        (if .result.status!="success" then "  Batch \(.batch_id): \(.result.status|outcome_label)\(if (.result.reason // "")!="" then ": "+.result.reason else "" end)",
+          "  \(.result.state_description)" else empty end),
+        (.result.stages[]? | select(.status!="success" and .status!="complete") | "  \(.kind): \(.status)\(if .native_code!=null then " (tool exit "+(.native_code|tostring)+")" else "" end)") ,
         (.result.artifacts[]? | select(.kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
-          "  Track output ID \(.id): \(.path) (\(if .publication_state=="confirmed" then "published" else "publication uncertain" end))"),
+          "  Track \(.id): \(.path)\(if .publication_state=="uncertain" then " (publication uncertain)" else "" end)"),
         (.result.staged_paths[]? | "  Staged: \(.)"),
         (.result.discarded_partial_tracks[]? | "  Discarded unfinished track: \(.)"),
         (.result.scratch_paths[]? | "  Native scratch: \(.)"),
@@ -1258,7 +1292,7 @@ mkvutil_format_progress() {
   local -a progress_lines=()
   [[ "$category" != edit ]] || return 0
   [[ "$category" == mux || "$category" == extract ]] || return 1
-  if [[ "$category" == extract && ",$operations," == *,1,* && ",$operations," == *,2,* ]]; then
+  if (( ! MKVUTIL_DRY_RUN )) && [[ "$category" == extract && ",$operations," == *,1,* && ",$operations," == *,2,* ]]; then
     [[ -n "$track_work" ]] || return 1
     work_elapsed="$track_work"
     if [[ -n "$track_elapsed" ]]; then
@@ -1280,10 +1314,13 @@ measured="Track stage: not attempted" if mode=="track_not_attempted" else f"Proc
 estimated="unavailable (no track stages attempted)" if eta is None else duration(eta)
 print(f"{measured}\nFiles Done: {completed}\nFiles Attempted: {attempted}\nFiles Remaining: {remaining}\nEstimated Time Remaining: {estimated}")
 ' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total" "$track_samples" "$mode")" || return $?
+  if (( MKVUTIL_DRY_RUN )); then output="${output/Files Done:/Files Simulated:}"; fi
   progress_lines=("${(@f)output}")
   (( ${#progress_lines} > 0 )) || return 1
   [[ -z "$source" ]] || progress_lines=("File: ${source:t}" "${progress_lines[@]}")
-  mkvutil_ascii_box 'File progress' "${progress_lines[@]}"
+  local heading='File progress'
+  (( ! MKVUTIL_DRY_RUN )) || heading+=' (DRYRUN)'
+  mkvutil_ascii_box "$heading" "${progress_lines[@]}"
 }
 
 mkvutil_source_identity() {
@@ -1775,6 +1812,27 @@ mkvutil_category_choices() {
 # Configure against the first original model. Every job validates targeted IDs
 # and types against its own model afterward; untouched heterogeneous tracks are
 # allowed. Optional Mux metadata uses exactly the Edit registry/collector.
+# Public ordering accepts bare original IDs. Native 0:ID selectors belong only
+# to the internal plan/tool contract. Return the explicit/automatic prefix;
+# plan_layout completes unlisted retained tracks independently.
+mkvutil_normalize_order() {
+  local text="$1" retained="$2" token="" pattern='^[[:space:]]*[0-9]+[[:space:]]*(,[[:space:]]*[0-9]+[[:space:]]*)+$'
+  local -a supplied=() allowed=("${(@s:,:)retained}")
+  local -A seen=()
+  [[ "$text" =~ "$pattern" ]] || return 1
+  for token in "${(@s:,:)text}"; do
+    token="${token//[[:space:]]/}"
+    _mkvutil_canonical_id "$token" || return 1
+    token="$REPLY"
+    (( ${allowed[(Ie)$token]} > 0 && ! ${+seen[$token]} )) || return 1
+    supplied+=("0:$token")
+    seen[$token]=1
+  done
+  (( ${#supplied} >= 2 )) || return 1
+  if (( ${allowed[(Ie)0]} > 0 && ! ${+seen[0]} )); then supplied=(0:0 "${supplied[@]}"); fi
+  print -r -- "${(j:,:)supplied}"
+}
+
 mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
@@ -1842,19 +1900,22 @@ mkvutil_configure_category() {
       mkvutil_plan_layout "$rows" "$removal" '' "${source:e}" || return 1
       retained_csv="${(j:,:)MKVUTIL_RETAINED_IDS}"
       if [[ ",$operations," == *,2,* ]]; then
+        if (( ${#MKVUTIL_RETAINED_IDS} < 2 )); then
+          print -u2 -r -- 'Cannot reorder: at least two retained tracks are required.'
+          return 4
+        fi
         while true; do
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          _mkvutil_read 'Track order (e.g. 0:1,0:0; unlisted tracks follow; e to go back): ' || return 2
+          _mkvutil_read 'Track order (e.g. 4,3; at least two IDs; retained 0 prepended if omitted; e to go back): ' || return 2
           case "$REPLY" in e|E) return 4 ;; esac
-          order="$REPLY"
-          if [[ -n "${order//[[:space:]]/}" ]] && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
+          if order="$(mkvutil_normalize_order "$REPLY" "$retained_csv")" && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
             (( ! MKVUTIL_INTERRUPTED )) || return 2
-            order="${order//[[:space:]]/}"
             break
           fi
           (( ! MKVUTIL_INTERRUPTED )) || return 2
-          print -u2 -r -- "Invalid track order. Use retained IDs once each (0:ID). Available IDs: $retained_csv"
+          print -u2 -r -- "Invalid track order. Supply at least two unique retained IDs (e.g. 4,3). Available IDs: $retained_csv"
         done
+        print -r -- "Track order: ${order//0:/}"
         for item in "${(@s:,:)order}"; do
           _mkvutil_canonical_id "${item#0:}" || return 1
           order_ids+=("$REPLY")
@@ -2423,6 +2484,39 @@ _mkvutil_execution_failure() {
     "$job" "$(_mkvutil_json_array "$reason" | jq -c '.[0]')" "$(_mkvutil_json_array "$status_name" | jq -c '.[0]')"
 }
 
+# Consume the already validated plan without native inspection or filesystem
+# writes. Only a fresh source stat is needed before reporting intended outputs.
+mkvutil_simulate_job() {
+  local job="$1" source="" identity="" reason="" result_code=0
+  MKVUTIL_RESULT_JSON=""
+  source="$(jq -er '.source | select(type=="string" and startswith("/"))' <<< "$job")" || return 1
+  if (( MKVUTIL_INTERRUPTED )); then
+    reason='Stopped before simulation'; result_code=1
+  elif ! identity="$(mkvutil_source_identity "$source")"; then
+    reason='Source unavailable before simulation'; result_code=1
+  elif ! jq -e --argjson identity "$identity" '.identity==$identity' <<< "$job" >/dev/null; then
+    reason='Source identity changed before simulation'; result_code=1
+  fi
+  if (( result_code )); then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" "$reason" "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")" || return 1
+    MKVUTIL_RESULT_JSON="$(jq -c '.+{dry_run:true,simulated:false,planned_outputs:[],artifacts:[],publications:[]}' <<< "$MKVUTIL_RESULT_JSON")" || return 1
+    return 1
+  fi
+  MKVUTIL_RESULT_JSON="$(jq -c '
+    . as $job |
+    {source:.source,destination:.destination,category:.config.category,
+     action_ids:.config.operations,metadata_ids:.config.metadata,
+     status:"success",dry_run:true,simulated:true,native_code:null,
+     phase:"simulated",actual_state:"not_modified_by_job",reason:"",
+     candidate_path:null,staging_directory:null,artifacts:[],publications:[],stages:[],
+     planned_outputs:[.outputs[] |
+       if type=="string" then {path:.,kind:$job.config.category,id:null,required:true}
+       else . as $output | (.artifacts // [{path:.path,required:true}])[] |
+         {path:.path,kind:$output.kind,id:$output.id,required:(.required // false)} end]}
+    ' <<< "$job")" || return 1
+  return 0
+}
+
 _mkvutil_execution_support() {
   cat <<'PYCOMMON'
 import os, signal, stat, subprocess, sys, time
@@ -2440,6 +2534,7 @@ class NativeOutputRenderer:
         self.pending = b""
         self.record = b""
         self.last = b""
+        self.line_start = True
         self.initials = {path[0] for path, _ in self.replacements}
         self.max_path = max((len(path) for path, _ in self.replacements), default=0)
 
@@ -2495,11 +2590,16 @@ class NativeOutputRenderer:
                     size = 2 if 0xc2 <= lead <= 0xdf else 3 if 0xe0 <= lead <= 0xef else 4 if 0xf0 <= lead <= 0xf4 else 1
                     if boundary - start < size:
                         boundary = start
-            output.extend(self.record[:boundary]); self.record = self.record[boundary:]
+            fragment = self.record[:boundary]
+            if self.line_start and fragment[:1] not in (b"\r", b"\n"):
+                output.extend(b"  ")
+            output.extend(fragment)
+            self.line_start = fragment[-1:] in (b"\r", b"\n")
+            self.record = self.record[boundary:]
         if output:
             self.last = bytes(output[-1:])
         if final and self.last and self.last != b"\n":
-            output.extend(b"\n"); self.last = b"\n"
+            output.extend(b"\n"); self.last = b"\n"; self.line_start = True
         return bytes(output)
 
     def feed(self, data):
@@ -2797,6 +2897,10 @@ _mkvutil_launch_engine() {
   local python_bin="$1" program="$2" category="$3" job="$4" transport="" result_code=0 checker_pid=0 checker_code=0
   shift 4
   MKVUTIL_RESULT_JSON=""
+  if (( MKVUTIL_DRY_RUN )); then
+    MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Native execution blocked in dry run')"
+    return 1
+  fi
   if (( MKVUTIL_INTERRUPTED )); then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before execution' not_attempted)"
     return 1
@@ -3723,14 +3827,21 @@ mkvutil_report_result() {
   _mkvutil_indicator_stop
   local display=""
   display="$(_mkvutil_display_record "$1")" || return 1
-  jq -r '"\(.status): \(.source)", (if .category!="extract" then "  Destination: \(.destination)" else empty end),
-    "  Phase: \(.phase); actual state: \(.actual_state)",
+  jq -r '(if .simulated==true then "Simulated (DRYRUN): \(.source)"
+    elif .status=="success" then
+      if .category=="extract" then "Outputs from: \(.source)"
+      elif .destination!=null and .destination!=.source then "Output: \(.source) => \(.destination)"
+      else empty end
+    else "\(.status): \(.source)", (if .category!="extract" and .destination!=null and .destination!=.source then "  Destination: \(.destination)" else empty end),
+      "  \(.state_description)" end),
     (if .reason!="" then "  \(.reason)" else empty end),
+    (. as $result | .planned_outputs[]? |
+      "  Would \(if $result.category=="edit" then "update" elif $result.category=="mux" or .kind=="attachment" then "write" else "extract" end): \(.path)\(if .required==false then " (optional)" else "" end)"),
     (if .candidate_path then "  Candidate: \(.candidate_path)" else empty end),
     (if .phase_receipt then "  Phase receipt: \(.phase_receipt)" else empty end),
     ((.observed_metadata // {})|to_entries[]|"  Actual metadata \(.key): \(.value|tojson)"),
     (.artifacts[]? | select(.kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
-      "  Track output ID \(.id): \(.path) (\(if .publication_state=="confirmed" then "published" else "publication uncertain" end))"),
+      "  Track \(.id): \(.path)\(if .publication_state=="uncertain" then " (publication uncertain)" else "" end)"),
     (.staged_paths[]? | "  Staged: \(.)"),(.phase_receipts[]?|"  Phase receipt: \(.)"),
     (.scratch_paths[]? | "  Native scratch: \(.)"),(.unexpected_paths[]? | "  Unexpected artifact: \(.)"),
     (if .cleanup_error then "  Cleanup failed: \(.cleanup_error)" else empty end),
@@ -3763,6 +3874,7 @@ mkvutil_action_heading() {
     *) return 1 ;;
   esac
   print
+  (( ! MKVUTIL_DRY_RUN )) || title+=' (DRYRUN)'
   print -r -- "$title $operations: ${(j: + :)labels}$suffix"
 }
 
@@ -3824,12 +3936,16 @@ mkvutil_execute_queue() {
     native_returned=0
     result_recorded=0
     result_accounted=0
+    if (( MKVUTIL_DRY_RUN )); then
+      mkvutil_simulate_job "$job" || result_code=$?
+    else
     case "$category" in
       edit) mkvutil_execute_edit_job "$job" || result_code=$? ;;
       mux) mkvutil_execute_mux_job "$job" || result_code=$? ;;
       extract) mkvutil_execute_extract_job "$job" || result_code=$? ;;
       *) MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Extract execution is not available')"; result_code=1 ;;
     esac
+    fi
     native_returned=1
     (( ! MKVUTIL_INTERRUPTED )) || trap '' INT
     MKVUTIL_RESULTS+=("$MKVUTIL_RESULT_JSON")
@@ -3923,11 +4039,12 @@ mkvutil_execute_queue() {
 }
 
 print_help() {
-  print -r -- "Usage: ${SCRIPT_NAME} [--bypass] [working_directory]"
+  print -r -- "Usage: ${SCRIPT_NAME} [--dry-run] [--bypass] [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
   print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks\n  4) Matroska Analyze  List tracks and compare layouts'
   print -r -- $'\nChoose one action or a batch (1,2 or 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
   print -r -- '--bypass skips only the removal total-track-count guard.'
+  print -r -- '--dry-run validates and simulates planned jobs without changing files; Analyze remains read-only.'
 }
 
 # The final required input commits the configuration. Complete the whole
@@ -4032,14 +4149,16 @@ _mkvutil_main_body() {
   MKVUTIL_LEDGER_ENABLED=0
   MKVUTIL_INTERRUPTED=0
   MKVUTIL_BYPASS_TRACK_COUNT=0
+  MKVUTIL_DRY_RUN=0
   trap 'MKVUTIL_INTERRUPTED=1' INT TERM
   for argument in "$@"; do
     case "$argument" in
       --help|-h) print_help; return 0 ;;
       --bypass) MKVUTIL_BYPASS_TRACK_COUNT=1 ;;
-      -*) print -u2 -r -- "Usage: ${SCRIPT_NAME} [--bypass] [working_directory]"; return 1 ;;
+      --dry-run) MKVUTIL_DRY_RUN=1 ;;
+      -*) print -u2 -r -- "Usage: ${SCRIPT_NAME} [--dry-run] [--bypass] [working_directory]"; return 1 ;;
       *)
-        (( ! directory_set )) || { print -u2 -r -- "Usage: ${SCRIPT_NAME} [--bypass] [working_directory]"; return 1; }
+        (( ! directory_set )) || { print -u2 -r -- "Usage: ${SCRIPT_NAME} [--dry-run] [--bypass] [working_directory]"; return 1; }
         directory="$argument"; directory_set=1 ;;
     esac
   done

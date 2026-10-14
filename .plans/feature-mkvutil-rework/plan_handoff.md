@@ -14,6 +14,57 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted report cleanup, dry-run and simpler reorder
+
+- Latest user scope is implemented and qualified: final reports retain useful
+  output/skip/failure/recovery names while hiding routine same-name successes and
+  internal phase/state rows. Native Edit/Mux/Extract messages are indented two
+  spaces beneath action/source headings. Raw outcome records remain unchanged.
+- `--dry-run` retains inspection, configuration and preflight, then simulates
+  without writers, staging, output directories or publication. Source identity
+  checks, fail-closed launcher protection, unresolved actual skip history and
+  separate intended outputs are verified. `(DRYRUN)` and simulated counts are
+  truthful; Analyze stays read-only. Back retains mode; new invocation resets it.
+- Public reorder uses bare IDs, requiring two distinct explicitly supplied retained
+  IDs before auto-adding retained 0. Removed/absent 0 is never added; explicit 0
+  keeps its position. Duplicates/old prefixes/removed IDs retry without losing
+  removal. Resolved IDs become metadata targets; unlisted retained tracks follow.
+  Fewer than two retained tracks returns Back with an explanation.
+- User expanded quick-only validation to full focused reorder/removal/metadata IA
+  and light Edit/Extract output checks. Reused approved coordinated route B for
+  T01.03/T02.02/T02.03/T03.01/T04.01/T04.02. Source/test and private IA workers have
+  handed back; parent owns all files. **9/9 tasks and 4/4 goals are accepted**;
+  no worker/runtime job remains.
+- Frozen source SHA-256:
+  `514a395511acb479e615e7adfeeed171108a39c27dba880e48db219a2ada44e3`.
+  Tests SHA-256:
+  `4aa1bbcf3a1f2da695e79fbf794380044c39aa426e4a1bde8649483c11644b9c`.
+  Ten quick checks pass in 6.91s. Seven distinct native/PTY cases pass across runs:
+  explicit/automatic/middle 0, invalid retries, removal and flags/languages/names,
+  dry simulation, light Edit title and combined Extract. Two-file B proves one
+  per-ID answer set applies to both files with two remuxes. UID order, payloads,
+  metadata, unchanged immutable seed/source, native indentation, ASCII alignment,
+  useful output names and final exit pass parent review.
+- Astra's actual frozen-code audit: PASS. Native safety engines, signal/ownership/
+  publication paths, timing arithmetic and indicator helpers are unchanged;
+  earlier required proof is reused only for unchanged slices. Both zsh syntax,
+  Python compile, diff checks, ten balanced guide details blocks, links/privacy,
+  exact nine mirrored contracts/dependencies and unchanged helper/parent ledger
+  pass. No new full-module, CI or exhaustive codec result is claimed.
+- Proof: `.tmp/mkvutil-rework/report-polish/receipt.json`, `RESULTS.md`, `run-03/`,
+  `parent-static-review.json`, `final-output-review.json` and `docs-review.json`.
+  Raw/readable PTY, native argv, UID/metadata/payload receipts are retained under
+  `.tmp/mkvutil-rework/reorder-polish-ia/runs/`. Failed unit/private-driver attempts
+  remain indexed and preserved. No source fix occurred during native IA; source
+  snapshots bind accepted cases even when a later harness failure ended the run.
+- Main Scripts checkout remains feature/mkvutil-rework. Tracked canonical plans,
+  AGENTS, worktree policy and permissions are unchanged. Runtime remains one whole
+  script with existing installed dependencies/tools; no user-media writes,
+  installs/upgrades, worktrees or AGENTS edits. Signed publication follows standing
+  approval; `report-polish/publication.json` binds actual commit/remote/clean-tree
+  verification. On recovery inspect that receipt and Git refs before retrying a
+  push. No feature gate remains.
+
 ### Accepted prompt validation and main-menu Enter
 
 - User requested strict field-specific validation, predictable correction/Back

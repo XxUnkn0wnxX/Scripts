@@ -21,6 +21,23 @@ zsh shell/mkv_utils.zsh "/Volumes/Media/My Show"
 
 With no directory argument, the current directory is used. The scan is top-level only; it does not recurse into subdirectories. You can also pass the same optional directory argument through an existing `mkvutil` alias.
 
+To inspect real files and rehearse a configured batch without changing them, add `--dry-run`:
+
+```zsh
+mkvutil --dry-run "/Volumes/Media/My Show"
+```
+
+Configuration and planning still inspect the selected files and enforce the usual track and destination checks. When the queue starts, the utility simulates the jobs and marks its headings **(DRYRUN)**. It shows simulated counts and intended output names, without editing media, remuxing, extracting, creating output directories or publishing files. The simulation checks the current plan and source identity; it does not establish that a native write or output validation would succeed. Analyze remains its normal read-only operation.
+
+<details>
+<summary>Example: rehearse removal, reorder and metadata</summary>
+
+Run `mkvutil --dry-run "../My Show"`, choose Mux actions `1,2`, and select the files. Remove unwanted track `12`, enter reorder `4,3`, then choose the metadata you want to rehearse. If track 0 is retained, the metadata list shows resolved IDs `0,4,3`. Complete the value prompts normally.
+
+The queue and final report are marked **(DRYRUN)**. Counts say **Simulated**, and intended destinations say **Would write**; the selected media and directory contents remain unchanged. For an actual run, invoke the utility again without `--dry-run` and configure the desired batch.
+
+</details>
+
 The built-in help is available with:
 
 ```zsh
@@ -81,9 +98,9 @@ Every prompt validates its own input before continuing. Unknown menu choices, ma
 | Edit actions or optional Mux metadata | `1-4,2` | Select `1,2,3,4` once each. |
 | Track IDs | `1,3,4-6` | Select `1,3,4,5,6`, provided every ID exists. |
 | Mux or Extract actions | `1,2` or `1-2` | Combine the two available actions; `3` is invalid here. |
-| Reorder | `0:0,0:4,0:1` | Put these retained tracks first in that order; unlisted retained tracks follow. |
+| Reorder | `0,4,1` | Put these retained tracks first in that order; unlisted retained tracks follow. |
 
-Whitespace around separators is accepted, such as `1 - 4, 2` or `0 : 0, 0 : 4`. Whitespace inside a number is rejected: `1 2` never becomes ID `12`. Empty comma items (`1,,2`, `1,`), malformed ranges (`1--3`), unavailable IDs and repeated reorder IDs are rejected. An invalid attempt does not start the batch.
+Whitespace around separators is accepted, such as `1 - 4, 2` for action/track-ID ranges or `0, 4, 3` for reorder. Reorder uses bare comma lists and requires at least two different explicitly entered IDs; it accepts neither ranges nor `0:` prefixes. Whitespace inside a number is rejected: `1 2` never becomes ID `12`. Empty comma items (`1,,2`, `1,`), malformed ranges (`1--3`), unavailable IDs and repeated reorder IDs are rejected. An invalid attempt does not start the batch.
 
 Names and titles are text, so words, numbers, commas and hyphens are literal values there. Flags accept only `0` or `1`; languages use the supported language-tag syntax, such as `eng` or `fr-CA`. The main category selector accepts one number followed by Enter, rather than a batch list.
 
@@ -153,9 +170,9 @@ You can choose `1,2` to remove and reorder tracks in the same remux. You can als
 
 Successful Mux jobs validate a staged output and replace the selected source. If removal changes the extension, the old source path is removed after the new output is published. Warning, partial or interrupted jobs can retain candidates or leave publication incomplete; the final report identifies the actual state and recovery filenames to review before retrying.
 
-Track IDs shown by the utility are the original, zero-based IDs for that source file. For order entries, use the form `0:ID`, separated by commas, such as `0:1,0:0,0:2`. This example places original track 1 first, then track 0, then track 2. Any retained IDs left out of the order are appended. An invalid order, including a removed, unknown or duplicate ID, prompts for the order again without repeating removal selection. Removing every track is rejected before asking for an order.
+Track IDs shown by the utility are the original, zero-based IDs for that source file. Enter reorder IDs as a bare comma list, such as `1,0,2`: first track 1, then track 0, then track 2. At least two different IDs must be entered; `7` alone is invalid. If retained track 0 is omitted, it is prepended automatically: `4,3` becomes `0,4,3`. Explicit track 0 keeps its entered position; absent or removed track 0 is never added. Other retained IDs follow the listed tracks. The utility converts this to native `0:ID` syntax internally. Invalid, removed, unknown or duplicate IDs re-prompt without repeating removal selection. Removing every track is rejected before asking for an order; fewer than two retained tracks cannot be reordered and returns to the action list.
 
-When reorder is selected, optional track metadata inherits exactly the explicit order IDs, shown above the metadata list. No second track-ID entry is needed. For `0:0,0:4,0:3`, each chosen track metadata action asks for values for original IDs `0`, `4`, then `3`; appended retained tracks keep their original metadata. With removal alone, each optional track metadata action instead asks for its own retained track IDs; removed IDs cannot be targeted.
+When reorder is selected, optional track metadata inherits the resolved listed IDs, including automatically prepended track 0, shown above the metadata list. No second track-ID entry is needed. For `0,4,3` or `4,3` with retained 0, each chosen track metadata action asks for values for original IDs `0`, `4`, then `3`; other appended tracks keep their original metadata. With removal alone, each optional track metadata action instead asks for its own retained track IDs; removed IDs cannot be targeted.
 
 #### Removal compatibility and skipped files
 
@@ -194,7 +211,7 @@ Mux reports elapsed time and queue progress between files. Its final report incl
 | To do this | Configure |
 | --- | --- |
 | Remove tracks | Mux `1`, then enter the original IDs to remove. |
-| Reorder tracks | Mux `2`, then enter the desired `0:ID` order. |
+| Reorder tracks | Mux `2`, then enter at least two distinct bare IDs in the desired order. |
 | Remove and reorder in one pass | Mux `1,2`. |
 | Reorder and update language/name | Mux `2`, then optional metadata `3,4`. |
 | Remove, reorder, and update language/name | Mux `1,2`, then optional metadata `3,4`. |
@@ -206,7 +223,7 @@ Assume the reference listing has video ID `0`, subtitle ID `3`, audio ID `4`, an
 
 1. Press `2` at **Category**, then enter Mux actions `1,2`.
 2. Select the files once and enter removal ID `12`.
-3. Enter reorder sequence `0:0,0:4,0:3`.
+3. Enter reorder sequence `0,4,3`, or `4,3` to prepend retained 0 automatically.
 4. The metadata menu shows **Original track IDs for each track edit: 0,4,3**. Select metadata actions `3,4` for language and track name.
 5. Enter values for each inherited ID:
 
@@ -220,7 +237,7 @@ Language prompts run through IDs 0, 4 and 3, followed by name prompts for those 
 
 After entering the last track-name value, preflight runs and the batch starts automatically. Original ID 12 is removed and the resulting order is `0,4,3,11`; track 11 appends without receiving the requested language or name changes. Removal, reorder and metadata use one output-producing `mkvmerge` command per eligible file.
 
-If you accidentally include `0:12` in the order, the utility rejects that order and asks again. The removal selection and file picker do not repeat. Files whose removal ID/type/codec does not match the reference remain skipped as described above.
+If you accidentally include removed ID `12`, a duplicate such as `4,3,1,1`, a single ID, or old `0:` syntax, the utility rejects that order and asks again. The removal selection and file picker do not repeat. Files whose removal ID/type/codec does not match the reference remain skipped as described above.
 
 </details>
 
@@ -279,11 +296,8 @@ For this combined job, between-file timing covers track extraction. The final re
 Published track filenames also appear in the final report, for example:
 
 ```text
-success: Episode01.mkv
-  Configuration 1: phase=complete; actual state=sidecars_published
-  Stage attachments: complete; code=0
-  Stage tracks: complete; code=0
-  Track output ID 3: Episode01 - Track [3].ass (published)
+Outputs from: Episode01.mkv
+  Track 3: Episode01 - Track [3].ass
 ```
 
 </details>
@@ -359,7 +373,22 @@ These are migration examples; choose any supported combination that fits the cur
 
 The processing report starts with a shared ASCII heading box, then shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Configuration outcome counts use readable labels, such as `Done: 3; Failed: 1`; an empty outcome set is shown as `none`. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, codec and total-track-count details. Each original selected file contributes once to the final counts. Displayed source, destination, stage, and recovery-file references use filenames; the full path is shown for the working directory in `Current Work Dir` and the owned navigation menu's `Directory` line. A processed queue always ends here; starting another batch requires a new invocation.
 
-Edit, Mux and Extract show a short action heading and `Processing: filename.ext` before each job, followed by the native tool's live messages. For example, a combined Mux heading is `Mux 1,2: remove + reorder; metadata 1,3`. Native messages show source filenames and logical output filenames, with their parent paths hidden. Identification JSON and tag-inspection payloads stay hidden. Edit prints timing only in its final report; Mux and Extract follow each file's messages with elapsed-time, file-count and ETA summaries in a **File progress** ASCII box that names that source. Extract's final report lists published track filenames and identifies uncertain track publications; attachment collection has its own publication summary.
+Edit, Mux and Extract show a short action heading and `Processing: filename.ext` before each job, followed by the native tool's live messages indented two spaces. For example, a combined Mux heading is `Mux 1,2: remove + reorder; metadata 1,3`. Native messages show source filenames and logical output filenames, with their parent paths hidden. Identification JSON and tag-inspection payloads stay hidden. Edit prints timing only in its final report; Mux and Extract follow each file's messages with elapsed-time, file-count and ETA summaries in a **File progress** ASCII box that names that source. Final reports count routine successful edits and same-name remuxes without repeating each success or internal phase/state. Renamed outputs, extracted track filenames, skips, failures, interruptions and useful recovery information remain visible.
+
+<details>
+<summary>Example: utility headings and native messages</summary>
+
+```text
+Mux 2: reorder
+Processing: Episode01.mkv
+  mkvmerge v93.0 ('Goblu') 64-bit
+  The file 'Episode01.mkv' has been opened for writing.
+  Multiplexing took 1 second.
+```
+
+Native messages stay indented beneath the utility's headings. The next **File progress** box separates this file from the next job. A successful same-name remux appears in the final totals; it does not add a repeated success/phase/state row at the end.
+
+</details>
 
 The box uses ASCII borders and a minimum content width of 44 display columns, expanding for longer lines; its padding uses zsh's multibyte display-width accounting so wide and combining text aligns without changing the border characters. The renderer retains complete lines; a terminal narrower than a box may wrap them. A report may include staged filenames, native scratch filenames, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
 
@@ -409,7 +438,9 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The latest input-validation follow-up passed **70 focused cases**, including 22 controlling-terminal journeys. It checks every category's actions, valid single and combined selections, invalid-input retries, line-based main-menu input, Back and reselection, defaults and literal text, no-write cancellation, runtime stopping and the Working cursor handoff. Media commands were controlled in these checks. The native execution engines and report renderers are unchanged; the earlier native evidence below qualifies those processing paths.
+The report, dry-run and bare-ID reorder update passed **10 focused checks** for ordering, concise reports, native indentation and dry-run safety. A separate bounded interactive pass qualified **seven distinct journeys across recorded runs** through the loaded shell alias outside the repository, using installed fzf and MKVToolNix v93 on disposable tiny files. Four Mux journeys check explicit or automatic track 0, invalid-order retries, removal and inherited flags, languages or names. One selects two files, applies one set of per-ID answers to both, and verifies one remux per file, physical track order, metadata and payloads by original track UID. The remaining journeys check dry-run's zero modifying calls and unchanged file/directory inventory, a light Edit title operation, and combined attachment/track extraction. Captured outputs verify indentation, useful filenames, aligned ASCII boxes and final exit. This focused pass does not repeat every earlier choice or codec combination.
+
+The earlier input-validation follow-up passed **70 focused cases**, including 22 controlling-terminal journeys. It checks every category's actions, valid single and combined selections, invalid-input retries, line-based main-menu input, Back and reselection, defaults and literal text, no-write cancellation, runtime stopping and the Working cursor handoff. Media commands were controlled in those checks. Earlier results below retain their recorded source revisions; unchanged execution and safety paths are reused alongside the current focused proof.
 
 The earlier output audit qualified **184 distinct controlled cases** across the complete module run and corrective checks, followed by **51 affected reporting and extraction cases** after the final output correction. These cover helpers and interactive entry points, individual and grouped actions, fresh selection after Back, the optional Mux metadata exception, Working status, live native output, removal guards, warning/failure/partial outcomes, runtime stopping, and final-report placement. Those results are aggregated; they do not describe one entirely passing invocation.
 
