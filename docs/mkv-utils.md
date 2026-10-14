@@ -29,7 +29,7 @@ zsh shell/mkv_utils.zsh --help
 
 ## Requirements
 
-The script uses the installed `mkvmerge`, `mkvextract`, `mkvpropedit`, `jq`, `fzf`, and Python 3. Track extraction also needs the `pymkv` module and `pymkv2` distribution. When the repository `.venv` exists, the script uses its Python interpreter, including when `.venv` is a symlink.
+The script uses the installed `mkvmerge`, `mkvextract`, `mkvpropedit`, `jq`, `fzf`, and Python 3 with the existing `pymkv` module and `pymkv2` distribution. The rework adds no dependencies or separate runtime helper scripts. When the repository `.venv` exists, the script uses its Python interpreter, including when `.venv` is a symlink.
 
 This utility is maintained for the installed MKVToolNix **v93.0 (Goblu), 64-bit** on macOS Big Sur. The rework was verified against that installed version; upgrading MKVToolNix is not required.
 
@@ -64,7 +64,9 @@ After choosing files, configure all selected operations. The review menu lets yo
 
 Action menus show **e) Back** and accept either `e` or `E`. Before selecting files, Back returns to the main categories. After selection, Back from review, replacement actions, or the optional Mux metadata list returns to the same category's action list, keeping the selected files and explicit exclusions. Choose new actions to configure them afresh; the file picker does not repeat. Back from that action list returns to the main categories. Choosing a new category then scans the directory and opens a fresh picker.
 
-Only action menus interpret `e` as Back. Names and titles can contain the literal value `e`; track IDs, flag values, and language values still use their normal validation. EOF or Ctrl+C ends the invocation. A successful Run prints its final report and ends the invocation.
+At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list with the selected files retained. In Mux, it returns to the optional metadata list while retaining removal and reorder settings; choose metadata again or leave the list blank to skip it. Back from the optional metadata list itself still returns to the category action list.
+
+To enter a literal name or title of `e` or `E`, use `\e` or `\E`. Only those exact text escapes are decoded; other text, including whitespace, backslashes and `cancel`, is preserved. At a metadata track-ID prompt, `cancel` still cancels the invocation. EOF or Ctrl+C ends the invocation. A successful Run prints its final report and ends the invocation.
 
 ### Edit
 
@@ -76,7 +78,7 @@ Only action menus interpret `e` as Back. Names and titles can contain the litera
 | 4 | Set a track name. |
 | 5 | Set the container title. Leave the title blank to clear it. |
 
-For example, choose category `1`, actions `3,4`, select one or more files, then enter the language and name settings when prompted. Edit changes the selected files in place. Multiple metadata changes for one file are grouped into a single `mkvpropedit` invocation.
+For example, choose category `1`, actions `3,4`, select one or more files, then enter the original track IDs once for both actions. Each action asks for a separate value for each ID in the order you entered them. Each value applies to that same original ID in every eligible selected file. A title is entered once for the whole batch, and title-only Edit asks for no track IDs. Edit changes the selected files in place. Multiple metadata changes for one file are grouped into a single `mkvpropedit` invocation.
 
 Edit is metadata-only: it does not print a between-file elapsed-time/ETA block. Its final report records the selected actions, files and outcomes.
 
@@ -85,6 +87,25 @@ Edit is metadata-only: it does not print a between-file elapsed-time/ETA block. 
 | Change both track flags | Edit `1,2` |
 | Set language and track name | Edit `3,4` |
 | Set a title or clear it | Edit `5`; enter a title, or leave the title prompt blank |
+
+<details>
+<summary>Example: set forced and default flags for the same tracks across several files</summary>
+
+1. Press `1` at **Category**, then enter Edit actions `1,2`.
+2. Mark the files with Tab in the picker and confirm.
+3. Enter track IDs `4,3` once. This example assumes both IDs exist with compatible track types in the selected files.
+4. Supply each track's values when prompted:
+
+| Action | Original ID 4 | Original ID 3 |
+| --- | --- | --- |
+| Forced flag | `0` | `1` |
+| Default flag | `1` | `0` |
+
+The prompts identify the original ID and action. Forced values are collected for ID 4, then ID 3; default values follow in the same order. Each value applies to that ID in every eligible selected file. The second action does not ask for IDs again.
+
+Choose **2) Preview** to inspect the plan, then **3) Run batch** to apply it. Both actions use one grouped `mkvpropedit` command per file.
+
+</details>
 
 ### Mux
 
@@ -97,7 +118,9 @@ You can choose `1,2` to remove and reorder tracks in the same remux. You can als
 
 Successful Mux jobs validate a staged output and replace the selected source. If removal changes the extension, the old source path is removed after the new output is published. Warning, partial or interrupted jobs can retain candidates or leave publication incomplete; the final report identifies the actual state and recovery paths to review before retrying.
 
-Track IDs shown by the utility are the original, zero-based IDs for that source file. For order entries, use the form `0:ID`, separated by commas, such as `0:1,0:0,0:2`. This example places original track 1 first, then track 0, then track 2. Any retained IDs left out of the order are appended.
+Track IDs shown by the utility are the original, zero-based IDs for that source file. For order entries, use the form `0:ID`, separated by commas, such as `0:1,0:0,0:2`. This example places original track 1 first, then track 0, then track 2. Any retained IDs left out of the order are appended. An invalid order, including a removed, unknown or duplicate ID, prompts for the order again without repeating removal selection. Removing every track is rejected before asking for an order.
+
+When reorder is selected, optional track metadata inherits exactly the explicit order IDs, shown above the metadata list. No second track-ID entry is needed. For `0:0,0:4,0:3`, each chosen track metadata action asks for values for original IDs `0`, `4`, then `3`; appended retained tracks keep their original metadata. With removal alone, each optional track metadata action instead asks for its own retained track IDs; removed IDs cannot be targeted.
 
 #### Removal compatibility and skipped files
 
@@ -128,6 +151,50 @@ Mux reports elapsed time and queue progress between files. Its final report incl
 | Reorder and update language/name | Mux `2`, then optional metadata `3,4`. |
 | Remove, reorder, and update language/name | Mux `1,2`, then optional metadata `3,4`. |
 
+<details>
+<summary>Example: remove, reorder, set languages and name tracks in one remux</summary>
+
+Assume the reference listing has video ID `0`, subtitle ID `3`, audio ID `4`, another retained track `11`, and unwanted track `12`.
+
+1. Press `2` at **Category**, then enter Mux actions `1,2`.
+2. Select the files once and enter removal ID `12`.
+3. Enter reorder sequence `0:0,0:4,0:3`.
+4. The metadata menu shows **Original track IDs for each track edit: 0,4,3**. Select metadata actions `3,4` for language and track name.
+5. Enter values for each inherited ID:
+
+| Original ID | Language | Track name |
+| --- | --- | --- |
+| 0 | `eng` | `Main video` |
+| 4 | `fr-CA` | `French audio` |
+| 3 | `de` | `German subtitles` |
+
+Language prompts run through IDs 0, 4 and 3, followed by name prompts for those same IDs. The utility does not ask for another target list.
+
+Preview shows original ID 12 removed and final order `0,4,3,11`. Track 11 appends without receiving the requested language or name changes. **Run batch** combines removal, reorder and metadata in one output-producing `mkvmerge` command per eligible file.
+
+If you accidentally include `0:12` in the order, the utility rejects that order and asks again. The removal selection and file picker do not repeat. Files whose removal ID/type/codec does not match the reference remain skipped as described above.
+
+</details>
+
+<details>
+<summary>Example: change or skip metadata after starting to enter values</summary>
+
+With removal and reorder configured, choose metadata `3,4`. If you decide to change the metadata choices while entering a track name, enter `e` at that value prompt:
+
+```text
+Original track ID 4 — Track name: e
+```
+
+The optional metadata menu returns. All language and name values from this unfinished attempt are cleared; removal IDs, reorder sequence and selected files remain configured.
+
+- Enter a new selection, such as `1,2`, to collect forced and default values afresh for the inherited reorder IDs.
+- Press Enter on a blank metadata selection to proceed without metadata edits.
+- Enter `e` at the metadata menu itself to return to Mux actions.
+
+In Edit, `e` at a metadata prompt instead returns to Edit actions with the files still selected. To set an actual name or title of `e`, enter `\e`; uppercase `\E` sets `E`.
+
+</details>
+
 ### Extract
 
 | Action | Extract |
@@ -144,6 +211,20 @@ The utility checks planned destinations before Run. It rejects unsafe attachment
 Extract reports between-file progress. For attachments-only or tracks-only batches, that timing covers the selected stage. For a combined batch, the between-file timing and ETA cover the track-extraction stage; the final report covers the complete job. If a combined job never attempts a track stage, the report says so and does not invent a track ETA.
 
 The attachment collection folder is shared for the whole selected batch. It is not split into per-source subfolders, and same-name regular files are intentionally replaced in the order described above. Use the final report's attachment publication records to see which source supplied the final collected name and whether an earlier publication was superseded or left uncertain.
+
+<details>
+<summary>Example: collect episode fonts and extract subtitle tracks together</summary>
+
+1. Press `3` at **Category**, then enter Extract actions `1,2`.
+2. Mark the episodes in the picker and confirm.
+3. Enter subtitle IDs, such as `3-7`, after checking the displayed listing.
+4. Preview the attachment collection and track outputs, then choose **Run batch**.
+
+Attachments from all selected sources collect into one `Attachments/` folder. A later successful `Font.ttf` publication replaces an earlier regular file of that name. Subtitle tracks are written beside each source with its stem and original ID, such as `Episode01 - Track [3].ass`; those track outputs retain collision protection.
+
+For this combined job, between-file timing covers track extraction. The final report covers the complete attachment-and-track batch.
+
+</details>
 
 ## Mapping the old menu to the new categories
 
@@ -196,6 +277,8 @@ To run only the `mkv_utils` test module:
 The fake media commands in the test harness record arguments and isolate the menu tests from user files. The original rework campaign established 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also included three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These historical results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. The later Back-navigation change was checked separately with focused state/regression tests and three small mocked entrypoint probes, including blocked-input interruption. The owned-menu follow-up was checked separately using an active-screen ANSI model on a real controlling terminal, with mocked media tools, plus focused pipe regressions. These checks cover menu replacement, normal-history preservation, acknowledgement boundaries and keyboard interruption. The processing engines were unchanged. No full native codec matrix or CI result is implied.
 
 The tests cover the action registry and prompts, batching, removal eligibility and skip-only continuation, track order, destination validation, output extensions, publication outcomes, and final reporting. The real-tool journeys check observed media properties and source preservation for their specific scenarios; they do not represent every possible codec and metadata combination.
+
+The shared-ID and metadata-Back follow-up passed 47 affected checks and two controlling-terminal journeys. A strengthened two-file Mux argument check passed separately after adding explicit per-ID flag assertions. These checks drive the current script with isolated fake media tools; they cover shared targets, inherited reorder IDs, invalid-order retry, metadata reset, source-specific arguments and terminal restoration. They reuse the unchanged processing engines' earlier native evidence and do not claim a new native or full-suite campaign.
 
 The script and tests use the repository's installed tools and environment. To inspect tool resolution without changing anything:
 

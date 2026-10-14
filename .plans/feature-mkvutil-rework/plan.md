@@ -136,9 +136,14 @@ Interactive previews and scope reports that will be followed by another owned
 menu require an acknowledgement so the user can read them; an ordinary final
 successful Run still reports and exits. Redirected/unsupported operation keeps
 the existing plain protocol, without alternate-screen escapes or added reads.
-Handle this at menu-choice call sites only: track IDs, flags, languages, names,
-and titles remain ordinary input fields. Literal `e` remains a valid name/title;
-other value fields retain their existing validation.
+Metadata configuration also accepts exact `e`/`E` at its track-ID and value
+prompts. Clear all pending metadata when returning: Edit returns to its action
+menu with the same file selection; Mux returns to its optional metadata list
+with removal and reorder settings preserved. At that list, select a different
+metadata range or leave it blank to skip metadata. Exact `\e`/`\E` in a name
+or title sets the literal value `e`/`E`; other text remains literal. Structural
+removal/reorder and extraction data fields retain their existing input rules.
+EOF, Ctrl+C and existing ID-prompt `cancel` keep their termination semantics.
 
 Before selection, Back from category actions returns to main without opening
 the picker. After selection, Back from review or operation menus returns to the
@@ -185,6 +190,39 @@ either tool or redirect the user through the other main menu.
 Collect every setting and resolve every known conflict before starting the
 queue. Processing must not pause for the next track name, language, operation,
 or file selection. Cancellation during configuration performs no media writes.
+
+### Metadata batch targets and configuration recovery
+
+- Edit asks for original track IDs once for the selected batch, only when a
+  track-scoped action needs them. Reuse that ordered set for all selected track
+  metadata actions. Title-only configuration asks no track IDs; title actions
+  do not replace the shared track-target set.
+- Each track metadata action asks for a separate value for each original ID,
+  with the action and ID clearly identified in the prompt. Reuse each value for
+  that same original ID in every eligible selected file. For targets `0,4,3`,
+  ask ID 0, then 4, then 3 for each choice. Collect values before explicit Run.
+- Mux removal and reordering keep separate inputs. Validate removal first;
+  reject removing every track. If the proposed order includes a removed ID,
+  unknown ID, duplicate or malformed entry, explain the error and ask for the
+  order again without losing removal settings or the selected file scope.
+- When reordering is selected, optional track metadata inherits exactly the
+  explicitly entered reorder IDs, in their entered sequence. Display those
+  IDs in the optional metadata menu and do not ask for them again. For
+  `0:0,0:4,0:3`, targets are 0, 4 and 3; omitted retained tracks still append
+  without receiving those requested edits. Metadata never targets removed IDs.
+- Removal-only Mux metadata keeps independent ID selection per track action,
+  validated against retained original IDs. Container title is one global
+  prompt in either path.
+- Metadata-field Back clears all partially collected settings, argument arrays
+  and the current attempt's metadata-choice attribution. Returning to the Mux
+  metadata menu retains structural settings. Completed configuration/history
+  records remain intact. EOF retains the truthful requested-choice attribution.
+
+This user-directed amendment belongs to shared foundation T01.02, configuration
+T01.03, affected Edit/Mux/reporting consumers T02.01–T02.03 and T04 integration/
+documentation. Verify the affected collectors, original-ID mapping, retry and
+Back/EOF/history boundaries with existing focused tests and a small isolated
+terminal probe. Reuse unchanged builders/engines and their native receipts.
 
 ## Track identity and preview
 
@@ -478,16 +516,16 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
 | T01.01 | Capture the existing behavior baseline and establish the original-track, per-file job, and output-naming contract for all four formats. Settle consistent single/batch removal naming before complete previews are accepted; preserve existing action semantics, defaults, and conversion behavior. | none | T01.02, T01.03; source discovery, track model, and shared test fixtures | Existing-behavior assertions and contract review; unresolved naming decisions keep this task pending. |
-| T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
-| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu-only Back, preserving scope and truthful result history. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
+| T01.02 | Implement one shared metadata definition/configuration section and both tool argument builders inside the self-contained `shell/mkv_utils.zsh`. The Edit list and optional Mux list share labels, prompts, defaults, validation, and complete mappings; configuration/builders do not execute tools. Apply the metadata batch-target and Back contracts through this shared collector. | T01.01 | T01.03, T02.01, T02.02; canonical owner of shared metadata definitions and builders | Focused configuration/argument tests, both-tool mapping completeness, original-ID/scoped arguments, and focused mapping parity evidence appropriate to the foundation; executor semantics remain a T02.02 gate. |
+| T01.03 | Adapt existing actions into category submenus; implement single/comma/range operations, always-multi target selection for one/several files, per-file planning, optional Mux metadata, conflicts, and complete previews. Establish removal ID/type/codec eligibility, automatic mismatch skip receipts, preserved batch scope, and fresh skipped-subset planning without media mutation. Follow the menu-navigation contract for Ctrl+C, hidden main-menu exit and menu and metadata Back, preserving scope and truthful result history. Apply the metadata batch-target contract, retry invalid reorder entries while retaining removal, and preserve scope when metadata Back clears pending settings. | T01.01, T01.02 | T02.01, T02.02, T03.01; canonical owner of selection, job planning, identity, and preview | Real entrypoint/configuration wiring, always-multi selection, invalid/cancel/EOF behavior, all-format planning, settled outputs, removal signature/skip/subset contracts, and no-write configuration/cancellation evidence; focused navigation, field-value and ledger-boundary proof for the approved follow-up. |
 
 ### G02 — Checkpoint 2: Edit + Mux execution
 
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
-| T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
-| T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
-| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each continuation attributed to its own choices. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, final action/directory reporting for single/batch/continuation scopes, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
+| T02.01 | Implement grouped metadata-only Edit jobs through `mkvpropedit`, preserving existing values, input defaults/ranges, title clearing, and retained properties. Report actual in-place state on warnings/failures without rollback claims. Apply each collected per-ID value to the same original ID in every eligible selected file. | T01.02, T01.03 | T02.02, T02.03; common source, metadata builders, and test helpers | Focused single/multi-file Edit behavior, grouped command arguments, warning/error state, and consumer integration evidence. |
+| T02.02 | Implement one output-producing `mkvmerge` remux per eligible Mux file, combining removal/order with optional direct metadata. Keep removal mismatch-skipped files wholly untouched. Consume the settled naming contract; validate staged output and checked promotion, collisions, warnings, and interruptions. No post-remux `mkvpropedit`. Reorder metadata targets only the explicit original reorder IDs; appended retained tracks keep unrequested metadata. | T01.02, T01.03 | T02.01, T02.03, T03.01; common source/test helpers; owns remux staging and promotion | Focused failures/safety, eligible-file command counts and zero modifying calls for mismatch skips, plus required small real-v93 flag/title/track-mapping and preservation evidence before accepting this executor. |
+| T02.03 | Integrate complete single/batch Edit and Mux jobs with exact filename/skip reports, elapsed time, average ETA, truthful successful/failed/warning/partial/skipped outcomes, and failure-reflecting exit status. Final reports identify the input directory basename, category and single/multiple submenu action numbers, with optional Mux metadata numbers separate and each continuation attributed to its own choices. Offer fresh configured Mux continuations for mismatch-skipped files only, counting each source once. Prove the old 1+2, 8+4+3, and 7+8+4+3 workflow equivalents. Clear abandoned current metadata choices on Back without losing requested EOF attribution or earlier outcomes. | T02.01, T02.02 | T03.01, T04.01; shared executor/reporting code and integration fixtures | Affected queue/consumer tests, final action/directory reporting for single/batch/continuation scopes, mixed/all-skipped reporting, fresh subset continuation excluding completed files, resolved/unresolved final counts/status, and partial failures without a full unrelated suite. |
 
 ### G03 — Checkpoint 3: extraction integration
 
@@ -500,7 +538,7 @@ The checklist owns acceptance status; the handoff owns current work and consent.
 | Task ID | Required result | Hard prerequisites | Shared/overlap | Task acceptance evidence |
 | --- | --- | --- | --- | --- |
 | T04.01 | Verify every adapted single/batch action, shared metadata path, and removal skip-only continuation together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures | Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. |
-| T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | T04.01 | none | Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. |
+| T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. Include polished, collapsible examples for Edit batches, combined Mux metadata, metadata Back and extraction. | T04.01 | none | Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. |
 
 ### Foundations, stage gates, and shared ownership
 

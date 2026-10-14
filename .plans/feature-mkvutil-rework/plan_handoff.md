@@ -14,7 +14,54 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Accepted buffered menu-redraw amendment
+### Accepted metadata targets and recovery amendment
+
+- User-directed shared Edit IDs, per-choice per-ID values across selected files,
+  explicit Mux reorder-ID inheritance, invalid-order retry, action-plus-ID prompts
+  and metadata-field e/E Back are implemented. Back discards all pending metadata;
+  Mux retains removal/order and returns to optional metadata. Exact \e/\E sets
+  literal name/title e/E. The earlier range-wide-value reply remains revoked.
+- Astra focused audit PASS WITH NOTES is in `plan-audit.json`. Parent verified
+  five intended configuration/menu functions changed, 92 functions unchanged,
+  exact shared helper and parent-session ledger, all nine mirrored contracts and
+  source-specific original-ID behavior. Builders, native processing/promotion,
+  queue/reporting engines and extraction remain byte-identical to baseline.
+- Approved route B is complete: T01.02 → T01.03 → T02.01/T02.02/T02.03 → T04.
+  The seven reopened gates and G01/G02/G04 are reaccepted; 9/9 tasks and 4/4 goals
+  accepted. Historical T01.01/T03.01/G03/native proof remains preserved.
+- Proof root `.tmp/mkvutil-rework/metadata-targets.a_k68kyk/`: `receipt.json`,
+  `parent-review.json`, `docs-review.json` and phase receipts/logs. 47 affected
+  cases pass, plus two distinct controlling-terminal cases in a separate run.
+  One final flag-argv assertion strengthening passes a sole consumer rerun;
+  parent reversal reproduces the 47-case test-file hash. All38 copied runtimes
+  match current source. No single49-case run or new full/native/CI campaign.
+- IA PASS uses the actual whole script with isolated fake media/fzf boundaries:
+  shared two-file Edit, combined two-file Mux, Back/retry/reselection and skipped
+  subset flows; controlling PTY verifies inherited IDs, metadata title Back,
+  literal text escape, history and physical Ctrl+C/restoration. No user media.
+  Guards remain5s/10s/20s. Initial prompt-count arithmetic failure is retained;
+  correcting8to7 changed no runtime behavior or underlying mapping assertions.
+  Total phase cost including diagnostics:150.67s wall/136.60s measured CPU;
+  accounting has descendant/peak limits, no stress or CPU peak claim.
+- Latest user explicitly required IA passes, authorized push when done, and
+  requested polished docs/examples in details blocks. Guide now has four
+  reviewed collapsible workflows; final prose-only edit does not invalidate
+  runtime checks. Metadata defines remain shared in one runtime script, with
+  no new dependencies or MKVToolNix upgrade.
+- Current hashes: source `88b7d6f8619c41a0163016c46bf8559fee19f209d336ed1ad13bd612cd7a667f`;
+  tests `721ec6c0caab1012fe2f40f81c6ac99c7317b072f543a26ce0b9881e17aaa6b1`;
+  guide `d883d2426d33591957e841bb30e9cbf58c12b808262b0f9ece425eef1cab0c02`.
+- `metadata_target_flow` returned its exclusive source/tests/guide package and
+  is quiescent; parent completed integration/record/doc review. Main Scripts is
+  the only checkout on feature/mkvutil-rework, baseline signed/pushed
+  `dec9e9b208d946a374701526745d40c060f4d7f0`. Six approved files are dirty until
+  publication; no branch/worktree/AGENTS/ignore/dependency change.
+- Next: complete final record/static checks, sign and push the six-file change
+  under the user's explicit feature authorization, then verify exact live ref,
+  clean tree and this folder's `publication.json`. No implementation/test gate
+  remains; original approvals/permissions/recovery records are preserved.
+
+### Historical: Accepted buffered menu-redraw amendment
 
 - User requires immediate menu redraw without flash or artificial delay.
   Implemented in main Scripts on feature; baseline signed/published

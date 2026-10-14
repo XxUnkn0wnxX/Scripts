@@ -507,7 +507,7 @@ _mkvutil_metadata_define() {
 _mkvutil_metadata_define 1 'Set flag-forced for tracks' track 'Flag-forced (1 or 0) [0]: ' 0 boolean flag-forced --forced-display-flag forced_track forced_track ''
 _mkvutil_metadata_define 2 'Set flag-default for tracks' track 'Flag-default (1 or 0) [1]: ' 1 boolean flag-default --default-track-flag default_track default_track ''
 _mkvutil_metadata_define 3 'Set language for tracks' track 'Language: ' '' language language --language '' language language_ietf
-_mkvutil_metadata_define 4 'Set name for tracks' track 'Name: ' '' text name --track-name '' track_name ''
+_mkvutil_metadata_define 4 'Set name for tracks' track 'Track name: ' '' text name --track-name '' track_name ''
 _mkvutil_metadata_define 5 'Set title for MK file' container 'Title (empty to unset): ' '' text title --title '' title ''
 
 # BCP 47 structural syntax plus grandfathered tags; this deliberately does not
@@ -639,26 +639,46 @@ mkvutil_metadata_set() {
   MKVUTIL_METADATA_SETTINGS[${choice}:$target]="$value"
 }
 
+# Modes: independent targets per choice, shared Edit targets, or explicit Mux IDs.
 _mkvutil_metadata_collect() {
   setopt localtraps
   trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
   local choices="" choice="" selection="" targets_csv="" target="" value=""
+  local mode="${2:-independent}" preset="${3-}" shared_targets=""
   local -a chosen_targets=()
   mkvutil_metadata_validate_registry || return 1
   choices="$(mkvutil_expand_ids "$1" "${(j:,:)MKVUTIL_METADATA_IDS}")" || return 1
+  case "$mode" in
+    independent|shared) ;;
+    preset)
+      targets_csv="$(mkvutil_expand_ids "$preset" "${(j:,:)MKVUTIL_RETAINED_IDS}")" || return 1
+      [[ "$targets_csv" == "$preset" ]] || return 1
+      shared_targets="$targets_csv" ;;
+    *) return 1 ;;
+  esac
+  print -u2 -r -- 'Metadata: e/E goes Back; use \e/\E for literal text e/E.'
   for choice in "${(@s:,:)choices}"; do
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
-      printf '%s — Track IDs (comma/range; cancel to return): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
-      IFS= read -r selection || return 2
-      [[ "$selection" != cancel ]] || return 2
-      targets_csv="$(mkvutil_expand_ids "$selection" "${(j:,:)MKVUTIL_RETAINED_IDS}")" || return 1
+      if [[ "$mode" == independent || -z "$shared_targets" ]]; then
+        printf '%s — Track IDs (comma/range; e to go back; cancel to return): ' "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}" >&2
+        IFS= read -r selection || return 2
+        case "$selection" in e|E) return 4 ;; cancel) return 2 ;; esac
+        targets_csv="$(mkvutil_expand_ids "$selection" "${(j:,:)MKVUTIL_RETAINED_IDS}")" || return 1
+        [[ "$mode" != shared ]] || shared_targets="$targets_csv"
+      else
+        targets_csv="$shared_targets"
+      fi
       chosen_targets=("${(@s:,:)targets_csv}")
     fi
     for target in "${chosen_targets[@]}"; do
-      [[ "$target" == info ]] || printf 'Track ID %s — ' "$target" >&2
+      [[ "$target" == info ]] || printf 'Original track ID %s — ' "$target" >&2
       printf '%s' "${MKVUTIL_METADATA_REGISTRY[${choice}:prompt]}" >&2
       IFS= read -r value || return 2
+      case "$value" in e|E) return 4 ;; esac
+      if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" == text ]]; then
+        case "$value" in '\e') value=e ;; '\E') value=E ;; esac
+      fi
       [[ -n "$value" ]] || value="${MKVUTIL_METADATA_REGISTRY[${choice}:default]}"
       mkvutil_metadata_set "$choice" "$target" "$value" || return 1
     done
@@ -666,12 +686,12 @@ _mkvutil_metadata_collect() {
   return 0
 }
 
-# Collect once, before execution. EOF/cancel returns 2; invalid input returns 1.
-# A failed/cancelled collection leaves no partial settings or argument arrays.
+# Collect once, before execution. EOF/cancel returns 2, Back 4, invalid input 1.
+# An incomplete collection leaves no partial settings or argument arrays.
 mkvutil_metadata_configure() {
   local result=0
   mkvutil_metadata_reset
-  _mkvutil_metadata_collect "${1-}" || result=$?
+  _mkvutil_metadata_collect "${1-}" "${2:-independent}" "${3-}" || result=$?
   if (( result != 0 )); then
     mkvutil_metadata_reset
     return "$result"
@@ -1248,7 +1268,7 @@ _mkvutil_ui_acknowledge() {
 # Pure rendering runs off-screen. Diagnostics are captured with the body and
 # replayed by the parent after leaving; a subshell never changes ACTIVE.
 _mkvutil_menu_body() {
-  local view="$1" category="${2-}" owned="${3:-0}" title=""
+  local view="$1" category="${2-}" owned="${3:-0}" targets="${4-}" title=""
   case "$view:$category" in
     actions:edit|metadata:mux) mkvutil_metadata_validate_registry || return 1 ;;
   esac
@@ -1263,6 +1283,7 @@ _mkvutil_menu_body() {
     actions) mkvutil_category_menu "$category" ;;
     metadata)
       print -r -- 'Optional metadata edits:'
+      [[ -z "$targets" ]] || print -r -- "Original track IDs for each track edit: $targets"
       mkvutil_metadata_menu || return 1
       print -r -- 'e) Back' ;;
     review) mkvutil_review_menu ;;
@@ -1272,11 +1293,11 @@ _mkvutil_menu_body() {
 
 _mkvutil_menu_read() {
   setopt localtraps
-  local view="$1" category="${2-}" prompt="${3-}" result=0 owned=0 body=""
+  local view="$1" category="${2-}" prompt="${3-}" targets="${4-}" result=0 owned=0 body=""
   trap 'MKVUTIL_INTERRUPTED=1; result=2; return 2' INT TERM
   {
     _mkvutil_ui_owned && owned=1
-    body="$(_mkvutil_menu_body "$view" "$category" "$owned" 2>&1)" || result=$?
+    body="$(_mkvutil_menu_body "$view" "$category" "$owned" "$targets" 2>&1)" || result=$?
     if (( result )); then
       _mkvutil_ui_leave
       [[ -z "$body" ]] || print -u2 -r -- "$body"
@@ -1371,7 +1392,7 @@ mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=()
-  local item=""
+  local item="" retained_csv="" metadata_mode=independent result=0
   MKVUTIL_CONFIG=""
   MKVUTIL_JOBS=()
   mkvutil_metadata_reset
@@ -1385,36 +1406,58 @@ mkvutil_configure_category() {
   fi
   display_track_info "$source" "$raw" || return 1
   case "$category" in
-    edit) mkvutil_metadata_configure "$operations" || return $? ;;
+    edit)
+      result=0
+      mkvutil_metadata_configure "$operations" shared || result=$?
+      if (( result == 4 )); then mkvutil_batch_metadata_requested '' || return 1; fi
+      (( result == 0 )) || return "$result" ;;
     mux)
       if [[ ",$operations," == *,1,* ]]; then
         _mkvutil_read 'Track IDs to remove (comma/range): ' || return 2
         removal="$(mkvutil_expand_ids "$REPLY" "${(j:,:)MKVUTIL_INPUT_IDS}")" || return 1
         signatures="$(mkvutil_removal_signatures "$reference" "$removal")" || return 1
       fi
+      # Resolve removal before asking for order; retry only the order input.
+      mkvutil_plan_layout "$rows" "$removal" '' "${source:e}" || return 1
+      retained_csv="${(j:,:)MKVUTIL_RETAINED_IDS}"
       if [[ ",$operations," == *,2,* ]]; then
-        _mkvutil_read 'Track order (e.g. 0:1,0:0; omitted retained tracks append): ' || return 2
-        order="${REPLY//[[:space:]]/}"
-        [[ -n "$order" ]] || return 1
+        while true; do
+          (( ! MKVUTIL_INTERRUPTED )) || return 2
+          _mkvutil_read 'Track order (e.g. 0:1,0:0; omitted retained tracks append): ' || return 2
+          order="${REPLY//[[:space:]]/}"
+          if [[ -n "$order" ]] && mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}"; then
+            (( ! MKVUTIL_INTERRUPTED )) || return 2
+            break
+          fi
+          (( ! MKVUTIL_INTERRUPTED )) || return 2
+          print -u2 -r -- "Invalid track order. Use 0:ID entries with distinct retained original IDs only: $retained_csv"
+        done
+        for item in "${(@s:,:)order}"; do
+          _mkvutil_canonical_id "${item#0:}" || return 1
+          order_ids+=("$REPLY")
+        done
+        metadata_mode=preset
       fi
-      mkvutil_plan_layout "$rows" "$removal" "$order" "${source:e}" || return 1
-      for item in "${(@s:,:)order}"; do
-        [[ -n "$item" ]] || continue
-        _mkvutil_canonical_id "${item#0:}" || return 1
-        order_ids+=("$REPLY")
-      done
-      _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' || return $?
-      case "$REPLY" in e|E|0) return 4 ;; esac
-      metadata="$REPLY"
-      if [[ -n "${metadata//[[:space:]]/}" ]]; then
+      while true; do
+        mkvutil_batch_metadata_requested '' || return 1
+        _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' "${(j:,:)order_ids}" || return $?
+        case "$REPLY" in e|E|0) return 4 ;; esac
+        metadata="$REPLY"
+        if [[ -z "${metadata//[[:space:]]/}" ]]; then metadata=""; _mkvutil_ui_leave; break; fi
         _mkvutil_menu_choices edit "$metadata" || return 1
         metadata="$REPLY"
         _mkvutil_ui_leave
         mkvutil_batch_metadata_requested "$metadata" || return 1
-        mkvutil_metadata_configure "$metadata" || return $?
-      else
-        _mkvutil_ui_leave
-      fi
+        result=0
+        mkvutil_metadata_configure "$metadata" "$metadata_mode" "${(j:,:)order_ids}" || result=$?
+        if (( result == 4 )); then
+          metadata=""
+          mkvutil_batch_metadata_requested '' || return 1
+          continue
+        fi
+        (( result == 0 )) || return "$result"
+        break
+      done
       ;;
     extract)
       if [[ ",$operations," == *,2,* ]]; then
