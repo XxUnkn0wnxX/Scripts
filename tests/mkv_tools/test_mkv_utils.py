@@ -41,6 +41,40 @@ def _mkv_file(env: dict[str, Path], name: str) -> Path:
     return path
 
 
+def _ascii_box_contains(output: str, *required_rows: str) -> tuple[int, int, list[str]]:
+    lines = output.splitlines()
+    borders = [
+        index for index, line in enumerate(lines)
+        if len(line) >= 3 and line.startswith("+") and line.endswith("+") and set(line) <= {"+", "-"}
+    ]
+    for first_index in borders:
+        border = lines[first_index]
+        for last_index in borders:
+            if last_index <= first_index or lines[last_index] != border:
+                continue
+            interior = lines[first_index + 1:last_index]
+            if any(line != border and (not line.startswith("|") or not line.endswith("|")) for line in interior):
+                continue
+            rows = [line[1:-1].strip() for line in interior if line != border]
+            if all(required in rows for required in required_rows):
+                assert all(len(line) == len(border) for line in lines[first_index:last_index + 1])
+                return first_index, last_index, rows
+    raise AssertionError(f"no ASCII box contains rows: {required_rows!r}\n{output}")
+
+
+def _analysis_spinner_frames(output: str) -> list[str]:
+    import re
+
+    clean = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", output)
+    frames = []
+    for segment in clean.split("\r"):
+        if "Analysing" in segment:
+            prefix = segment.split("Analysing", 1)[0].split()
+            if prefix:
+                frames.append(prefix[-1])
+    return frames
+
+
 def test_mkv_utils_pure_track_planning_contract(tmp_path: Path):
     script_path = Path(__file__).resolve().parents[2] / "shell" / "mkv_utils.zsh"
     zsh_script = r'''
@@ -581,6 +615,12 @@ def test_mkv_utils_mux_entrypoint_track_count_skip_and_bypass(env, bypass_positi
     )
     assert "Removal reference file: Reference count.mkv" in result.stdout
     assert str(first) not in result.stdout and str(second) not in result.stdout
+    _ascii_box_contains(result.stdout, "Final report")
+    config_header_start, config_header_end, _ = _ascii_box_contains(
+        result.stdout, "Track configuration", f"Current Work Dir: {env['workdir']}",
+        "Removal reference file: Reference count.mkv")
+    listing_index = result.stdout.index("mkvmerge JSON track listing")
+    assert config_header_start < config_header_end < listing_index
     merge_calls = [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
     expected_orders = {str(first): "0:11,0:12", str(second): "0:11,0:12,0:99"}
     for call in merge_calls:
@@ -1690,6 +1730,7 @@ print -r -- "RESULT ${MKVUTIL_RESULTS[1]}"
     assert record["status"]=="interrupted" and not record["published_artifacts"]
     assert all(Path(p).parent==target for p in record["staging_directories"])
     assert "Track stage: not attempted" in result.stdout and "unavailable (no track stages attempted)" in result.stdout
+    _ascii_box_contains(result.stdout, "File progress", "Track stage: not attempted", "Estimated Time Remaining: unavailable (no track stages attempted)")
     assert len(_command_argv(env,"mkvextract"))==1
     assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
 
@@ -2119,6 +2160,10 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
 def test_mkv_utils_reporting_progress_and_extract_formatter_contract(env):
     result = _run_planning_contract(env, r'''
 eq "$(mkvutil_format_progress edit 1,2 9 1 1 2 9)" '' 'all Edit progress silent'
+special="$(mkvutil_ascii_box 'Literal $cash' '100% \literal')"
+print -r -- "SPECIAL-BEGIN"
+print -r -- "$special"
+print -r -- "SPECIAL-END"
 print -r -- "MUX-BEGIN"
 mkvutil_format_progress mux 1,2 2 2 1 3 8
 print -r -- "MUX-END"
@@ -2128,6 +2173,9 @@ print -r -- "ZERO-END"
 for action in 1 2; do
   output="$(mkvutil_format_progress extract "$action" 5 1 1 2 5)"
   [[ "$output" == *'Processed In: 0h 0m 5s'* && "$output" == *'Estimated Time Remaining: 0h 0m 5s'* ]] || fail 'single Extract timing'
+  print -r -- "EXTRACT-$action-BEGIN"
+  print -r -- "$output"
+  print -r -- "EXTRACT-$action-END"
 done
 print -r -- "COMBINED-BEGIN"
 mkvutil_format_progress extract 1,2 30 2 2 3 65 3 8
@@ -2141,12 +2189,32 @@ mkvutil_finish 2
     mux = result.stdout.split("MUX-BEGIN\n")[1].split("MUX-END")[0]
     assert "Processed In: 0h 0m 2s" in mux and "Estimated Time Remaining: 0h 0m 4s" in mux
     assert "Files Attempted: 2" in mux and "Files Done: 1" in mux and "Files Remaining: 1" in mux
+    _ascii_box_contains(mux, "File progress", "Processed In: 0h 0m 2s", "Files Done: 1",
+                        "Files Attempted: 2", "Files Remaining: 1", "Estimated Time Remaining: 0h 0m 4s")
     zero = result.stdout.split("ZERO-BEGIN\n")[1].split("ZERO-END")[0]
     assert "Estimated Time Remaining: 0h 0m 0s" in zero and "Files Remaining: 0" in zero
+    _ascii_box_contains(zero, "File progress", "Files Remaining: 0", "Estimated Time Remaining: 0h 0m 0s")
     combined = result.stdout.split("COMBINED-BEGIN\n")[1].split("COMBINED-END")[0]
     assert "Processed In: 0h 0m 3s" in combined and "Estimated Time Remaining: 0h 0m 4s" in combined
+    _ascii_box_contains(combined, "File progress", "Processed In: 0h 0m 3s", "Files Done: 2",
+                        "Files Attempted: 2", "Files Remaining: 1", "Estimated Time Remaining: 0h 0m 4s")
+    special = result.stdout.split("SPECIAL-BEGIN\n")[1].split("SPECIAL-END")[0]
+    _ascii_box_contains(special, "Literal $cash", "100% \\literal")
+    for action in (1, 2):
+        extract = result.stdout.split(f"EXTRACT-{action}-BEGIN\n")[1].split(f"EXTRACT-{action}-END")[0]
+        _ascii_box_contains(extract, "File progress", "Processed In: 0h 0m 5s", "Files Done: 1",
+                            "Files Attempted: 1", "Files Remaining: 1", "Estimated Time Remaining: 0h 0m 5s")
     assert "Category:" not in mux and "Directory:" not in mux
     assert "Directory: Extract directory" in result.stdout and "Category: extract; Actions: 1,2" in result.stdout
+    failed_python = _run_planning_contract(env, r'''
+export TEST_FAKE_PYTHON_FAIL=1
+progress_code=0
+output="$(mkvutil_format_progress mux 1 1 1 1 2 2)" || progress_code=$?
+eq "$progress_code" 1 'progress Python failure remains nonzero'
+eq "$output" '' 'Python failure does not print a success box'
+print -r -- 'progress formatter failure preserved'
+''', {})
+    assert failed_python.stdout.rstrip().endswith("progress formatter failure preserved")
 
 
 @pytest.mark.parametrize("workflow", ["edit_flags", "mux_reorder_metadata", "mux_remove_reorder_metadata"])
@@ -2283,6 +2351,7 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n1,2\n0-3\n",
                           extra_env={"TEST_FAKE_EXECUTION_JSON":str(manifest_path)})
     assert result.returncode==0,result.stdout+result.stderr
+    _ascii_box_contains(result.stdout, "Final report")
     assert "Category: extract; Actions: 1,2" in result.stdout and "Directory: workdir" in result.stdout
     assert "Done: 1; Failed: 0" in result.stdout and "Attachments processed: 3; published: 3; final unique published names: 2; superseded: 1" in result.stdout
     assert "Files Attempted: 1" in result.stdout and "Estimated Time Remaining:" in result.stdout
@@ -2324,6 +2393,8 @@ def test_mkv_utils_category_edit_run_grouped_entrypoint(env: dict[str, Path]):
         extra_env={"TEST_FAKE_EXECUTION_JSON": str(manifest)},
     )
     assert result.returncode == 0, result.stdout + result.stderr
+    _ascii_box_contains(result.stdout, "Final report")
+    assert "Processed In:" not in result.stdout
     assert "success:" in result.stdout and "edited_observed" in result.stdout
     assert len(_command_argv(env, "fzf")) == 1
     assert _command_argv(env, "mkvpropedit") == [[str(source), "--normalize-language-ietf", "off", "--edit", "info", "--delete", "title"]]
@@ -2402,13 +2473,23 @@ def test_mkv_utils_analyze_uses_first_usable_full_id_signature_reference(env):
     assert "Analysis reference file: Reference library.mkv" in result.stdout
     assert "Reference file: Reference library.mkv" in result.stdout
     assert "Files analyzed: 6; Matching: 2; Mismatched: 4; Failed: 1; Not attempted: 0" in result.stdout
+    assert "Analysing" not in result.stdout + result.stderr and "\x1b" not in result.stdout + result.stderr
     before_report, separator, final_report = result.stdout.partition("Final report")
     assert separator and result.stdout.count("Final report") == 1
+    _ascii_box_contains(result.stdout, "Final report")
     assert before_report.count("Analysis reference file: Reference library.mkv") == 1
     assert before_report.count("mkvmerge JSON track listing") == 1
+    header_start, header_end, _ = _ascii_box_contains(
+        before_report, "Analysis", f"Current Work Dir: {env['workdir']}",
+        "Analysis reference file: Reference library.mkv",
+    )
     track_lines = [line for line in before_report.splitlines() if line.startswith("Track ID ")]
     assert len(track_lines) == 3
     assert [line.split(":", 1)[0] for line in track_lines] == ["Track ID 12", "Track ID 30", "Track ID 90"]
+    listing_heading = next(i for i, line in enumerate(before_report.splitlines()) if "mkvmerge JSON track listing" in line)
+    before_lines = before_report.splitlines()
+    assert header_start < header_end < listing_heading
+    assert "" in before_lines[header_end + 1:listing_heading]
     assert all("[Original " in line and "[eng]" in line for line in track_lines)
     assert "Track ID 777" not in before_report
     assert "literal/name/value" not in before_report and "jpn" not in before_report
@@ -2458,12 +2539,14 @@ def test_mkv_utils_analyze_single_match_and_no_usable_reference(env, case):
     overrides.write_text(json.dumps(models), encoding="utf-8")
     result = _run_mkv_utils(
         env, input_data="4\n", fzf_responses=[list(map(str, files))],
-        extra_env={"TEST_FAKE_MKVMERGE_JSON_BY_PATH": str(overrides)},
+        extra_env={"TEST_FAKE_MKVMERGE_JSON_BY_PATH": str(overrides), "TERM": "dumb"},
     )
     assert result.returncode == return_code, result.stdout + result.stderr
     assert expected in result.stdout
+    assert "Analysing" not in result.stdout + result.stderr and "\x1b" not in result.stdout + result.stderr
     before_report, separator, final_report = result.stdout.partition("Final report")
     assert separator and result.stdout.count("Final report") == 1
+    _ascii_box_contains(result.stdout, "Final report")
     if case == "all-unusable":
         assert "No usable reference file." in final_report
         assert "mkvmerge JSON track listing" not in result.stdout + result.stderr
@@ -2474,6 +2557,8 @@ def test_mkv_utils_analyze_single_match_and_no_usable_reference(env, case):
         assert before_report.count("mkvmerge JSON track listing") == 1
         assert before_report.count("Analysis reference file: Only source.mkv") == 1
         assert before_report.count("Track ID 12: audio (A_AAC)") == 1
+        _ascii_box_contains(before_report, "Analysis", f"Current Work Dir: {env['workdir']}",
+                             "Analysis reference file: Only source.mkv")
         assert "Only source.mkv" not in final_report.partition("Reference file:")[0]
     inspections = _command_argv(env, "mkvmerge")
     assert len(inspections) == len(files)
@@ -4117,7 +4202,7 @@ print -r -- 'prepared newline identity passed'
 @pytest.mark.parametrize("category,stop", [
     ("edit", "int"), ("mux", "int"), ("extract", "int"),
     ("attachments", "int"), ("mux", "term"), ("edit", "hup"),
-    ("analysis", "int"),
+    ("analysis", "int"), ("analysis", "complete"), ("analysis", "dumb-complete"),
     ("mux", "late-int"),
     ("extract", "descendant-int"),
     ("extract", "unconfirmed-int"),
@@ -4140,6 +4225,8 @@ def test_mkv_utils_runtime_stop_terminal(env, category, stop):
         extraction={str(first): {"attachments": {"outputs": {"1": {"data": "font"}}},
                                  "tracks": {"outputs": {"3": {"data": "unfinished track"}}}}})
     marker = env["fake_state"] / "writer-ready"
+    analysis_last_marker = env["fake_state"] / "analysis-last-ready"
+    analysis_release = env["fake_state"] / "analysis-release"
     tool, anchor = {
         "edit": ("mkvpropedit", 'code = manifest.get("edit_code", 0)'),
         "mux": ("mkvmerge", 'code = manifest.get("merge_code", 0)'),
@@ -4159,7 +4246,15 @@ def test_mkv_utils_runtime_stop_terminal(env, category, stop):
     ready_deadline = time.monotonic() + 1
     while not Path(str(marker)+".descendant").exists() and time.monotonic() < ready_deadline:time.sleep(0.01)
 '''
-    if category == "analysis":
+    if category == "analysis" and stop in ("complete", "dumb-complete"):
+        hold_anchor = '  if [ -n "${TEST_FAKE_EXECUTION_JSON:-}" ]; then'
+        assert body.count(hold_anchor) == 1
+        body = body.replace(hold_anchor, '''  if [ "$source_file" = "$TEST_ANALYSIS_HOLD_PATH" ]; then
+    printf '%s\\n' "$$" > "$TEST_ANALYSIS_LAST_MARKER"
+    while [ ! -e "$TEST_ANALYSIS_RELEASE" ]; do /bin/sleep 0.02; done
+  fi
+  if [ -n "${TEST_FAKE_EXECUTION_JSON:-}" ]; then''', 1)
+    elif category == "analysis":
         body = body.replace(anchor, '''if [ "$call_mode" = "json" ]; then
   printf '%s\\n' "$$" > "$TEST_STOP_MARKER"
   sleep 0.8
@@ -4200,6 +4295,11 @@ esac
         "TEST_RESULT_MARKER": str(result_marker),
         "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]), **extra,
     })
+    if category == "analysis" and stop in ("complete", "dumb-complete"):
+        run_env.update(TERM="dumb" if stop == "dumb-complete" else "xterm-256color",
+                       TEST_ANALYSIS_HOLD_PATH=str(second),
+                       TEST_ANALYSIS_LAST_MARKER=str(analysis_last_marker),
+                       TEST_ANALYSIS_RELEASE=str(analysis_release))
     if stop in ("descendant-int", "unconfirmed-int"):
         fault_dir = env["workdir"].parent / "shutdown-probe-fault"
         fault_dir.mkdir()
@@ -4236,7 +4336,10 @@ esac
         os.write(master, value)
 
     try:
-        answer(b"Category: \x1b[?25h", {"edit": b"1", "mux": b"2", "analysis": b"4"}.get(category, b"3"))
+        if stop == "dumb-complete":
+            answer(b"Category: ", b"4\n")
+        else:
+            answer(b"Category: \x1b[?25h", {"edit": b"1", "mux": b"2", "analysis": b"4"}.get(category, b"3"))
         if category != "analysis":
             answer(b"Operations (single/comma/range): ", {"edit": b"5\n", "mux": b"2\n", "extract": b"1,2\n", "attachments": b"1\n"}[category])
             if category == "edit": answer(b"Title (empty to unset): ", b"Stop test\n")
@@ -4244,15 +4347,31 @@ esac
                 answer(b"Track order (e.g.", b"0:1\n")
                 answer(b"Metadata choices (comma/range; blank for none): ", b"\n")
             elif category == "extract": answer(b"Track IDs to extract", b"3\n")
-        while not marker.exists() and time.monotonic() < deadline:
+        analysis_scan = category == "analysis" and stop in ("complete", "dumb-complete")
+        ready_marker = analysis_last_marker if analysis_scan else marker
+        while not ready_marker.exists() and time.monotonic() < deadline:
             receive()
             assert process.poll() is None, output.decode(errors="replace")
-        assert marker.exists(), output.decode(errors="replace")
+        assert ready_marker.exists(), output.decode(errors="replace")
+        if category == "analysis":
+            if stop == "dumb-complete":
+                assert not _analysis_spinner_frames(output.decode(errors="replace"))
+            else:
+                while len(set(_analysis_spinner_frames(output.decode(errors="replace")))) < 2 and time.monotonic() < deadline:
+                    receive()
+                frames = _analysis_spinner_frames(output.decode(errors="replace"))
+                assert len(set(frames)) >= 2, output.decode(errors="replace")
+            if analysis_scan:
+                scanning = output.decode(errors="replace")
+                assert "Analysis reference file:" not in scanning
+                assert "mkvmerge JSON track listing" not in scanning
         mask = termios.ICANON | termios.ECHO
         assert before[3] & mask == termios.tcgetattr(terminal)[3] & mask
         # e is ordinary terminal typeahead during processing, never a stop key.
         os.write(master, b"e")
-        if stop in ("int", "late-int", "descendant-int", "unconfirmed-int"):
+        if analysis_scan:
+            analysis_release.write_text("release", encoding="utf-8")
+        elif stop in ("int", "late-int", "descendant-int", "unconfirmed-int"):
             os.write(master, b"\x03")
             if category in ("edit", "mux"):
                 if stop == "late-int":
@@ -4267,19 +4386,57 @@ esac
         while select.select([master], [], [], 0)[0] and time.monotonic() < deadline:
             if not receive(): break
         text = output.decode(errors="replace")
-        assert process.returncode == 1, text
+        assert process.returncode == (0 if analysis_scan else 1), text
         assert "Review/change" not in text and "Preview resulting" not in text
         assert "Review choice:" not in text
         if category == "analysis":
-            assert "Final report" in text and "Analysis interrupted." in text
-            assert "Not started due to stop: Missed episode.mkv" in text
-            assert str(second) not in text and "Operations (single/comma/range)" not in text
+            assert "Final report" in text and "Operations (single/comma/range)" not in text
+            if analysis_scan:
+                header_index = text.index("Analysis reference file: Active episode.mkv")
+                listing_index = text.index("mkvmerge JSON track listing")
+                report_index = text.index("Final report")
+                if stop == "complete":
+                    clear_index = text.rfind("\r\x1b[2K", 0, header_index)
+                    assert 0 <= text.index("Analysing") < clear_index < header_index < listing_index < report_index
+                else:
+                    assert "Analysing" not in text and "\r\x1b[2K" not in text
+                    assert header_index < listing_index < report_index
+                assert text.count("mkvmerge JSON track listing") == 1
+                header_start, header_end, _ = _ascii_box_contains(
+                    text, "Analysis", f"Current Work Dir: {env['workdir']}",
+                    "Analysis reference file: Active episode.mkv")
+                text_lines = text.splitlines()
+                listing_line = next(i for i, line in enumerate(text_lines) if "mkvmerge JSON track listing" in line)
+                assert header_start < header_end < listing_line
+                assert "" in text_lines[header_end + 1:listing_line]
+                _ascii_box_contains(text, "Final report")
+                assert not _analysis_spinner_frames(text[report_index:])
+                assert int(analysis_last_marker.read_text()) > 0
+                with pytest.raises(ProcessLookupError): os.kill(int(analysis_last_marker.read_text()), 0)
+                assert first.read_bytes() == second.read_bytes() == b"payload"
+            else:
+                assert "Analysis interrupted." in text
+                assert "Not started due to stop: Missed episode.mkv" in text
+                assert str(second) not in text
+                before_report, _, final_report = text.partition("Final report")
+                assert second.name not in before_report and "Not started due to stop: Missed episode.mkv" in final_report
+                report_index = text.index("Final report")
+                clear_index = text.rfind("\r\x1b[2K", 0, report_index)
+                assert 0 <= text.index("Analysing") < clear_index < report_index
+                assert len(set(_analysis_spinner_frames(text[:clear_index]))) >= 2
+                assert not _analysis_spinner_frames(text[report_index:])
+                with pytest.raises(ProcessLookupError): os.killpg(process.pid, 0)
+            assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
+            assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
             assert _command_argv(env, "fzf")
         else:
             assert "Files not started due to stop: 1" in text and f"    {second.name}" in text
         assert second.read_bytes() == b"payload"
         assert not list(transport_root.iterdir()), text
-        with pytest.raises(ProcessLookupError): os.kill(int(marker.read_text()), 0)
+        if analysis_scan:
+            with pytest.raises(ProcessLookupError): os.killpg(process.pid, 0)
+        else:
+            with pytest.raises(ProcessLookupError): os.kill(int(marker.read_text()), 0)
         if stop == "descendant-int":
             with pytest.raises(ProcessLookupError): os.kill(int(Path(str(marker) + ".descendant").read_text()), 0)
         if stop in ("int", "late-int") and category in ("edit", "mux"):
@@ -4287,10 +4444,10 @@ esac
             assert "Done: 1; Failed: 0" in text and "Interrupted: 0" in text
             assert text.count("finishing the current file") == 1
             assert _observed_fake_identification(env, first) == (edited if category == "edit" else _integration_output(original, [1, 0, 2, 3]))
-        elif category == "analysis":
+        elif category == "analysis" and stop not in ("complete", "dumb-complete"):
             assert not marker.with_suffix(".finished").exists()
             assert "Files analyzed: 0; Matching: 0; Mismatched: 0; Failed: 1; Not attempted: 1" in text
-        else:
+        elif category != "analysis":
             assert not marker.with_suffix(".finished").exists()
             assert "Interrupted: 1" in text
         if category == "extract":
@@ -4312,6 +4469,115 @@ esac
         assert len(modifying) == expected_modifying
     finally:
         (env["workdir"].parent / "runtime-stop-transcript.bin").write_bytes(output)
+        if category == "analysis" and stop in ("complete", "dumb-complete"):
+            analysis_release.write_text("release", encoding="utf-8")
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
         if process.poll() is None:
             process.kill(); process.wait(timeout=3)
         os.close(master); os.close(terminal)
+
+
+def test_mkv_utils_analysis_indicator_reaps_child_after_second_signal(env):
+    import fcntl
+    import pty
+    import select
+    import signal
+    import termios
+    import time
+
+    stopping = env["fake_state"] / "indicator-child-stopping"
+    release = env["fake_state"] / "indicator-child-release"
+    pid_file = env["fake_state"] / "indicator-child-pid"
+    interrupted = env["fake_state"] / "indicator-second-signal"
+    script = env["workdir"].parent / "indicator-cleanup.zsh"
+    script.write_text(r'''
+source "$MKVUTIL_TEST_SOURCE"
+MKVUTIL_INTERRUPTED=0
+(
+  trap '' INT
+  trap 'trap "" TERM; printf "%s\n" "$$" > "$TEST_INDICATOR_STOPPING"; while [[ ! -e "$TEST_INDICATOR_RELEASE" ]]; do /bin/sleep 0.02; done; exit 0' TERM
+  while true; do /bin/sleep 1; done
+) &
+MKVUTIL_ANALYSIS_INDICATOR_PID=$!
+printf "%s\n" "$MKVUTIL_ANALYSIS_INDICATOR_PID" > "$TEST_INDICATOR_PID_FILE"
+trap 'MKVUTIL_INTERRUPTED=1; print -r -- "SECOND_SIGNAL_RECEIVED"; : > "$TEST_INDICATOR_INTERRUPTED"' INT
+print -r -- "STOPPING_INDICATOR"
+_mkvutil_stop_analysis_indicator
+print -r -- "STOP_RETURNED:$MKVUTIL_INTERRUPTED:$MKVUTIL_ANALYSIS_INDICATOR_PID"
+''', encoding="utf-8")
+    run_env = os.environ.copy()
+    run_env.update({
+        "TERM": "xterm-256color",
+        "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
+        "MKVUTIL_TEST_SOURCE": str(env["mkv_utils_script"]),
+        "TEST_INDICATOR_STOPPING": str(stopping),
+        "TEST_INDICATOR_RELEASE": str(release),
+        "TEST_INDICATOR_PID_FILE": str(pid_file),
+        "TEST_INDICATOR_INTERRUPTED": str(interrupted),
+    })
+    master, terminal = pty.openpty()
+
+    def own_terminal():
+        fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+        os.tcsetpgrp(0, os.getpgrp())
+
+    process = subprocess.Popen(["/usr/local/bin/zsh", "-f", str(script)],
+        cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
+        start_new_session=True, preexec_fn=own_terminal)
+    output = bytearray()
+    deadline = time.monotonic() + 10
+
+    def receive():
+        if select.select([master], [], [], 0.05)[0]:
+            try:
+                data = os.read(master, 65536)
+            except OSError:
+                return False
+            output.extend(data)
+            return bool(data)
+        return True
+
+    try:
+        while not stopping.exists() and time.monotonic() < deadline:
+            receive()
+            assert process.poll() is None, output.decode(errors="replace")
+        assert stopping.exists(), output.decode(errors="replace")
+        assert pid_file.exists()
+        child_pid = int(pid_file.read_text())
+        assert not interrupted.exists()
+        os.kill(child_pid, 0)
+        os.write(master, b"\x03")
+        while not interrupted.exists() and time.monotonic() < deadline:
+            receive()
+            assert process.poll() is None, output.decode(errors="replace")
+        assert interrupted.exists(), output.decode(errors="replace")
+        assert "STOP_RETURNED" not in output.decode(errors="replace")
+        os.kill(child_pid, 0)
+        release.write_text("release", encoding="utf-8")
+        while process.poll() is None and time.monotonic() < deadline:
+            receive()
+        assert process.poll() is not None, output.decode(errors="replace")
+        while select.select([master], [], [], 0)[0] and time.monotonic() < deadline:
+            if not receive():
+                break
+        text = output.decode(errors="replace")
+        assert process.returncode == 0, text
+        assert "STOP_RETURNED:1:" in text
+        assert text.index("\r\x1b[2K") < text.index("STOP_RETURNED:")
+        with pytest.raises(ProcessLookupError):
+            os.kill(child_pid, 0)
+        with pytest.raises(ProcessLookupError):
+            os.killpg(process.pid, 0)
+    finally:
+        release.write_text("release", encoding="utf-8")
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if process.poll() is None:
+            process.wait(timeout=3)
+        os.close(master)
+        os.close(terminal)

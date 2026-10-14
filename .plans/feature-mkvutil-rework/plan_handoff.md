@@ -14,6 +14,53 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted Analysing indicator and shared ASCII-block amendment
+
+- Latest user-directed behavior: Analyze displays only its Apollo-style
+  Analysing indicator during inspection, then stops/reaps/clears it before a
+  boxed WorkDir/reference header, blank spacer, one buffered usable reference
+  listing and boxed final report. Matching semantics and final-only mismatch/
+  failure/unstarted filenames remain. One literal-safe ASCII renderer supplies
+  every category final heading, track-context header and complete between-file
+  progress box. Edit stays final-only; Mux/Extract arithmetic/cadence/stage scope
+  and error statuses are unchanged. Main owned menus and file picker unchanged.
+- T01.03/T02.03/T03.01/T04.01/T04.02 and all affected goal gates reaccepted:
+  9/9 tasks, 4/4 goals. Selective Astra audit PASS WITH NOTES is resolved by
+  second-signal cleanup and checked progress-failure tests. Source wrapper was
+  read only; no build/install execution, dependencies or runtime helper files.
+- Proof root `.tmp/mkvutil-rework/analysis-status-boxes/`. Twenty-seven distinct
+  affected cases pass across separate runs: eight initial focused passes plus
+  nineteen final consumer cases. Six controlling-terminal cases cover delayed
+  scan completion, Ctrl+C, dumb output, repeated-signal cleanup and Mux/Extract
+  final reports. Separate actual-helper probe forces unavailable zselect and
+  verifies sleep fallback, multiple frames and owned-child reaping. All new
+  media command boundaries are controlled; prior installed-v93/native/all-format
+  evidence is reused only at its recorded revision. No new full suite or CI.
+- Initial focused group: 8 passed / 1 failed in 27.96s pytest; 28.54s wall,
+  4.07s user + 2.41s system CPU. The failure was a dumb-terminal test waiting
+  for an ANSI cursor prompt/instant key instead of plain prompt/line input.
+  Corrected only that test branch; production source stayed unchanged. Exact
+  AST reversal qualifies eight earlier passes; the corrected dumb case passes
+  in the consumer group. Consumer group: 19 passed in 106.41s pytest,
+  107.73s wall, 42.75s user + 37.76s system. Total measured pytest work including
+  failure: 136.27s wall / 86.99s CPU. Fallback probe: 0.399s wall, CPU unmeasured.
+  Preserve all logs/transcripts, source/test snapshots and command receipts.
+- Parent integration corrected the missing configuration-header spacer before
+  tests; test-only review corrected a zsh-reserved variable, scoped Python
+  failure injection after sourcing and literal-backslash expectation. Renderer
+  example is generated from the real helper; original shared fixture helper
+  and parent-session ledger are unchanged. Source/test bindings, exact accepted
+  node list, unchanged functions/math and contract review are in receipt.json
+  and parent-review.json.
+- Parent owns all six changed tracked files, records and publication. Both Luna
+  writers returned ownership; no active worker/job. Main Scripts remains on
+  feature/mkvutil-rework, pre-amendment signed/pushed baseline
+  `150849a1821c7250f267df0eac5e0e66c84f37da`. The containing commit records this
+  amendment. User's standing signed commit/push-after-tests approval persists;
+  no worktree, branch or AGENTS changes. Next: final integrity/static check,
+  sign/push only this branch, verify publication.json and live refs before
+  repeating publication.
+
 ### Accepted reference-only Analyze follow-up
 
 - User directs one reference track listing for the matching selected cohort.

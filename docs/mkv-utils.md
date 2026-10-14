@@ -72,6 +72,8 @@ Within a category, enter one action, a comma-separated list, or an ascending ran
 
 After choosing files, enter the requested settings. When the last required setting is complete, the utility runs its full preflight and automatically processes eligible jobs, then prints the final report and exits. Edit starts after its last per-ID value or title; Mux starts after its last selected metadata value, or after a blank optional-metadata choice; Extract with track actions starts after the track IDs, while attachments-only starts after file selection. A preflight with no eligible jobs prints the report and exits without writing outputs.
 
+Track configuration shows its full working directory and reference filename in a shared ASCII header box before the track listing. A Mux removal header keeps the **Removal reference file** label and shows the bypass cue when that guard is disabled.
+
 While configuration is incomplete, prompts that support Back accept exact `e` or `E`. At removal IDs, track order, or extraction IDs, Back returns to the category's action list with the selected files and explicit exclusions retained. Choose new actions to configure them afresh; the picker does not repeat. Back from that action list returns to the main categories. The optional Mux metadata list's **e) Back to main categories** also returns directly there. Choosing a new category scans the directory and opens a fresh picker. Once configuration is complete and processing starts, `e` is not a cancellation key.
 
 At any metadata track-ID or value prompt, exact `e` or `E` discards all partially entered metadata. In Edit, it returns to the action list with the selected files retained. In Mux, it returns to the optional metadata list while retaining removal and reorder settings; choose metadata again or leave the list blank to skip it. Back from the optional metadata list itself returns directly to the main categories.
@@ -253,9 +255,11 @@ For this combined job, between-file timing covers track extraction. The final re
 
 ### Analyze
 
-Choose **4. Matroska Analyze**, then select files in the same multi-select picker used by the other categories. The utility prints one track listing: the first selected file with a usable complete original-ID/type/native-codec map becomes the reference. It silently inspects the rest of the selection and compares each complete map with that reference. The reference is counted as matching. Track names, languages, flags, and listing order do not affect the comparison.
+Choose **4. Matroska Analyze**, then select files in the same multi-select picker used by the other categories. The first selected file with a usable complete original-ID/type/native-codec map becomes the reference. The utility buffers its track listing and silently compares every selected file with that complete map. It displays the one reference listing when analysis finishes. The reference is counted as matching. Track names, languages, flags, and listing order do not affect the comparison.
 
 Analyze ends after its report. It does not ask for actions or settings, create a processing queue, or write media. Of the selected files, only the reference filename and its track listing are shown before the final report; mismatch and inspection-failure filenames appear in the final report. The report also shows the full `Current Work Dir`, matching and mismatched counts, and files not started after an interruption. A mismatch, failed inspection, or interruption returns a nonzero status.
+
+During the scan, a ten-frame **Analysing** spinner appears only when standard output is a terminal and `TERM` is set to a nonempty, non-`dumb` value. It stops before the results are displayed; redirected output has no spinner. After the complete scan, Analyze shows a boxed header with the full working directory and reference filename, a blank spacer, the single reference listing, and a boxed **Final report** heading. If no usable reference exists, it omits the listing and reports the failure.
 
 <details>
 <summary>Example: compare a selected batch with its first usable reference</summary>
@@ -266,6 +270,27 @@ Analyze ends after its report. It does not ask for actions or settings, create a
 4. Check the final counts and any listed mismatched, failed, or not-started filenames. To compare mismatches separately, start a new invocation and select only the reported mismatched files.
 
 For example, tracks with the same IDs, types, and native codec IDs match even if their names or language flags differ. A different codec at original ID `3`, or an additional original track ID, makes that file a mismatch.
+
+The displayed layout follows this order (directory and track details vary):
+
+```text
++------------------------------------------------+
+| Analysis                                       |
++------------------------------------------------+
+| Current Work Dir: <selected working directory> |
+| Analysis reference file: Episode 01.mkv        |
++------------------------------------------------+
+
+-----------------------  mkvmerge JSON track listing -----------------------
+Track ID 0: video (V_MPEG4/ISO/AVC)
+
++----------------------------------------------+
+| Final report                                 |
++----------------------------------------------+
+Category: analysis; Main choice: 4
+Files analyzed: 3; Matching: 2; Mismatched: 1; Failed: 0; Not attempted: 0
+Track ID/type/codec mismatch: Episode 03.mkv
+```
 
 </details>
 
@@ -297,9 +322,9 @@ These are migration examples; choose any supported combination that fits the cur
 
 ## Reports and outcomes
 
-The processing report shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, codec and total-track-count details. Each original selected file contributes once to the final counts. Displayed source, destination, stage, and recovery-file references use filenames; the full path is shown for the working directory in `Current Work Dir` and the owned navigation menu's `Directory` line. A processed queue always ends here; starting another batch requires a new invocation.
+The processing report starts with a shared ASCII heading box, then shows the input directory basename, category and action numbers, configuration history, and counts for completed, failed, warning, partial, skipped, excluded, not-attempted, and interrupted files. Per-file records retain the exact filenames for skipped and failed jobs. Removal-skip history includes the expected and actual original track ID, type, codec and total-track-count details. Each original selected file contributes once to the final counts. Displayed source, destination, stage, and recovery-file references use filenames; the full path is shown for the working directory in `Current Work Dir` and the owned navigation menu's `Directory` line. A processed queue always ends here; starting another batch requires a new invocation.
 
-Edit reports appear at the end and do not include a between-file ETA. Mux includes per-file progress and elapsed time. Extract includes per-file progress with the timing behavior described above. A report may include staged filenames, native scratch filenames, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
+Edit reports appear at the end and remain silent between files. Mux and Extract show elapsed-time, file-count, and ETA summaries in a **File progress** ASCII box between files. A report may include staged filenames, native scratch filenames, cleanup failures, or uncertain publication details when recovery needs attention. These records distinguish source preservation and output publication state; they do not promise an automatic rollback of already-published extraction artifacts.
 
 Warnings, failed or partial jobs, unresolved removal skips, and interrupted batches produce a nonzero final exit status. Review the reported filenames and recovery details before repeating an operation, especially when the output state is uncertain.
 

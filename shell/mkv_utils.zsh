@@ -1142,12 +1142,35 @@ _mkvutil_display_record() {
   ' <<< "$1"
 }
 
+mkvutil_ascii_box() {
+  (( $# > 0 )) || return 1
+  local title="$1" line="" content_width=44 border="" dash_count=0
+  shift
+  (( ${#title} > content_width )) && content_width=${#title}
+  for line in "$@"; do
+    (( ${#line} > content_width )) && content_width=${#line}
+  done
+  dash_count=$((content_width + 2))
+  repeat "$dash_count"; do border+="-"; done
+  print || return 1
+  print -r -- "+${border}+" || return 1
+  printf '| %-*s |\n' "$content_width" "$title" || return 1
+  if (( $# > 0 )); then
+    print -r -- "+${border}+" || return 1
+    for line in "$@"; do
+      printf '| %-*s |\n' "$content_width" "$line" || return 1
+    done
+  fi
+  print -r -- "+${border}+"
+}
+
 mkvutil_format_final_report() {
   local display=""
   display="$(_mkvutil_display_record "$1")" || return 1
+  mkvutil_ascii_box 'Final report' || return 1
   jq -r '
     def duration: floor as $s | (($s/3600|floor|tostring)+"h "+(($s%3600)/60|floor|tostring)+"m "+($s%60|tostring)+"s");
-    "Final report", "Directory: \(.directory)",
+    "Directory: \(.directory)",
     (.batches[] | "Configuration \(.id) (\(.state)\(if .state=="executed" or .state=="interrupted" then "" else "; requested, not run" end)):",
       "  Category: \(.category); Actions: \(.action_ids|join(","))",
       (if .category=="mux" then "  Optional Mux metadata: \(if .metadata_ids=="" then "none" else .metadata_ids end)" else empty end),
@@ -1190,6 +1213,8 @@ mkvutil_clock() { python3 -c 'import time; print(time.monotonic())'; }
 
 mkvutil_format_progress() {
   local category="$1" operations="$2" elapsed="$3" attempted="$4" completed="$5" total="$6" work_elapsed="${7:-$3}" track_elapsed="${8-}" track_work="${9-}" track_samples="${10:-$4}" mode=job
+  local output=""
+  local -a progress_lines=()
   [[ "$category" != edit ]] || return 0
   [[ "$category" == mux || "$category" == extract ]] || return 1
   if [[ "$category" == extract && ",$operations," == *,1,* && ",$operations," == *,2,* ]]; then
@@ -1202,7 +1227,7 @@ mkvutil_format_progress() {
       mode=track_not_attempted
     fi
   fi
-  python3 -c '
+  output="$(python3 -c '
 import sys
 elapsed=max(0,float(sys.argv[1]));work=max(0,float(sys.argv[2]));attempted,completed,total,samples=map(int,sys.argv[3:7]);mode=sys.argv[7]
 remaining=max(0,total-attempted);denominator=samples if mode.startswith("track") else attempted
@@ -1213,7 +1238,10 @@ def duration(value):
 measured="Track stage: not attempted" if mode=="track_not_attempted" else f"Processed In: {duration(elapsed)}"
 estimated="unavailable (no track stages attempted)" if eta is None else duration(eta)
 print(f"{measured}\nFiles Done: {completed}\nFiles Attempted: {attempted}\nFiles Remaining: {remaining}\nEstimated Time Remaining: {estimated}")
-' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total" "$track_samples" "$mode"
+' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total" "$track_samples" "$mode")" || return $?
+  progress_lines=("${(@f)output}")
+  (( ${#progress_lines} > 0 )) || return 1
+  mkvutil_ascii_box 'File progress' "${progress_lines[@]}"
 }
 
 mkvutil_source_identity() {
@@ -1466,35 +1494,86 @@ mkvutil_select_files() {
   mkvutil_accept_files "${selected[@]}" || { print -u2 -r -- 'No valid scanned files selected.'; return 1; }
 }
 
+# This child only paints a short indicator while Analyze scans selected sources.
+_mkvutil_start_analysis_indicator() {
+  [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]] || return 0
+  [[ -z "$MKVUTIL_ANALYSIS_INDICATOR_PID" ]] || return 0
+  local owner_pid="$$"
+  (
+    trap - EXIT
+    trap 'exit 0' INT TERM
+    local frame=1 use_zselect=0
+    local -a frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏)
+    zmodload zsh/zselect 2>/dev/null && use_zselect=1
+    while kill -0 "$owner_pid" 2>/dev/null; do
+      printf '\r\033[2K  %s Analysing' "${frames[$frame]}" || exit 0
+      if (( use_zselect )); then
+        zselect -t10 || true
+      else
+        sleep 0.1
+      fi
+      frame=$((frame % ${#frames} + 1))
+    done
+  ) &
+  MKVUTIL_ANALYSIS_INDICATOR_PID=$!
+  return 0
+}
+
+_mkvutil_stop_analysis_indicator() {
+  local helper_pid="${MKVUTIL_ANALYSIS_INDICATOR_PID-}"
+  [[ -n "$helper_pid" ]] || return 0
+  MKVUTIL_ANALYSIS_INDICATOR_PID=""
+  while kill -0 "$helper_pid" 2>/dev/null; do
+    kill -TERM "$helper_pid" 2>/dev/null || true
+    wait "$helper_pid" 2>/dev/null || true
+  done
+  wait "$helper_pid" 2>/dev/null || true
+  printf '\r\033[2K' || true
+  return 0
+}
+
 # Reuse identification, listing and the same ID/type/codec signatures as Mux.
 mkvutil_analyze_files() {
   local file="" record="" raw="" ids="" signature="" listing="" reference="" expected="" result=0
+  local reference_label="" stop_code=0
+  local MKVUTIL_ANALYSIS_INDICATOR_PID=""
   local matching=0 analyzed=0
   local -a mismatched=() failed=() missed=()
-  for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
-    if (( MKVUTIL_INTERRUPTED )); then missed+=("$file"); continue; fi
-    if ! record="$(mkvutil_capture_source "$file" 2>/dev/null)"; then
-      failed+=("$file"); result=1; continue
-    fi
-    raw="$(jq -r '.source_json' 2>/dev/null <<< "$record")" || { failed+=("$file"); result=1; continue; }
-    ids="$(jq -r '.model.tracks|map(.id|tostring)|join(",")' 2>/dev/null <<< "$record")" || { failed+=("$file"); result=1; continue; }
-    signature="$(mkvutil_removal_signatures "$record" "$ids" 2>/dev/null)" || { failed+=("$file"); result=1; continue; }
-    if [[ -z "$reference" ]]; then
-      # Buffer before accepting or counting the reference, so an invalid or
-      # partial listing never appears as the analysis layout.
-      listing="$(display_track_info "$file" "$raw" 2>/dev/null)" || { failed+=("$file"); result=1; continue; }
-      reference="$file"; expected="$signature"
-      print -r -- "Analysis reference file: ${reference:t}"
-      print -r -- "$listing"
-    fi
-    analyzed=$((analyzed + 1))
-    if jq -en --argjson expected "$expected" --argjson actual "$signature" '$expected==$actual' >/dev/null; then
-      matching=$((matching + 1))
-    else
-      mismatched+=("$file"); result=1
-    fi
-  done
-  print -r -- $'Final report\nCategory: analysis; Main choice: 4'
+  {
+    _mkvutil_start_analysis_indicator || result=1
+    for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
+      if (( MKVUTIL_INTERRUPTED )); then missed+=("$file"); continue; fi
+      if ! record="$(mkvutil_capture_source "$file" 2>/dev/null)"; then
+        failed+=("$file"); result=1; continue
+      fi
+      raw="$(jq -r '.source_json' 2>/dev/null <<< "$record")" || { failed+=("$file"); result=1; continue; }
+      ids="$(jq -r '.model.tracks|map(.id|tostring)|join(",")' 2>/dev/null <<< "$record")" || { failed+=("$file"); result=1; continue; }
+      signature="$(mkvutil_removal_signatures "$record" "$ids" 2>/dev/null)" || { failed+=("$file"); result=1; continue; }
+      if [[ -z "$reference" ]]; then
+        # Buffer before accepting the reference, so a partial listing is never displayed.
+        listing="$(display_track_info "$file" "$raw" 2>/dev/null)" || { failed+=("$file"); result=1; continue; }
+        reference="$file"; expected="$signature"
+      fi
+      analyzed=$((analyzed + 1))
+      if jq -en --argjson expected "$expected" --argjson actual "$signature" '$expected==$actual' >/dev/null 2>/dev/null; then
+        matching=$((matching + 1))
+      else
+        mismatched+=("$file"); result=1
+      fi
+    done
+  } always {
+    _mkvutil_stop_analysis_indicator || stop_code=$?
+    (( stop_code == 0 )) || result=1
+  }
+  reference_label="Analysis reference file: ${reference:t}"
+  [[ -n "$reference" ]] || reference_label='Analysis reference file: none'
+  mkvutil_ascii_box 'Analysis' "Current Work Dir: $PWD" "$reference_label" || result=1
+  if [[ -n "$reference" ]]; then
+    print || result=1
+    print -r -- "$listing" || result=1
+  fi
+  mkvutil_ascii_box 'Final report' || result=1
+  print -r -- 'Category: analysis; Main choice: 4'
   print -r -- "Current Work Dir: $PWD"
   print -r -- "Reference file: ${reference:t}"
   [[ -n "$reference" ]] || { print -r -- 'No usable reference file.'; result=1; }
@@ -1566,10 +1645,15 @@ mkvutil_configure_category() {
   rows="$(collect_tracks_for_remux "$source" "$raw")" || return 1
   mkvutil_plan_layout "$rows" '' '' "${source:e}" || return 1
   expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || return 1
+  local -a track_header=("Current Work Dir: $PWD")
   if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
-    print -r -- "Removal reference file: ${source:t}"
-    (( ! MKVUTIL_BYPASS_TRACK_COUNT )) || print -r -- 'Bypass enabled: removal track-count guard only.'
+    track_header+=("Removal reference file: ${source:t}")
+    (( ! MKVUTIL_BYPASS_TRACK_COUNT )) || track_header+=('Bypass enabled: removal track-count guard only.')
+  else
+    track_header+=("Reference file: ${source:t}")
   fi
+  mkvutil_ascii_box 'Track configuration' "${track_header[@]}" || return 1
+  print || return 1
   display_track_info "$source" "$raw" || return 1
   case "$category" in
     edit)
