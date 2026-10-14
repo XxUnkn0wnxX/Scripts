@@ -2787,10 +2787,8 @@ mkvutil_execute_queue() {
 print_help() {
   print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
-  print -r -- $'\nMain categories:\n  1) Matroska Edit\n  2) Matroska Mux\n  3) Matroska Extract\n  0) Exit'
-  print -r -- $'\nEdit actions: 1 forced flag, 2 default flag, 3 language, 4 name, 5 title.\nMux actions: 1 remove tracks, 2 reorder tracks; optional metadata uses Edit IDs 1-5.\nExtract actions: 1 attachments, 2 selected tracks.'
-  print -r -- $'\nSubmenus accept a single choice, comma lists or ascending ranges (1,2 or 1-3).\nFile selection always supports one or several files; use Tab in fzf to mark files.\nConfigure all operations, then review/change, preview, Run or Cancel.\nMux removal, reordering and optional metadata use one remux per file.'
-  print -r -- $'\nSupports .mkv, .mka, .mks and .mk3d in the selected directory (nonrecursive).\nThe directory defaults to the current directory; relative and absolute paths work.\nQuote directory paths containing spaces. All processing requires explicit Run.'
+  print -r -- $'\n  1) Matroska Edit     Flags, language, names and title\n  2) Matroska Mux      Remove/reorder with optional metadata\n  3) Matroska Extract  Attachments and tracks\n  0) Exit'
+  print -r -- $'\nChoose one action or a batch (1,2 / 1-3); select one or more files.\nFiles: .mkv .mka .mks .mk3d. Default: current directory.'
 }
 
 # Configuration/review can repeat, but each explicit Run archives and clears
