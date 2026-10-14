@@ -196,12 +196,14 @@ _mkvutil_track_colours() {
 }
 
 _mkvutil_render_track_view() {
-  jq -r --arg red "${2-}" --arg yellow "${3-}" --arg selected "${4-*}" '
-    .[] | .source_id as $source |
+  jq -r --arg red "${2-}" --arg yellow "${3-}" --arg selected "${4-*}" --arg format "${5:-lines}" '
+    map(.source_id as $source |
     (if .dropped then $red
      elif .moved and ($selected=="*" or ($selected|split(",")|index($source))!=null)
      then $yellow else "" end) as $colour |
-    if $colour=="" then .row else $colour+.row+"\u001b[0m" end
+    .row=(if $colour=="" then .row else $colour+.row+"\u001b[0m" end)) |
+    if $format=="json" then . elif $format=="lines" then .[].row
+    else error("invalid track render format") end
   ' <<< "$1"
 }
 
@@ -1548,6 +1550,9 @@ _mkvutil_read() {
   (( ! MKVUTIL_INTERRUPTED )) || return 2
   setopt localtraps
   trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
+  if [[ -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+    printf '\e[?25h' >&2
+  fi
   printf '%s' "$1" >&2
   IFS= read -r REPLY || return 2
 }
@@ -1593,7 +1598,7 @@ _mkvutil_ui_enter() {
 }
 _mkvutil_ui_redraw() {
   (( MKVUTIL_UI_ACTIVE )) || return 0
-  local line="" paint=$'\e[H'
+  local line="" paint=$'\e[?25l\e[H'
   # Build the whole body first. Erase each old line suffix and the old tail;
   # retain the navigation buffer without a blank-screen prepaint.
   for line in "${(@f)1}"; do paint+="$line"$'\e[K\r\n'; done
@@ -1791,7 +1796,7 @@ mkvutil_select_files() {
     # Keep the menu visible until fzf paints. Leave one row so fzf stays in
     # height mode instead of entering another alternate screen at 100%.
     selector=(--multi --read0 --print0 --height -1 --reverse --border --no-clear --sync)
-    printf '\e[H' >&2
+    printf '\e[?25l\e[H' >&2
   fi
   selector+=(--delimiter / --with-nth -1)
   {
@@ -1960,7 +1965,7 @@ mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=() removal_ids=()
-  local item="" retained_csv="" projection="" track_view="" metadata_preview="" metadata_targets="" preview_yellow="" order_input="" highlight_ids="" output_map='{}'
+  local item="" retained_csv="" projection="" track_view="" metadata_context="" metadata_preview="" metadata_targets="" preview_yellow="" order_input="" highlight_ids="" output_map='{}'
   local item_position=0
   local metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
   MKVUTIL_CONFIG=""
@@ -2058,8 +2063,9 @@ mkvutil_configure_category() {
       track_view="$(_mkvutil_track_view "$raw" "$removal" "$projection" output)" || return 1
       _mkvutil_track_colours
       [[ -z "$order" ]] || preview_yellow="$MKVUTIL_TRACK_YELLOW"
+      metadata_context="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$preview_yellow" "$highlight_ids" json)" || return 1
       metadata_preview=$'--------------------------  Output track layout --------------------------\n'
-      metadata_preview+="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$preview_yellow" "$highlight_ids")" || return 1
+      metadata_preview+="$(jq -r '.[].row' <<< "$metadata_context")" || return 1
       for item in "${order_ids[@]}"; do
         item_position="${MKVUTIL_RETAINED_IDS[(Ie)$item]}"
         (( item_position > 0 )) || return 1
@@ -2084,7 +2090,7 @@ mkvutil_configure_category() {
         _mkvutil_ui_leave
         mkvutil_batch_metadata_requested "$metadata" || return 1
         result=0
-        mkvutil_metadata_configure "$metadata" "$metadata_mode" "${(j:,:)order_ids}" "$projection" "$track_view" || result=$?
+        mkvutil_metadata_configure "$metadata" "$metadata_mode" "${(j:,:)order_ids}" "$projection" "$metadata_context" || result=$?
         if (( result == 4 )); then
           metadata=""
           mkvutil_batch_metadata_requested '' || return 1

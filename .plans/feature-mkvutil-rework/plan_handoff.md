@@ -14,6 +14,42 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted metadata row styling and shared fzf cursor handoff
+
+- Mux metadata value rows now reuse the preview's cached styled rows, preserving
+  gold only for explicitly moved reorder tracks, including --dry-run. Automatic
+  adjustments and remove-only retained tracks stay normal. Metadata targets and
+  native command arrays remain unchanged.
+- Shared owned redraws and fzf handoffs hide the cursor before cursor-home;
+  foreground prompts restore it. No delay, extra clear, dependency or selection
+  change. Combined Mux, multiple Edit and multiple Extract actions are qualified.
+- All 18 focused controlled cases pass in 26.79s on one frozen source/test pair.
+  A first title Ctrl+C timeout remains in run-01; the exact isolated case passes
+  in run-02 and complete affected rerun passes in run-03, with no timeout/signal
+  relaxation. Earlier two test-oracle failures requiring piped input echo were
+  corrected and preserved in the diagnostic notes.
+- Three real-fzf/loaded-alias/read-only-native PTY journeys pass: combined remove
+  + reorder + Forced dry-run (3.70s), Edit 1,2 Back (2.07s) and Extract 1,2 Back
+  (1.95s). Edit's original private assertion wrongly required a final report for
+  an abandoned queue; the original failed receipt remains and the same complete
+  capture is parent-qualified offline against the correct no-report contract.
+  Each journey used one installed v93 identification and zero modifying calls;
+  seed/copy hashes and inventories stayed intact. Raw/readable logs are retained.
+- Source SHA-256 `8c2fa92acd870e2a4ccc8f9db92eae313d449e1d4a470bb7f71cba1c0ec026c2`;
+  tests SHA-256 `0e5b1cd6cda1af487263d34490c4b7b5974a3e5f0ecf1a3772f8ce6b9ea31548`.
+  Both zsh syntax/Python AST and parent source/docs/record review pass. All native
+  builders, job/preflight and engines remain unchanged. Approved route B at
+  T01.03/T04.01/T04.02 is complete: 9/9 tasks and 4/4 checkpoints accepted.
+- Proof: `.tmp/mkvutil-rework/metadata-colour-cursor/receipt.json`, `run-03/`,
+  `ia/` and `parent-source-review.json`; Edit's separate offline receipt stays
+  beside its preserved failed journey. No new full-module or CI result claimed.
+- Parent owns all tracked files; workers are complete and no runtime job remains.
+  Same Scripts checkout, no new worktrees. User explicitly requests develop and
+  master publication of this verified follow-up. Next: signed develop commit/push,
+  authorized fast-forward master/push, return checkout to develop. Actual outcome
+  is recorded in `metadata-colour-cursor/publication.json`; inspect it and real
+  refs before repeating Git operations. Earlier permissions/evidence persist.
+
 ### Accepted Mux metadata-menu Back and explicit-move highlighting
 
 - Latest user steering is implemented. Back from optional metadata choices now

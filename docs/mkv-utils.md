@@ -118,6 +118,8 @@ At the main **Category:** selector, type `1`, `2`, `3`, or `4`, then press Enter
 
 When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Adjacent navigation menus share this screen. Each complete menu body is prepared first and printed together over the previous view, erasing old line endings and unused rows. Navigation redraws add no animation or intentional wait. The category and working directory stay visible, followed by the native input prompt; the owned menu avoids printing a duplicate initial working-directory line. Invalid menu input shows a validation message in the same screen and waits for another choice. The file picker takes over the same screen and uses nearly its full height, avoiding a return to the old terminal view between the menu and fzf. The utility restores normal history after selection or cancellation, before configuration fields, processing, reports or fatal diagnostics. It never clears the normal screen or scrollback.
 
+The typing cursor is hidden while a menu redraws or hands its screen to fzf, so it does not jump visibly to the top of the selector. It returns at the next input prompt and on exit. This applies to Edit, Mux and Extract, including multiple-action selections.
+
 Removal-mismatch details and reports remain in normal terminal history. Redirected streams and empty or `dumb` terminal settings disable owned navigation views. Piped input retains the line-based protocol.
 
 | Main menu | Actions | What it does |
@@ -226,7 +228,7 @@ Enter reorder IDs as a bare comma list. The first listed track comes first; othe
 
 After structural choices, **Output track layout** remains visible within the optional metadata menu and shows the **resulting output order and IDs**. Retained tracks are numbered from `0` in their new order. Dropped rows stay interleaved at their original row slots, soft light red and without IDs; retained rows fill the other slots in output order. When reorder is selected, warm yellow/gold marks only tracks explicitly named in **Track order** whose positions actually change. Automatically prepended or appended tracks and other automatic position adjustments keep their normal colour. In remove-only mode, all retained tracks keep their normal colour even when their output IDs change. The resulting order and output IDs are always shown. Colour needs no extra dependency; redirected output, `TERM=dumb` and `NO_COLOR=1` stay plain. If the preview and metadata menu cannot fit the terminal, they use normal scrollback so the complete listing remains accessible.
 
-Optional Mux metadata uses the displayed **output IDs**. Before every per-track value, the same full track-description row used by Edit appears above the short action prompt. The utility translates the output ID back to its original source track before building the single remux command. Edit continues to display and accept existing source IDs.
+Optional Mux metadata uses the displayed **output IDs**. Before every per-track value, the same full track-description row used by Edit appears above the short action prompt. Mux keeps the preview's row colour at these value prompts, including in `--dry-run`: explicitly moved tracks remain gold; automatically adjusted tracks and remove-only retained tracks stay normal. The utility translates the output ID back to its original source track before building the single remux command. Edit continues to display and accept existing source IDs.
 
 Before the new output layout is used, Mux checks every original reference track ID, track type and native format against each selected file. A mismatch skips that file; changing names, languages or default/forced flags does not make it incompatible. For example, ASS and SRT subtitles at the same ID do not match even when their language and flags agree. The existing removal guards still apply. Output-ID metadata also verifies that the requested output position resolves to the expected source track, both during planning and immediately before processing.
 
@@ -616,6 +618,8 @@ To run only the `mkv_utils` test module:
 ```zsh
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
+
+The metadata-colour and cursor-handoff follow-up passed **18 focused checks** and **three installed-fzf terminal journeys**. These cover combined Mux with metadata, multiple Edit actions and multiple Extract actions. Mux metadata prompts retain preview colours in dry-run and normal configuration, and cursor visibility is checked at the picker, subsequent inputs and exit. The journeys used read-only identification on disposable fixtures; no media-writing commands ran. Earlier evidence below remains tied to its recorded source revision.
 
 The metadata-menu Back and explicit-move highlighting update passed **16 focused checks**. These cover all three Mux setups, fresh file selection after Back, cleared settings and unexecuted outcomes, retained structure after metadata-field Back, and yellow only for explicitly moved tracks. One installed-fzf/native-read-only terminal journey also confirmed that Back displays Mux actions, followed by main only after another Back; it made no media writes. Earlier qualification below remains tied to its recorded source revision.
 

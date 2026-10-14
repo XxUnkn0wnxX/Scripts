@@ -416,6 +416,45 @@ print -r -- 'preview colour modes passed'
     assert not [call for call in _command_argv(env, "mkvmerge") if "-o" in call]
 
 
+@pytest.mark.parametrize('dry_run', (0, 1), ids=('normal', 'dry-run'))
+def test_mkv_utils_mux_metadata_context_retains_preview_colours(env, dry_run):
+    source = _mkv_file(env, "styled metadata.mkv")
+    model = _source_json([(0, "video", "V_VP9", True),
+                          (1, "audio", "A_AAC", False),
+                          (2, "subtitles", "S_TEXT/ASS", False),
+                          (3, "audio", "A_OPUS", False)])
+    result = _run_planning_contract(env, r'''
+MKVUTIL_DRY_RUN="$TEST_DRY_RUN"
+record="$(mkvutil_capture_source "$PWD/styled metadata.mkv")"
+MKVUTIL_SOURCES=("$record")
+yellow=$'\e[38;5;220m'; red=$'\e[38;5;203m'; reset=$'\e[0m'
+_mkvutil_track_colours() { MKVUTIL_TRACK_RED="$red"; MKVUTIL_TRACK_YELLOW="$yellow"; }
+_mkvutil_menu_read() { preview="$6"; REPLY=1; }
+context_log="$PWD/metadata-context.txt"
+mkvutil_configure_category mux 2 <<< $'2,0\n1\n0' 2>"$context_log"
+context="$(<"$context_log")"
+for row in 'Track ID 0: subtitles (S_TEXT/ASS) [Original 2] [eng]' 'Track ID 1: video (V_VP9) [Original 0] [eng]'; do
+  [[ "$preview" == *"${yellow}${row}${reset}"* ]] || fail 'preview moved row lost gold'
+  [[ "$context" == *"${yellow}${row}${reset}"$'\nForced'* ]] || fail 'metadata value row lost gold or reset'
+done
+jq -e '.settings=={"1:2":"1","1:0":"0"} and .metadata_output_map=={"0":"2","1":"0"}' <<< "$MKVUTIL_CONFIG" >/dev/null
+# Automatic zero and an explicitly listed track that did not move stay plain.
+mkvutil_configure_category mux 2 <<< $'3,2\n1\n0\n1' 2>"$context_log"
+context="$(<"$context_log")"
+[[ "$context" == *"${yellow}Track ID 1: audio (A_OPUS) [Original 3] [eng]${reset}"* ]] || fail 'explicit moved metadata row lost gold'
+[[ "$context" == *$'Track ID 0: video (V_VP9) [Original 0] [eng]\nForced'* ]] || fail 'automatic zero metadata row should stay plain'
+[[ "$context" == *$'Track ID 2: subtitles (S_TEXT/ASS) [Original 2] [eng]\nForced'* ]] || fail 'unmoved explicit metadata row should stay plain'
+mkvutil_configure_category mux 1 <<< $'1\n1\n1' 2>"$context_log"
+context="$(<"$context_log")"
+[[ "$context" != *"$yellow"* && "$context" != *"$red"* ]] || fail 'remove-only metadata context must stay plain'
+[[ "$context" == *'Track ID 1: subtitles (S_TEXT/ASS) [Original 2] [eng]'* ]] || fail 'remove-only context lost output IDs'
+print -r -- 'metadata row colours passed'
+''', {str(source): model}, extra_env={'TEST_DRY_RUN': str(dry_run)})
+    assert result.stdout.rstrip().endswith('metadata row colours passed')
+    assert source.read_bytes() == b'payload'
+    assert not [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
+
+
 def test_mkv_utils_projected_track_view_and_shared_value_context(tmp_path: Path):
     model = _source_json([(0, "video", "V_VP9", True), (1, "audio", "A_AAC", False),
                           (2, "subtitles", "S_TEXT/ASS", False), (3, "audio", "A_OPUS", True),
@@ -4629,7 +4668,9 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
             os.write(master, b"0,1\n")
             line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
             assert "Output IDs for each track edit: 0,1" in screen.text
-            os.write(master, b"E\n"); shortcuts()
+            os.write(master, b"E\n")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
+            os.write(master, b"e\n"); shortcuts()
 
             os.write(master, b"2\n")
             line_menu(b"Actions: ", "actions", "Matroska Mux")
@@ -4641,7 +4682,9 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
             normal_input(b"Title [clear]: ")
             os.write(master, b"e\n")
             line_menu(b"Metadata [none]: ", "metadata", "Matroska Mux")
-            os.write(master, b"E\n"); shortcuts()
+            os.write(master, b"E\n")
+            line_menu(b"Actions: ", "actions", "Matroska Mux")
+            os.write(master, b"e\n"); shortcuts()
             os.write(master, b"e\n")
         elif exit_key == b"track-id-ctrl-c":
             os.write(master, b"2\n")
@@ -4673,7 +4716,9 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
         elif exit_key == b"back-retry-remux":
             os.write(master, b"2\n")
             line_menu(b"Actions: ", "actions", "Matroska Mux")
-            os.write(master, b"2\n")
+            os.write(master, b"1,2\n")
+            normal_input(b"Remove IDs: ")
+            os.write(master, b"1\n")
             normal_input(b"Track order:")
             os.write(master, b"e\n")
             line_menu(b"Actions: ", "actions", "Matroska Mux")
@@ -4703,6 +4748,7 @@ def test_mkv_utils_main_menu_line_input_terminal(env, exit_key):
         for marker in re.finditer(b"PICKER-OPEN", output):
             prefix = output[:marker.start()]
             assert prefix.count(b"\x1b[?1049h") == prefix.count(b"\x1b[?1049l") + 1
+            assert re.findall(rb"\x1b\[\?25([lh])", prefix)[-1] == b"l"
         assert bytes(output).count(b"PICKER-OPEN") == len(_command_argv(env, "fzf"))
         assert screen.homes == screen.tail_erases + len(_command_argv(env, "fzf"))
         assert screen.line_erases >= screen.tail_erases
@@ -4801,6 +4847,8 @@ eq "$calls" 2 'one printf for second body'
     assert screen.text == 'Short $cash 100% @literal "quote"\ne) Back\n'
     assert "old suffix" not in screen.text and "Older extra choice" not in screen.text
     assert screen.homes == screen.tail_erases == 2 and screen.line_erases == 5
+    assert not screen.cursor_visible
+    assert result.stderr.count(b"\x1b[?25l\x1b[H") == 2
     assert b"\x1b[2J" not in result.stderr
     screen.feed(b"\x1b[?1049l")
     assert screen.normal == "durable history\r\n"
