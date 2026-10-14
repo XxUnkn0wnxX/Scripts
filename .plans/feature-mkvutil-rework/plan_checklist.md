@@ -8,6 +8,13 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The user accepted their own script validation and authorized final promotion.
+A final independent actual-code audit passed with no blocking findings; 10
+focused safety/report/metadata checks passed in20.44s on unchanged source/test/
+helper bytes, with both zsh syntax and Python compilation passing. All nine
+stable tasks and four checkpoints remain accepted. Publication/ref cleanup is
+tracked in the handoff and `.tmp/mkvutil-rework/final-promotion/` receipts.
+
 The concise-text follow-up is accepted at
 T01.03/T02.03/T03.01/T04.01/T04.02. Required: short prompts/help with unchanged
 action/track context, defaults, validation and navigation; filename-only rows

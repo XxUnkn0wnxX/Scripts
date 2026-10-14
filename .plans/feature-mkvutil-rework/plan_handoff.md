@@ -14,6 +14,38 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Final user validation accepted; stable promotion ready
+
+- User reports that the script passes their testing and authorizes one final
+  quick/deep review, promotion to master/develop, both pushes and removal of the
+  local/remote feature branch if no further issue remains. Existing runtime,
+  media/dependency and canonical-record boundaries remain in effect.
+- Reuse T04.01/T04.02 and approved coordinated route B. Product source/tests
+  are frozen at 5f1e96c; parent owns records/Git/integration. Final independent
+  Astra actual-code audit PASS, no blocking findings or extra matrix requested.
+  All 10 final controlled checks passed in20.44s (21.39s measured command wall;
+  10.31s user +9.93s system CPU) with identical pre/post/current source/test/helper
+  hashes. Both zsh syntax checks and Python compilation pass. Prior user/native/
+  interactive evidence remains revision-bound; no new media-write IA campaign.
+- Single main Scripts checkout; target refs were fetched and match their local
+  counterparts. Both targets have two earlier documentation commits outside the
+  feature ancestry. Git merge-tree rehearsal is clean for both and reproduces
+  the exact feature tree; no conflict resolution or product change is needed.
+- Next: final audit/check receipts, signed handoff checkpoint; merge feature into
+  develop, merge develop into master, then fast-forward develop to that result.
+  Verify final product bytes and both branches, push the two stable refs
+  atomically where supported, and verify their server SHAs match. Only then
+  delete the remote feature ref, verify its absence, and delete the fully merged
+  local feature ref. Leave the main checkout on develop. Preserve
+  the canonical plans and ignored recovery/test evidence.
+- Code acceptance is complete (9/9 tasks, 4/4 checkpoints); only authorized Git
+  publication and ref cleanup remain. Final test and independent audit receipts
+  are `final-promotion/run-01/receipt.json` and `independent-audit.json` beneath
+  `.tmp/mkvutil-rework/`; inspect the final publication receipt before repeating
+  an operation after interruption.
+- Promotion proof is under `.tmp/mkvutil-rework/final-promotion/`. No new worktree,
+  branch creation, AGENTS modification, force-push or history rewrite is planned.
+
 ### Accepted concise prompts and filename-only outcome rows
 
 - Latest user clarification is implemented: preserve all outcome boxes and the
