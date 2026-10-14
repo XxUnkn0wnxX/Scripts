@@ -1292,7 +1292,7 @@ _mkvutil_read_main() {
   return "$read_code"
 }
 
-# Only navigation owns a transient terminal buffer. Pipes and dumb/redirected
+# Navigation and its picker share a transient buffer. Pipes and dumb/redirected
 # terminals retain normal output and the original line-input protocol.
 typeset -gi MKVUTIL_UI_ACTIVE=0 MKVUTIL_UI_REPORT_SHOWN=0
 _mkvutil_ui_owned() { [[ -t 0 && -t 1 && -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; }
@@ -1407,9 +1407,19 @@ _mkvutil_exclude() {
 mkvutil_select_files() {
   local file=""
   local -a selected=() selector=(--multi --read0 --print0 --height 40% --reverse --border)
-  while IFS= read -r -d '' file; do selected+=("$file"); done < <(
-    printf '%s\0' "${MKVUTIL_SCAN_FILES[@]}" | fzf "${selector[@]}"
-  )
+  if (( MKVUTIL_UI_ACTIVE )) && _mkvutil_ui_owned; then
+    # Keep the menu visible until fzf paints. Leave one row so fzf stays in
+    # height mode instead of entering another alternate screen at 100%.
+    selector=(--multi --read0 --print0 --height -1 --reverse --border --no-clear --sync)
+    printf '\e[H' >&2
+  fi
+  {
+    while IFS= read -r -d '' file; do selected+=("$file"); done < <(
+      printf '%s\0' "${MKVUTIL_SCAN_FILES[@]}" | fzf "${selector[@]}"
+    )
+  } always {
+    _mkvutil_ui_leave
+  }
   mkvutil_accept_files "${selected[@]}" || { print -u2 -r -- 'No valid scanned files selected.'; return 1; }
 }
 
@@ -3415,13 +3425,13 @@ _mkvutil_main_body() {
         return 1
       }
       operations="$REPLY"
-      _mkvutil_ui_leave
       if (( ! selected )); then
         mkvutil_select_files || return 1
         (( MKVUTIL_INTERRUPTED == 0 )) || return 1
         mkvutil_ledger_reset "$resolved_directory" "${MKVUTIL_SELECTED_FILES[@]}" || return 1
         selected=1
       fi
+      _mkvutil_ui_leave
       mkvutil_batch_request "$category" "$operations" || return 1
       if (( ${#MKVUTIL_SOURCES} == 0 )); then
         result=0

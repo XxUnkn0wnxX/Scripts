@@ -2911,6 +2911,7 @@ class _OwnedMenuScreen:
 def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
     import fcntl
     import pty
+    import re
     import select
     import struct
     import termios
@@ -2919,6 +2920,10 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
     source, second = _mkv_file(env, "untouched.mkv"), _mkv_file(env, "mismatch.mkv")
     models = _removal_models()
     _set_fake_fzf_responses(env, [[str(source), str(second)], [str(source), str(second)]])
+    selector = env["fake_bin"] / "fzf"
+    selector.write_text(selector.read_text().replace(
+        "set -e\n", "set -e\nprintf '\\nPICKER-OPEN\\n' >&2\n", 1,
+    ))
     run_env = os.environ.copy()
     run_env.update({
         "HOME": str(env["workdir"]), "TERM": "xterm-256color",
@@ -3050,7 +3055,14 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
                 if not receive(): break
             except OSError: break
         assert not screen.active and screen.cursor_visible and screen.enters == screen.leaves
-        assert screen.homes == screen.tail_erases and screen.line_erases >= screen.homes
+        # The picker must inherit the menu's screen without exposing normal
+        # history between the two views. Check the actual entrypoint handoff.
+        for marker in re.finditer(b"PICKER-OPEN", output):
+            prefix = output[:marker.start()]
+            assert prefix.count(b"\x1b[?1049h") == prefix.count(b"\x1b[?1049l") + 1
+        assert bytes(output).count(b"PICKER-OPEN") == len(_command_argv(env, "fzf"))
+        assert screen.homes == screen.tail_erases + len(_command_argv(env, "fzf"))
+        assert screen.line_erases >= screen.tail_erases
         assert b"\x1b[2J" not in output
         assert "1) Matroska Edit" not in screen.normal and "2) Matroska Mux" not in screen.normal
         if exit_key == b"z":

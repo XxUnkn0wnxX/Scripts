@@ -139,10 +139,12 @@ normal terminal cursor visible while waiting, retaining its existing style and
 blinking behavior. Restore terminal state before submenu/data input and normal
 or interrupted exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains Back.
 
-Keep file selection, track models/value collection, processing output
-and final reports in normal terminal history. Leave the owned screen before
-validation errors or durable output, including picker, configuration, planning
-and execution boundaries. Capture navigation diagnostics and restore the screen
+Keep the file picker on the menu's owned screen until selection or cancellation,
+without exposing normal history between the menu and fzf. Let the picker paint
+its near-full-height view without an extra screen clear or artificial delay.
+Restore normal history before track models/value collection, processing output,
+final reports and validation errors, including configuration, planning and
+execution boundaries. Capture navigation diagnostics and restore the screen
 in the parent shell before displaying them. Successful navigation reads retain
 the view; failed reads, EOF, interruption and final exit restore normal screen/
 cursor without changing queue handlers or exit status.

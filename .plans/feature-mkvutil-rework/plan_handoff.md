@@ -14,6 +14,40 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted fzf handoff correction
+
+- User-reported menu-to-picker flash traced to leaving the alternate screen
+  before launching fzf at 40% height. The picker now inherits the owned screen,
+  paints at near-full height and avoids its exit clear; the parent restores
+  normal history before configuration or cancellation diagnostics. Plain input
+  keeps its existing 40%-height fallback. No added delays or dependencies.
+- Installed fzf 0.67.0 probes verify multi-selection/Back, Escape and Ctrl+C.
+  Each sees one alternate-screen entry and zero exits before the picker draws;
+  final restoration is balanced. Only disposable names and mocked media tools
+  were used; no media writes. Final three probes took 1.19s wall, 0.47s user +
+  0.44s system. Terminal captures establish the handoff sequence, not a universal
+  claim about every emulator's visual frame timing.
+- Ten affected tests pass across separate runs (seven initial passes plus three
+  focused passes). Initial failures: two redraw counters needed the new picker
+  cursor-home accounted for; one metadata-field Ctrl+C reached the unchanged 10s
+  guard, then passed in the focused run. Its reader and guard are unchanged.
+  Initial group:29.95s wall/18.93s measured CPU; final three:6.17s/5.42s.
+  The new handoff assertion failed old source before the fix. Preserve all logs.
+- Proof root `.tmp/mkvutil-rework/fzf-handoff/`: receipt.json, red.log,
+  affected.log, corrected.log, native-fzf.log and probe-final-results.json.
+  An initial prototype using height100% caused nested alternate-screen entry;
+  height-minus-one avoids it. The first probe's post-exit tty ioctl was invalid
+  on macOS; final checks inspect live terminal flags before returning to menus.
+- Parent changed only picker/main handoff code, its focused terminal assertions,
+  guide and records. Read-only Luna test review returned; no active worker.
+  Runtime engines/builders/reporting and previous semantic proof are unchanged.
+  T01.03/T04.01/T04.02 and their goal gates are accepted:9/9 tasks,4/4 goals.
+- Main Scripts remains on feature/mkvutil-rework; signed/pushed baseline
+  `92be5b3782e0cbdd0548426f696b26ee2dc92e27`. This containing commit records the
+  correction. Next: final integrity/diff review, signed commit and authorized
+  push; verify exact remote ref and clean tree in this proof root's publication.json.
+  Check that receipt and live Git state before repeating publication.
+
 ### Accepted automatic-start amendment
 
 - The user's requested Review/change, Preview and Run menus are removed from
