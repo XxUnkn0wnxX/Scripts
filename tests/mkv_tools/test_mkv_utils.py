@@ -150,7 +150,7 @@ print -r -- 'pure track-planning contracts passed'
     assert result.stdout.strip() == "pure track-planning contracts passed"
 
 
-def _run_metadata_contract(tmp_path: Path, body: str, input_data: str = ""):
+def _run_metadata_contract(tmp_path: Path, body: str, input_data: str = "", *, binary_output=False):
     script_path = Path(__file__).resolve().parents[2] / "shell" / "mkv_utils.zsh"
     result = subprocess.run(
         [
@@ -165,8 +165,8 @@ reject() { if "$@"; then fail "accepted invalid call: $*"; fi; }
             "metadata-contract-test", str(script_path),
         ],
         cwd=tmp_path,
-        input=input_data,
-        text=True,
+        input=input_data.encode() if binary_output else input_data,
+        text=not binary_output,
         capture_output=True,
         timeout=5,
         check=False,
@@ -2553,7 +2553,7 @@ print -r -- 'fresh subset navigation passed'
 
 
 class _OwnedMenuScreen:
-    """Small ANSI model for this UI's buffer, erase and cursor controls."""
+    """ANSI cursor/cell model for navigation's home and line/tail erases."""
 
     def __init__(self):
         import codecs
@@ -2562,12 +2562,19 @@ class _OwnedMenuScreen:
         self.active = False
         self.cursor_visible = True
         self.normal = ""
-        self.alternate = ""
+        self.cells = [[]]
+        self.row = self.col = 0
         self.enters = self.leaves = 0
+        self.homes = self.line_erases = self.tail_erases = 0
 
     @property
     def text(self):
-        return self.alternate if self.active else self.normal
+        return "\n".join("".join(row) for row in self.cells) if self.active else self.normal
+
+    def _row(self):
+        while len(self.cells) <= self.row:
+            self.cells.append([])
+        return self.cells[self.row]
 
     def feed(self, data):
         import re
@@ -2581,25 +2588,43 @@ class _OwnedMenuScreen:
                 self.pending = self.pending[match.end():]
                 if parameters == "?1049" and command == "h":
                     assert not self.active, "nested alternate buffer"
-                    self.active = True; self.alternate = ""; self.enters += 1
+                    self.active = True; self.cells = [[]]; self.row = self.col = 0; self.enters += 1
                 elif parameters == "?1049" and command == "l":
                     assert self.active, "unowned alternate-buffer leave"
                     self.active = False; self.leaves += 1
                 elif parameters == "?25" and command in ("h", "l"):
                     self.cursor_visible = command == "h"
-                elif command == "J":
-                    assert self.active and parameters == "2", "normal screen was erased"
-                    self.alternate = ""
+                elif command in ("J", "K"):
+                    assert self.active and parameters in ("", "0"), "normal/prepaint screen erase"
+                    del self._row()[self.col:]
+                    if command == "J":
+                        del self.cells[self.row + 1:]; self.tail_erases += 1
+                    else:
+                        self.line_erases += 1
                 elif command == "H":
                     assert self.active, "normal screen cursor moved"
+                    position = (parameters or "1;1").split(";")
+                    self.row = int(position[0] or "1") - 1
+                    self.col = int(position[1] or "1") - 1 if len(position) > 1 else 0
+                    self.homes += 1
                 else:
                     raise AssertionError(f"unexpected UI escape {parameters}{command}")
             else:
                 character, self.pending = self.pending[0], self.pending[1:]
-                if self.active:
-                    self.alternate += character
-                else:
+                if not self.active:
                     self.normal += character
+                elif character == "\r":
+                    self.col = 0
+                elif character == "\n":
+                    self.row += 1
+                elif character == "\b":
+                    self.col = max(0, self.col - 1)
+                else:
+                    row = self._row()
+                    while len(row) <= self.col:
+                        row.append(" ")
+                    row[self.col] = character
+                    self.col += 1
 
 
 @pytest.mark.parametrize("exit_key", [b"e", b"\x03", b"line-ctrl-c", b"z", b"preview-ctrl-c", b"title-ctrl-c", b"track-id-ctrl-c"],
@@ -2689,9 +2714,12 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         shortcuts()
         if exit_key in (b"e", b"preview-ctrl-c"):
             for key, category in ((b"1", "Matroska Edit"), (b"2", "Matroska Mux"), (b"3", "Matroska Extract"), (b"1\n", "Matroska Edit")):
+                switches = (screen.enters, screen.leaves)
                 os.write(master, key)
                 line_menu(b"Operations (single/comma/range): ", "actions", category)
+                assert (screen.enters, screen.leaves) == switches
                 os.write(master, b"e\n"); shortcuts()
+                assert (screen.enters, screen.leaves) == switches
             os.write(master, b"2")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
             os.write(master, b"2\n")
@@ -2699,8 +2727,11 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
             os.write(master, b"0:0\n")
             line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
             assert "1) Remove tracks" not in screen.text and "1) Set flag-forced" in screen.text
+            switches = (screen.enters, screen.leaves)
             os.write(master, b"e\n")
             line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            assert (screen.enters, screen.leaves) == switches
+            assert "Set flag-forced" not in screen.text and "Set title" not in screen.text
             os.write(master, b"1\n")
             normal_input(b"Track IDs to remove (comma/range): ")
             os.write(master, b"1\n")
@@ -2725,10 +2756,14 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
                 os.write(master, b"\n")
                 line_menu(b"Review choice: ", "review", "Matroska Mux")
                 assert screen.normal == history + "\r\n"
+                switches = (screen.enters, screen.leaves)
                 os.write(master, b"1\n")
                 line_menu(b"Replacement operations: ", "actions", "Matroska Mux")
+                assert (screen.enters, screen.leaves) == switches
+                assert "Review/change" not in screen.text and "Preview resulting" not in screen.text
                 os.write(master, b"e\n")
                 line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+                assert (screen.enters, screen.leaves) == switches
                 os.write(master, b"e\n")
                 normal_input(b"Press Enter to continue: ")
                 assert screen.normal.count("Final report") == 1 and "Skipped: 1" in screen.normal
@@ -2762,6 +2797,8 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
                 if not receive(): break
             except OSError: break
         assert not screen.active and screen.cursor_visible and screen.enters == screen.leaves
+        assert screen.homes == screen.tail_erases and screen.line_erases >= screen.homes
+        assert b"\x1b[2J" not in output
         assert "1) Matroska Edit" not in screen.normal and "2) Matroska Mux" not in screen.normal
         if exit_key == b"z":
             assert "Invalid category." in screen.normal
@@ -2817,3 +2854,78 @@ print -r -- 'pipe presentation contracts passed'
     assert "No eligible jobs; change settings" in result.stderr
     assert "Report unavailable" in result.stderr and "Press Enter" not in result.stderr
     assert "\x1b" not in result.stdout + result.stderr
+
+
+def test_mkv_utils_redraw_single_literal_body_and_shorter_screen(tmp_path):
+    result = _run_metadata_contract(tmp_path, r'''
+MKVUTIL_UI_ACTIVE=1
+calls=0
+printf() {
+  (( ++calls ))
+  eq "$#" 2 'one literal body argument'
+  eq "$1" '%s' 'literal format'
+  builtin printf '%s' "$2"
+}
+_mkvutil_ui_redraw $'Long heading with an old suffix KEEP THIS STALE SUFFIX\n1) Old choice\n2) Older extra choice'
+eq "$calls" 1 'one printf for first body'
+_mkvutil_ui_redraw $'Short $cash 100% @literal "quote"\ne) Back'
+eq "$calls" 2 'one printf for second body'
+''', binary_output=True)
+    screen = _OwnedMenuScreen()
+    screen.feed(b"durable history\r\n\x1b[?1049h")
+    screen.feed(result.stderr)
+    assert screen.text == 'Short $cash 100% @literal "quote"\ne) Back\n'
+    assert "old suffix" not in screen.text and "Older extra choice" not in screen.text
+    assert screen.homes == screen.tail_erases == 2 and screen.line_erases == 5
+    assert b"\x1b[2J" not in result.stderr
+    screen.feed(b"\x1b[?1049l")
+    assert screen.normal == "durable history\r\n"
+
+
+def test_mkv_utils_redraw_parent_replays_navigation_failures(tmp_path):
+    result = _run_metadata_contract(tmp_path, r'''
+# Simulate an already owned navigation screen; rendering occurs in a child,
+# but every failure must close ACTIVE in the parent before replaying messages.
+MKVUTIL_UI_ACTIVE=1
+mkvutil_metadata_validate_registry() { print -u2 -r -- 'registry diagnostic'; return 1; }
+code=0
+_mkvutil_menu_read actions edit 'Actions: ' < /dev/null || code=$?
+eq "$code" 1 'registry failure status'
+eq "$MKVUTIL_UI_ACTIVE" 0 'registry parent left'
+MKVUTIL_UI_ACTIVE=1
+mkvutil_category_choices() { print -r -- 'choice partial output'; print -u2 -r -- 'choice diagnostic'; return 1; }
+code=0
+_mkvutil_menu_choices mux invalid || code=$?
+eq "$code" 1 'choice failure status'
+eq "$MKVUTIL_UI_ACTIVE" 0 'choice parent left'
+MKVUTIL_UI_ACTIVE=1
+_mkvutil_menu_body() { print -r -- 'renderer partial output'; print -u2 -r -- 'renderer diagnostic'; return 1; }
+code=0
+_mkvutil_menu_read main < /dev/null || code=$?
+eq "$code" 1 'renderer failure status'
+eq "$MKVUTIL_UI_ACTIVE" 0 'renderer parent left'
+print -r -- 'diagnostic boundaries passed'
+''')
+    assert result.stdout.strip() == "diagnostic boundaries passed"
+    chunks = result.stderr.split("\x1b[?1049l")
+    assert len(chunks) == 4
+    assert "registry diagnostic" in chunks[1]
+    assert "choice partial output\nchoice diagnostic" in chunks[2]
+    assert "renderer partial output\nrenderer diagnostic" in chunks[3]
+
+
+def test_mkv_utils_redraw_retains_navigation_and_leaves_on_eof(tmp_path):
+    result = _run_metadata_contract(tmp_path, r'''
+# Parent-owned state persists on a valid adjacent navigation choice; EOF
+# exits it. No main-reader/line-reader signal handling is replaced here.
+MKVUTIL_UI_ACTIVE=1
+_mkvutil_menu_read actions mux 'Actions: ' <<< e
+eq "$MKVUTIL_UI_ACTIVE" 1 'valid read retained buffer'
+eq "$REPLY" e 'choice literal'
+code=0
+_mkvutil_menu_read actions mux 'Actions: ' < /dev/null || code=$?
+eq "$code" 2 'EOF status'
+eq "$MKVUTIL_UI_ACTIVE" 0 'EOF parent left'
+''')
+    assert result.stderr.count("\x1b[?1049l") == 1
+    assert "\x1b[?1049h" not in result.stderr and "\x1b[2J" not in result.stderr

@@ -115,7 +115,11 @@ At an interactive terminal, main-menu choices `1`, `2`, `3`, and hidden `e`/`E`
 act on a single keypress without Enter. Submenu batch selections and data fields
 remain line-based; redirected input retains its existing line-based behavior.
 On a capable interactive terminal, navigation menus own a temporary screen:
-each active menu replaces the previous menu's choices. Restore the main-menu
+each active menu replaces the previous menu's choices. Adjacent navigation-only
+views retain that screen rather than exiting/reentering it. Buffer the complete
+menu body, then overwrite it in one literal-safe write, clearing stale line
+endings and unused rows without a blank-before-paint screen clear. Existing
+readers emit their prompts; do not add animation, sleeps or artificial delay. Restore the main-menu
 `Category:` selector while keeping immediate single-key selection. Keep the
 normal terminal cursor visible while waiting, retaining its existing style and
 blinking behavior. Restore terminal state before submenu/data input and normal
@@ -123,8 +127,11 @@ or interrupted exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains B
 
 Keep file selection, track models/value collection, previews, processing output
 and final reports in normal terminal history. Leave the owned screen before
-validation errors or durable output, and restore normal screen/cursor on every
-return, EOF or interruption without changing queue handlers or exit status.
+validation errors or durable output, including picker, configuration, planning
+and execution boundaries. Capture navigation diagnostics and restore the screen
+in the parent shell before displaying them. Successful navigation reads retain
+the view; failed reads, EOF, interruption and final exit restore normal screen/
+cursor without changing queue handlers or exit status.
 Interactive previews and scope reports that will be followed by another owned
 menu require an acknowledgement so the user can read them; an ordinary final
 successful Run still reports and exits. Redirected/unsupported operation keeps

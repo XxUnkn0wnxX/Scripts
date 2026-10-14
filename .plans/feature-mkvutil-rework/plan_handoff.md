@@ -14,7 +14,47 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Accepted visible main-cursor amendment
+### Accepted buffered menu-redraw amendment
+
+- User requires immediate menu redraw without flash or artificial delay.
+  Implemented in main Scripts on feature; baseline signed/published
+  `46c42c5523cfe3efd4b1a5720ac0ba7b0e6966a5`. Adjacent navigation keeps its
+  screen buffer. Each complete body paints once from home with line-suffix and
+  final-tail erasure, without blank-before-paint clear, animation or sleep.
+- Astra focused audit passed with notes; shorter-line cleanup, literal printing,
+  reader-owned prompts and all diagnostic/core-output boundaries are implemented.
+  Main Category prompt/instant native input/visible cursor and ordinary/metadata
+  readers are byte-identical. Picker, configuration, planning, execution, previews,
+  reports and errors restore normal history; neutral Back retains the view.
+- Current proof `.tmp/mkvutil-rework/redraw.NtaUm3/receipt.json`: 14 normal cases
+  pass plus one corrected raw-byte case separately, seven controlling-PTY cases
+  pass, and three pipe journeys pass. This is 25 distinct cases in separate runs,
+  not a single 25-case all-pass invocation. Initial CRLF text-normalization oracle
+  failure is preserved; source did not change, and the optional binary test mode
+  retains the exact default helper protocol. Total including the initial attempt:
+  30.24s wall / 25.53s measured CPU. Existing 10s PTY/20s CLI guards remain.
+- Parent `parent-review.json` verifies logs/runtime-copy hashes, 22 protected
+  reader/engine/builder/safety functions and unchanged shared helper, default test
+  protocol, exact UI source boundaries and unchanged parent-session HTML ledger.
+  Literal-body print interception and real cursor/cell model verify shorter views,
+  no1049 cycles between navigation, no2J and normal history/error/restoration.
+  This proves terminal controls/content; no physical terminal refresh timing or
+  one-syscall/zero-latency guarantee is inferred. No native/full/CI campaign ran.
+- Current source SHA-256:
+  `ae4b7ff5ed5ce7a60572f7bb004bcfbcb761d47c990bcc7f6db7a70b5398b70a`.
+  Tests: `c143288098cedef3f6494e37d852423f7c99902e36071428079df982e4215c9d`.
+  Guide: `c72a0173eb0886bd72708357b91f118893dfa5a17286cc7c74ee2a485c4cb055`.
+- T01.03/T04.01/T04.02 and G01/G04 are reaccepted: 9/9 tasks and 4/4 goals.
+  Syntax/AST/whitespace and record checks pass; old engine/native receipts,
+  permissions, IDs/dependencies and recovery records are preserved. Worker and
+  owned processes are quiescent; no extra runtime file/dependency, worktree,
+  branch or AGENTS change was made.
+- Feature commit/push remains authorized. Verify the containing signed commit
+  and live feature ref in this folder's `publication.json` after publication.
+  No implementation/verification work remains; read this boundary and current
+  checklist before selecting new work.
+
+### Historical: Accepted visible main-cursor amendment
 
 - User wants the normal flashing cursor beside Category restored while keeping
   immediate main keys. Implemented in main Scripts on feature; baseline signed/
