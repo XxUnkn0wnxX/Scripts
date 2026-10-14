@@ -1145,20 +1145,21 @@ _mkvutil_display_record() {
 mkvutil_ascii_box() {
   (( $# > 0 )) || return 1
   local title="$1" line="" content_width=44 border="" dash_count=0
+  setopt localoptions multibyte
   shift
-  (( ${#title} > content_width )) && content_width=${#title}
+  (( ${(m)#title} > content_width )) && content_width=${(m)#title}
   for line in "$@"; do
-    (( ${#line} > content_width )) && content_width=${#line}
+    (( ${(m)#line} > content_width )) && content_width=${(m)#line}
   done
   dash_count=$((content_width + 2))
   repeat "$dash_count"; do border+="-"; done
   print || return 1
   print -r -- "+${border}+" || return 1
-  printf '| %-*s |\n' "$content_width" "$title" || return 1
+  print -r -- "| ${(mr:$content_width:)title} |" || return 1
   if (( $# > 0 )); then
     print -r -- "+${border}+" || return 1
     for line in "$@"; do
-      printf '| %-*s |\n' "$content_width" "$line" || return 1
+      print -r -- "| ${(mr:$content_width:)line} |" || return 1
     done
   fi
   print -r -- "+${border}+"
@@ -1170,12 +1171,18 @@ mkvutil_format_final_report() {
   mkvutil_ascii_box 'Final report' || return 1
   jq -r '
     def duration: floor as $s | (($s/3600|floor|tostring)+"h "+(($s%3600)/60|floor|tostring)+"m "+($s%60|tostring)+"s");
+    def outcome_label:
+      if .=="done" then "Done" elif .=="not_attempted" then "Not attempted"
+      elif .=="warning" then "Warning" elif .=="partial" then "Partial"
+      elif .=="failed" then "Failed" elif .=="skipped" then "Skipped"
+      elif .=="excluded" then "Excluded" elif .=="interrupted" then "Interrupted"
+      else . end;
     "Directory: \(.directory)",
     (.batches[] | "Configuration \(.id) (\(.state)\(if .state=="executed" or .state=="interrupted" then "" else "; requested, not run" end)):",
       "  Category: \(.category); Actions: \(.action_ids|join(","))",
       (if .category=="mux" then "  Optional Mux metadata: \(if .metadata_ids=="" then "none" else .metadata_ids end)" else empty end),
       "  Requested files: \(.sources|length); eligible: \(.eligible); attempted: \(.attempted); completed: \(.completed); elapsed: \(.elapsed_seconds|duration)",
-      "  Outcomes: \(.outcomes|tojson)"),
+      "  Outcomes: \(.outcomes | if length==0 then "none" else to_entries | sort_by(.key as $key | [(["done","failed","warning","partial","skipped","excluded","not_attempted","interrupted"] | index($key) // 8), $key]) | map((.key|outcome_label)+": "+(.value|tostring)) | join("; ") end)"),
     (.batches[] | select(.stop!=null) |
       "Stopped configuration \(.id): \(.stop.mode)",
       "  Files not started due to stop: \(.stop.not_started_sources|length)",
@@ -1213,7 +1220,7 @@ mkvutil_clock() { python3 -c 'import time; print(time.monotonic())'; }
 
 mkvutil_format_progress() {
   local category="$1" operations="$2" elapsed="$3" attempted="$4" completed="$5" total="$6" work_elapsed="${7:-$3}" track_elapsed="${8-}" track_work="${9-}" track_samples="${10:-$4}" mode=job
-  local output=""
+  local output="" source="${11-}"
   local -a progress_lines=()
   [[ "$category" != edit ]] || return 0
   [[ "$category" == mux || "$category" == extract ]] || return 1
@@ -1241,6 +1248,7 @@ print(f"{measured}\nFiles Done: {completed}\nFiles Attempted: {attempted}\nFiles
 ' "$elapsed" "$work_elapsed" "$attempted" "$completed" "$total" "$track_samples" "$mode")" || return $?
   progress_lines=("${(@f)output}")
   (( ${#progress_lines} > 0 )) || return 1
+  [[ -z "$source" ]] || progress_lines=("File: ${source:t}" "${progress_lines[@]}")
   mkvutil_ascii_box 'File progress' "${progress_lines[@]}"
 }
 
@@ -3356,6 +3364,9 @@ mkvutil_execute_queue() {
         unstarted_offset=$queue_index
         continue ;;
     esac
+    if [[ "$category" == mux || "$category" == extract ]]; then
+      print -r -- "Processing: ${source:t}"
+    fi
     active_source="$source"
     job_started="$(mkvutil_clock)" || return 1
     result_code=0
@@ -3400,13 +3411,13 @@ mkvutil_execute_queue() {
       queue_code=1
     fi
     if [[ "$category" == mux ]]; then
-      mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" || return 1
+      mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" "" "" "$attempted" "$source" || return 1
     elif [[ "$category" == extract ]]; then
       track_elapsed="$(jq -r '.track_stage_seconds // empty' <<< "$MKVUTIL_RESULT_JSON")"
       if [[ -n "$track_elapsed" ]]; then
         track_samples=$((track_samples + 1));track_work=$((track_work + track_elapsed))
       fi
-      mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" "$track_elapsed" "$track_work" "$track_samples" || {
+      mkvutil_format_progress "$category" "$operations" "$job_elapsed" "$attempted" "$completed" "$total" "$work_elapsed" "$track_elapsed" "$track_work" "$track_samples" "$source" || {
         print -u2 -r -- 'Progress formatting unavailable; independent files continue.';queue_code=1
       }
     fi
@@ -3561,7 +3572,7 @@ _mkvutil_main_body() {
   done
   resolved_directory="$(mkvutil_resolve_directory "$directory")" || return 1
   cd "$resolved_directory" || return 1
-  print -r -- "Current Work Dir: $resolved_directory"
+  _mkvutil_ui_owned || print -r -- "Current Work Dir: $resolved_directory"
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
     result=0

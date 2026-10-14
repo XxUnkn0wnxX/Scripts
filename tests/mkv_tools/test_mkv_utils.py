@@ -42,6 +42,13 @@ def _mkv_file(env: dict[str, Path], name: str) -> Path:
 
 
 def _ascii_box_contains(output: str, *required_rows: str) -> tuple[int, int, list[str]]:
+    import unicodedata
+
+    def display_width(value: str) -> int:
+        return sum(0 if unicodedata.combining(char) else
+                   2 if unicodedata.east_asian_width(char) in {"W", "F"} else 1
+                   for char in value)
+
     lines = output.splitlines()
     borders = [
         index for index, line in enumerate(lines)
@@ -57,7 +64,8 @@ def _ascii_box_contains(output: str, *required_rows: str) -> tuple[int, int, lis
                 continue
             rows = [line[1:-1].strip() for line in interior if line != border]
             if all(required in rows for required in required_rows):
-                assert all(len(line) == len(border) for line in lines[first_index:last_index + 1])
+                border_width = display_width(border)
+                assert all(display_width(line) == border_width for line in lines[first_index:last_index + 1])
                 return first_index, last_index, rows
     raise AssertionError(f"no ASCII box contains rows: {required_rows!r}\n{output}")
 
@@ -73,6 +81,16 @@ def _analysis_spinner_frames(output: str) -> list[str]:
             if prefix:
                 frames.append(prefix[-1])
     return frames
+
+
+def _assert_readable_outcomes(output: str, *expected_counts: str) -> str:
+    lines = [line.strip() for line in output.splitlines() if line.strip().startswith("Outcomes:")]
+    assert lines, output
+    for line in lines:
+        assert "{" not in line and "}" not in line, line
+    matching = next((line for line in lines if all(value in line for value in expected_counts)), None)
+    assert matching is not None, f"missing readable outcome counts {expected_counts!r}: {lines!r}"
+    return matching
 
 
 def test_mkv_utils_pure_track_planning_contract(tmp_path: Path):
@@ -636,6 +654,7 @@ def test_mkv_utils_mux_entrypoint_track_count_skip_and_bypass(env, bypass_positi
         assert merge_calls[0][merge_calls[0].index("--track-name") + 1] == "11:Batch name"
         assert "Skipped removal mismatch: Extra count.mkv" in result.stdout
         assert "Track count mismatch: expected 3; actual 4" in result.stdout
+        _assert_readable_outcomes(result.stdout, "Done: 1", "Skipped: 1")
         assert "Bypass enabled:" not in result.stdout
         assert second.read_bytes() == b"payload"
     else:
@@ -643,6 +662,8 @@ def test_mkv_utils_mux_entrypoint_track_count_skip_and_bypass(env, bypass_positi
         assert len(merge_calls) == 2
         assert {argv[-1] for argv in merge_calls} == {str(first), str(second)}
         assert "Track count mismatch:" not in result.stdout
+        _assert_readable_outcomes(result.stdout, "Done: 2")
+        assert "Skipped: 0" in result.stdout
         assert "Bypass enabled: removal track-count guard only." in result.stdout
         assert result.stdout.count("Bypass enabled: removal track-count guard only.") == 1
         assert not first.exists() and not second.exists()
@@ -1886,7 +1907,8 @@ mkvutil_final_report
     assert not record["staged_paths"] and not record["phase_receipts"] and not record["scratch_paths"]
     assert len(record["remaining_staging_directories"])==1
     directory=Path(record["remaining_staging_directories"][0]);assert directory.is_dir() and not list(directory.iterdir())
-    assert f"Retained staging directory: {directory}" in result.stdout
+    assert f"Retained staging directory: {directory.name}" in result.stdout
+    assert f"Retained staging directory: {directory}" not in result.stdout
     assert all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
 
 
@@ -1972,6 +1994,10 @@ mkvutil_final_report
     assert summary["batches"][0]["outcomes"]["skipped"] == 1 and summary["batches"][1]["outcomes"] == {"done": 1}
     assert "Directory: Input directory" in result.stdout and f"Directory: {env['workdir']}" not in result.stdout
     assert "Skip history: resolved; configurations 1,2" in result.stdout
+    outcomes = _assert_readable_outcomes(
+        result.stdout, "Done: 1", "Failed: 1", "Warning: 1", "Partial: 1", "Skipped: 1"
+    )
+    assert "{" not in outcomes and "Outcomes: Done: 1" in outcomes
 
 
 def test_mkv_utils_reporting_cancel_eof_and_excluded_unresolved_retry(env):
@@ -2160,10 +2186,14 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
 def test_mkv_utils_reporting_progress_and_extract_formatter_contract(env):
     result = _run_planning_contract(env, r'''
 eq "$(mkvutil_format_progress edit 1,2 9 1 1 2 9)" '' 'all Edit progress silent'
-special="$(mkvutil_ascii_box 'Literal $cash' '100% \literal')"
+special="$(mkvutil_ascii_box 'Literal $cash' '100% \literal' '界é')"
 print -r -- "SPECIAL-BEGIN"
 print -r -- "$special"
 print -r -- "SPECIAL-END"
+file_progress="$(mkvutil_format_progress mux 1 1 1 1 2 1 1 1 1 "$PWD/Source 界é.mka")"
+print -r -- "FILE-PROGRESS-BEGIN"
+print -r -- "$file_progress"
+print -r -- "FILE-PROGRESS-END"
 print -r -- "MUX-BEGIN"
 mkvutil_format_progress mux 1,2 2 2 1 3 8
 print -r -- "MUX-END"
@@ -2199,7 +2229,10 @@ mkvutil_finish 2
     _ascii_box_contains(combined, "File progress", "Processed In: 0h 0m 3s", "Files Done: 2",
                         "Files Attempted: 2", "Files Remaining: 1", "Estimated Time Remaining: 0h 0m 4s")
     special = result.stdout.split("SPECIAL-BEGIN\n")[1].split("SPECIAL-END")[0]
-    _ascii_box_contains(special, "Literal $cash", "100% \\literal")
+    _ascii_box_contains(special, "Literal $cash", "100% \\literal", "界é")
+    file_progress = result.stdout.split("FILE-PROGRESS-BEGIN\n")[1].split("FILE-PROGRESS-END")[0]
+    _ascii_box_contains(file_progress, "File progress", "File: Source 界é.mka", "Files Attempted: 1")
+    assert str(env["workdir"]) not in file_progress
     for action in (1, 2):
         extract = result.stdout.split(f"EXTRACT-{action}-BEGIN\n")[1].split(f"EXTRACT-{action}-END")[0]
         _ascii_box_contains(extract, "File progress", "Processed In: 0h 0m 5s", "Files Done: 1",
@@ -2334,6 +2367,7 @@ def test_mkv_utils_category_incomplete_final_input_does_not_execute(env: dict[st
     assert "Preview resulting" not in result.stdout + result.stderr
     assert result.stdout.count("Final report") == 1
     assert "Cancelled; no media changes." in result.stdout
+    assert "Outcomes: none" in result.stdout
     assert len(_command_argv(env, "fzf")) == 1
     assert len(_command_argv(env, "mkvmerge")) == 2
     assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
@@ -2354,6 +2388,9 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     _ascii_box_contains(result.stdout, "Final report")
     assert "Category: extract; Actions: 1,2" in result.stdout and "Directory: workdir" in result.stdout
     assert "Done: 1; Failed: 0" in result.stdout and "Attachments processed: 3; published: 3; final unique published names: 2; superseded: 1" in result.stdout
+    _assert_readable_outcomes(result.stdout, "Done: 1")
+    assert "Processing: First source.mkv" in result.stdout
+    _ascii_box_contains(result.stdout, "File progress", "File: First source.mkv")
     assert "Files Attempted: 1" in result.stdout and "Estimated Time Remaining:" in result.stdout
     assert len(_command_argv(env,"fzf"))==1
     assert [argv[:2] for argv in _command_argv(env,"mkvextract")]==[[str(source),"attachments"],[str(source),"tracks"]]
@@ -2396,6 +2433,8 @@ def test_mkv_utils_category_edit_run_grouped_entrypoint(env: dict[str, Path]):
     _ascii_box_contains(result.stdout, "Final report")
     assert "Processed In:" not in result.stdout
     assert "success:" in result.stdout and "edited_observed" in result.stdout
+    assert "success: Run title.mks" in result.stdout
+    _assert_readable_outcomes(result.stdout, "Done: 1")
     assert len(_command_argv(env, "fzf")) == 1
     assert _command_argv(env, "mkvpropedit") == [[str(source), "--normalize-language-ietf", "off", "--edit", "info", "--delete", "title"]]
     assert all(call[:1] == ["-J"] for call in _command_argv(env, "mkvmerge"))
@@ -2823,12 +2862,18 @@ def test_mkv_utils_option7_multi_file_uses_per_file_track_layout(env):
     first,second=_mkv_file(env,"option7_default.mkv"),_mkv_file(env,"option7_alt.mkv")
     a=_integration_model();b=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(11,"audio","A_AAC",True),(12,"subtitles","S_TEXT/ASS",True)])
     extra=_integration_manifest(env,{first:a,second:b},stage={str(first):_integration_output(a,[1,2,3]),str(second):_integration_output(b,[11,12])})
-    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second)]],input_data="2\n1\n0\n\n",extra_env=extra)
+    # Counts differ intentionally; this legacy per-file layout case exercises
+    # the explicitly requested count-only bypass. Default skip is tested above.
+    result=_run_mkv_utils(env,"--bypass",fzf_responses=[[str(first),str(second)]],input_data="2\n1\n0\n\n",extra_env=extra)
     assert result.returncode==0,result.stdout+result.stderr
     calls=[argv for argv in _command_argv(env,"mkvmerge") if "-o" in argv]
     assert len(calls)==2 and all("--no-video" in c for c in calls)
     assert [(c[c.index("--audio-tracks")+1],c[c.index("--subtitle-tracks")+1]) for c in calls]==[("1,2","3"),("11","12")]
     assert not _command_argv(env,"mkvpropedit") and "Done: 2; Failed: 0" in result.stdout
+    assert all(f"Processing: {path.name}" in result.stdout for path in (first, second))
+    for path in (first, second):
+        assert f"File: {path.name}" in result.stdout
+    _assert_readable_outcomes(result.stdout, "Done: 2")
     assert _observed_fake_identification(env,first.with_suffix(".mka"))["tracks"]==_integration_output(a,[1,2,3])["tracks"]
     assert _observed_fake_identification(env,second.with_suffix(".mka"))["tracks"]==_integration_output(b,[11,12])["tracks"]
     for internal in ("track_rows=","row=","track_type=","track_id=","track_rows_valid=","excluded_id=","requested_ids_valid="):
@@ -3650,7 +3695,8 @@ print -r -- 'shared target contracts passed'
     assert result.stderr.count('Track IDs (comma/range;') == 3
     assert result.stderr.count('Original track ID 12 — Language:') == 2
     assert result.stderr.count('Original track ID 11 — Language:') == 2
-    assert 'Track name:' in result.stderr and 'use \\e/\\E' in result.stderr
+    assert 'Track name:' in result.stderr and 'e) Back' in result.stderr
+    assert 'use \\e/\\E' not in result.stderr
 
 
 def test_mkv_utils_metadata_field_back_resets_partial_collection(tmp_path):

@@ -14,6 +14,80 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted full output/interactive audit
+
+- User explicitly requested full IA for every choice/all outputs, saved journey
+  logs and launch through the alias outside the repository. All five reopened
+  tasks and their goal gates are reaccepted: **9/9 tasks, 4/4 goals**. No approved
+  requirement or predecessor was waived. The parent reviewed accumulated scope;
+  Astra's final evidence closure returned PASS after two receipt corrections.
+- Canonical proof/log root: `.tmp/mkvutil-rework/output-full-audit/`.
+  `RESULTS.md` indexes accepted cases and transcripts; `receipt.json` binds the
+  current source/tests, preserved failures and actual-versus-controlled limits.
+  `parent-static-review.json` records unchanged engines/math/helper/parent ledger;
+  `fzf-path-requalification.json` checks original raw bytes without deleting
+  directory strings first. All private receipts and immutable seeds are retained.
+- Source SHA-256:
+  `d85514a8f38f22f75eaecb7af725d0cae9b380f5aaab0dc256f1ab2d8db58d78`.
+  Test SHA-256:
+  `23a1a5f2d2c5a71032fff660e82bb4d50a523c3d20beba33c4941fc4851f06b1`.
+  Original shared fixture helper and append-only parent-session ledger are
+  unchanged. Runtime stays one whole script with existing dependencies.
+- Complete controlled module: 172 passed / 7 failed in 547.16s pytest; 548.07s
+  wall, 228.96s user + 205.04s system CPU. Corrective group: eight passed in
+  54.59s pytest; 56.10s wall, 22.89s user + 19.31s system. This qualifies **179
+  distinct current cases across runs**, not one all-green invocation. Exact AST
+  comparison binds unchanged earlier passes and requires corrected-function
+  cases to pass again. Three initial focused reporting cases also passed.
+- Five failures came from stale/incorrect expectations: sparse config outcomes
+  versus global zero counts (two parameter cases), basename staging display,
+  explicit count bypass for the legacy unequal-layout test, and the removed
+  escape hint. Only four test functions changed; all original semantic/safety
+  assertions remain. The other failures hit the existing 10s helper deadline
+  and macOS group-existence EPERM probe; both passed unchanged on rerun. Their
+  original logs remain; no production diagnosis or weakened gate is inferred.
+- **20 native v93 choice journeys pass**: Edit 1–5 plus combined, Mux remove/
+  reorder/both and metadata 1–5 plus combined, all three Extract combinations,
+  and matching/mismatched Analyze. Fresh copies cover all four formats and valid
+  compatible track-edit groups; title clearing also spans all four together.
+  Verified properties/order/extensions and relevant payload/chapter/tag/font
+  preservation, one remux per Mux file and no post-remux propedit. The known
+  single SRT end-timestamp 200-to-199ms conversion difference is scoped and hashed.
+  Original seeds and baselines remain unchanged. Native media and independent
+  oracle commands are logged separately. These journeys reproduce the verified
+  alias definition against the actual script; they do not load user startup.
+- **Two terminal qualifications pass**: F1 uses installed fzf at 80 columns,
+  filters .mkv/.mka, selects with Tab and finishes read-only Analyze. Complete
+  media paths are absent from its saved ANSI-cleaned bytes; source hashes match.
+  The final three-file reorder journey at 100 columns loads actual ~/.zshrc in
+  interactive zsh, verifies the existing alias without redefining it, records
+  resolved /usr/local/bin/zsh, restores isolated native delegate PATH and invokes
+  that alias from outside the repo. Its result is
+  `native-report-pty-20261015-041636/result.json`: exit0, three remuxes/zero propedit,
+  Processing/File labels before one Final report and Outcomes: Done: 3.
+- Initial native preparation failures (missing private selector log directories,
+  then an incompatible mixed-format track-edit fixture) remain recorded. The
+  private driver was corrected; production source stayed unchanged. Earlier
+  alias-definition/noninteractive-startup report probes also remain preserved.
+  No user media, installations/downloads, upgrade, CI or build execution.
+- The supplied ASCII symptom was not reproduced on either zsh. A real wide/
+  combining-character defect was independently reproduced and corrected using
+  consistent native display-width measurement and padding. Both installed zsh
+  versions 5.9.2/5.8 emit equal-width rows for ASCII, long and multibyte probes;
+  captured terminal rows also qualify. No universal font/viewport/grapheme claim.
+  Mux/Extract now show the active basename and identify each progress box; human
+  outcome labels replace raw JSON. Edit remains final-only; queue timing and
+  processing engines are unchanged. The guide describes current behavior and
+  current qualified testing; historical proof is preserved in these records.
+- Main Scripts remains on feature/mkvutil-rework, baseline signed/pushed
+  `5843937059612ba6f00ab433d747a2c1486c0bcc`; the containing commit records this
+  amendment. Parent owns all six tracked changes; delegated packages returned
+  ownership and no runtime job is active. No branch/worktree/AGENTS changes.
+  Standing signed push-after-testing authorization persists. Next: final document
+  integrity/whitespace/static review, sign/push only this branch, then verify
+  `.tmp/mkvutil-rework/output-full-audit/publication.json` and exact live refs
+  before repeating publication.
+
 ### Accepted Analysing indicator and shared ASCII-block amendment
 
 - Latest user-directed behavior: Analyze displays only its Apollo-style
