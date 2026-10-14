@@ -640,6 +640,8 @@ mkvutil_metadata_set() {
 }
 
 _mkvutil_metadata_collect() {
+  setopt localtraps
+  trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
   local choices="" choice="" selection="" targets_csv="" target="" value=""
   local -a chosen_targets=()
   mkvutil_metadata_validate_registry || return 1
@@ -1171,6 +1173,8 @@ mkvutil_accept_files() {
 }
 
 _mkvutil_read() {
+  setopt localtraps
+  trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
   printf '%s' "$1" >&2
   IFS= read -r REPLY || return 2
 }
@@ -1180,6 +1184,7 @@ _mkvutil_read() {
 _mkvutil_read_main() {
   [[ -t 0 ]] || { _mkvutil_read 'Category: '; return $?; }
   setopt localtraps
+  printf 'Category: ' >&2
   local read_code=0 cursor_hidden=0 timeout_marker='mkvutil-waiting-for-key'
   trap 'MKVUTIL_INTERRUPTED=1; read_code=2; return 2' INT TERM
   {
@@ -1199,6 +1204,78 @@ _mkvutil_read_main() {
     (( ! cursor_hidden )) || printf '\e[?25h' >&2
   }
   return "$read_code"
+}
+
+# Only navigation owns a transient terminal buffer. Pipes and dumb/redirected
+# terminals retain normal output and the original line-input protocol.
+typeset -gi MKVUTIL_UI_ACTIVE=0 MKVUTIL_UI_REPORT_SHOWN=0
+_mkvutil_ui_owned() { [[ -t 0 && -t 1 && -t 2 && -n "${TERM-}" && "$TERM" != dumb ]]; }
+_mkvutil_ui_enter() {
+  if _mkvutil_ui_owned && (( ! MKVUTIL_UI_ACTIVE )); then
+    printf '\e[?1049h' >&2
+    MKVUTIL_UI_ACTIVE=1
+  fi
+  return 0
+}
+_mkvutil_ui_redraw() {
+  (( ! MKVUTIL_UI_ACTIVE )) || printf '\e[H\e[2J' >&2
+  return 0
+}
+_mkvutil_ui_leave() {
+  if (( MKVUTIL_UI_ACTIVE )); then
+    printf '\e[?25h\e[?1049l' >&2
+    MKVUTIL_UI_ACTIVE=0
+  fi
+  return 0
+}
+_mkvutil_ui_acknowledge() {
+  _mkvutil_ui_owned || return 0
+  setopt localtraps
+  local acknowledgement=""
+  trap 'MKVUTIL_INTERRUPTED=1; return 2' INT TERM
+  printf '\nPress Enter to continue: ' >&2
+  IFS= read -r acknowledgement || return 2
+  (( ! MKVUTIL_INTERRUPTED )) || return 2
+}
+
+# Leave in always BEFORE callers validate choices, print errors or dispatch.
+_mkvutil_menu_read() {
+  setopt localtraps
+  local view="$1" category="${2-}" prompt="${3-}" result=0 title=""
+  trap 'MKVUTIL_INTERRUPTED=1; result=2; return 2' INT TERM
+  case "$view:$category" in
+    actions:edit|metadata:mux) mkvutil_metadata_validate_registry || return 1 ;;
+  esac
+  {
+    _mkvutil_ui_enter
+    _mkvutil_ui_redraw
+    if (( MKVUTIL_UI_ACTIVE )); then
+      case "$category" in edit) title='Matroska Edit' ;; mux) title='Matroska Mux' ;; extract) title='Matroska Extract' ;; *) title='Matroska Utility' ;; esac
+      print -r -- "$title — $view"
+      print -r -- "Directory: $PWD"
+      print
+    fi
+    case "$view" in
+      main)
+        print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract'
+        _mkvutil_read_main || result=$? ;;
+      actions)
+        mkvutil_category_menu "$category" || result=$?
+        (( result )) || { _mkvutil_read "$prompt" || result=$?; } ;;
+      metadata)
+        print -r -- 'Optional metadata edits:'
+        mkvutil_metadata_menu || result=$?
+        print -r -- 'e) Back'
+        (( result )) || { _mkvutil_read "$prompt" || result=$?; } ;;
+      review)
+        mkvutil_review_menu
+        _mkvutil_read "$prompt" || result=$? ;;
+      *) result=1 ;;
+    esac
+  } always {
+    _mkvutil_ui_leave
+  }
+  return "$result"
 }
 
 _mkvutil_exclude() {
@@ -1292,10 +1369,7 @@ mkvutil_configure_category() {
         _mkvutil_canonical_id "${item#0:}" || return 1
         order_ids+=("$REPLY")
       done
-      print -r -- 'Optional metadata edits:'
-      mkvutil_metadata_menu || return 1
-      print -r -- 'e) Back'
-      _mkvutil_read 'Metadata choices (comma/range; blank for none): ' || return 2
+      _mkvutil_menu_read metadata mux 'Metadata choices (comma/range; blank for none): ' || return $?
       case "$REPLY" in e|E|0) return 4 ;; esac
       metadata="$REPLY"
       if [[ -n "${metadata//[[:space:]]/}" ]]; then
@@ -2830,24 +2904,28 @@ mkvutil_controller() {
     result=0
     mkvutil_plan_queue || result=$?
     (( result == 0 || result == 3 )) || return "$result"
+    # Planning already printed exact mismatch details in normal history.
+    if (( ${#MKVUTIL_REMOVAL_SKIPS} > 0 )); then _mkvutil_ui_acknowledge || return $?; fi
     while true; do
-      mkvutil_review_menu
-      _mkvutil_read 'Review choice: ' || return 2
+      _mkvutil_menu_read review "$category" 'Review choice: ' || return $?
       review="$REPLY"
       case "$review" in
         e|E) return 4 ;;
         0) return 2 ;;
         1)
-          mkvutil_category_menu "$category" || return 1
-          _mkvutil_read 'Replacement operations: ' || return 2
+          _mkvutil_menu_read actions "$category" 'Replacement operations: ' || return $?
           case "$REPLY" in e|E) return 4 ;; esac
           [[ "$REPLY" != 0 ]] || return 2
           operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
           mkvutil_batch_request "$category" "$operations" || return 1
           break ;;
-        2) mkvutil_preview_jobs || return 1 ;;
+        2) mkvutil_preview_jobs || return 1; _mkvutil_ui_acknowledge || return $? ;;
         3)
-          (( ${#MKVUTIL_JOBS} > 0 )) || { print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'; continue; }
+          if (( ${#MKVUTIL_JOBS} == 0 )); then
+            print -u2 -r -- 'No eligible jobs; change settings or prepare the skipped subset.'
+            _mkvutil_ui_acknowledge || return $?
+            continue
+          fi
           result=0
           mkvutil_execute_queue "${MKVUTIL_JOBS[@]}" || result=$?
           (( MKVUTIL_INTERRUPTED == 0 )) || return 1
@@ -2869,8 +2947,7 @@ mkvutil_controller() {
           # This action is never offered while eligible jobs remain pending.
           mkvutil_prepare_skipped_subset || return $?
           category=mux
-          mkvutil_category_menu "$category" || return 1
-          _mkvutil_read 'New skipped-subset operations: ' || return 2
+          _mkvutil_menu_read actions "$category" 'New skipped-subset operations: ' || return $?
           case "$REPLY" in e|E) return 4 ;; esac
           [[ "$REPLY" != 0 ]] || return 2
           operations="$(mkvutil_category_choices "$category" "$REPLY")" || return 1
@@ -2895,7 +2972,13 @@ mkvutil_finish() {
   fi
   mkvutil_ledger_finalize || final_code=1
   mkvutil_ledger_status || final_code=1
-  mkvutil_final_report || final_code=1
+  MKVUTIL_UI_REPORT_SHOWN=0
+  if mkvutil_final_report; then
+    MKVUTIL_UI_REPORT_SHOWN=1
+  else
+    MKVUTIL_UI_REPORT_SHOWN=-1
+    final_code=1
+  fi
   return "$final_code"
 }
 
@@ -2909,6 +2992,7 @@ mkvutil_discard_configuration() {
 }
 
 mkvutil_close_scope() {
+  MKVUTIL_UI_REPORT_SHOWN=0
   (( MKVUTIL_LEDGER_ENABLED )) || return 0
   if (( ! MKVUTIL_HAS_RUN )); then
     local source=""
@@ -2923,7 +3007,7 @@ mkvutil_close_scope() {
   mkvutil_finish 0
 }
 
-mkvutil_main() {
+_mkvutil_main_body() {
   setopt localtraps
   local directory="$PWD" category="" operations="" result=0 resolved_directory="" sticky_code=0 selected=0
   MKVUTIL_LEDGER_ENABLED=0
@@ -2941,8 +3025,7 @@ mkvutil_main() {
   print -r -- "Current Work Dir: $directory"
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
-    print -r -- $'1) Matroska Edit\n2) Matroska Mux\n3) Matroska Extract'
-    _mkvutil_read_main || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
+    _mkvutil_menu_read main || { (( MKVUTIL_INTERRUPTED == 0 )) || return 1; return "$sticky_code"; }
     case "$REPLY" in
       e|E|0) return "$sticky_code" ;;
       1) category=edit ;;
@@ -2962,9 +3045,14 @@ mkvutil_main() {
       print -r -- 'Please check if there are Matroska files (.mkv, .mka, .mks, .mk3d) present before running this script again.'; return 1;
     }
     while true; do
-      mkvutil_category_menu "$category" || return 1
-      if ! _mkvutil_read 'Operations (single/comma/range): '; then
-        if (( selected )); then mkvutil_finish 2 || sticky_code=1; fi
+      result=0
+      _mkvutil_menu_read actions "$category" 'Operations (single/comma/range): ' || result=$?
+      if (( result )); then
+        if (( selected )); then
+          mkvutil_finish "$result" || sticky_code=1
+        elif (( result != 2 )); then
+          sticky_code=1
+        fi
         (( MKVUTIL_INTERRUPTED == 0 )) || sticky_code=1
         return "$sticky_code"
       fi
@@ -2972,6 +3060,9 @@ mkvutil_main() {
       case "$REPLY" in
         e|E|0)
           mkvutil_close_scope || sticky_code=1
+          # A failed report stays visible; never cover its error with main.
+          (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
+          if (( MKVUTIL_UI_REPORT_SHOWN )); then _mkvutil_ui_acknowledge || return 1; fi
           mkvutil_discard_configuration
           break ;;
       esac
@@ -3002,12 +3093,25 @@ mkvutil_main() {
         4) mkvutil_discard_configuration; continue ;;
         5)
           mkvutil_finish 0 || sticky_code=1
+          (( MKVUTIL_UI_REPORT_SHOWN >= 0 )) || return 1
+          _mkvutil_ui_acknowledge || return 1
           mkvutil_discard_configuration
           break ;;
         *) mkvutil_finish "$result" || sticky_code=1; return "$sticky_code" ;;
       esac
     done
   done
+}
+
+# Cleanup owns only terminal presentation; never reset outcome/signal state.
+mkvutil_main() {
+  local result=0
+  {
+    _mkvutil_main_body "$@" || result=$?
+  } always {
+    _mkvutil_ui_leave
+  }
+  return "$result"
 }
 
 # Sourcing defines helpers without launching the real category entrypoint.

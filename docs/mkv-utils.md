@@ -46,10 +46,11 @@ If your existing repository environment already has its dependencies, keep using
 
 The main menu keeps the work areas separate:
 
-At the main menu, press `1`, `2`, or `3` to open a category immediately; no Enter
-is needed. It displays direct shortcuts with the cursor hidden while waiting.
-Submenu batches and text fields still use Enter to confirm input, with the
-cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
+At the main **Category:** selector, press `1`, `2`, or `3` to open a category immediately; no Enter is needed. The cursor is hidden while waiting for this key. Submenu batches and text fields still use Enter to confirm input, with the cursor visible. Hidden `e`/`E` exits the main menu; submenu `e`/`E` goes Back.
+
+When standard input, output and error all use a terminal and `TERM` is set to a value other than `dumb`, navigation uses a transient alternate screen. Each menu replaces the previous one and shows its category and working directory. The utility leaves this screen before the file picker, configuration fields, processing, previews, reports or validation errors. It never clears the normal screen or scrollback.
+
+Previews, removal-mismatch details and reports remain in normal terminal history. Press Enter after these views before navigation resumes; a scope report is acknowledged before returning to main. A successful Run prints its final report and exits without an extra pause. Redirected streams and empty or `dumb` terminal settings disable owned views and these acknowledgements. Piped input retains the line-based protocol.
 
 | Main menu | Actions | What it does |
 | --- | --- | --- |
@@ -192,7 +193,7 @@ To run only the `mkv_utils` test module:
 .venv/bin/python -B -m pytest --disable-plugin-autoload tests/mkv_tools/test_mkv_utils.py
 ```
 
-The fake media commands in the test harness record arguments and isolate the menu tests from user files. The original rework campaign established 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also included three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These historical results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. The later Back-navigation change was checked separately with focused state/regression tests and three small mocked entrypoint probes, including blocked-input interruption. The processing engines were unchanged. No full native codec matrix or CI result is implied.
+The fake media commands in the test harness record arguments and isolate the menu tests from user files. The original rework campaign established 128-case coverage: 125 unchanged full-suite cases passed, and 3 corrected cases passed in a separate run. It also included three real-tool menu journeys—Edit title clearing across all four extensions, combined Mux operations with all five optional metadata edits, and combined attachment/track extraction—and one real-fzf terminal journey that selected two files, previewed, and cancelled without Run. These historical results come from separate runs; there was no single 128-case all-pass invocation. Real-tool evidence used installed MKVToolNix v93 with small disposable fixtures. The later Back-navigation change was checked separately with focused state/regression tests and three small mocked entrypoint probes, including blocked-input interruption. The owned-menu follow-up was checked separately using an active-screen ANSI model on a real controlling terminal, with mocked media tools, plus focused pipe regressions. These checks cover menu replacement, normal-history preservation, acknowledgement boundaries and keyboard interruption. The processing engines were unchanged. No full native codec matrix or CI result is implied.
 
 The tests cover the action registry and prompts, batching, removal eligibility and skip-only continuation, track order, destination validation, output extensions, publication outcomes, and final reporting. The real-tool journeys check observed media properties and source preservation for their specific scenarios; they do not represent every possible codec and metadata combination.
 

@@ -14,7 +14,49 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
-### Accepted direct shortcuts and cursor restoration
+### Accepted owned-menu screen amendment
+
+- User-directed screen ownership and restored Category selector are implemented
+  in the same script, on feature in the main Scripts checkout. Baseline signed/
+  published `ada2fd4e0476a991f233c8a5f743baaa84fd4b71`. Each navigation menu
+  replaces previous choices; main 1/2/3 and hidden e/E act immediately. Submenu
+  e/E remains Back, and ordinary value fields remain line-based with literal e.
+- Astra's focused audit passed with notes. Navigation alone uses an owned
+  alternate screen; normal screen/cursor is restored before picker, fields,
+  validation, processing, previews and reports. TTY-only acknowledgements keep
+  preview/mismatch details and scope reports readable before menu reentry.
+  Final successful Run reports and exits. Redirected/dumb streams retain plain
+  input without alternate escapes or extra acknowledgement reads.
+- Physical keyboard tests exposed blocked-read Ctrl+C at a line menu and Title.
+  Local menu/acknowledgement handling and four lines across the two existing
+  prompt boundaries fix this; values/defaults/validation bodies and queue traps
+  remain unchanged. Final Title/removal-ID/line-menu Ctrl+C exits are verified.
+- Current proof `.tmp/mkvutil-rework/owned-menu.G4F1G9/receipt.json`: 15 affected
+  consumer/configuration cases pass on final source. Five earlier presentation
+  PTY cases pass; parent verified their source differs by exactly the four
+  prompt-trap lines. Three final-source field/line PTY cases pass. This is 22
+  distinct cases in separate runs, not one final-revision 22-case invocation.
+  Those three accepted runs total 23.55s wall / 21.62s measured CPU. All failed
+  attempts remain, including a corrected 98.81s wall / 95.83s CPU harness EOF
+  spin, echoed-CRLF oracle corrections and bounded submenu/Title hangs. Guards
+  were not raised; no native/full campaign or CI run was repeated.
+- Parent review in `parent-review.json` verifies actual logs/runtime-copy hashes,
+  exact earlier-PTY source delta, 19 protected engine/builder/safety sections,
+  unchanged test helper, source/guide claims and unchanged parent-session ledger.
+  Syntax/AST/whitespace and stable-record checks pass. Current source SHA-256:
+  `258a8b8581b120469f306da833662002ad180e9d70cf8f2333b3140d7a5410b1`.
+  Tests: `2fe04ac509a345fa3a18a9a5133e5ae76231cd13ec8d1864959217563c3e9fb7`.
+  Guide: `696a84dbb88b67fd8724ec7229b0eb5a26b964879a299514b0c907deb91da32a`.
+- T01.03/T04.01/T04.02 and G01/G04 are reaccepted; current amended scope is
+  **9/9 tasks and 4/4 goals**. Original IDs, dependencies, permissions and native
+  receipts are preserved. Writer and owned processes are quiescent. No runtime
+  dependencies, extra zsh files, worktrees, branches or AGENTS edits were added.
+- Feature commit/push remains authorized. After publication, verify the containing
+  signed commit and live feature ref against this folder's `publication.json`.
+  No implementation/verification work remains; on resume read this boundary and
+  the corresponding current checklist rows before selecting any new work.
+
+### Historical: Accepted direct shortcuts and cursor restoration
 
 - User clarified main categories are direct shortcuts, with hidden main e/E
   exit and submenu e/E Back. Baseline signed/published
@@ -41,7 +83,7 @@ and `.tmp` receipt paths below are relative to the repository root.
   commit/push permission applies. On resume verify the containing commit and
   this proof folder's publication.json; no implementation/validation remains.
 
-### Accepted immediate main-menu keys
+### Historical: Accepted immediate main-menu keys
 
 - User-directed follow-up on the same feature branch/main Scripts checkout,
   baseline signed/published `4d13de3088b5844465ca730208629a44efcadbf9`.
@@ -64,7 +106,7 @@ and `.tmp` receipt paths below are relative to the repository root.
   the verified signed commit/live feature ref. On resume verify that receipt and
   the containing commit; no implementation/validation remains for this change.
 
-### Accepted user-directed navigation follow-up
+### Historical: Accepted user-directed navigation follow-up
 
 - Stay in the main Scripts checkout on `feature/mkvutil-rework`; the user
   authorized these changes and their push. No worktree, branch, AGENTS or
@@ -104,7 +146,7 @@ and `.tmp` receipt paths below are relative to the repository root.
   and clean checkout were verified in this proof folder's `publication.json`.
   The small IA grant was used for three probes; it was not a renewed broad grant.
 
-### Completed original rework and checkout return
+### Historical: Completed original rework and checkout return
 
 Migration evidence: `.tmp/mkvutil-rework/return-main/before-move-inventory.json`
 and `after-move-verification.json`. The pre-existing main project scratch was
@@ -361,12 +403,13 @@ using a pre-publication handoff as proof that an amendment has been pushed.
   Implementation and accepted-goal pushes have their separate user grants;
   concurrency itself grants neither action.
 
-## Acceptance and unresolved implementation gates
+## Historical acceptance before final integration
 
 Planning preparation is verified and remains separate from implementation
 acceptance. The four existing checkpoints are now G01-G04, with nine stable
-task IDs; **7 / 9 tasks and 3 / 4 main goals** are accepted
-(T01.01-T01.03, T02.01-T02.03, T03.01, G01-G03).
+task IDs. At this earlier checkpoint, **7 / 9 tasks and 3 / 4 main goals** were
+accepted (T01.01-T01.03, T02.01-T02.03, T03.01, G01-G03); later G04 and menu
+amendment acceptance is recorded at the current top boundary.
 
 The executor checkpoint has now closed the following focused gates:
 

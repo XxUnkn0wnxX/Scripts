@@ -2552,19 +2552,72 @@ print -r -- 'fresh subset navigation passed'
     assert result.stdout.rstrip().endswith("fresh subset navigation passed")
 
 
-@pytest.mark.parametrize("exit_key", [b"e", b"\x03"], ids=["hidden-exit", "ctrl-c"])
+class _OwnedMenuScreen:
+    """Small ANSI model for this UI's buffer, erase and cursor controls."""
+
+    def __init__(self):
+        import codecs
+        self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self.pending = ""
+        self.active = False
+        self.cursor_visible = True
+        self.normal = ""
+        self.alternate = ""
+        self.enters = self.leaves = 0
+
+    @property
+    def text(self):
+        return self.alternate if self.active else self.normal
+
+    def feed(self, data):
+        import re
+        self.pending += self.decoder.decode(data)
+        while self.pending:
+            if self.pending.startswith("\x1b"):
+                match = re.match(r"\x1b\[([0-?]*)([ -/]*)([@-~])", self.pending)
+                if not match:
+                    break
+                parameters, _, command = match.groups()
+                self.pending = self.pending[match.end():]
+                if parameters == "?1049" and command == "h":
+                    assert not self.active, "nested alternate buffer"
+                    self.active = True; self.alternate = ""; self.enters += 1
+                elif parameters == "?1049" and command == "l":
+                    assert self.active, "unowned alternate-buffer leave"
+                    self.active = False; self.leaves += 1
+                elif parameters == "?25" and command in ("h", "l"):
+                    self.cursor_visible = command == "h"
+                elif command == "J":
+                    assert self.active and parameters == "2", "normal screen was erased"
+                    self.alternate = ""
+                elif command == "H":
+                    assert self.active, "normal screen cursor moved"
+                else:
+                    raise AssertionError(f"unexpected UI escape {parameters}{command}")
+            else:
+                character, self.pending = self.pending[0], self.pending[1:]
+                if self.active:
+                    self.alternate += character
+                else:
+                    self.normal += character
+
+
+@pytest.mark.parametrize("exit_key", [b"e", b"\x03", b"line-ctrl-c", b"z", b"preview-ctrl-c", b"title-ctrl-c", b"track-id-ctrl-c"],
+                         ids=["owned-views-history", "main-ctrl-c", "line-ctrl-c", "visible-error", "preview-ctrl-c", "title-ctrl-c", "track-id-ctrl-c"])
 def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
     import fcntl
     import pty
     import select
+    import struct
     import termios
     import time
 
-    source = _mkv_file(env, "untouched.mkv")
+    source, second = _mkv_file(env, "untouched.mkv"), _mkv_file(env, "mismatch.mkv")
+    models = _removal_models()
+    _set_fake_fzf_responses(env, [[str(source), str(second)]])
     run_env = os.environ.copy()
     run_env.update({
-        "HOME": str(env["workdir"]),
-        "TERM": "xterm-256color",
+        "HOME": str(env["workdir"]), "TERM": "xterm-256color",
         "PATH": f"{env['fake_bin']}:/usr/bin:/bin:/usr/sbin:/sbin",
         "TEST_REAL_JQ": shutil.which("jq") or "/usr/local/bin/jq",
         "TEST_REAL_PYTHON": sys.executable,
@@ -2574,9 +2627,11 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
         "TEST_FAKE_STATE_DIR": str(env["fake_state"]),
         "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]),
     })
+    run_env.update(_integration_manifest(env, {source: models["reference"], second: models["codec"]}))
     for tool in ("mkvmerge", "mkvpropedit", "mkvextract", "fzf"):
         assert Path(shutil.which(tool, path=run_env["PATH"])).resolve() == (env["fake_bin"] / tool).resolve()
     master, terminal = pty.openpty()
+    fcntl.ioctl(terminal, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 240, 0, 0))
     before = termios.tcgetattr(terminal)
 
     def own_terminal():
@@ -2587,56 +2642,178 @@ def test_mkv_utils_main_menu_single_keys_terminal(env, exit_key):
     process = subprocess.Popen(
         ["/usr/local/bin/zsh", "-f", str(env["mkv_utils_script"])],
         cwd=env["workdir"], env=run_env, stdin=terminal, stdout=terminal, stderr=terminal,
-        start_new_session=True,
-        preexec_fn=own_terminal,
+        start_new_session=True, preexec_fn=own_terminal,
     )
-    output = bytearray()
+    output = bytearray(); screen = _OwnedMenuScreen(); deadline = time.monotonic() + 10
+
+    def receive():
+        if select.select([master], [], [], 0.1)[0]:
+            data = os.read(master, 8192)
+            if not data: return False
+            output.extend(data); screen.feed(data)
+        return True
 
     def wait_for(prompt):
         start = len(output)
-        deadline = time.monotonic() + 10
         while prompt not in output[start:] and time.monotonic() < deadline:
-            if select.select([master], [], [], 0.1)[0]:
-                output.extend(os.read(master, 8192))
+            receive()
             assert process.poll() is None, output.decode(errors="replace")
         assert prompt in output[start:], output.decode(errors="replace")
 
-    def wait_for_shortcuts():
+    def shortcuts():
         wait_for(b"\x1b[?25l")
-        # The hide escape precedes read's terminal setup. Send keys only once
-        # zsh is actually waiting in single-key mode, without line echo.
-        deadline = time.monotonic() + 10
         while termios.tcgetattr(terminal)[3] & (termios.ICANON | termios.ECHO):
             assert time.monotonic() < deadline, output.decode(errors="replace")
             select.select([], [], [], 0.001)
+        assert screen.active and not screen.cursor_visible and "Category: " in screen.text
+        assert "1) Matroska Edit" in screen.text and "e) Back" not in screen.text
+
+    def line_menu(prompt, view, category):
+        wait_for(prompt)
+        # An optional Enter after the instant key may close a blank first
+        # frame. Wait for the replacement view before testing active state.
+        while not (screen.active and screen.cursor_visible and f"{category} — {view}" in screen.text and prompt.decode() in screen.text):
+            assert time.monotonic() < deadline, output.decode(errors="replace")
+            receive()
+        assert f"{category} — {view}" in screen.text and "Directory: " in screen.text
+        assert "1) Matroska Edit" not in screen.text and "2) Matroska Mux" not in screen.text
+        assert "e) Back" in screen.text
+        mask = termios.ICANON | termios.ECHO
+        assert before[3] & mask == termios.tcgetattr(terminal)[3] & mask
+
+    def normal_input(prompt):
+        wait_for(prompt)
+        assert not screen.active and screen.cursor_visible
 
     try:
-        wait_for_shortcuts()
-        for key in (b"1", b"2", b"3", b"1\n"):
-            # First three need no Enter; an optional trailing Enter is harmless.
-            step = len(output)
-            os.write(master, key)
-            wait_for(b"Operations (single/comma/range): ")
-            assert output[step:].index(b"\x1b[?25h") < output[step:].index(b"Operations (single/comma/range): ")
-            # Check before child exit: Darwin revokes its controlling PTY then.
-            restored = termios.tcgetattr(terminal)
-            mask = termios.ICANON | termios.ECHO
-            assert before[3] & mask == restored[3] & mask
-            os.write(master, b"e\n")  # Submenu input remains line-based.
-            wait_for_shortcuts()
-        os.write(master, exit_key)
-        deadline = time.monotonic() + 10
+        shortcuts()
+        if exit_key in (b"e", b"preview-ctrl-c"):
+            for key, category in ((b"1", "Matroska Edit"), (b"2", "Matroska Mux"), (b"3", "Matroska Extract"), (b"1\n", "Matroska Edit")):
+                os.write(master, key)
+                line_menu(b"Operations (single/comma/range): ", "actions", category)
+                os.write(master, b"e\n"); shortcuts()
+            os.write(master, b"2")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            os.write(master, b"2\n")
+            normal_input(b"Track order (e.g.")
+            os.write(master, b"0:0\n")
+            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            assert "1) Remove tracks" not in screen.text and "1) Set flag-forced" in screen.text
+            os.write(master, b"e\n")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            os.write(master, b"1\n")
+            normal_input(b"Track IDs to remove (comma/range): ")
+            os.write(master, b"1\n")
+            line_menu(b"Metadata choices (comma/range; blank for none): ", "metadata", "Matroska Mux")
+            os.write(master, b"5\n")
+            normal_input(b"Title (empty to unset): ")
+            os.write(master, b"e\n")
+            normal_input(b"Press Enter to continue: ")
+            assert str(second) in screen.normal and "codec-mismatch" in screen.normal
+            history = screen.normal
+            os.write(master, b"\n")
+            line_menu(b"Review choice: ", "review", "Matroska Mux")
+            assert "Optional metadata edits:" not in screen.text and "Set flag-forced" not in screen.text
+            assert screen.normal == history + "\r\n"
+            os.write(master, b"2\n")
+            normal_input(b"Press Enter to continue: ")
+            assert 'title="e"' in screen.normal and "Original ID 0 => final position" in screen.normal
+            if exit_key == b"preview-ctrl-c":
+                os.write(master, b"\x03")
+            else:
+                history = screen.normal
+                os.write(master, b"\n")
+                line_menu(b"Review choice: ", "review", "Matroska Mux")
+                assert screen.normal == history + "\r\n"
+                os.write(master, b"1\n")
+                line_menu(b"Replacement operations: ", "actions", "Matroska Mux")
+                os.write(master, b"e\n")
+                line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+                os.write(master, b"e\n")
+                normal_input(b"Press Enter to continue: ")
+                assert screen.normal.count("Final report") == 1 and "Skipped: 1" in screen.normal
+                history = screen.normal
+                os.write(master, b"\n"); shortcuts()
+                assert screen.normal == history + "\r\n"
+                os.write(master, b"e")
+        elif exit_key == b"track-id-ctrl-c":
+            os.write(master, b"2")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            os.write(master, b"1\n")
+            normal_input(b"Track IDs to remove (comma/range): ")
+            os.write(master, b"\x03")
+        elif exit_key == b"title-ctrl-c":
+            os.write(master, b"1")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Edit")
+            os.write(master, b"5\n")
+            normal_input(b"Title (empty to unset): ")
+            os.write(master, b"\x03")
+        elif exit_key == b"line-ctrl-c":
+            os.write(master, b"2")
+            line_menu(b"Operations (single/comma/range): ", "actions", "Matroska Mux")
+            os.write(master, b"\x03")
+        else:
+            os.write(master, exit_key)
         while process.poll() is None and time.monotonic() < deadline:
-            if select.select([master], [], [], 0.1)[0]:
-                output.extend(os.read(master, 8192))
-        assert process.poll() == (0 if exit_key == b"e" else 1), output.decode(errors="replace")
-        assert b"Category: " not in output
-        assert output.count(b"\x1b[?25l") == output.count(b"\x1b[?25h") == 5
+            receive()
+        assert process.poll() == 1, output.decode(errors="replace")
+        while time.monotonic() < deadline and select.select([master], [], [], 0)[0]:
+            try:
+                if not receive(): break
+            except OSError: break
+        assert not screen.active and screen.cursor_visible and screen.enters == screen.leaves
+        assert "1) Matroska Edit" not in screen.normal and "2) Matroska Mux" not in screen.normal
+        if exit_key == b"z":
+            assert "Invalid category." in screen.normal
+        if exit_key in (b"e", b"preview-ctrl-c", b"title-ctrl-c", b"track-id-ctrl-c"):
+            assert len(_command_argv(env, "fzf")) == 1
+            assert len(_command_argv(env, "mkvmerge")) == 2
+            assert all(call[0] == "-J" for call in _command_argv(env, "mkvmerge"))
+        else:
+            assert not any(_command_argv(env, tool) for tool in ("fzf", "mkvmerge"))
     finally:
-        os.close(master)
-        os.close(terminal)
+        (env["workdir"].parent / "owned-menu-transcript.bin").write_bytes(output)
+        os.close(master); os.close(terminal)
         if process.poll() is None:
-            process.kill()
-            process.wait(timeout=10)
-    assert source.read_text() == "payload"
-    assert not any(_command_argv(env, tool) for tool in ("fzf", "mkvmerge", "mkvpropedit", "mkvextract"))
+            process.kill(); process.wait(timeout=10)
+    assert source.read_text() == second.read_text() == "payload"
+    assert not any(_command_argv(env, tool) for tool in ("mkvpropedit", "mkvextract"))
+
+
+def test_mkv_utils_owned_menu_pipe_gating_and_report_failure_visibility(tmp_path):
+    result = _run_metadata_contract(tmp_path, r'''
+TERM=xterm-256color
+_mkvutil_ui_enter
+_mkvutil_ui_enter
+_mkvutil_ui_redraw
+_mkvutil_ui_leave
+_mkvutil_ui_leave
+_mkvutil_ui_acknowledge < /dev/null
+eq "$MKVUTIL_UI_ACTIVE" 0 'pipes never enter owned mode'
+# A report error must stop before reopening a main view over the diagnostic.
+mkvutil_ledger_finalize() { return 0; }
+mkvutil_ledger_status() { return 0; }
+mkvutil_final_report() { print -u2 -r -- 'Report unavailable'; return 1; }
+MKVUTIL_HAS_RUN=1
+code=0
+mkvutil_finish 0 || code=$?
+eq "$code" 1 'report failure nonzero'
+eq "$MKVUTIL_UI_REPORT_SHOWN" -1 'failed report not claimed displayed'
+mkvutil_configure_category() { MKVUTIL_CONFIG='{}'; }
+mkvutil_batch_configured() { return 0; }
+mkvutil_plan_queue() { MKVUTIL_JOBS=(); MKVUTIL_REMOVAL_SKIPS=('{}'); return 3; }
+code=0
+mkvutil_controller mux 1 <<< $'3\ne' || code=$?
+eq "$code" 4 'no eligible Run remains readable before Back'
+mkvutil_scan_files() { return 0; }
+mkvutil_close_scope() { mkvutil_finish 0; }
+code=0
+mkvutil_main "$PWD" <<< $'2\ne' || code=$?
+eq "$code" 1 'failed report stops before main reopens'
+print -r -- 'pipe presentation contracts passed'
+''')
+    assert result.stdout.rstrip().endswith("pipe presentation contracts passed")
+    assert result.stdout.count("1) Matroska Edit") == 1
+    assert "No eligible jobs; change settings" in result.stderr
+    assert "Report unavailable" in result.stderr and "Press Enter" not in result.stderr
+    assert "\x1b" not in result.stdout + result.stderr

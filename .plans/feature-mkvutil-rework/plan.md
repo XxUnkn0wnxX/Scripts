@@ -114,10 +114,20 @@ review, replacement-action, and optional Mux metadata menus show `e) Back`.
 At an interactive terminal, main-menu choices `1`, `2`, `3`, and hidden `e`/`E`
 act on a single keypress without Enter. Submenu batch selections and data fields
 remain line-based; redirected input retains its existing line-based behavior.
-The interactive main menu displays shortcuts without a `Category:` input prompt.
-Hide the cursor only while that menu waits on a capable terminal, restoring it
-before submenu/data input and normal or interrupted exit. Main `e`/`E` remains
-hidden exit, and submenu `e`/`E` remains Back.
+On a capable interactive terminal, navigation menus own a temporary screen:
+each active menu replaces the previous menu's choices. Restore the main-menu
+`Category:` selector while keeping immediate single-key selection. Hide its
+waiting cursor, restoring it before submenu/data input and normal or interrupted
+exit. Main `e`/`E` remains hidden exit; submenu `e`/`E` remains Back.
+
+Keep file selection, track models/value collection, previews, processing output
+and final reports in normal terminal history. Leave the owned screen before
+validation errors or durable output, and restore normal screen/cursor on every
+return, EOF or interruption without changing queue handlers or exit status.
+Interactive previews and scope reports that will be followed by another owned
+menu require an acknowledgement so the user can read them; an ordinary final
+successful Run still reports and exits. Redirected/unsupported operation keeps
+the existing plain protocol, without alternate-screen escapes or added reads.
 Handle this at menu-choice call sites only: track IDs, flags, languages, names,
 and titles remain ordinary input fields. Literal `e` remains a valid name/title;
 other value fields retain their existing validation.
