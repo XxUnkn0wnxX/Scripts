@@ -253,17 +253,17 @@ For this combined job, between-file timing covers track extraction. The final re
 
 ### Analyze
 
-Choose **4. Matroska Analyze**, then select files in the same multi-select picker used by the other categories. The utility prints each file's track listing and compares the complete original-ID/type/native-codec map against the first selected file with a usable listing. The reference is counted as matching. Track names, languages, flags, and listing order do not affect the comparison.
+Choose **4. Matroska Analyze**, then select files in the same multi-select picker used by the other categories. The utility prints one track listing: the first selected file with a usable complete original-ID/type/native-codec map becomes the reference. It silently inspects the rest of the selection and compares each complete map with that reference. The reference is counted as matching. Track names, languages, flags, and listing order do not affect the comparison.
 
-Analyze ends after its report. It does not ask for actions or settings, create a processing queue, or write media. The report shows the full `Current Work Dir`, the reference filename, matching and mismatched counts, and the filenames that mismatched, failed inspection, or were not started after an interruption. A mismatch, failed inspection, or interruption returns a nonzero status.
+Analyze ends after its report. It does not ask for actions or settings, create a processing queue, or write media. Of the selected files, only the reference filename and its track listing are shown before the final report; mismatch and inspection-failure filenames appear in the final report. The report also shows the full `Current Work Dir`, matching and mismatched counts, and files not started after an interruption. A mismatch, failed inspection, or interruption returns a nonzero status.
 
 <details>
 <summary>Example: compare a selected batch with its first usable reference</summary>
 
 1. Choose `4` at **Category**.
 2. Mark the files in the picker and confirm.
-3. Review each filename and track listing. The first file with a usable track signature becomes the reference; later files are compared against its complete map.
-4. Check the final counts and any listed mismatched, failed, or not-started filenames.
+3. Review the single displayed listing. The first file with a usable track signature becomes the reference; remaining selected files are inspected without intermediate output.
+4. Check the final counts and any listed mismatched, failed, or not-started filenames. To compare mismatches separately, start a new invocation and select only the reported mismatched files.
 
 For example, tracks with the same IDs, types, and native codec IDs match even if their names or language flags differ. A different codec at original ID `3`, or an additional original track ID, makes that file a mismatch.
 

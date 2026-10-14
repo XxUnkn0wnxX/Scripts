@@ -2402,15 +2402,30 @@ def test_mkv_utils_analyze_uses_first_usable_full_id_signature_reference(env):
     assert "Analysis reference file: Reference library.mkv" in result.stdout
     assert "Reference file: Reference library.mkv" in result.stdout
     assert "Files analyzed: 6; Matching: 2; Mismatched: 4; Failed: 1; Not attempted: 0" in result.stdout
-    for name in names:
-        assert f"File: {name}" in result.stdout
-        assert str(env["workdir"] / name) not in result.stdout
+    before_report, separator, final_report = result.stdout.partition("Final report")
+    assert separator and result.stdout.count("Final report") == 1
+    assert before_report.count("Analysis reference file: Reference library.mkv") == 1
+    assert before_report.count("mkvmerge JSON track listing") == 1
+    track_lines = [line for line in before_report.splitlines() if line.startswith("Track ID ")]
+    assert len(track_lines) == 3
+    assert [line.split(":", 1)[0] for line in track_lines] == ["Track ID 12", "Track ID 30", "Track ID 90"]
+    assert all("[Original " in line and "[eng]" in line for line in track_lines)
+    assert "Track ID 777" not in before_report
+    assert "literal/name/value" not in before_report and "jpn" not in before_report
+    mismatch_names = names[0:1] + names[3:]
+    for name in mismatch_names:
+        assert name not in before_report
+        assert name in final_report
+    assert "Reordered metadata.mkv" not in result.stdout
+    assert all(str(env["workdir"] / name) not in result.stdout for name in names)
+    assert all(name not in result.stderr for name in names)
     assert "Analysis failed: Unusable first.mkv" in result.stdout
     assert "Track ID/type/codec mismatch: Codec changed.mkv" in result.stdout
     assert "Track ID/type/codec mismatch: Type changed.mkv" in result.stdout
     assert "Track ID/type/codec mismatch: Missing track.mkv" in result.stdout
     assert "Track ID/type/codec mismatch: Extra track.mkv" in result.stdout
-    assert "[literal/name/value]" in result.stdout and "S_TEXT/ASS" in result.stdout
+    assert "[literal/name/value]" not in result.stdout and "jpn" not in result.stdout
+    assert "S_TEXT/ASS" in track_lines[2]
     assert "Operations (single/comma/range)" not in result.stdout + result.stderr
     picker_calls = _command_argv(env, "fzf")
     assert len(picker_calls) == 1
@@ -2418,6 +2433,9 @@ def test_mkv_utils_analyze_uses_first_usable_full_id_signature_reference(env):
     assert picker[picker.index("--delimiter") + 1] == "/"
     assert picker[picker.index("--with-nth") + 1] == "-1"
     assert picker.count("--read0") == picker.count("--print0") == 1
+    inspections = _command_argv(env, "mkvmerge")
+    assert len(inspections) == len(files)
+    assert {call[1] for call in inspections} == {str(path) for path in files}
     assert not _command_argv(env, "mkvpropedit")
     assert not [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
     assert not _command_argv(env, "mkvextract")
@@ -2444,11 +2462,22 @@ def test_mkv_utils_analyze_single_match_and_no_usable_reference(env, case):
     )
     assert result.returncode == return_code, result.stdout + result.stderr
     assert expected in result.stdout
+    before_report, separator, final_report = result.stdout.partition("Final report")
+    assert separator and result.stdout.count("Final report") == 1
     if case == "all-unusable":
-        assert "No usable reference file." in result.stdout
+        assert "No usable reference file." in final_report
+        assert "mkvmerge JSON track listing" not in result.stdout + result.stderr
+        assert all(name in final_report and name not in before_report for name in ("Bad one.mkv", "Bad two.mkv"))
+        assert all(name not in result.stderr for name in ("Bad one.mkv", "Bad two.mkv"))
     else:
         assert "No usable reference file." not in result.stdout
-        assert "Track ID 12: audio (A_AAC)" in result.stdout
+        assert before_report.count("mkvmerge JSON track listing") == 1
+        assert before_report.count("Analysis reference file: Only source.mkv") == 1
+        assert before_report.count("Track ID 12: audio (A_AAC)") == 1
+        assert "Only source.mkv" not in final_report.partition("Reference file:")[0]
+    inspections = _command_argv(env, "mkvmerge")
+    assert len(inspections) == len(files)
+    assert {call[1] for call in inspections} == {str(path) for path in files}
     assert not _command_argv(env, "mkvpropedit")
     assert not [argv for argv in _command_argv(env, "mkvmerge") if "-o" in argv]
     assert not _command_argv(env, "mkvextract")

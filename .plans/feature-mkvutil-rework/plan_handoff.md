@@ -14,6 +14,38 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted reference-only Analyze follow-up
+
+- User directs one reference track listing for the matching selected cohort.
+  The first usable signature/listing is buffered and printed once. All other
+  selected files are inspected silently; mismatched/failed/unstarted filenames
+  appear only in the final report, for a separate Analyze invocation. Complete
+  ID/type/native-codec comparison, counts, stop, WorkDir, no writes, searchable
+  picker and final exit remain intact. The user also requested confirmation
+  that all amendments stay in plan/checklist; the exact mirrored contract and
+  evidence-backed status were reviewed and preserved.
+- T01.03/T04.01/T04.02 and G01/G04 reaccepted; 9/9 tasks, 4/4 goals accepted.
+  Four focused cases pass: mixed usable/unusable/matching/mismatched cohort,
+  single file, all unusable, and controlling-terminal Analyze interruption.
+  Installed-fzf multi-selection also passes with one-listing assertion, no
+  writers, unchanged disposable sources and balanced screen handoff. Tests:
+  4.47s pytest / 5.03s wall / 4.20s user+system CPU. Installed-fzf probe:
+  0.80s wall / 0.62s CPU. Total 5.83s wall / 4.82s measured CPU. No failures,
+  new full suite, native media campaign or CI run in this bounded follow-up.
+- Exact runtime diff is confined to mkvutil_analyze_files; exactly two existing
+  Analyze test bodies changed. Menu/picker, comparison signatures, engines,
+  removal guards/bypass and shared helpers are unchanged. Guide's collapsible
+  Analyze example explains separately selecting only final-reported mismatches.
+  Source/test bindings and parent review are in
+  `.tmp/mkvutil-rework/analysis-reference-only/receipt.json` and
+  `parent-review.json`; original parent-session ledger is unchanged.
+- Parent owns all six files, records and publication; Luna returned ownership,
+  no active worker/job. Main Scripts stays on feature/mkvutil-rework, baseline
+  signed/pushed `24851c7bb09f45bea0eb2745061a4419c48b5bd4`. The containing commit
+  records this follow-up. Standing push-after-tests authorization persists.
+  Next: final integrity/static review, signed commit and push only this branch;
+  verify publication.json and live refs before repeating publication.
+
 ### Accepted filename-display, Analyze and removal-count amendment
 
 - User-requested file references now display filename.extension throughout

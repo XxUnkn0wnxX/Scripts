@@ -1468,27 +1468,26 @@ mkvutil_select_files() {
 
 # Reuse identification, listing and the same ID/type/codec signatures as Mux.
 mkvutil_analyze_files() {
-  local file="" record="" raw="" ids="" signature="" reference="" expected="" result=0
+  local file="" record="" raw="" ids="" signature="" listing="" reference="" expected="" result=0
   local matching=0 analyzed=0
   local -a mismatched=() failed=() missed=()
   for file in "${MKVUTIL_SELECTED_FILES[@]}"; do
     if (( MKVUTIL_INTERRUPTED )); then missed+=("$file"); continue; fi
-    print -r -- "File: ${file:t}"
-    if ! record="$(mkvutil_capture_source "$file")"; then
+    if ! record="$(mkvutil_capture_source "$file" 2>/dev/null)"; then
       failed+=("$file"); result=1; continue
     fi
-    raw="$(jq -r '.source_json' <<< "$record")" || { failed+=("$file"); result=1; continue; }
-    display_track_info "$file" "$raw" || { failed+=("$file"); result=1; continue; }
-    ids="$(jq -r '.model.tracks|map(.id|tostring)|join(",")' <<< "$record")" || { failed+=("$file"); result=1; continue; }
-    if ! signature="$(mkvutil_removal_signatures "$record" "$ids")"; then
-      print -u2 -r -- "Cannot compare track signatures: ${file:t}"
-      failed+=("$file"); result=1; continue
-    fi
-    analyzed=$((analyzed + 1))
+    raw="$(jq -r '.source_json' 2>/dev/null <<< "$record")" || { failed+=("$file"); result=1; continue; }
+    ids="$(jq -r '.model.tracks|map(.id|tostring)|join(",")' 2>/dev/null <<< "$record")" || { failed+=("$file"); result=1; continue; }
+    signature="$(mkvutil_removal_signatures "$record" "$ids" 2>/dev/null)" || { failed+=("$file"); result=1; continue; }
     if [[ -z "$reference" ]]; then
+      # Buffer before accepting or counting the reference, so an invalid or
+      # partial listing never appears as the analysis layout.
+      listing="$(display_track_info "$file" "$raw" 2>/dev/null)" || { failed+=("$file"); result=1; continue; }
       reference="$file"; expected="$signature"
       print -r -- "Analysis reference file: ${reference:t}"
+      print -r -- "$listing"
     fi
+    analyzed=$((analyzed + 1))
     if jq -en --argjson expected "$expected" --argjson actual "$signature" '$expected==$actual' >/dev/null; then
       matching=$((matching + 1))
     else
