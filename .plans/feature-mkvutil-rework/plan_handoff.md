@@ -14,6 +14,43 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted utility-guide presentation rework
+
+- User-requested rewrite changes only docs/mkv-utils.md and these durable records.
+  Guide reduced from665lines/8355words to323lines/2420words (71% fewer words), with
+  sibling-aligned emoji headings, compact action/output tables and seven optional
+  details sections. Removed repeated control/implementation explanations and
+  per-run development histories from the user guide; original history remains
+  intact here and in the checklist/private receipts.
+- Preserved command/menu behavior, per-ID values, source/output mapping, ordering
+  and colour rules, silent count-only bypass, all-category fresh guards, overwrite
+  boundaries, per-category stopping, skipped filenames, timing and dry-run limits.
+  Examples cover Edit, combined Mux metadata, extraction, Back/reset/stop and
+  labelled filename-only reports. Setup and developer/testing notes are concise.
+- Worker handed guide ownership back. Astra planner audited the frozen draft and
+  returned REVISE with bounded clarifications. Parent applied all findings plus
+  its own factual corrections: skip optional metadata with blank, extra-track
+  bypass versus required original IDs, fresh checks including attachment-only,
+  action-menu versus field Back, Enter/menu grammar, live Edit verbosity with
+  final-only timing, source-safe setup and explicit nonzero Analyze outcomes.
+  No renewed planner PASS is claimed; parent verified the final corrections.
+- Final guide SHA-256 `a9c9d81943b061994c4b124c210aea0a8332ac4a7f3f23c72daf21b960415eed`.
+  Installed markdown_it/HTML structure, balanced fences/details, local links and
+  explicit anchors, aligned ASCII examples, source facts and protected-file hash
+  checks pass. Source, tests, README, AGENTS and both sibling guides are unchanged.
+  No runtime/IA campaign or live GitHub-rendering claim for this prose-only change.
+  Main docs skill loaded; optional reference files were absent, so sibling style
+  and the main skill supplied formatting guidance.
+- T04.02/G04 reaccepted:9/9 tasks and4/4 checkpoints. Proof:
+  `.tmp/mkvutil-rework/docs-polish/receipt.json`, `structure-review.json`,
+  `planner-resolution.json`, and original `guide-before.md`/`baseline.json`.
+  Canonical task/goal IDs and parent-session ledger remain unchanged.
+- Parent owns all tracked files; workers/planner and validation jobs are complete.
+  Baseline develop/master97d3fef, same Scripts checkout on develop. Existing
+  standing permission covers signed commit, develop/master sync and pushes,
+  returning to develop. Next: publish verified docs; actual outcome belongs to
+  `docs-polish/publication.json`. Inspect receipt/refs before repeating Git work.
+
 ### Accepted complete projected-layout handoff and silent bypass
 
 - Latest screenshots exposed a whole-list handoff bug, distinct from per-target
