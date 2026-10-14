@@ -586,6 +586,14 @@ if [ -n "$log_file" ]; then
 fi
 
 if [ "${TEST_USE_REAL_JSON:-0}" = 1 ]; then
+  if [ -n "${TEST_FAKE_JQ_FAIL_QUERY_CONTAINS:-}" ]; then
+    case "$*" in
+      *"$TEST_FAKE_JQ_FAIL_QUERY_CONTAINS"*)
+        printf '%s\\n' "Injected read-only jq query failure: $TEST_FAKE_JQ_FAIL_QUERY_CONTAINS" >&2
+        exit 1
+        ;;
+    esac
+  fi
   state_dir="${TEST_FAKE_STATE_DIR:-$PWD/.tmp}"
   call_file="$state_dir/fake_jq_calls"
   call=1

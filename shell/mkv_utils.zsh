@@ -1,17 +1,13 @@
 #!/usr/bin/env zsh
 
 # Required third-party tools:
-# - mkvmerge, mkvinfo, mkvextract, mkvpropedit: for remuxing, inspecting, extracting, and editing tracks and metadata in Matroska files
+# - mkvmerge, mkvextract, mkvpropedit: Matroska identification, remuxing, extraction and metadata edits
 # - jq: for processing JSON output from mkvmerge (-J)
-# - fzf: for interactive file and track selection via fuzzy finding
+# - fzf: for interactive file selection via fuzzy finding
 # - python3: for inline Python scripting support
-# - pymkv2, pymkv Python library: provides the type_files mapping for codec→extension resolution (install via python3 -m pip install pymkv2 pymkv)
-#
-# On macOS, install dependencies via Homebrew:
-#   brew install mkvtoolnix jq fzf python3
-#   python3 -m pip install pymkv pymkv2
-#
-# Ensure that python3 and pip are in your PATH.
+# - pymkv2 distribution and pymkv module: codec-to-extension mapping
+# The script reuses the repository .venv when present, including a symlinked venv.
+# The runtime is verified with installed MKVToolNix v93.0.
 
 SCRIPT_NAME="${0:t}"
 SCRIPT_ROOT=${0:A:h}
@@ -2791,7 +2787,10 @@ mkvutil_execute_queue() {
 print_help() {
   print -r -- "Usage: ${SCRIPT_NAME} [working_directory]"
   print -r -- "       ${SCRIPT_NAME} --help"
-  print -r -- $'\nMatroska categories:\n  1) Matroska Edit — flags, languages, names and title\n  2) Matroska Mux — remove/reorder with optional metadata\n  3) Matroska Extract — attachments and selected tracks\n  0) Exit\n\nSubmenus accept a single choice, comma lists or ranges. Select targets once,\nconfigure all operations, then review/change, preview, Run or Cancel.\nSupports .mkv, .mka, .mks and .mk3d. Edit, Mux and Extract execute only after review and explicit Run.'
+  print -r -- $'\nMain categories:\n  1) Matroska Edit\n  2) Matroska Mux\n  3) Matroska Extract\n  0) Exit'
+  print -r -- $'\nEdit actions: 1 forced flag, 2 default flag, 3 language, 4 name, 5 title.\nMux actions: 1 remove tracks, 2 reorder tracks; optional metadata uses Edit IDs 1-5.\nExtract actions: 1 attachments, 2 selected tracks.'
+  print -r -- $'\nSubmenus accept a single choice, comma lists or ascending ranges (1,2 or 1-3).\nFile selection always supports one or several files; use Tab in fzf to mark files.\nConfigure all operations, then review/change, preview, Run or Cancel.\nMux removal, reordering and optional metadata use one remux per file.'
+  print -r -- $'\nSupports .mkv, .mka, .mks and .mk3d in the selected directory (nonrecursive).\nThe directory defaults to the current directory; relative and absolute paths work.\nQuote directory paths containing spaces. All processing requires explicit Run.'
 }
 
 # Configuration/review can repeat, but each explicit Run archives and clears

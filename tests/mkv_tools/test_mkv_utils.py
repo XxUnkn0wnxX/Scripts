@@ -373,7 +373,7 @@ def _source_json(tracks: list[tuple[int, str, str, bool]], *, attachments=None):
     }
 
 
-def _run_planning_contract(env: dict[str, Path], body: str, sources: dict, input_data=""):
+def _run_planning_contract(env: dict[str, Path], body: str, sources: dict, input_data="", *, extra_env=None):
     overrides = env["fake_state"] / "source-json.json"
     overrides.write_text(json.dumps(sources), encoding="utf-8")
     run_env = os.environ.copy()
@@ -389,6 +389,8 @@ def _run_planning_contract(env: dict[str, Path], body: str, sources: dict, input
         "TEST_FAKE_FZF_SELECTIONS": str(env["fake_fzf_selections"]),
         "PYTHONDONTWRITEBYTECODE": "1",
     })
+    if extra_env:
+        run_env.update(extra_env)
     for tool in ("mkvmerge", "mkvpropedit", "mkvextract", "python3", "jq"):
         assert Path(shutil.which(tool, path=run_env["PATH"])).resolve() == (env["fake_bin"] / tool).resolve()
     result = subprocess.run(
@@ -620,6 +622,37 @@ missing="$(mkvutil_capture_source "$PWD/missing.mkv")"
 failed="$(mkvutil_capture_source "$PWD/failed.mkv")"
 signatures="$(mkvutil_removal_signatures "$reference" '1,2')"
 config="$(jq -cn --arg reference "$PWD/reference.mkv" --argjson signatures "$signatures" '{category:"mux",operations:["1","2"],removed_ids:["1","2"],order:"0:0",order_ids:["0"],metadata:"4,5",settings:{"4:0":"@literal $name","5:info":""},expected_types:{"0":"audio","1":"subtitles","2":"audio"},extract_ids:[],reference:$reference,removal_signatures:$signatures}')"
+MKVUTIL_SOURCES=("$reference" "$compatible" "$codec" "$kind" "$missing" "$failed")
+MKVUTIL_CONFIG="$config"
+mkvutil_plan_queue <<< Y
+eq "${#MKVUTIL_JOBS}" 2 'mixed eligible count'
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 3 'mixed mismatch count'
+eq "${#MKVUTIL_SOURCES}" 5 'auto skips retained; explicit failure excluded'
+reject mkvutil_prepare_skipped_subset
+# New removal IDs reconsider the entire current scope, including prior skips.
+signatures="$(mkvutil_removal_signatures "$reference" 0)"
+MKVUTIL_CONFIG="$(jq --argjson signatures "$signatures" '.operations=["1"]|.removed_ids=["0"]|.order=""|.order_ids=[]|.metadata=""|.settings={}|.removal_signatures=$signatures' <<< "$config")"
+mkvutil_plan_queue
+eq "${#MKVUTIL_JOBS}" 5 'prior auto skips reconsidered'
+eq "${#MKVUTIL_REMOVAL_SKIPS}" 0 'skip receipts refreshed'
+eq "${#MKVUTIL_SOURCES}" 5 'explicit exclusion persisted'
+print -r -- 'removal eligibility contracts passed'
+''', sources)
+    assert result.stdout.rstrip().endswith("removal eligibility contracts passed")
+    assert all(Path(filename).read_text() == "payload" for filename in sources)
+    assert not list(env["workdir"].glob("*.mka"))
+
+
+def test_mkv_utils_removal_mismatch_receipts_and_empty_builders(env):
+    models = _removal_models()
+    sources = {str(_mkv_file(env, f"{name}.mkv")): models[name] for name in ("reference", "codec", "kind", "missing")}
+    result = _run_planning_contract(env, r'''
+reference="$(mkvutil_capture_source "$PWD/reference.mkv")"
+codec="$(mkvutil_capture_source "$PWD/codec.mkv")"
+kind="$(mkvutil_capture_source "$PWD/kind.mkv")"
+missing="$(mkvutil_capture_source "$PWD/missing.mkv")"
+signatures="$(mkvutil_removal_signatures "$reference" '1,2')"
+config="$(jq -cn --arg reference "$PWD/reference.mkv" --argjson signatures "$signatures" '{category:"mux",operations:["1","2"],removed_ids:["1","2"],order:"0:0",order_ids:["0"],metadata:"4,5",settings:{"4:0":"@literal $name","5:info":""},expected_types:{"0":"audio","1":"subtitles","2":"audio"},extract_ids:[],reference:$reference,removal_signatures:$signatures}')"
 # Missing IDs and exact type/codec differences are receipts, not ordinary errors.
 for record in "$codec" "$kind" "$missing"; do
   status_code=0
@@ -632,27 +665,6 @@ for record in "$codec" "$kind" "$missing"; do
   jq -e '.kind=="removal-mismatch" and .outputs==[] and .propedit_args==[] and .merge_metadata_args==[]' "$receipt_file" >/dev/null
   print -r -- "RECEIPT $(< "$receipt_file")"
 done
-for invalid in 'null' '""' '17'; do
-  unusable="$(jq --argjson invalid "$invalid" '.model.tracks[1].properties.codec_id=$invalid' <<< "$reference")"
-  reject mkvutil_removal_signatures "$unusable" 1
-  broken="$(jq --argjson invalid "$invalid" '.removal_signatures["1"].codec_id=$invalid' <<< "$config")"
-  reject mkvutil_validate_config "$broken"
-done
-MKVUTIL_SOURCES=("$reference" "$compatible" "$codec" "$kind" "$missing" "$failed")
-MKVUTIL_CONFIG="$config"
-mkvutil_plan_queue <<< Y
-eq "${#MKVUTIL_JOBS}" 2 'mixed eligible count'
-eq "${#MKVUTIL_REMOVAL_SKIPS}" 3 'mixed mismatch count'
-eq "${#MKVUTIL_SOURCES}" 5 'auto skips retained; explicit failure excluded'
-reject mkvutil_prepare_skipped_subset
-# New removal IDs reconsider the entire current scope, including prior skips.
-signatures="$(mkvutil_removal_signatures "$reference" 0)"
-MKVUTIL_CONFIG="$(jq --argjson signatures "$signatures" '.removed_ids=["0"]|.order=""|.order_ids=[]|.metadata=""|.settings={}|.removal_signatures=$signatures' <<< "$config")"
-mkvutil_plan_queue
-eq "${#MKVUTIL_JOBS}" 5 'prior auto skips reconsidered'
-eq "${#MKVUTIL_REMOVAL_SKIPS}" 0 'skip receipts refreshed'
-eq "${#MKVUTIL_SOURCES}" 5 'explicit exclusion persisted'
-print -r -- 'removal eligibility contracts passed'
 ''', sources)
     receipts = [json.loads(line.removeprefix("RECEIPT ")) for line in result.stdout.splitlines() if line.startswith("RECEIPT ")]
     assert [receipt["source"] for receipt in receipts] == [str(env["workdir"] / f"{name}.mkv") for name in ("codec", "kind", "missing")]
@@ -662,9 +674,21 @@ print -r -- 'removal eligibility contracts passed'
     assert receipts[1]["reasons"][0]["reason"] == "type-mismatch"
     assert [reason["original_id"] for reason in receipts[2]["reasons"]] == ["1", "2"]
     assert all(reason["reason"] == "missing-id" and reason["actual"] is None for reason in receipts[2]["reasons"])
-    assert result.stdout.rstrip().endswith("removal eligibility contracts passed")
     assert all(Path(filename).read_text() == "payload" for filename in sources)
     assert not list(env["workdir"].glob("*.mka"))
+
+
+def test_mkv_utils_removal_signature_unusable_values_and_config(env):
+    _run_planning_contract(env, r'''
+reference='{"model":{"tracks":[{"id":0,"type":"audio","properties":{"codec_id":"A_AAC"}},{"id":1,"type":"subtitles","properties":{"codec_id":"S_TEXT/ASS"}}]}}'
+config="$(jq -cn --arg reference "$PWD/reference.mkv" '{category:"mux",operations:["1"],removed_ids:["1"],order:"",order_ids:[],metadata:"",settings:{},expected_types:{"1":"subtitles"},extract_ids:[],reference:$reference,removal_signatures:{"1":{type:"subtitles",codec_id:"S_TEXT/ASS"}}}')"
+for invalid in 'null' '""' '17'; do
+  unusable="$(jq --argjson invalid "$invalid" '.model.tracks[1].properties.codec_id=$invalid' <<< "$reference")"
+  reject mkvutil_removal_signatures "$unusable" 1
+  broken="$(jq --argjson invalid "$invalid" '.removal_signatures["1"].codec_id=$invalid' <<< "$config")"
+  reject mkvutil_validate_config "$broken"
+done
+''', {})
 
 
 def test_mkv_utils_all_removal_skips_and_fresh_subset_preparation(env: dict[str, Path]):
@@ -1959,333 +1983,305 @@ def test_mkv_utils_no_mkv_files_displays_guard(env: dict[str, Path]):
     assert "Please check if there are Matroska files" in result.stdout
 
 
-def test_mkv_utils_option1_forced_flag_uses_one_based_track_selector(env: dict[str, Path]):
-    mkv = _mkv_file(env, "forced.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="1\n\n0\n\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvpropedit")
-    assert result.returncode == 0
-    assert f"track:1" in calls[0]
-    assert f"{mkv.name} --edit track:1 --set flag-forced=0" in calls[0]
-    assert f"Edited File: {mkv.name}" in result.stdout
+def test_mkv_utils_query_failure_adapter_targets_readonly_query(env):
+    result=_run_planning_contract(env,r'''
+reject jq -r '.tracks as $tracks | if ($tracks|length)==0 then error("empty tracks array") else $tracks end' <<< '{"tracks":[{"id":0}]}'
+eq "$(jq -r '.tracks|length' <<< '{"tracks":[{"id":0}]}')" 1 'unrelated JSON remains delegated'
+''',{},extra_env={"TEST_FAKE_JQ_FAIL_QUERY_CONTAINS":"empty tracks array"})
+    assert "Injected read-only jq query failure: empty tracks array" in result.stderr
 
 
-def test_mkv_utils_option2_default_flag_defaults_to_one(env: dict[str, Path]):
-    mkv = _mkv_file(env, "default.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="2\n\n0\n\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvpropedit")
-    assert result.returncode == 0
-    assert f"{mkv.name} --edit track:1 --set flag-default=1" in calls[0]
+# These names preserve the old single-action regression identities. Navigation
+# now uses category -> shared configuration -> review -> explicit Run.
+def _integration_model(tracks=None, *, attachments=None):
+    model=_source_json(tracks or [(0,"video","V_MPEG4/ISO/AVC",True),(1,"audio","A_AAC",True),
+                                 (2,"audio","A_OPUS",False),(3,"subtitles","S_TEXT/ASS",True)],attachments=attachments)
+    for position,track in enumerate(model["tracks"]):
+        track["properties"]["uid"]=18446744073709551000+position
+    return model
 
 
-def test_mkv_utils_option3_language_updates_track_language(env: dict[str, Path]):
-    mkv = _mkv_file(env, "language.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="3\n\n0\neng\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvpropedit")
-    assert result.returncode == 0
-    assert f"{mkv.name} --edit track:1 --set language=eng" in calls[0]
+def _integration_output(original, order):
+    # Fixture expectation is supplied independently of command arguments.
+    by_id={track["id"]:track for track in original["tracks"]}
+    output=json.loads(json.dumps(original))
+    output["tracks"]=[json.loads(json.dumps(by_id[tid])) for tid in order]
+    for position,track in enumerate(output["tracks"]):track["id"]=position
+    return output
 
 
-def test_mkv_utils_option4_name_updates_track_name(env: dict[str, Path]):
-    mkv = _mkv_file(env, "rename.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="4\n\n0\nDialogue\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvpropedit")
-    assert result.returncode == 0
-    assert f"{mkv.name} --edit track:1 --set name=Dialogue" in calls[0]
+def _integration_manifest(env,sources,**states):
+    manifest=env["workdir"].parent/"menu-execution.json"
+    manifest.write_text(json.dumps({"sources":{str(path):model for path,model in sources.items()},**states}))
+    return {"TEST_FAKE_EXECUTION_JSON":str(manifest)}
 
 
-def test_mkv_utils_option4_handles_spaces_in_file_and_track_name(env: dict[str, Path]):
-    mkv = _mkv_file(env, "Episode One.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="4\n\n0\nEnglish Stereo\n",
-    )
-
-    calls = _command_argv(env, "mkvpropedit")
-    assert result.returncode == 0
-    assert len(calls) == 1
-    assert mkv.name in calls[0]
-    assert "name=English Stereo" in calls[0]
-    assert "English" not in calls[0]
-    assert "Stereo" not in calls[0]
+def _observed_fake_identification(env,file):
+    state=json.loads((env["fake_state"]/"execution-inodes.json").read_text())
+    entry=file.stat()
+    return state[f"{entry.st_dev}:{entry.st_ino}"]
 
 
-def test_mkv_utils_option5_title_empty_input_deletes_title(env: dict[str, Path]):
-    mkv = _mkv_file(env, "title.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="5\n\n\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvpropedit")
-    assert result.returncode == 0
-    assert f"{mkv.name} --delete title" in calls[0]
-
-
-def test_mkv_utils_option1_multi_file_partial_failure_summary(env: dict[str, Path]):
-    target_a = _mkv_file(env, "multi_fail_a.mkv")
-    target_b = _mkv_file(env, "multi_fail_b.mkv")
-
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[target_a.name, target_b.name]],
-        input_data="1\nY\n0\n0\n0\n",
-        extra_env={"TEST_FAKE_MKVPROPEDIT_FAIL_CALL": "2"},
-    )
-
-    output = result.stdout + result.stderr
-    assert result.returncode == 0
-    assert "Total Files To Edit: 2" in output
-    assert "Total Files Edited: 1" in output
-    assert "Failed Files: 01" in output
-    assert "multi_fail_b.mkv" in output
+def _single_edit_menu(env,filename,choice,prompts,expected):
+    source=_mkv_file(env,filename);original=_integration_model()
+    if choice==1:original["tracks"][0]["properties"]["forced_track"]=True
+    if choice==2:original["tracks"][0]["properties"]["default_track"]=False
+    actual=json.loads(json.dumps(original))
+    if choice==5:actual["container"]["properties"]["title"]=""
+    else:actual["tracks"][0]["properties"].update(expected)
+    extra=_integration_manifest(env,{source:original},post_edit={str(source):actual})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data=f"1\n{choice}\n"+prompts+"3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    assert len(_command_argv(env,"fzf"))==1 and "--multi" in _command_argv(env,"fzf")[0]
+    assert "Done: 1; Failed: 0" in result.stdout and "Processed In:" not in result.stdout
+    assert _observed_fake_identification(env,source)==actual
+    assert all(argv[:1]==["-J"] for argv in _command_argv(env,"mkvmerge"))
+    return source,result,_command_argv(env,"mkvpropedit")
 
 
-def test_mkv_utils_option6_extracts_all_attachments(env: dict[str, Path]):
-    mkv = _mkv_file(env, "with_attachments2.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="6\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvextract")
-    assert result.returncode == 0
-    assert f"attachments {mkv}" in calls[0]
-    assert "1" in calls[0]
-    assert "2" in calls[0]
-    assert (env["workdir"] / "Attachments").exists()
-    assert (env["workdir"] / "Attachments" / "attachment_1.bin").exists()
-    assert (env["workdir"] / "Attachments" / "attachment_2.bin").exists()
+def test_mkv_utils_option1_forced_flag_uses_one_based_track_selector(env):
+    source,_,calls=_single_edit_menu(env,"forced.mkv",1,"0\n\n",{"forced_track":False})
+    assert calls==[[str(source),"--normalize-language-ietf","off","--edit","track:1","--set","flag-forced=0"]]
 
 
-def test_mkv_utils_option7_video_removal_converts_to_mka_and_keeps_other_tracks(
-    env: dict[str, Path],
-):
-    mkv = _mkv_file(env, "remove_video.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="7\n\n0\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert result.returncode == 0
-    remux_calls = [call for call in calls if " -o " in f" {call} "]
-    assert len(remux_calls) == 1
-    assert "--no-video" in remux_calls[0]
-    assert "--audio-tracks 1,2" in remux_calls[0]
-    assert "--subtitle-tracks 3" in remux_calls[0]
-    assert not mkv.exists()
-    assert (env["workdir"] / "remove_video.mka").exists()
+def test_mkv_utils_option2_default_flag_defaults_to_one(env):
+    source,_,calls=_single_edit_menu(env,"default.mkv",2,"0\n\n",{"default_track":True})
+    assert calls==[[str(source),"--normalize-language-ietf","off","--edit","track:1","--set","flag-default=1"]]
 
 
-def test_mkv_utils_option7_failure_cleans_temporary_file(env: dict[str, Path]):
-    mkv = _mkv_file(env, "remove_fail.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="7\n\n0\n",
-        extra_env={"TEST_FAKE_MKVMERGE_FAIL_CALL": "1"},
-    )
-
-    assert result.returncode == 0
-    assert "Error on" in (result.stdout + result.stderr)
-    assert mkv.read_text(encoding="utf-8") == "payload"
-    assert not (env["workdir"] / f"{mkv.stem}_temp.mka").exists()
-    assert not (env["workdir"] / f"{mkv.stem}.mka").exists()
-    mkvmerge_calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert len([call for call in mkvmerge_calls if " -o " in f" {call} "]) == 1
+def test_mkv_utils_option3_language_updates_track_language(env):
+    source,_,calls=_single_edit_menu(env,"language.mkv",3,"0\neng\n",{"language":"eng","language_ietf":"en"})
+    assert calls==[[str(source),"--normalize-language-ietf","off","--edit","track:1","--set","language=eng"]]
 
 
-@pytest.mark.parametrize(
-    "extra_env",
-    [
-        {"TEST_FAKE_MKVMERGE_JSON_FAIL_CALL": "1"},
-        {"TEST_FAKE_JQ_FAIL_CALL": "1"},
-        {"TEST_FAKE_JQ_FAIL_CALL": "2"},
-    ],
-    ids=("mkvmerge-json", "jq-validation", "jq-display"),
-)
-def test_mkv_utils_option7_inspection_failure_skips_remux(
-    env: dict[str, Path], extra_env: dict[str, str]
-):
-    mkv = _mkv_file(env, "remove_fail_inspect.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="7\n\n0\n",
-        extra_env=extra_env,
-    )
-
-    mkvmerge_calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert result.returncode == 1
-    assert "track inspection failed; file unchanged" in (result.stdout + result.stderr)
-    assert mkv.read_text(encoding="utf-8") == "payload"
-    assert len([call for call in mkvmerge_calls if " -o " in f" {call} "]) == 0
+def test_mkv_utils_option4_name_updates_track_name(env):
+    source,_,calls=_single_edit_menu(env,"rename.mkv",4,"0\nDialogue\n",{"track_name":"Dialogue"})
+    assert calls==[[str(source),"--normalize-language-ietf","off","--edit","track:1","--set","name=Dialogue"]]
 
 
-@pytest.mark.parametrize(
-    "row_mode",
-    ("empty", "non-numeric", "duplicate", "unsupported"),
-)
-def test_mkv_utils_option7_invalid_discovery_rows_skip_remux(
-    env: dict[str, Path], row_mode: str
-):
-    mkv = _mkv_file(env, "remove_invalid_rows.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="7\n\n0\n",
-        extra_env={"TEST_FAKE_JQ_TRACK_ROW_MODE": row_mode},
-    )
-
-    mkvmerge_calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert result.returncode in (0, 1)
-    assert "file unchanged" in (result.stdout + result.stderr)
-    assert mkv.read_text(encoding="utf-8") == "payload"
-    assert len([call for call in mkvmerge_calls if " -o " in f" {call} "]) == 0
+def test_mkv_utils_option4_handles_spaces_in_file_and_track_name(env):
+    literal='English Stereo $cash: "quoted" @name'
+    source,_,calls=_single_edit_menu(env,"Episode One.mkv",4,"0\n"+literal+"\n",{"track_name":literal})
+    assert len(calls)==1 and calls[0][0]==str(source)
+    assert "name="+literal in calls[0] and "English" not in calls[0] and "Stereo" not in calls[0]
 
 
-def test_mkv_utils_option7_nonexistent_track_id_skips_remux(env: dict[str, Path]):
-    mkv = _mkv_file(env, "remove_missing_id.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="7\n\n99\n",
-    )
-
-    mkvmerge_calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert result.returncode == 0
-    assert "requested Track ID not found; file unchanged" in (
-        result.stdout + result.stderr
-    )
-    assert mkv.read_text(encoding="utf-8") == "payload"
-    assert len([call for call in mkvmerge_calls if " -o " in f" {call} "]) == 0
+def test_mkv_utils_option5_title_empty_input_deletes_title(env):
+    source,_,calls=_single_edit_menu(env,"title.mkv",5,"\n",{})
+    assert calls==[[str(source),"--normalize-language-ietf","off","--edit","info","--delete","title"]]
 
 
-def test_mkv_utils_option7_refuses_to_remove_every_track(env: dict[str, Path]):
-    mkv = _mkv_file(env, "remove_all.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="7\n\n0-3\n",
-    )
-
-    mkvmerge_calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert result.returncode == 0
-    assert "no tracks to keep after removal; file unchanged" in (
-        result.stdout + result.stderr
-    )
-    assert mkv.read_text(encoding="utf-8") == "payload"
-    assert len([call for call in mkvmerge_calls if " -o " in f" {call} "]) == 0
+def test_mkv_utils_option1_multi_file_partial_failure_summary(env):
+    first,second=_mkv_file(env,"multi_fail_a.mkv"),_mkv_file(env,"multi_fail_b.mkv")
+    original=_integration_model();original["tracks"][0]["properties"]["forced_track"]=True
+    actual=json.loads(json.dumps(original));actual["tracks"][0]["properties"]["forced_track"]=False
+    extra=_integration_manifest(env,{first:original,second:original},post_edit={str(first):actual,str(second):actual})
+    extra["TEST_FAKE_MKVPROPEDIT_FAIL_CALL"]="2"
+    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second)]],input_data="1\n1\n0\n0\n3\n",extra_env=extra)
+    assert result.returncode==1,result.stdout+result.stderr
+    assert "Done: 1; Failed: 0; Warning: 1" in result.stdout and str(second) in result.stdout
+    assert len(_command_argv(env,"mkvpropedit"))==2 and "Processed In:" not in result.stdout
+    assert first.read_bytes()==b"edited-data\n" and second.read_bytes()==b"payload"
+    assert _observed_fake_identification(env,first)["tracks"][0]["properties"]["forced_track"] is False
 
 
-def test_mkv_utils_option7_multi_file_uses_per_file_track_layout(env: dict[str, Path]):
-    first = _mkv_file(env, "option7_default.mkv")
-    second = _mkv_file(env, "option7_alt.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[first.name, second.name]],
-        input_data="7\nY\n0\n",
-    )
-
-    output = result.stdout + result.stderr
-    assert result.returncode == 0
-    calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    remux_calls = [call for call in calls if " -o " in f" {call} "]
-    assert len(remux_calls) == 2
-
-    first_call, second_call = remux_calls
-    assert "--no-video" in first_call
-    assert "--audio-tracks 1,2" in first_call
-    assert "--subtitle-tracks 3" in first_call
-    assert "--no-video" in second_call
-    assert "--audio-tracks 11" in second_call
-    assert "--subtitle-tracks 12" in second_call
-    assert "--audio-tracks 1,2" not in second_call
-    assert "track_rows=" not in output
-    assert "row=" not in output
-    assert "track_type=" not in output
-    assert "track_id=" not in output
-    assert "track_rows_valid=" not in output
-    assert "excluded_id=" not in output
-    assert "requested_ids_valid=" not in output
+def test_mkv_utils_option6_extracts_all_attachments(env):
+    source=_mkv_file(env,"with_attachments2.mkv")
+    embedded=[{"id":1,"file_name":"original $font.ttf","size":3},{"id":2,"file_name":"note.txt","size":4}]
+    model=_integration_model(attachments=embedded)
+    extra=_integration_manifest(env,{source:model},extraction={str(source):{"attachments":{"outputs":{"1":{"data":"one"},"2":{"data":"note"}}}}})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n1\n3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    calls=_command_argv(env,"mkvextract")
+    assert len(calls)==1 and calls[0][:2]==[str(source),"attachments"]
+    assert [spec.split(":",1)[0] for spec in calls[0][2:]]==["1","2"]
+    assert (env["workdir"]/"Attachments"/embedded[0]["file_name"]).read_bytes()==b"one"
+    assert (env["workdir"]/"Attachments"/"note.txt").read_bytes()==b"note"
+    assert source.read_bytes()==b"payload" and "Attachments processed: 2; published: 2; final unique published names: 2" in result.stdout
 
 
-def test_mkv_utils_option8_reorder_tracks_replaces_original(env: dict[str, Path]):
-    mkv = _mkv_file(env, "reorder.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="8\n\n0:1,1:0\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvmerge")
-    assert result.returncode == 0
-    remux_calls = [call for call in calls if " -o " in f" {call} "]
-    assert len(remux_calls) == 1
-    assert "--track-order 0:1,1:0" in remux_calls[0]
-    assert (env["workdir"] / mkv.name).exists()
+def test_mkv_utils_option7_video_removal_converts_to_mka_and_keeps_other_tracks(env):
+    source=_mkv_file(env,"remove_video.mkv");original=_integration_model();expected=_integration_output(original,[1,2,3])
+    extra=_integration_manifest(env,{source:original},stage={str(source):expected})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n0\n\n3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    calls=[argv for argv in _command_argv(env,"mkvmerge") if "-o" in argv]
+    assert len(calls)==1 and "--no-video" in calls[0]
+    assert calls[0][calls[0].index("--audio-tracks")+1]=="1,2" and calls[0][calls[0].index("--subtitle-tracks")+1]=="3"
+    output=source.with_suffix(".mka")
+    assert not source.exists() and output.read_bytes()==b"candidate-data\n"
+    assert _observed_fake_identification(env,output)==expected and not _command_argv(env,"mkvpropedit")
 
 
-def test_mkv_utils_option8_reorder_failure_cleans_temp_file(env: dict[str, Path]):
-    mkv = _mkv_file(env, "reorder_fail.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="8\n\n0:1\n",
-        extra_env={"TEST_FAKE_MKVMERGE_FAIL_CALL": "1"},
-    )
-
-    assert result.returncode == 0
-    assert "Error on" in (result.stdout + result.stderr)
-    assert mkv.read_text(encoding="utf-8") == "payload"
-    assert not (env["workdir"] / "reorder_fail_temp.mkv").exists()
-
-
-def test_mkv_utils_option9_extract_track_extension_from_override(env: dict[str, Path]):
-    mkv = _mkv_file(env, "extract_codec.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="9\n\n1\n",
-    )
-
-    calls = _command_invocations(_read_command_log(env), "mkvextract")
-    assert result.returncode == 0
-    assert 'extract_codec - Track [1].opus' in calls[0]
+def test_mkv_utils_option7_failure_cleans_temporary_file(env):
+    # The approved safety policy retains failed candidates; the old legacy
+    # stem_temp output remains absent and the original is still preserved.
+    source=_mkv_file(env,"remove_fail.mkv");original=_integration_model()
+    extra=_integration_manifest(env,{source:original},stage={str(source):_integration_output(original,[1,2,3])},merge_code=2)
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n0\n\n3\n",extra_env=extra)
+    assert result.returncode==1,result.stdout+result.stderr
+    assert "Failed: 1" in result.stdout and "Candidate:" in result.stdout
+    assert source.read_bytes()==b"payload" and not source.with_suffix(".mka").exists()
+    assert not (env["workdir"]/"remove_fail_temp.mka").exists()
+    assert len([a for a in _command_argv(env,"mkvmerge") if "-o" in a])==1
+    assert len(list(env["workdir"].glob(".mkvutil-*/candidate.mka")))==1
 
 
-def test_mkv_utils_option9_extract_track_extension_from_python_map(env: dict[str, Path]):
-    mkv = _mkv_file(env, "extract_unknown.mkv")
-    result = _run_mkv_utils(
-        env,
-        fzf_responses=[[mkv.name]],
-        input_data="9\n\n0\n",
-    )
+@pytest.mark.parametrize("extra_env",[
+    {"TEST_FAKE_MKVMERGE_JSON_FAIL_CALL":"1"},
+    {"TEST_FAKE_JQ_FAIL_QUERY_CONTAINS":"empty tracks array"},
+    {"TEST_FAKE_JQ_FAIL_QUERY_CONTAINS":"codec: .properties.codec_id"},
+],ids=("mkvmerge-json","jq-validation","jq-display"))
+def test_mkv_utils_option7_inspection_failure_skips_remux(env,extra_env):
+    source=_mkv_file(env,"remove_fail_inspect.mkv")
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\nN\n",extra_env=extra_env)
+    assert result.returncode==1,result.stdout+result.stderr
+    assert ("Inspection failed:" in result.stdout+result.stderr or "Injected read-only jq query failure:" in result.stderr)
+    assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+    assert not _command_argv(env,"mkvpropedit") and not _command_argv(env,"mkvextract")
 
-    calls = _command_invocations(_read_command_log(env), "mkvextract")
-    assert result.returncode == 0
-    assert 'extract_unknown - Track [0].thd' in calls[0]
+
+@pytest.mark.parametrize("row_mode",("empty","non-numeric","duplicate","unsupported"))
+def test_mkv_utils_option7_invalid_discovery_rows_skip_remux(env,row_mode):
+    source=_mkv_file(env,"remove_invalid_rows.mkv");model=_integration_model()
+    if row_mode=="empty":model["tracks"]=[]
+    elif row_mode=="non-numeric":model["tracks"][0]["id"]="bad"
+    elif row_mode=="duplicate":model["tracks"][1]["id"]=0
+    else:model["tracks"][0]["type"]="buttons"
+    extra=_integration_manifest(env,{source:model})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\nN\n",extra_env=extra)
+    assert result.returncode==1,result.stdout+result.stderr
+    assert "Inspection failed:" in result.stdout+result.stderr
+    assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+
+
+def test_mkv_utils_option7_nonexistent_track_id_skips_remux(env):
+    source=_mkv_file(env,"remove_missing_id.mkv")
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n99\n")
+    assert result.returncode==1,result.stdout+result.stderr
+    assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+    assert "requested, not run" in result.stdout
+
+
+def test_mkv_utils_option7_refuses_to_remove_every_track(env):
+    source=_mkv_file(env,"remove_all.mkv")
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n0-3\n")
+    assert result.returncode==1,result.stdout+result.stderr
+    assert source.read_bytes()==b"payload" and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+    assert "requested, not run" in result.stdout
+
+
+def test_mkv_utils_option7_multi_file_uses_per_file_track_layout(env):
+    first,second=_mkv_file(env,"option7_default.mkv"),_mkv_file(env,"option7_alt.mkv")
+    a=_integration_model();b=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(11,"audio","A_AAC",True),(12,"subtitles","S_TEXT/ASS",True)])
+    extra=_integration_manifest(env,{first:a,second:b},stage={str(first):_integration_output(a,[1,2,3]),str(second):_integration_output(b,[11,12])})
+    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second)]],input_data="2\n1\n0\n\n3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    calls=[argv for argv in _command_argv(env,"mkvmerge") if "-o" in argv]
+    assert len(calls)==2 and all("--no-video" in c for c in calls)
+    assert [(c[c.index("--audio-tracks")+1],c[c.index("--subtitle-tracks")+1]) for c in calls]==[("1,2","3"),("11","12")]
+    assert not _command_argv(env,"mkvpropedit") and "Done: 2; Failed: 0" in result.stdout
+    assert _observed_fake_identification(env,first.with_suffix(".mka"))["tracks"]==_integration_output(a,[1,2,3])["tracks"]
+    assert _observed_fake_identification(env,second.with_suffix(".mka"))["tracks"]==_integration_output(b,[11,12])["tracks"]
+    for internal in ("track_rows=","row=","track_type=","track_id=","track_rows_valid=","excluded_id=","requested_ids_valid="):
+        assert internal not in result.stdout+result.stderr
+
+
+def test_mkv_utils_option8_reorder_tracks_replaces_original(env):
+    source=_mkv_file(env,"reorder.mkv");original=_integration_model();expected=_integration_output(original,[1,0,2,3])
+    extra=_integration_manifest(env,{source:original},stage={str(source):expected})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n2\n0:1,0:0\n\n2\n3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    calls=[a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+    assert len(calls)==1 and calls[0][calls[0].index("--track-order")+1]=="0:1,0:0,0:2,0:3"
+    actual=_observed_fake_identification(env,source)
+    assert [t["properties"]["uid"] for t in actual["tracks"]]==[original["tracks"][i]["properties"]["uid"] for i in (1,0,2,3)]
+    assert actual==expected and source.read_bytes()==b"candidate-data\n"
+    assert "Original ID 1 => final position 1: audio" in result.stdout
+
+
+def test_mkv_utils_option8_reorder_failure_cleans_temp_file(env):
+    source=_mkv_file(env,"reorder_fail.mkv");original=_integration_model()
+    extra=_integration_manifest(env,{source:original},stage={str(source):_integration_output(original,[1,0,2,3])},merge_code=1)
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n2\n0:1\n\n3\n",extra_env=extra)
+    assert result.returncode==1,result.stdout+result.stderr
+    assert "Warning: 1" in result.stdout and "Candidate:" in result.stdout
+    assert source.read_bytes()==b"payload" and not (env["workdir"]/"reorder_fail_temp.mkv").exists()
+    assert len(list(env["workdir"].glob(".mkvutil-*/candidate.mkv")))==1
+
+
+def test_mkv_utils_option9_extract_track_extension_from_override(env):
+    source=_mkv_file(env,"extract_codec.mkv");model=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(1,"audio","A_OPUS",True),(2,"subtitles","S_TEXT/ASS",False)])
+    extra=_integration_manifest(env,{source:model},extraction={str(source):{"tracks":{"outputs":{"1":{"data":"opus bytes"}}}}})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n2\n1\n3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    assert _command_argv(env,"mkvextract")[0][:2]==[str(source),"tracks"]
+    assert (env["workdir"]/"extract_codec - Track [1].opus").read_bytes()==b"opus bytes" and source.read_bytes()==b"payload"
+
+
+def test_mkv_utils_option9_extract_track_extension_from_python_map(env):
+    source=_mkv_file(env,"extract_unknown.mkv");model=_integration_model([(0,"audio","A_TRUEHD",True)])
+    extra=_integration_manifest(env,{source:model},extraction={str(source):{"tracks":{"outputs":{"0":{"data":"truehd bytes"}}}}})
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n2\n0\n3\n",extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    assert (env["workdir"]/"extract_unknown - Track [0].thd").read_bytes()==b"truehd bytes" and source.read_bytes()==b"payload"
+
+
+@pytest.mark.parametrize("workflow",("edit-flags","reorder-metadata","remove-reorder-metadata"))
+def test_mkv_utils_integration_grouped_workflow_equivalents(env,workflow):
+    source=_mkv_file(env,'Combined $cash "name".mkv');original=_integration_model();actual=json.loads(json.dumps(original))
+    literal='@literal $cash: "quoted"'
+    if workflow=="edit-flags":
+        for track in actual["tracks"][1:3]:track["properties"].update(forced_track=False,default_track=True)
+        original["tracks"][1]["properties"].update(forced_track=True,default_track=False)
+        extra=_integration_manifest(env,{source:original},post_edit={str(source):actual})
+        inputs="1\n1,2\n1,2\n\n\n1,2\n\n\n3\n"
+    else:
+        actual["tracks"][1]["properties"].update(track_name=literal,language="fre",language_ietf="fr-CA")
+        removed=workflow=="remove-reorder-metadata"
+        actual=_integration_output(actual,[2,1,3] if removed else [2,1,0,3])
+        extra=_integration_manifest(env,{source:original},stage={str(source):actual})
+        inputs=("2\n1,2\n0\n0:2\n" if removed else "2\n2\n0:2,0:1\n")+"4,3\n1\n"+literal+"\n1\nfr-CA\n3\n"
+    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data=inputs,extra_env=extra)
+    assert result.returncode==0,result.stdout+result.stderr
+    assert len(_command_argv(env,"fzf"))==1 and "Done: 1; Failed: 0" in result.stdout
+    if workflow=="edit-flags":
+        assert len(_command_argv(env,"mkvpropedit"))==1 and not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+        output=source;assert "Processed In:" not in result.stdout
+    else:
+        calls=[a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+        assert len(calls)==1 and not _command_argv(env,"mkvpropedit")
+        assert "1:"+literal in calls[0] and "1:fr-CA" in calls[0]
+        assert calls[0][calls[0].index("--track-order")+1]==("0:2,0:1,0:3" if workflow=="remove-reorder-metadata" else "0:2,0:1,0:0,0:3")
+        output=source.with_suffix(".mka") if workflow=="remove-reorder-metadata" else source
+    assert _observed_fake_identification(env,output)==actual
+
+
+@pytest.mark.parametrize("boundary",("removed-metadata","cancel","eof","fzf-injection"))
+def test_mkv_utils_integration_reject_or_cancel_before_modification(env,boundary):
+    source=_mkv_file(env,"Untouched.mkv")
+    selected=source
+    if boundary=="removed-metadata":inputs="2\n1\n0\n4\n0\n"
+    elif boundary=="cancel":inputs="1\n4\n0\nName\n0\n"
+    elif boundary=="eof":inputs="1\n4\n0\n"
+    else:
+        selected=env["workdir"].parent/"outside scanned domain.mkv";selected.write_bytes(b"outside")
+        inputs="1\n5\n"
+    result=_run_mkv_utils(env,fzf_responses=[[str(selected)]],input_data=inputs)
+    assert result.returncode==(0 if boundary in ("cancel","eof") else 1),result.stdout+result.stderr
+    assert source.read_bytes()==b"payload"
+    assert not _command_argv(env,"mkvpropedit") and not _command_argv(env,"mkvextract")
+    assert not [a for a in _command_argv(env,"mkvmerge") if "-o" in a]
+    if boundary in ("cancel","eof"):assert "Cancelled; no media changes." in result.stdout
+
+
+def test_mkv_utils_integration_native_child_signal_stops_menu_queue(env):
+    first,second=_mkv_file(env,"Signal first.mkv"),_mkv_file(env,"Pending second.mkv")
+    original=_integration_model();stage=_integration_output(original,[1,0,2,3])
+    extra=_integration_manifest(env,{first:original,second:original},stage={str(first):stage,str(second):stage},merge_code=-15)
+    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second)]],input_data="2\n2\n0:1\n\n3\n",extra_env=extra)
+    assert result.returncode==1,result.stdout+result.stderr
+    assert "Interrupted: 1" in result.stdout and "Not attempted: 1" in result.stdout
+    assert first.read_bytes()==second.read_bytes()==b"payload"
+    assert len([a for a in _command_argv(env,"mkvmerge") if "-o" in a])==1
+    assert not _command_argv(env,"mkvpropedit") and len(_command_argv(env,"fzf"))==1

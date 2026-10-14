@@ -36,7 +36,7 @@ pass. Planning-preparation history above is outside these implementation totals.
 | G01 | Checkpoint 1: menu and planning contract | T01.01, T01.02, T01.03 | All three tasks accepted; category configuration and preview consume the shared foundation and meet the existing no-mutation gate. | [x] | [x] | [x] |
 | G02 | Checkpoint 2: Edit + Mux execution | T02.01, T02.02, T02.03 | All three tasks accepted and combined Edit/Mux workflows meet their semantic, safety, and reporting gates; this is the approved stage gate before Extract implementation. | [x] | [x] | [x] |
 | G03 | Checkpoint 3: extraction integration | T03.01 | T03.01 accepted and both single and batched extraction outcomes verified. G02 acceptance is an existing execution-stage gate, not an assumed extraction API dependency. | [x] | [x] | [x] |
-| G04 | Checkpoint 4: integration and documentation | T04.01, T04.02 | Both tasks accepted; all required integration/verification evidence is current, help/docs match the implementation, and parent final review is complete. | [ ] | [ ] | [ ] |
+| G04 | Checkpoint 4: integration and documentation | T04.01, T04.02 | Both tasks accepted; all required integration/verification evidence is current, help/docs match the implementation, and parent final review is complete. | [x] | [x] | [x] |
 
 ### G01 — Checkpoint 1: menu and planning contract
 
@@ -64,8 +64,8 @@ pass. Planning-preparation history above is outside these implementation totals.
 
 | Accepted | Task ID | Required result (mirror plan) | Required evidence / current status | Hard prerequisites | Shared/overlap |
 | --- | --- | --- | --- | --- | --- |
-| [ ] | T04.01 | Verify every adapted single/batch action, shared metadata path, and removal skip-only continuation together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. | Required: Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. Status: not started; no acceptance evidence. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures |
-| [ ] | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | Required: Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. Status: not started; no acceptance evidence. | T04.01 | none |
+| [x] | T04.01 | Verify every adapted single/batch action, shared metadata path, and removal skip-only continuation together; consolidate task-level receipts and complete all six existing validation groups, including small real-v93/all-format evidence and the near-end interactive rehearsal with disposable `.tmp` fixtures. | Required: Syntax/static checks, complete affected MKV groups, real-tool integration, retained-property checks, bounded real-entrypoint journeys with mocked/real-tool/TTY boundaries recorded, and final candidate revision evidence; reuse still-valid slice receipts and rerun affected proof only. Status: accepted after parent review and Astra PASS WITH NOTES. Current128-case coverage combines125 unchanged full-suite passes (324.21s wall) with3 corrected/split cases (8.44s wall), preserving all assertions and10s guards; recovered prepared-source hash binds unchanged cases. Three real-v93 journeys and real-fzf two-file preview/Cancel passed, with native payload/property/source checks and all six integrated groups verified. Historical setup/timeouts/verifier failures remain preserved. Receipt: `.tmp/mkvutil-rework/interactive/t04-campaign.vqvatjsp/campaign-result-receipt.json`; exact binding: `parent-case-binding.json`. No single128-pass run or CI result is claimed. | T02.03, T03.01 | T04.02; all runtime consumers and test fixtures |
+| [x] | T04.02 | Update help and the existing user guide against validated behavior, then complete parent final-diff review and reconcile acceptance/restart records. | Required: Verified command/menu/docs claims and links, reviewed final diff, and all applicable goal-level gates recorded without publication claims. Status: accepted after full parent guide/README/source-help diff review, actual --help/syntax checks, verified local links and unchanged native-qualified executable bodies. Final review receipt: `.tmp/mkvutil-rework/final-review.icdu2_ji/parent-final-review.json`. Tracked planning records moved to the user-approved `.plans/feature-mkvutil-rework/`; final feature publication and worktree retirement are separate authorized operations. | T04.01 | none |
 
 ### Current readiness and acceptance limits
 
@@ -99,14 +99,14 @@ pass. Planning-preparation history above is outside these implementation totals.
 ## Required validation
 
 These are the six existing [plan validation requirements](plan.md#validation-and-acceptance),
-with their acceptance still pending:
+accepted at T04.01 with current aggregated test/native/terminal evidence:
 
-1. [ ] Preserve existing operation assertions, including free-form metadata,
+1. [x] Preserve existing operation assertions, including free-form metadata,
    input defaults/ranges, extraction extensions, extension conversion,
    multi-file failures, and the two-file terminal-variable-output regressions.
    Adjust navigation for the new category entrypoints without weakening
    underlying behavior assertions.
-2. [ ] Verify submenu comma/range parsing, invalid and duplicate selections,
+2. [x] Verify submenu comma/range parsing, invalid and duplicate selections,
    category batching, optional Mux metadata, conflicts, cancellation/EOF,
    heterogeneous file layouts, and command counts. Both tools must be covered
    by the shared definitions; Mux must use one output-producing remux command
@@ -119,39 +119,40 @@ with their acceptance still pending:
    and fresh skipped-only continuations. Cover mixed/all-skipped cases, zero
    modifying calls for skipped files, completed-source exclusion, and truthful
    resolved/unresolved final counts/status.
-3. [ ] Verify collisions, the approved attachment-only overwrite exception,
+3. [x] Verify collisions, the approved attachment-only overwrite exception,
    failed promotion, inspection/validation failures, warning versus error handling,
    interruptions, and incomplete-stage reporting. Include repeated attachment
    names within/across sources, last-successful publication, protected input/
    track aliases, and preservation of earlier collection on a later failure.
-4. [ ] Correct the reorder test's single-input `0:1,1:0` example and establish
+4. [x] Correct the reorder test's single-input `0:1,1:0` example and establish
    actual ordering beyond the stub's empty-output behavior.
-5. [ ] Use a small real fixture on installed v93 tools to prove combined
+5. [x] Use a small real fixture on installed v93 tools to prove combined
    removal/reordering/names/languages, mapping to intended tracks, flag parity,
    blank-title clearing, chapters/attachments preservation, and extraction from
    selected sources. Keep real-tool evidence distinct from stub assertions.
-6. [ ] Run syntax/static checks and all affected MKV test groups once the
+6. [x] Run syntax/static checks and all affected MKV test groups once the
    integrated change is ready; broaden only for shared changes or discovered
    failures. Unrelated repository suites are not automatic requirements.
 
 ### User-requested near-end interactive rehearsal
 
-- [ ] Reuse and adapt the existing menu harness for category single actions,
+- [x] Reuse and adapt the existing menu harness for category single actions,
   representative batches, optional Mux metadata, and controlled input/failure
   journeys; avoid a duplicate test framework.
   Include always-multi selection, removal mismatch reports, and a fresh
   continuation for only the skipped sources.
-- [ ] Generate small valid fixtures for all four formats in an owned per-run
+- [x] Generate small valid fixtures for all four formats in an owned per-run
   `.tmp` directory, and verify a few real-v93 workflows alongside mocked churn.
-- [ ] Verify the campaign's bounded approval before execution; record exact
+- [x] Verify the campaign's bounded approval before execution; record exact
   candidate revision and distinguish mocked, real-tool, and terminal evidence.
 
 These items mirror [the plan's rehearsal](plan.md#near-end-interactive-rehearsal)
-within T04.01. They are pending and do not defer earlier task acceptance gates.
+within accepted T04.01. Their receipts preserve mocked, native and real-terminal
+evidence separately; T04.02 help/docs and final goal review are accepted.
 
 All [track identity](plan.md#track-identity-and-preview),
 [metadata](plan.md#metadata-contracts),
 [file safety](plan.md#file-safety-and-queue-reporting), format, and acceptance
 contracts remain those in the authoritative plan.
 
-**Implementation tasks accepted: 7 / 9. Main goals/checkpoints accepted: 3 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02, T02.03, T03.01; accepted goals: G01, G02, G03. Extract passed current focused/native/entrypoint proof, parent critical review and independent post-fix audit. The six integrated validation groups, broad campaign and final help/docs remain pending in G04.
+**Implementation tasks accepted: 9 / 9. Main goals/checkpoints accepted: 4 / 4.** Accepted IDs: T01.01, T01.02, T01.03, T02.01, T02.02, T02.03, T03.01, T04.01, T04.02; accepted goals: G01, G02, G03, G04. Extract passed current focused/native/entrypoint proof, parent critical review and independent post-fix audit. T04.01's six integrated validation groups and campaign are accepted; T04.02 help/docs and G04 final review are accepted. Publication and authorized checkout housekeeping remain operational follow-up.

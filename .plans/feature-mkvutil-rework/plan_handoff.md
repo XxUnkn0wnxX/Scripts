@@ -9,17 +9,39 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 
 [Authoritative plan](plan.md) · [Acceptance checklist](plan_checklist.md)
 
+Canonical tracked records: `.plans/feature-mkvutil-rework/`. Source, test commands
+and `.tmp` receipt paths below are relative to the repository root.
+
 ## Current state and safe restart point
 
-- G03 (Extract) and T03.01 are accepted after current affected/native proof,
-  one notified entrypoint probe, parent source/receipt review and two critical
-  tests, and Astra's post-fix PASS WITH NOTES. Current acceptance is
-  **7 / 9 tasks and 3 / 4 goals**. The sole source/test/helper writer
-  `mkv_metadata_foundation` is quiescent with no active test/native sessions.
-  Next: T04.01 harness/navigation and bounded campaign preparation, then its
-  separately gated interactive run and full integrated checks. T04.02 help/docs
-  follows verified integration. Inspect live runtime before reassignment;
-  parent owns these records.
+- User-authorized final housekeeping: after the verified G04 feature push,
+  restore this same feature branch in the original `Scripts` checkout and
+  remove `Scripts-dev`. Carry only `.tmp/mkvutil-rework` into main `Scripts/.tmp`;
+  other retiring-worktree scratch may be discarded. Preserve the main checkout's
+  existing environment and unrelated `.tmp` contents. Remove the dedicated
+  worktree rule and propagate only the approved AGENTS policy change to feature,
+  develop and master, pushing each. No utility-code promotion is requested.
+  Planning files remain tracked in `.plans/feature-mkvutil-rework/` on the
+  feature branch. Operational migration is pending; do not claim teardown done.
+
+- All four main goals and nine tasks are accepted after parent review,
+  current receipts and Astra's independent audits. Current acceptance is
+  **9 / 9 tasks and 4 / 4 goals**. The campaign writer is quiescent, with no
+  active sessions; source/test/helper hashes and immutable fixtures are verified.
+  Current128-case coverage is125 unchanged full-suite passes plus3 corrected
+  cases, with all assertions and existing guards retained. Three native v93
+  journeys and real-fzf two-file preview/Cancel are verified. Historical
+  failures remain preserved and do not represent open runtime defects.
+- T04.02 is accepted after complete guide/README/source-help review and actual
+  help/syntax/link checks. Executable bodies equal the native-qualified G03
+  source byte-for-byte; only comments/help changed. Final parent receipt:
+  `.tmp/mkvutil-rework/final-review.icdu2_ji/parent-final-review.json`.
+  All runtime/documentation goals are done. Next: commit/push the accepted G04
+  feature package, propagate the isolated AGENTS policy commit to develop/master,
+  move only `.tmp/mkvutil-rework` into main Scripts, retire Scripts-dev, restore
+  the same feature branch there, and record/verify the final state. Parent owns
+  all remaining writes/Git; all workers are quiescent. No code promotion to other
+  branches or branch deletion is requested.
 - The user-requested real code/checklist audit reopened missing normal
   multi-file Edit proof, added a focused passing test, and corrected stale
   progress/restart statements. Safe snapshot and findings remain under
@@ -31,8 +53,9 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   `parent-integration.json`. Script SHA-256:
   `fed393cdb7c729f219ca1d5d51f059ccdbededd60e840e3bacc245e471d2cc8c`.
   The accepted metadata/executor bodies are unchanged from the native-qualified
-  `f44cd98` checkpoint. Full Extract, integrated legacy/all-format/campaign
-  checks and final documentation remain pending.
+  `f44cd98` checkpoint. This is the historical G02 source binding; current G03
+  source binding is in its Extract receipt below. Integrated legacy/all-format/
+  campaign checks and final documentation remain pending.
 - Active workspace: sibling worktree `../Scripts-dev`, on
   `feature/mkvutil-rework`, per the user's explicit instruction to work there
   moving forward. The user confirmed this worktree is dedicated to this rework
@@ -54,10 +77,12 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   parent directory; rerunning in a fresh owned run directory passed without
   product changes.
 - Latest verified published feature HEAD:
-  `1bb755e1fd033d66dcefb6f431f826cafe89e262`
-  (`feat(shell): report mkvutil batches and retry mismatched files`), signed.
+  `b749135cdfa52b7b1ec2fbe1a63de8f064700f1f`
+  (`feat(shell): integrate batched mkvutil extraction`), signed.
   The user explicitly authorized automatic pushes after each accepted main
-  goal; G02's accepted checkpoint was pushed and its exact remote ref verified.
+  goal; G03's accepted checkpoint and preceding attachment-policy amendment
+  were pushed and the exact live remote ref verified. G02's earlier published
+  checkpoint remains `1bb755e1fd033d66dcefb6f431f826cafe89e262`.
   `develop` and `master` remain at signed `e6dd2b94fd489796df80270814aa040bc19db8a8`
   locally/remotely. Utility implementation is published on the feature branch;
   no promotion or live alias/deployment change was made.
@@ -68,13 +93,15 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   Git; the audit record correction is a separate documentation checkpoint.
   This execution checkpoint commits only
   the six approved source/test/planning paths and accepted T02.01/T02.02
-  evidence; both worktrees were clean immediately afterward. Current uncommitted
+  evidence; both worktrees were clean immediately afterward. The former pending
   T02.03 source/test work and the audit's additional test are committed at
   signed `1bb755e1fd033d66dcefb6f431f826cafe89e262`; the tree was clean afterward.
   The preceding audit record correction is signed `22eb849`. The attachment
-  policy is committed at signed `3567fe7`; current source/test/helper changes
-  are the accepted T03.01 package awaiting its goal checkpoint commit/push,
-  with parent-owned status records.
+  policy is committed at signed `3567fe7`; the accepted T03.01 package is
+  committed/published at signed `b749135`. Both worktrees were clean immediately
+  after publication verification. Current uncommitted paths are the parent
+  checklist/handoff and T04 utility test/helper; the campaign writer owns those
+  test paths and private execution artifacts. Source is unchanged/read-only.
   Accepted G01/G02 implementation is now published on the feature branch;
   no promotion or live deployment has occurred. Prior G01 checkpoint is signed
   `6444e4cbbe65ffe1a81d18213582695ea242cb8e`; the reporting-plan checkpoint
@@ -96,7 +123,8 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 - T01.02 is accepted after parent review of the shared registry, configuration,
   flag snapshots and two pure argument builders, five focused unit contracts,
   and small native v93 builder proof. That package is complete; the same writer
-  completed T03.01 and is quiescent pending the next bounded assignment.
+  completed T03.01 and T04.01 preparation; it is quiescent pending the campaign
+  grant and next bounded execution assignment.
 - T01.03 and G01 are now accepted after parent review and final selector/removal
   proof below. Categories, configuration, per-file planning, skip receipts,
   preview and fresh skipped-subset preparation are implemented. Executors
@@ -104,10 +132,10 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   focused/native proof, parent review and Astra's bounded post-fix PASS.
   T02.03's current reporting/continuation proof subsequently closed G02.
   Extract execution is accepted after its focused/native and review gates.
-  Current totals: 7 / 9 tasks and 3 / 4 goals.
-- Next package: T04.01 integrated harness/navigation and campaign preparation
-  after the verified G03 gate. Preserve accepted runtime behavior; parent owns
-  all records. Campaign execution approval remains pending.
+  Current totals: 9 / 9 tasks and 4 / 4 goals.
+- No runtime or documentation package remains pending. G04 is accepted;
+  only its authorized publication and checkout/record housekeeping remain.
+  The approved campaign finished within budget; no repeated broad run is needed.
 - T02.03's implementation draft uses an original-source-keyed final-outcome
   ledger separate from current scope/jobs/skip receipts, plus saved per-batch
   action/configuration/time attribution. History is provenance, not unresolved
@@ -123,9 +151,9 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   skips with skipped-only follow-up batches. Astra verified this delta before
   any new requirement/code edits; the parent updated the authorized plan and
   checklist, then the same source/test owner implemented the G01 portion.
-- Broad interactive campaign permission is still pending and scheduled for the
-  integration stage. Small isolated probes are notified; code/static checks and
-  focused non-interactive contract proof can proceed.
+- Broad interactive campaign permission is active for the prepared T04 scope
+  and budgets below. Small isolated probes are notified; ordinary code/static
+  checks retain their permissions. No acceptance is implied by the grant.
 
 ### Refreshed worktree coordination
 
@@ -137,9 +165,12 @@ plus the current user's tracking/AGENTS approval in that same session's log.
   rediscovered/reloaded the multi-session skill, all four relevant references
   including updated resumption/audits, and both now-installed validators.
   Those structural checks pass; no record migration or approval change applies.
-- Canonical records are the tracked root `plan.md`, `plan_checklist.md`, and
-  `plan_handoff.md` in `../Scripts-dev`. Historical copies in other branches
-  and copied fixture receipts are subordinate; do not start another master plan.
+- Canonical records are the tracked `.plans/feature-mkvutil-rework/plan.md`,
+  `plan_checklist.md`, and `plan_handoff.md`. The user explicitly requested
+  this relocation on2026-10-14 while retaining `feature/mkvutil-rework`.
+  The corresponding AGENTS-only policy is signed at `fd9bc72`; propagation
+  to develop/master is authorized and pending. Historical root copies in
+  other branches are not competing project masters.
 - Runtime default cwd remains the original `../Scripts` checkout. Every tool
   command must explicitly use `../Scripts-dev`; workers must provide a verified
   Git-root/branch/status receipt there before writing. This is explicit tool
@@ -186,16 +217,16 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 
 | File | Purpose | Git visibility at this checkpoint |
 | --- | --- | --- |
-| `plan.md` | Authoritative requirements, goal/task IDs, dependencies, and four checkpoint identities | Tracked; included in the authorized documentation publication |
-| `plan_checklist.md` | Mirrored checkpoint and validation acceptance evidence | Root companion included in the authorized documentation publication |
-| `plan_handoff.md` | Verified current state, approvals, lineage, and next actions | Root companion included in the authorized documentation publication |
-| `AGENTS.md` | Approved durable project instructions and dedicated worktree/branch locator | Tracked and synchronized on feature, develop, and master |
+| `plan.md` | Authoritative requirements, goal/task IDs, dependencies, and four checkpoint identities | Tracked under `.plans/feature-mkvutil-rework/` |
+| `plan_checklist.md` | Mirrored checkpoint and validation acceptance evidence | Tracked companion under `.plans/feature-mkvutil-rework/` |
+| `plan_handoff.md` | Verified current state, approvals, lineage, and next actions | Tracked companion under `.plans/feature-mkvutil-rework/` |
+| `AGENTS.md` | Approved durable project instructions and planning-record locator | Updated on feature; approved matching develop/master propagation pending |
 
 On 2026-10-14 the user replied **"for repo plan etc can be tracked & ya
 approved"** to the proposal for project instructions. This approves creating
 `AGENTS.md` and overrides the private `.tmp/` default for the planning companion
-records. Keep the plan and companions together at the repository root and
-eligible for tracking. The original local AGENTS file initially reused the
+records. The original placement was the repository root; the user now
+explicitly changed it to `.plans/feature-mkvutil-rework/`, still tracked. The original local AGENTS file initially reused the
 existing ignore rule. The user later explicitly requested its publication on
 the feature branch, develop and master. Root `!/AGENTS.md` now overrides that
 ignore; the instructions and ignore change are identical on all three branches.
@@ -785,10 +816,10 @@ checks. New implementation packages follow the current approved route.
    verify branch, HEAD, worktree/index, pending approvals, and any live agents.
 2. Verify the published planning checkpoints and current implementation changes
    from actual Git state; respect the current package's exclusive writer.
-3. Preserve accepted G01-G03 runtime tasks. Prepare T04.01 by adapting the
-   existing legacy menu tests, keeping semantic assertions, and assembling the
-   bounded real-format/menu/PTY campaign. Obtain its pending one-time execution
-   grant before broad runs; final help/docs follow T04.01 acceptance.
+3. Preserve all accepted tasks and receipts. Complete only any unfinished
+   authorized feature publication, AGENTS propagation and checkout housekeeping
+   stated at the top; verify the actual branch/ref/state rather than repeating
+   completed runtime tests. Keep the parent-session ledger and private receipts.
 
 ### Dependency-ready restart map
 
@@ -836,6 +867,102 @@ contain no media operations, product tests, or CI results.
   children and use existing timeouts; obtain the pending bounded project-wide
   interactive approval before campaign execution. Source/task proof proceeds
   independently under the existing implementation permission.
+
+### Accepted T04.01 integration checkpoint
+
+- Campaign receipt:
+  `.tmp/mkvutil-rework/interactive/t04-campaign.vqvatjsp/campaign-result-receipt.json`.
+  Completed in886.91s against approved900s budget. Source runtime unchanged:
+  `997577ccbe412f451ac9cf0c9c4aa9a0604ef964c1d648d91ee38f3dd97e5408`.
+  Final test hash: `d90bbc57362c50ce74a3118755566e274ebe5474b6a3ab17bc2cd891f09390a9`;
+  helper unchanged from preparation: `41648a36e36f95b2f1d78acb9ef681ed6964b352b5ce45ad25bde59a727b7480`.
+- Complete affected run:125 passed,1 planning-test10s timeout in324.21s wall /
+  267.20s CPU. Splitting its independent mismatch/invalid-value checks from
+  the intact cohort lifecycle retained every assertion and guard; all three
+  corrected cases passed in8.44s wall. Current collection is128. Parent and
+  Astra independently reconstructed the entire pre-split file at its exact
+  preparation hash; all other case bodies are unchanged. Recovery and AST
+  evidence: `parent-recovered-full-suite-tests.py`, `parent-case-binding.json`.
+  This is aggregated coverage, not a single128-case all-pass run.
+- N1: genuine four-format title-clear Edit, four grouped propedit calls.
+  N2: removal/reorder and all five metadata actions, exactly one output remux
+  and zero propedit calls, observed original UID order, flags/names/language,
+  retained PCM payloads, chapters/attachments/user tags. Parent and Astra
+  verified exactly one native SRT200ms-to199ms substitution, with every other
+  byte including BOM/newlines identical. N3: selected-source attachment/track
+  stages and unchanged source hash. Native application exits all0; inspection
+  calls and baseline extraction are separate from modifying command counts.
+- P1: real fzf on24x240 PTY selected two files, previewed and cancelled; only
+  two identification calls, no modifiers, all source hashes unchanged. The
+  earlier80-column driver-render wait hit its20s guard; it is a preserved
+  failed driver attempt, not proof of a product failure or80-column acceptance.
+- Parent verified current package/fixture hashes, native command counts,
+  source preservation, actual subtitle bytes and independent test binding.
+  Astra returned PASS WITH NOTES; stale group6 collection/binding wording is
+  corrected in the receipt, preserving the original worker handback.
+  All six integrated groups are accepted. Initial setup, planning timeouts,
+  narrow native verifier failure and first PTY attempt remain in saved logs.
+  No further test campaign, CI, installation, real-user-media or deployment
+  action is needed or claimed. T04.02 and G04 final review subsequently passed; their final receipt is above.
+
+### Completed T04.01 preparation brief (historical)
+
+
+- Preparation receipt and campaign manifest:
+  `.tmp/mkvutil-rework/integration-prep/prep.vqvatjsp/preparation-receipt.json`
+  and `campaign-manifest.json`. Parent reviewed independent expected states,
+  matched all package hashes, and verified unchanged G03 source at `b749135`.
+  Test SHA-256: `edf400948d8ea0d5f717082be7e11ad309575247631d066cf7a654d802aea410`;
+  helper: `41648a36e36f95b2f1d78acb9ef681ed6964b352b5ce45ad25bde59a727b7480`.
+- All 19 legacy test function identities are retained/adapted; 126 cases
+  collect, including 32 prepared adapted/new menu cases. Syntax/AST/whitespace
+  checks and the read-only jq adapter contract pass. Actual menu/native/PTY
+  campaign outcomes remain unverified; T04.01 and all six integrated groups
+  remain unaccepted.
+- Genuine small `.mkv`, audio-only `.mka`, subtitle-only `.mks`, and stereo
+  `.mk3d` fixtures preserve metadata, chapters and attachments. Their seed
+  hash is unchanged; fixture creation ran installed v93 tools in 1.07s wall,
+  with no utility entrypoint runs. Fixture hashes/provenance and reference
+  products are in `fixture-receipt.json` beside the preparation receipt.
+- The preparation handback was quiescent with no active sessions; parent has
+  now resumed the same sole writer for the approved campaign. Parent corrected only
+  future campaign locations to the approved owned execution root
+  `.tmp/mkvutil-rework/interactive/t04-campaign.vqvatjsp/`; immutable prepared
+  fixtures remain in the preparation root. Pre-review manifest/receipt copies
+  are preserved beside them. Current manifest SHA-256:
+  `e87b8c06aab05adc4cf7b67c587e40659c5f173ac833d14b7558eac6ab88be72`.
+  No execution directory or campaign run was created by that path review.
+- The preceding preparation brief is retained below as completed assignment
+  scope, not a live worker instruction. Resume the same exclusive writer only
+  after verifying and conveying the actual execution grant.
+
+- G03 is accepted and published at `b749135`; the hard prerequisite gate is
+  satisfied. Reuse route B and the existing sole writer
+  `mkv_metadata_foundation`, after root/branch/HEAD/status verification.
+- Exclusive writes: `tests/mkv_tools/test_mkv_utils.py`,
+  `tests/mkv_tools/_mkv_helpers.py`, and a fresh owned
+  `.tmp/mkvutil-rework/integration-prep/<run-id>/` for small real fixtures and
+  a bounded campaign manifest. Source is read-only for preparation; parent
+  owns all planning records, Git and approvals. No overlapping writer exists.
+- Adapt old flat-menu navigation and independent expected fake-tool state,
+  retaining each operation/default/literal/path/layout/failure assertion and
+  both two-file output regressions. Correct the invalid file-ID reorder
+  example and retain an observed-order oracle. Reuse the existing framework;
+  prepare a few grouped/negative journeys rather than another matrix.
+- Prepare genuine tiny fixtures for `.mkv`, `.mka`, `.mks`, and `.mk3d`,
+  preserving stereoscopic metadata for the latter and audio/subtitle-only
+  content where appropriate. Reuse native-qualified streams/baselines; do not
+  rename text placeholders or merely change an extension. Modest serial fixture
+  creation is allowed; no user-facing native journeys run during preparation.
+- Allowed checks now: collection, syntax/AST, and any ordinary pure fixture
+  contracts. Do not run new/legacy actual-menu journeys, the broad affected
+  menu suite, native entrypoint batches, or PTY campaign until the parent
+  records the pending bounded project-wide interactive approval.
+- Hand back quiescent files, exact candidate/test/helper hashes, the collected
+  scope, fixture provenance/hashes, proposed mocked/native/PTY journeys and
+  resource/time limits. Parent reviews that concrete campaign before asking
+  once for execution approval. T04.01/T04.02 remain unaccepted; final help/docs
+  follow the verified integration gate.
 
 - Historical T01.01 foundation proof: pure helper plus three notified legacy
   journeys passed on the dirty source/test tree based on HEAD `96ae959`
@@ -886,16 +1013,32 @@ contain no media operations, product tests, or CI results.
 
 ### Interactive-testing permission
 
-- Status: no broad-campaign execution grant recorded.
+- Status: ACTIVE, project-wide, for the prepared scope and budgets below.
+  Parent asked the bounded approval question through `request_user_input_async`
+  on 2026-10-14; the user's actual next message was **"ok go"**. This directly
+  grants that campaign, including targeted corrective reruns inside its limits.
+  Do not re-ask within this scope; no user-media, installation, deployment or
+  materially larger campaign permission is inferred.
 - Source: the 2026-10-14 user request schedules `zr0-interactive-testing` near
   the end of the project with custom `.tmp` files and existing tests/helpers.
   It authorizes this planning amendment, not immediate campaign execution.
-- Planned scope: T04.01's representative single/batch menu journeys, controlled
-  failure cases, and a few serial real-v93 fixture journeys on this Big Sur host;
-  no real user files, upgrades, or external effects.
-- Before the first broad run, verify or obtain one bounded project grant and
-  retain its actual source, limits, and active/revoked state here. Notify before
-  light isolated probes; ordinary static/code checks retain their permissions.
+- Prepared scope: the 126-case affected MKV suite (32 adapted/new utility menu
+  cases), three native v93 journeys (all-format Edit title clear, combined
+  removal/reorder plus all five metadata actions in one Mux, and combined
+  attachment/track Extract), and one real-fzf PTY preview/Cancel without Run.
+  Use fresh disposable fixture copies under the owned interactive root above,
+  serially on this Big Sur host, with installed tools and no user media,
+  installations, deployment or external effects. The prepared manifest supplies
+  commands, independent oracles and mocked/native/TTY evidence boundaries.
+- Approved limits: 15-minute whole-campaign review budget; mocked suite 600s
+  wall/480s CPU review budget; native entrypoints and PTY retain 20s child
+  guards, native total 120s. Stop on time/resource concern, unexpected command
+  resolution, immutable-source hash drift or ownership escape. No hidden
+  retries or enlarged timeouts; bounded corrective reruns remain within the
+  granted scope and budget. Any material expansion requires a new decision.
+- Verify this grant and candidate/fixture state before execution or resumption.
+  Stop if it is revoked or limits are reached. Notify before light isolated
+  probes; ordinary static/code checks retain their permissions.
 
 ### Structural validation receipt
 
