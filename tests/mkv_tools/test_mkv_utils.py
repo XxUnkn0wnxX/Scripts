@@ -378,6 +378,35 @@ print -r -- 'removal-only metadata contracts passed'
     assert source.read_bytes() == b"payload"
 
 
+def test_mkv_utils_mux_preview_yellow_requires_reorder(env):
+    source = _mkv_file(env, "preview colours.mkv")
+    model = _source_json([(0, "video", "V_VP9", True),
+                          (1, "audio", "A_AAC", False),
+                          (2, "subtitles", "S_TEXT/ASS", False),
+                          (3, "audio", "A_OPUS", False)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/preview colours.mkv")"
+MKVUTIL_SOURCES=("$record")
+red=$'\e[38;5;203m'; yellow=$'\e[38;5;220m'
+_mkvutil_track_colours() { MKVUTIL_TRACK_RED="$red"; MKVUTIL_TRACK_YELLOW="$yellow"; }
+_mkvutil_menu_read() { preview="$6"; REPLY=''; }
+mkvutil_configure_category mux 1 <<< 1
+[[ "$preview" != *"$yellow"* ]] || fail 'removal-only tracks must not be yellow'
+[[ "$preview" == *"${red}Track: audio (A_AAC) [Original 1] [eng]"* ]] || fail 'dropped track stays red'
+[[ "$preview" == *'Track ID 1: subtitles (S_TEXT/ASS) [Original 2] [eng]'* ]] || fail 'removal-only output IDs remain projected'
+jq -e '.removed_ids==["1"] and .order==""' <<< "$MKVUTIL_CONFIG" >/dev/null
+mkvutil_configure_category mux 2 <<< '2,0'
+[[ "$preview" == *"${yellow}Track ID 0: subtitles (S_TEXT/ASS) [Original 2] [eng]"* ]] || fail 'reorder-only changes stay yellow'
+mkvutil_configure_category mux 1,2 <<< $'1\n2,0'
+[[ "$preview" == *"${yellow}Track ID 0: subtitles (S_TEXT/ASS) [Original 2] [eng]"* ]] || fail 'combined changes stay yellow'
+[[ "$preview" == *"${red}Track: audio (A_AAC) [Original 1] [eng]"* ]] || fail 'combined dropped track stays red'
+print -r -- 'preview colour modes passed'
+''', {str(source): model})
+    assert result.stdout.rstrip().endswith("preview colour modes passed")
+    assert source.read_bytes() == b"payload"
+    assert not [call for call in _command_argv(env, "mkvmerge") if "-o" in call]
+
+
 def test_mkv_utils_projected_track_view_and_shared_value_context(tmp_path: Path):
     model = _source_json([(0, "video", "V_VP9", True), (1, "audio", "A_AAC", False),
                           (2, "subtitles", "S_TEXT/ASS", False), (3, "audio", "A_OPUS", True),

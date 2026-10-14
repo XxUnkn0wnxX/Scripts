@@ -14,6 +14,22 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted remove-only colour scope
+
+- Latest user instruction preserves the output layout/new IDs in remove-only
+  mode and suppresses only yellow highlighting there. Retained rows stay normal;
+  dropped rows remain light red. Reorder and remove + reorder retain gold for
+  changed positions. No mapping, sorting, validation or execution change.
+- Two focused checks pass in 2.69s: all three public Mux configuration modes,
+  projected IDs and the terminal palette renderer. Both zsh syntax checks pass;
+  earlier broad/IA evidence remains revision-bound, with no new broad rerun.
+- Current source SHA-256 `9747354ab07b0dd5ddad17cf9d55a279aa47f16cb184250375b9114a2e076d18`;
+  tests SHA-256 `983bde235a9ae4cd6d327ab6dba7ee6bb16b2d356b2162562b7d382b5d1259e2`.
+  Guide, approved requirements and checklist reflect this scope. All nine tasks
+  and four checkpoints remain accepted. Proof and actual develop publication:
+  `.tmp/mkvutil-rework/reorder-only-yellow/receipt.json` and `publication.json`.
+  No runtime jobs remain; inspect actual refs/receipt before repeating Git work.
+
 ### Accepted lighter dropped-track colour
 
 - User requested a lighter red. The shared renderer now uses soft light red 203

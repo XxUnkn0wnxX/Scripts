@@ -20,10 +20,12 @@ omitted. Complete the layout using existing implicit retained-track appending.
 After structural configuration, show the final retained order with dense output
 IDs. Interleave dropped source rows at their original row slots, omit their ID
 prefix (`Track:`), and colour them soft light red without a removal label. Retained
-rows fill the remaining slots in final order. Compare each retained output
-position with its original physical source position: changed positions use warm
-yellow/gold, including removal shifts and implicit appends; unchanged positions
-retain normal colour. Reset styling per row and preserve plain output for
+rows fill the remaining slots in final order. Only when reorder is selected,
+compare each retained output position with its original physical source position:
+changed positions use warm yellow/gold, including removal shifts and implicit
+appends; unchanged positions retain normal colour. In remove-only mode, retained
+tracks keep normal colour even when renumbered. Preserve the projected output
+listing and IDs in every mode. Reset styling per row and preserve plain output for
 redirected output, dumb terminals and NO_COLOR. Reuse cached inspection data;
 add no dependency or extra native inspection.
 

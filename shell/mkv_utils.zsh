@@ -1957,7 +1957,7 @@ mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=() removal_ids=()
-  local item="" retained_csv="" projection="" track_view="" metadata_preview="" metadata_targets="" output_map='{}'
+  local item="" retained_csv="" projection="" track_view="" metadata_preview="" metadata_targets="" preview_yellow="" output_map='{}'
   local item_position=0
   local metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
   MKVUTIL_CONFIG=""
@@ -2052,8 +2052,9 @@ mkvutil_configure_category() {
       projection="${(j:,:)MKVUTIL_RETAINED_IDS}"
       track_view="$(_mkvutil_track_view "$raw" "$removal" "$projection" output)" || return 1
       _mkvutil_track_colours
+      [[ -z "$order" ]] || preview_yellow="$MKVUTIL_TRACK_YELLOW"
       metadata_preview=$'--------------------------  Output track layout --------------------------\n'
-      metadata_preview+="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$MKVUTIL_TRACK_YELLOW")" || return 1
+      metadata_preview+="$(_mkvutil_render_track_view "$track_view" "$MKVUTIL_TRACK_RED" "$preview_yellow")" || return 1
       for item in "${order_ids[@]}"; do
         item_position="${MKVUTIL_RETAINED_IDS[(Ie)$item]}"
         (( item_position > 0 )) || return 1

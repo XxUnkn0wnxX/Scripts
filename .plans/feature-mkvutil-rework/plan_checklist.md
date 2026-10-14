@@ -8,6 +8,13 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The remove-only colour follow-up is accepted: retain the projected output
+listing/IDs but keep retained tracks their normal colour when only removal is
+selected. Yellow is enabled only for reorder or remove + reorder. Dropped rows
+stay light red. Two focused checks pass in 2.69s, covering all three Mux modes,
+projected IDs and terminal palette behavior; both zsh syntax checks pass. Proof:
+`.tmp/mkvutil-rework/reorder-only-yellow/receipt.json`. No broad IA rerun.
+
 The lighter-red follow-up is accepted: use soft light red 203 on 256-colour
 terminals and bright ANSI 91 otherwise, with no dim styling. The shared colour
 renderer test passes in 2.07s, including normal/256 palettes, resets, gold and
