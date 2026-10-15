@@ -1386,8 +1386,8 @@ mkvutil_format_final_report() {
     ($groups | if $summary.dry_run then .Simulated += ["Files were not changed."] else . end) as $groups |
     if ($summary.dry_run|not) and any($summary.batches[];
       .category=="extract" and (((.action_ids // [])|index("1"))!=null)) then
-      $groups | .Attachments += ["Attachments processed: \($summary.attachments.processed); published: \($summary.attachments.published); final unique published names: \($summary.attachments.unique_names); superseded: \($summary.attachments.superseded); uncertain names: \($summary.attachments.uncertain_names)"] |
-      .Attachments += [$summary.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)"]
+      $groups | .Attachments += [$summary.attachments.publications[] |
+        select(.publication_confirmed==true) | "\(.path); source \(.source)"]
     else $groups end
   ' <<< "$display")" || return 1
   for section in "${sections[@]}"; do
@@ -2005,15 +2005,17 @@ mkvutil_configure_category() {
     _mkvutil_indicator_stop
   }
   (( prep_result == 0 )) || return "$prep_result"
-  local -a track_header=("Current Work Dir: $PWD")
-  if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
-    track_header+=("Removal reference file: ${source:t}")
-  else
-    track_header+=("Reference file: ${source:t}")
+  if [[ "$category" != extract || ",$operations," == *,2,* ]]; then
+    local -a track_header=("Current Work Dir: $PWD")
+    if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
+      track_header+=("Removal reference file: ${source:t}")
+    else
+      track_header+=("Reference file: ${source:t}")
+    fi
+    mkvutil_ascii_box 'Track configuration' "${track_header[@]}" || return 1
+    print || return 1
+    display_track_info "$source" "$raw" || return 1
   fi
-  mkvutil_ascii_box 'Track configuration' "${track_header[@]}" || return 1
-  print || return 1
-  display_track_info "$source" "$raw" || return 1
   case "$category" in
     edit)
       result=0
@@ -2230,6 +2232,7 @@ mkvutil_target_mismatch() {
        actual:(if $track==null then null else {type:$track.type} +
          (if $config|has("expected_codecs") then {codec_id:$track.properties.codec_id} else {} end) end),
        reason:(if $track==null then "missing-id"
+         elif $config.category=="extract" then null
          elif $track.type!=$config.expected_types[$id] then "type-mismatch"
          elif $track.type!="video" and ($config|has("expected_codecs")) and
            $track.properties.codec_id!=$config.expected_codecs[$id] then "codec-mismatch" else null end)} |

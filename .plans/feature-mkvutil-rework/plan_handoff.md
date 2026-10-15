@@ -14,6 +14,49 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted Extract-only ID checks and attachment output
+
+- User requested attachment overwrite without cohort comparisons or audit noise,
+  no track setup for attachment-only, and only requested-ID existence checks for
+  track extraction. Implemented only in configure_category, target_mismatch and
+  final formatter. Attachment rows now read `Font.ttf; source Episode.mkv`;
+  confirmed extraction history remains internal, including normal overwrites.
+  Errors/uncertain publication still retain their existing failure reporting.
+- Extract uses each file's own format/extension, tolerates differing track kinds,
+  formats/counts and automatic attachment lists/ID gaps, and skips missing IDs.
+  Attachment-only omits track header/list/input; track-only and combined retain
+  them. Existing output replacement, source/destination protection, native
+  verbosity, engines and token cleanup remain unchanged.
+- Route B at T01.03/T02.03/T03.01/T04.01/T04.02 is accepted:9/9 tasks and4/4
+  checkpoints. Same main Scripts checkout on develop, baseline1ac65c2. Final
+  source SHA-256 `8ad8e3c1ce8602cddc42a1b9731fa562de3c35082461db8af37db9651a57bb31`;
+  final tests SHA-256 `412ea037f32ad7f2df02caf622fee958da8400806618c7139057eaf6f250369d`.
+- User limited execution to Extract checks and IA before both pushes. Seven
+  focused controlled Extract cases pass in30.62s. Three real installed-fzf/v93
+  PTY journeys pass via the loaded alias: attachments3.48s, tracks5.41s,
+  combined5.36s. Native writes are restricted to tiny owned fixture copies;
+  original media hashes stay unchanged, existing sidecars overwrite and private
+  stages are removed. Track-only retries unavailable ID99 before valid ID2.
+  Actual raw/readable outputs were reviewed for all three modes.
+- Native engines/cleanup/builders and non-Extract guard paths are byte-identical
+  to the accepted baseline. Both zsh syntax, embedded Python AST, test compile,
+  docs/requirements/status/ledger and final diff pass. Final test-only correction
+  fixes one unselected shared-guard assertion's expected codec field; the seven
+  executed test bodies/helpers are reconciled unchanged from their passing hash.
+  No Edit/Mux/Analyze runtime, full-suite or new CI campaign was run.
+- Private proof root: .tmp/mkvutil-rework/attachment-extract-scope/. Start with
+  receipt.json, worker/validation-receipt.md, ia/receipt.json, parent-review.json
+  and test-reconciliation.json. Three journey directories under ia/run-02 hold
+  raw/readable logs, native argv and assertions. Initial private harness
+  bytearray/string mismatch and worker oracle/fixture diagnostics are preserved
+  and not credited as passes. No runtime source fix followed the frozen patch.
+- Parent owns all tracked work; worker extract_scope_tests handed tests back;
+  no live jobs remain. Docs include the Extract exception and collapsed plain
+  filename/source example; parent session ledger and previous evidence persist.
+  Signed develop commit/push and master fast-forward/push are authorized; actual
+  ref/signature/clean-tree result belongs to publication.json under the proof
+  root. Inspect it/current refs before repeating publication; return to develop.
+
 ### Accepted format matching, owned cleanup and Extract overwrite
 
 - All9tasks/4checkpoints are accepted after the approved follow-up. Same Scripts

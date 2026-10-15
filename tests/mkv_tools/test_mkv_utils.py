@@ -676,7 +676,7 @@ print -r -- 'original tree and output binding guards passed'
     assert not list(env["workdir"].glob(".mkvutil-*"))
 
 
-def test_mkv_utils_edit_extract_target_guards_use_type_and_native_format(env):
+def test_mkv_utils_edit_mux_guards_use_type_and_native_format_but_extract_checks_id_only(env):
     source = _mkv_file(env, "target guards.mkv")
     model = _source_json([(0, "audio", "A_AAC", True), (1, "video", "V_VP9", False)])
     result = _run_planning_contract(env, r'''
@@ -691,7 +691,7 @@ make_config() {
      settings:(if $category=="edit" then {("4:"+$id):"requested"} else {} end),
      expected_types:{($id):$type},expected_codecs:{($id):$codec}}'
 }
-for category in edit extract mux; do
+for category in edit mux; do
   config="$(make_config "$category" 0 audio A_OPUS)"
   code=0; receipt="$(mkvutil_target_mismatch "$record" "$config")" || code=$?
   eq "$code" 3 "$category checks targeted audio native format"
@@ -714,9 +714,19 @@ for category in edit extract mux; do
   eq "$code" 3 "$category rejects missing targeted ID"
   jq -e '.reasons[0].reason=="missing-id"' <<< "$receipt" >/dev/null
 done
-print -r -- 'edit/extract/mux target kind and native-format guards passed'
+config="$(make_config extract 0 audio A_OPUS)"
+code=0; receipt="$(mkvutil_target_mismatch "$record" "$config")" || code=$?
+eq "$code" 0 'Extract accepts the same ID with a different native format'
+eq "$receipt" '' 'Extract type/format differences have no mismatch receipt'
+shorter="$(jq '.model.tracks |= map(select(.id==0))' <<< "$record")"
+mkvutil_target_mismatch "$shorter" "$config"
+missing="$(jq '.model.tracks |= map(select(.id!=0))' <<< "$record")"
+code=0; receipt="$(mkvutil_target_mismatch "$missing" "$config")" || code=$?
+eq "$code" 3 'Extract still skips a missing requested ID'
+jq -e '.reasons==[{original_id:"0",reason:"missing-id",expected:{type:"audio",codec_id:"A_OPUS"},actual:null}]' <<< "$receipt" >/dev/null
+print -r -- 'Edit/Mux type and native-format guards plus Extract ID-only guard passed'
 ''', {str(source): model})
-    assert result.stdout.rstrip().endswith("edit/extract/mux target kind and native-format guards passed")
+    assert result.stdout.rstrip().endswith("Edit/Mux type and native-format guards plus Extract ID-only guard passed")
     assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
 
 
@@ -3468,10 +3478,9 @@ for operations in '["2"]' '["1"]' '["1","2"]'; do
                  {kind:"tracks",status:(if $status=="success" and ($actions|index("2"))!=null then "complete" else "not_attempted" end),attempted:false}],
          artifacts:(if $status=="success" and ($actions|index("2"))!=null then [{kind:"track",id:"3",path:"Episode - Track [3].ass",publication_state:"confirmed"}] else [] end)}}]}]}')"
     report="$(mkvutil_format_final_report "$summary")"
+    [[ "$report" != *'| Attachments'* && "$report" != *'Attachments processed:'* ]] || fail 'zero confirmed attachments produced a report section'
     if [[ "$operations" == '["2"]' ]]; then
-      [[ "$report" != *'| Attachments'* && "$report" != *'Attachments processed:'* && "$report" != *'attachments: not_attempted'* ]] || fail 'tracks-only includes attachment reporting'
-    else
-      [[ "$report" == *'| Attachments'* && "$report" == *'Attachments processed: 0;'* ]] || fail 'selected zero-attachment summary missing'
+      [[ "$report" != *'attachments: not_attempted'* ]] || fail 'tracks-only includes attachment reporting'
     fi
     if [[ "$status_name" == interrupted ]]; then
       if [[ "$operations" != '["2"]' ]]; then
@@ -3488,6 +3497,16 @@ for operations in '["2"]' '["1"]' '["1","2"]'; do
     eq "$(jq '.files[0].attempts[0].result.stages|length' <<< "$summary")" 2 'raw stage records preserved'
   done
 done
+# The visible section contains only confirmed publication rows; internal IDs
+# and winner/superseded bookkeeping stay in the raw summary.
+confirmed="$(jq '.batches[0].action_ids=["1"] | .files[0].status="success" |
+  .files[0].attempts[0].result.status="success" |
+  .attachments.publications=[
+    {id:"7",path:"Font.ttf",source:"First source.mkv",publication_confirmed:true,outcome:"winner"},
+    {id:"9",path:"Attachments/Other.ttf",source:"Later source.mkv",publication_confirmed:false,outcome:"superseded"}]' <<< "$summary")"
+report="$(mkvutil_format_final_report "$confirmed")"
+[[ "$report" == *'| Attachments'* && "$report" == *'| Font.ttf; source First source.mkv'* ]] || fail 'confirmed attachment row missing'
+[[ "$report" != *'Other.ttf'* && "$report" != *'winner'* && "$report" != *'superseded'* && "$report" != *'Attachments processed:'* ]] || fail 'internal attachment audit details leaked'
 # Older stored results without selection metadata retain stage diagnostics.
 legacy="$(jq 'del(.files[0].attempts[0].result.action_ids)|.batches[0].action_ids=["2"]' <<< "$summary")"
 legacy_report="$(mkvutil_format_final_report "$legacy")"
@@ -3710,7 +3729,7 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     _ascii_box_contains(result.stdout, "Final report")
     assert "Category: extract; Actions: 1,2" in result.stdout and "Directory: workdir" in result.stdout
     assert "Extract 1,2: attachments + tracks" in result.stdout
-    assert "Done: 1; Failed: 0" in result.stdout and "Attachments processed: 3; published: 3; final unique published names: 2; superseded: 1" in result.stdout
+    assert "Done: 1; Failed: 0" in result.stdout
     _assert_readable_outcomes(result.stdout, "Done: 1")
     assert "Processing: First source.mkv" in result.stdout
     assert result.stdout.index("Extract 1,2: attachments + tracks") < result.stdout.index("Processing: First source.mkv")
@@ -3723,6 +3742,16 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     _ascii_box_contains(result.stdout, "File progress", "File: First source.mkv")
     final = result.stdout.split('Final report', 1)[1]
     assert '=> Attachments' not in final
+    _, _, attachment_rows = _ascii_box_contains(
+        final, "Font.ttf; source First source.mkv", "Empty.txt; source First source.mkv",
+    )
+    assert attachment_rows[1:] == [
+        "Font.ttf; source First source.mkv",
+        "Font.ttf; source First source.mkv",
+        "Empty.txt; source First source.mkv",
+    ]
+    assert "Attachments processed:" not in final and "superseded" not in final
+    assert "winner" not in final and "attachment ID" not in final
     _ascii_box_contains(final, "Outputs", "First source.mkv",
                         "Track 0: First source - Track [0].idx",
                         "Track 0: First source - Track [0].sub")
@@ -4191,7 +4220,9 @@ config="$(jq -cn --arg category "$TEST_GUARD_CATEGORY" '
   metadata:"",settings:(if $category=="edit" then {"4:1":"New name"} else {} end),expected_types:{"1":"audio"},
   extract_ids:(if $category=="extract" then ["1"] else [] end)}')"
 job="$(mkvutil_plan_job "$record" "$config")"
-for variant in missing wrongtype; do
+variants=(missing wrongtype)
+[[ "$TEST_GUARD_CATEGORY" != extract ]] || variants=(missing)
+for variant in "${variants[@]}"; do
   if [[ "$variant" == missing ]]; then changed="$(jq '.model.tracks|=map(select(.id!=1))' <<< "$record")"
   else changed="$(jq '.model.tracks[1].type="subtitles"' <<< "$record")"; fi
   code=0; receipt="$(mkvutil_plan_job "$changed" "$config")" || code=$?
@@ -4202,9 +4233,16 @@ for variant in missing wrongtype; do
     jq -e '.reasons[0].reason=="missing-id" and .reasons[0].actual==null' <<< "$receipt" >/dev/null
   else jq -e '.reasons[0].reason=="type-mismatch" and .reasons[0].actual=={type:"subtitles"}' <<< "$receipt" >/dev/null; fi
 done
-# Codec, names, language and unrelated track counts do not define this guard.
+# Edit/Mux ignore codec, names, language and unrelated track counts when their
+# selected ID still has the configured kind/native format.
+if [[ "$TEST_GUARD_CATEGORY" != extract ]]; then
 compatible="$(jq '.model.tracks[1].properties={codec_id:"A_OPUS",track_name:"Other",language:"jpn"}|.model.tracks|=map(select(.id!=2))' <<< "$record")"
 mkvutil_target_mismatch "$compatible" "$config"
+else
+  # Extract requires only that each requested ID exists in this file.
+  compatible="$(jq '.model.tracks[1].type="subtitles"|.model.tracks[1].properties.codec_id="S_TEXT/UTF8"|.model.tracks|=map(select(.id!=2))' <<< "$record")"
+  mkvutil_target_mismatch "$compatible" "$config"
+fi
 for invalid in 'null' '"metadata"' '17'; do
   bad="$(jq --argjson invalid "$invalid" '.expected_types["1"]=$invalid' <<< "$config")"
   code=0; captured="$(mkvutil_plan_job "$record" "$bad")" || code=$?
@@ -4224,6 +4262,7 @@ print -r -- 'target planning contracts passed'
 ''', {str(source): model}, extra_env={"TEST_GUARD_CATEGORY": category})
     assert result.stdout.rstrip().endswith("target planning contracts passed")
     assert source.read_bytes() == b"payload" and not (env["workdir"] / "Attachments").exists()
+    assert not _command_argv(env, "mkvextract") and not _command_argv(env, "mkvpropedit")
 
 
 def test_mkv_utils_target_guard_mixed_and_all_skip_queue_ledger(env):
@@ -4554,22 +4593,44 @@ def test_mkv_utils_option1_multi_file_partial_failure_summary(env):
     assert _observed_fake_identification(env,first)["tracks"][0]["properties"]["forced_track"] is False
 
 
-def test_mkv_utils_option6_extracts_all_attachments(env):
-    source=_mkv_file(env,"with_attachments2.mkv")
-    embedded=[{"id":1,"file_name":"original $font.ttf","size":3},{"id":2,"file_name":"note.txt","size":4}]
-    model=_integration_model(attachments=embedded)
-    extra=_integration_manifest(env,{source:model},extraction={str(source):{"attachments":{"outputs":{"1":{"data":"one"},"2":{"data":"note"}}}}})
-    result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n1\n",extra_env=extra)
+def test_mkv_utils_option6_extracts_heterogeneous_attachment_ids_and_overwrites(env):
+    first=_mkv_file(env,"First attachments.mkv")
+    second=_mkv_file(env,"Second attachments.mka")
+    first_attachments=[{"id":2,"file_name":"Font.ttf","size":10},{"id":7,"file_name":"first-only.txt","size":10}]
+    second_attachments=[{"id":4,"file_name":"Font.ttf","size":11},{"id":9,"file_name":"second-only.txt","size":11}]
+    first_model=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(5,"audio","A_AAC",False)],attachments=first_attachments)
+    second_model=_integration_model([(0,"subtitles","S_TEXT/ASS",False),(8,"audio","A_OPUS",True),(11,"video","V_VP9",False)],attachments=second_attachments)
+    extra=_integration_manifest(env,{first:first_model,second:second_model},extraction={
+        str(first):{"attachments":{"outputs":{"2":{"data":"first font"},"7":{"data":"first note"}}}},
+        str(second):{"attachments":{"outputs":{"4":{"data":"second font"},"9":{"data":"second note"}}}},
+    })
+    collection=env["workdir"] / "Attachments"
+    collection.mkdir()
+    (collection/"Font.ttf").write_bytes(b"preexisting")
+    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second)]],input_data="3\n1\n",extra_env=extra)
     assert result.returncode==0,result.stdout+result.stderr
     calls=_command_argv(env,"mkvextract")
-    assert len(calls)==1 and calls[0][:2]==[str(source),"attachments"]
+    assert [call[:2] for call in calls]==[[str(first),"attachments"],[str(second),"attachments"]]
     assert "Extract 1: attachments" in result.stdout
-    assert result.stdout.index("Extract 1: attachments") < result.stdout.index(f"Processing: {source.name}")
-    assert [spec.split(":",1)[0] for spec in calls[0][2:]]==["1","2"]
-    assert (env["workdir"]/"Attachments"/embedded[0]["file_name"]).read_bytes()==b"one"
-    assert (env["workdir"]/"Attachments"/"note.txt").read_bytes()==b"note"
-    assert source.read_bytes()==b"payload" and "Attachments processed: 2; published: 2; final unique published names: 2" in result.stdout
-    assert 'tracks: not_attempted' not in result.stdout.split('Final report', 1)[1]
+    assert result.stdout.index("Extract 1: attachments") < result.stdout.index(f"Processing: {first.name}")
+    assert [[spec.split(":",1)[0] for spec in call[2:]] for call in calls]==[["2","7"],["4","9"]]
+    assert (collection/"Font.ttf").read_bytes()==b"second font"
+    assert (collection/"first-only.txt").read_bytes()==b"first note"
+    assert (collection/"second-only.txt").read_bytes()==b"second note"
+    assert first.read_bytes()==second.read_bytes()==b"payload"
+    assert "Track configuration" not in result.stdout and "Track IDs:" not in result.stderr and "Extract IDs:" not in result.stderr
+    final=result.stdout.split("Final report",1)[1]
+    _,_,attachment_rows=_ascii_box_contains(final,
+        "Font.ttf; source First attachments.mkv", "first-only.txt; source First attachments.mkv",
+        "Font.ttf; source Second attachments.mka", "second-only.txt; source Second attachments.mka")
+    assert attachment_rows[1:]==[
+        "Font.ttf; source First attachments.mkv",
+        "first-only.txt; source First attachments.mkv",
+        "Font.ttf; source Second attachments.mka",
+        "second-only.txt; source Second attachments.mka",
+    ]
+    assert "Attachments processed:" not in final and "superseded" not in final and "winner" not in final
+    assert 'tracks: not_attempted' not in final
 
 
 def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(env):
@@ -4588,6 +4649,29 @@ def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(en
     assert len(calls) == 1 and calls[0][:2] == [str(source), "tracks"]
     assert (env["workdir"] / "Retry track ID - Track [1].aac").read_bytes() == b"aac payload"
     assert source.read_bytes() == b"payload" and result.stdout.count("Final report") == 1
+
+
+def test_mkv_utils_extract_accepts_heterogeneous_track_and_skips_missing_id(env):
+    first=_mkv_file(env,"First target.mkv")
+    second=_mkv_file(env,"Different layout.mka")
+    missing=_mkv_file(env,"Missing target.mks")
+    first_model=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(1,"audio","A_AAC",True)])
+    second_model=_integration_model([(1,"subtitles","S_TEXT/ASS",False),(8,"audio","A_OPUS",True)])
+    missing_model=_integration_model([(0,"audio","A_AAC",True)])
+    extra=_integration_manifest(env,{first:first_model,second:second_model,missing:missing_model},extraction={
+        str(first):{"tracks":{"outputs":{"1":{"data":"aac payload"}}}},
+        str(second):{"tracks":{"outputs":{"1":{"data":"ass payload"}}}},
+    })
+    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second),str(missing)]],
+                          input_data="3\n2\n1\n",extra_env=extra)
+    assert result.returncode==1,result.stdout+result.stderr
+    calls=_command_argv(env,"mkvextract")
+    assert [call[:2] for call in calls]==[[str(first),"tracks"],[str(second),"tracks"]]
+    assert (env["workdir"]/"First target - Track [1].aac").read_bytes()==b"aac payload"
+    assert (env["workdir"]/"Different layout - Track [1].ass").read_bytes()==b"ass payload"
+    assert not (env["workdir"]/"Missing target - Track [1].aac").exists()
+    assert "Original ID 1: missing-id" in result.stdout and "Skipped: 1" in result.stdout
+    assert all(path.read_bytes()==b"payload" for path in (first,second,missing))
 
 
 def test_mkv_utils_option7_video_removal_converts_to_mka_and_keeps_other_tracks(env):
@@ -4729,6 +4813,8 @@ def test_mkv_utils_option9_extract_track_extension_from_override(env):
     assert result.returncode==0,result.stdout+result.stderr
     assert _command_argv(env,"mkvextract")[0][:2]==[str(source),"tracks"]
     assert (env["workdir"]/"extract_codec - Track [1].opus").read_bytes()==b"opus bytes" and source.read_bytes()==b"payload"
+    assert "Track configuration" in result.stdout
+    assert "Extract IDs:" in result.stderr
     final = result.stdout.split('Final report', 1)[1]
     assert '=> Attachments' not in final
     _ascii_box_contains(final, 'Outputs', source.name, 'Track 1: extract_codec - Track [1].opus')

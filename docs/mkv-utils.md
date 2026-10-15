@@ -157,9 +157,9 @@ Each per-track value is asked once and reused across eligible files. Source trac
 
 ### 📤 Extract
 
-Choose attachments, track IDs or both. Attachment extraction needs no IDs: it collects every attachment from the selected files into a shared `Attachments/` folder beside them. Same-name regular attachment files overwrite in selected-file order, which is useful for collecting one common set of fonts or images.
+Choose attachments, track IDs or both. Attachment extraction needs no IDs or track configuration: it collects every attachment from each file's own attachment list into a shared `Attachments/` folder beside them. Same-name regular attachment files overwrite in selected-file order, which is useful for collecting one common set of fonts or images.
 
-Track extraction asks for original IDs, checks that each selected file has the requested tracks, and replaces existing regular outputs with the same filename and extension on a repeat pass. Companion formats stay together: VobSub includes `.sub` and `.idx`; WavPack may also produce `.wvc`. Preflight rejects unsafe attachment names, destinations that alias selected media and output collisions. Extraction stages outputs before publication.
+Track extraction asks for original IDs and checks only that those IDs exist in each selected file. Track types, formats and counts can differ; each output uses that file's own track format. Existing regular outputs with the same filename and extension are replaced on a repeat pass. Companion formats stay together: VobSub includes `.sub` and `.idx`; WavPack may also produce `.wvc`. Preflight rejects unsafe attachment names, destinations that alias selected media and output collisions. Extraction stages outputs before publication.
 
 Extract reports between-file progress. In a combined job, its elapsed-time and ETA block covers the track-extraction stage; the final report covers the complete job. Attachment-only and track-only jobs report their own stage.
 
@@ -178,6 +178,13 @@ Track output: Episode 01 - Track [3].ass
 
 The attachment folder is shared. Same-name attachments replace earlier regular files; tracks also replace existing regular outputs on repeat passes. Queue collisions and input aliases remain protected. In this combined job, between-file progress covers track extraction.
 
+The final **Attachments** block lists the files extracted, without attachment IDs or overwrite-history labels:
+
+```text
+Font.ttf; source Episode 01.mkv
+Font.ttf; source Episode 02.mkv
+```
+
 </details>
 
 <a id="analyze"></a>
@@ -190,7 +197,7 @@ Select files in the usual picker. The first usable file becomes the reference. A
 
 Inputs are checked before processing: selected IDs must exist, flags accept only `0` or `1`, and languages accept supported tags such as `eng` or `fr-CA`. Track-ID lists may include ranges, such as `1,3,4-6`; reorder uses comma lists only. Invalid input repeats the prompt. Blank names or titles clear that value.
 
-Across Edit, Mux, Extract and Analyze, track matching uses the **original ID and media format**: ASS matches ASS, SSA matches SSA, SRT matches SRT, and audio formats such as AAC must match. Video must remain video, but its codec may differ. Compression, bitrate, names, languages and default/forced flags do not decide compatibility. Metadata values you explicitly request are checked separately after writing.
+Across Edit, Mux and Analyze, track matching uses the **original ID and media format**: ASS matches ASS, SSA matches SSA, SRT matches SRT, and audio formats such as AAC must match. Video must remain video, but its codec may differ. Compression, bitrate, names, languages and default/forced flags do not decide compatibility. Metadata values you explicitly request are checked separately after writing. Extract checks requested ID existence only; attachment extraction has no track-matching requirement.
 
 A file that fails its required track checks is skipped as a whole while eligible files continue. Before each real Edit, Mux or Extract job, the source is checked against its inspected snapshot and applicable track requirements. **Working** appears during quiet preparation; native tool messages show progress once processing starts.
 
