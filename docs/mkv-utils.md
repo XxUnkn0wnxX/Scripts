@@ -75,7 +75,7 @@ Before processing, `e`/`E` goes Back, or exits silently at the main menu. Ctrl+C
 | **[1. Matroska Edit](#edit)** | `1` forced flag · `2` default flag · `3` language · `4` track name · `5` title | Metadata-only edits with `mkvpropedit`. |
 | **[2. Matroska Mux](#mux)** | `1` remove tracks · `2` reorder tracks | One remux per eligible file, optionally with metadata. |
 | **[3. Matroska Extract](#extract)** | `1` attachments · `2` selected tracks | Extract either or both kinds of content. |
-| **[4. Matroska Analyze](#analyze)** | Select files | Compare track IDs, types and native codecs. |
+| **[4. Matroska Analyze](#analyze)** | Select files | Compare track IDs and media formats. |
 
 The last required answer starts preflight and then the eligible queue automatically. There is no separate review/run menu. After processing, the final report prints and the script exits.
 
@@ -132,7 +132,7 @@ Optional Mux metadata uses **output IDs** from that final layout. Every option u
 
 At `Metadata [none]:`, press Enter to skip metadata and begin preflight.
 
-Before processing, Mux compares each selected file with the reference's complete original track ID, type and exact native codec tree, including tracks not selected for changes. Names, languages and flags may differ. Removal also requires matching total track counts by default. `--bypass` silently permits extra tracks for removal; every expected ID must still match its type and exact codec. ASS versus SRT at the same ID remains incompatible. Missing IDs, output-target mismatches and late source changes also skip the file.
+Before processing, Mux compares each selected file with the reference's complete original track layout, including tracks not selected for changes. The shared matching rule below applies. Removal also requires matching total track counts by default. `--bypass` silently permits extra tracks for removal; every expected ID must still match. Missing IDs, output-target mismatches and late source changes also skip the file.
 
 <details>
 <summary>Example: remove and reorder, then edit the resulting output tracks</summary>
@@ -159,7 +159,7 @@ Each per-track value is asked once and reused across eligible files. Source trac
 
 Choose attachments, track IDs or both. Attachment extraction needs no IDs: it collects every attachment from the selected files into a shared `Attachments/` folder beside them. Same-name regular attachment files overwrite in selected-file order, which is useful for collecting one common set of fonts or images.
 
-Track extraction asks for original IDs, checks that each selected file has the requested tracks, and does not overwrite existing track outputs. Companion formats stay together: VobSub includes `.sub` and `.idx`; WavPack may also produce `.wvc`. Preflight rejects unsafe attachment names, destinations that alias selected media and output collisions. Extraction stages outputs before publication.
+Track extraction asks for original IDs, checks that each selected file has the requested tracks, and replaces existing regular outputs with the same filename and extension on a repeat pass. Companion formats stay together: VobSub includes `.sub` and `.idx`; WavPack may also produce `.wvc`. Preflight rejects unsafe attachment names, destinations that alias selected media and output collisions. Extraction stages outputs before publication.
 
 Extract reports between-file progress. In a combined job, its elapsed-time and ETA block covers the track-extraction stage; the final report covers the complete job. Attachment-only and track-only jobs report their own stage.
 
@@ -176,7 +176,7 @@ Attachments from Episode 02.mkv → Attachments/Font.ttf (replaces earlier copy)
 Track output: Episode 01 - Track [3].ass
 ```
 
-The attachment folder is shared. Same-name attachments replace earlier regular files; track outputs retain their collision checks. In this combined job, between-file progress covers track extraction.
+The attachment folder is shared. Same-name attachments replace earlier regular files; tracks also replace existing regular outputs on repeat passes. Queue collisions and input aliases remain protected. In this combined job, between-file progress covers track extraction.
 
 </details>
 
@@ -184,11 +184,13 @@ The attachment folder is shared. Same-name attachments replace earlier regular f
 
 ### 🔎 Analyze
 
-Select files in the usual picker. The first usable file becomes the reference. Analyze shows an **Analysing** indicator while it scans, then prints one track listing and reports filenames that differ or could not be inspected. Comparison uses original ID, type and native codec; names, languages, flags and listing order do not matter. Analyze does not create a processing queue or write files.
+Select files in the usual picker. The first usable file becomes the reference. Analyze shows an **Analysing** indicator while it scans, then prints one track listing and reports filenames that differ or could not be inspected. It uses the same track-matching rule as processing; listing order does not matter. Analyze does not create a processing queue or write files.
 
 ## 🛡️ Back, validation and stopping
 
 Inputs are checked before processing: selected IDs must exist, flags accept only `0` or `1`, and languages accept supported tags such as `eng` or `fr-CA`. Track-ID lists may include ranges, such as `1,3,4-6`; reorder uses comma lists only. Invalid input repeats the prompt. Blank names or titles clear that value.
+
+Across Edit, Mux, Extract and Analyze, track matching uses the **original ID and media format**: ASS matches ASS, SSA matches SSA, SRT matches SRT, and audio formats such as AAC must match. Video must remain video, but its codec may differ. Compression, bitrate, names, languages and default/forced flags do not decide compatibility. Metadata values you explicitly request are checked separately after writing.
 
 A file that fails its required track checks is skipped as a whole while eligible files continue. Before each real Edit, Mux or Extract job, the source is checked against its inspected snapshot and applicable track requirements. **Working** appears during quiet preparation; native tool messages show progress once processing starts.
 
@@ -202,8 +204,10 @@ Ctrl+C before configuration is complete cancels. During a running batch, Ctrl+C 
 | --- | --- |
 | Edit | Finish the active file, inspect its metadata, then stop. |
 | Mux | Finish, validate and publish the active remux, then stop. |
-| Track extraction | Stop extraction and discard unfinished, unvalidated track files. Earlier published files remain. |
-| Attachment extraction | Stop extraction; completed attachments remain. |
+| Track extraction | Stop extraction and clear safe owned staging. Earlier published track files remain. |
+| Attachment extraction | Stop extraction and clear safe owned staging; completed attachments remain. |
+
+Mux and Extract mark their `.mkvutil-*` temporary folders with a branded `.token`. Once a job stops safely, its whole owned folder is removed, including OS metadata and nested files; symlink targets outside it stay untouched. Launch and exit also check safe leftovers in the working directory and its real `Attachments` collection; startup does not follow a symlinked collection. Active jobs, changed sources and folders without valid ownership are retained; Mux also retains uncertain publication recovery. Extract keeps published outputs and clears safe private staging even after a partial or interrupted job. `--help` and `--dry-run` never run cleanup.
 
 Closing the terminal or sending TERM/HUP does not request the graceful finish. Review any retained staging or recovery filenames in the report before retrying.
 
@@ -313,9 +317,9 @@ The Edit and Mux metadata menus share one action registry and corresponding argu
 | --- | --- |
 | No files found | The directory has top-level Matroska files; the scan is not recursive. |
 | Missing `pymkv` or `pymkv2` | Check the repository `.venv` and packages from `requirements.txt`. |
-| A file skipped for a track mismatch | Compare its original track ID, type and codec with the reference; retry skipped files in a new selection. |
+| A file skipped for a track mismatch | Compare its original ID and media format with the reference; retry skipped files in a new selection. |
 | A source changed after planning | Re-select it in a fresh run so settings match its current tracks. |
-| An output already exists | Track outputs do not overwrite; regular same-name attachments do. |
+| An output already exists | Regular track and attachment outputs with the same filename/extension are replaced. Input aliases, symlinks, directories and conflicting queue destinations are rejected. |
 
 To run the focused utility tests from the repository root:
 

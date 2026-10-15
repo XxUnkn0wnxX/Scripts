@@ -608,6 +608,11 @@ mkvutil_configure_category mux 1 <<< $'1\n4\n2\nCommentary'
 config="$MKVUTIL_CONFIG"
 jq -e '.metadata_output_map=={"2":"3"} and .settings=={"4:3":"Commentary"}' <<< "$config" >/dev/null
 job="$(mkvutil_plan_job "$record" "$config")"
+# Video codec changes do not change the file kind; a video-to-audio change does.
+video_codec="$(jq '.model.tracks[0].properties.codec_id="V_AV1"' <<< "$record")"
+mkvutil_target_mismatch "$video_codec" "$config"
+video_kind="$(jq '.model.tracks[0].type="audio"' <<< "$record")"
+reject mkvutil_target_mismatch "$video_kind" "$config"
 # Labels and flags are intentionally lax on every original track.
 labels="$(jq '.model.tracks[].properties|=. + {track_name:"Other",language:"jpn",forced_track:true,default_track:false}' <<< "$record")"
 mkvutil_target_mismatch "$labels" "$config"
@@ -654,6 +659,10 @@ reject mkvutil_execute_mux_job "$job"
 eq "$engine_calls" 0 'late original-format mismatch never entered engine'
 jq -e '.status=="skipped" and .artifacts==[] and .planned_outputs==[] and
   .skip_receipt.reasons[0].original_id=="4" and .skip_receipt.reasons[0].reason=="codec-mismatch"' <<< "$MKVUTIL_RESULT_JSON" >/dev/null
+candidate="$(jq '.model.tracks[3].properties.codec_id="A_TRUEHD"' <<< "$record")"
+code=0; receipt="$(mkvutil_target_mismatch "$candidate" "$config")" || code=$?
+eq "$code" 3 'audio native codec remains strict'
+jq -e '.reasons[0].original_id=="3" and .reasons[0].reason=="codec-mismatch"' <<< "$receipt" >/dev/null
 # A reorder-only queue cannot use the removal-count bypass to admit extra IDs.
 reorder="$(jq '.removed_ids=[]|.order_ids=["0","2"]|.order="0:0,0:2"|.settings={}|.metadata_output_map={}|.bypass_track_count=true' <<< "$config")"
 extra="$(jq '.model.tracks += [{id:5,type:"audio",properties:{codec_id:"A_AAC"}}]' <<< "$record")"
@@ -665,6 +674,50 @@ print -r -- 'original tree and output binding guards passed'
     assert not [call for call in _command_argv(env, "mkvmerge") if "-o" in call]
     assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
     assert not list(env["workdir"].glob(".mkvutil-*"))
+
+
+def test_mkv_utils_edit_extract_target_guards_use_type_and_native_format(env):
+    source = _mkv_file(env, "target guards.mkv")
+    model = _source_json([(0, "audio", "A_AAC", True), (1, "video", "V_VP9", False)])
+    result = _run_planning_contract(env, r'''
+record="$(mkvutil_capture_source "$PWD/target guards.mkv")"
+make_config() {
+  local category="$1" id="$2" type="$3" codec="$4"
+  jq -cn --arg category "$category" --arg id "$id" --arg type "$type" --arg codec "$codec" '
+    {category:$category,operations:(if $category=="edit" then ["4"] else ["2"] end),
+     removed_ids:[],order_ids:(if $category=="mux" then [$id] else [] end),
+     order:(if $category=="mux" then "0:"+$id else "" end),
+     extract_ids:(if $category=="extract" then [$id] else [] end),
+     settings:(if $category=="edit" then {("4:"+$id):"requested"} else {} end),
+     expected_types:{($id):$type},expected_codecs:{($id):$codec}}'
+}
+for category in edit extract mux; do
+  config="$(make_config "$category" 0 audio A_OPUS)"
+  code=0; receipt="$(mkvutil_target_mismatch "$record" "$config")" || code=$?
+  eq "$code" 3 "$category checks targeted audio native format"
+  jq -e '.reasons[0].original_id=="0" and .reasons[0].reason=="codec-mismatch" and
+    .reasons[0].expected.codec_id=="A_OPUS" and .reasons[0].actual.codec_id=="A_AAC"' <<< "$receipt" >/dev/null
+
+  # Video tracks preserve kind while allowing codec/container variants.
+  config="$(make_config "$category" 1 video V_AV1)"
+  code=0; receipt="$(mkvutil_target_mismatch "$record" "$config")" || code=$?
+  eq "$code" 0 "$category accepts video codec/container variant"
+  eq "$receipt" '' "$category video codec variant has no mismatch receipt"
+
+  config="$(make_config "$category" 1 audio V_VP9)"
+  code=0; receipt="$(mkvutil_target_mismatch "$record" "$config")" || code=$?
+  eq "$code" 3 "$category rejects video-to-audio type change"
+  jq -e '.reasons[0].reason=="type-mismatch"' <<< "$receipt" >/dev/null
+
+  config="$(make_config "$category" 9 audio A_AAC)"
+  code=0; receipt="$(mkvutil_target_mismatch "$record" "$config")" || code=$?
+  eq "$code" 3 "$category rejects missing targeted ID"
+  jq -e '.reasons[0].reason=="missing-id"' <<< "$receipt" >/dev/null
+done
+print -r -- 'edit/extract/mux target kind and native-format guards passed'
+''', {str(source): model})
+    assert result.stdout.rstrip().endswith("edit/extract/mux target kind and native-format guards passed")
+    assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
 
 
 def test_mkv_utils_metadata_preview_uses_scrollback_if_view_cannot_fit(tmp_path: Path):
@@ -1364,6 +1417,13 @@ for invalid in 'null' '""' '17'; do
   broken="$(jq --argjson invalid "$invalid" '.removal_signatures["1"].codec_id=$invalid' <<< "$config")"
   reject mkvutil_validate_config "$broken"
 done
+subtitle_zero='{"model":{"tracks":[{"id":0,"type":"subtitles","properties":{"codec_id":"S_TEXT/ASS"}}]}}'
+subtitle_zero_signature="$(mkvutil_removal_signatures "$subtitle_zero" 0)"
+subtitle_zero_config="$(jq -cn --arg reference "$PWD/subtitle-zero.mkv" --argjson signatures "$subtitle_zero_signature" '{category:"mux",operations:["1"],removed_ids:["0"],order:"",order_ids:[],metadata:"",settings:{},expected_types:{"0":"subtitles"},extract_ids:[],reference:$reference,reference_track_count:1,removal_signatures:$signatures}')"
+subtitle_zero_changed="$(jq '.model.tracks[0].properties.codec_id="S_TEXT/UTF8"' <<< "$subtitle_zero")"
+code=0; receipt="$(mkvutil_removal_mismatch "$subtitle_zero_changed" "$subtitle_zero_config")" || code=$?
+eq "$code" 3 'subtitle codec remains strict at original ID zero'
+jq -e '.reasons[0].original_id=="0" and .reasons[0].reason=="codec-mismatch"' <<< "$receipt" >/dev/null
 ''', {})
 
 
@@ -1417,10 +1477,12 @@ for record in "$fewer" "$extra"; do
 done
 unsafe="$(jq --arg protected "$PWD/reference.mkv" '.outputs=[$protected]' <<< "$fewer_job")"
 reject mkvutil_check_destinations "$reference_job" "$unsafe"
-for record in "$wrong_codec" "$wrong_type" "$missing_target"; do
+job="$(mkvutil_plan_job "$wrong_codec" "$bypass")"
+eq "$(jq -r '.config.bypass_track_count' <<< "$job")" true 'video codec change stays eligible'
+for record in "$wrong_type" "$missing_target"; do
   status_code=0
   receipt="$(mkvutil_plan_job "$record" "$bypass")" || status_code=$?
-  eq "$status_code" 3 'bypass does not suppress signature mismatch'
+  eq "$status_code" 3 'bypass does not suppress type or missing-ID mismatch'
   (( $(jq '.reasons|length' <<< "$receipt") > 0 )) || fail 'bypass erased per-ID mismatch'
 done
 reject mkvutil_validate_config "$(jq 'del(.reference_track_count)' <<< "$config")"
@@ -1521,7 +1583,7 @@ def _executor_document():
     return document
 
 
-def _run_executor_contract(env, body, manifest, *, fault="", expected_returncode=0):
+def _run_executor_contract(env, body, manifest, *, fault="", expected_returncode=0, initial_config_update=""):
     manifest_path = env["fake_state"] / "execution.json"
     manifest_path.write_text(json.dumps(manifest))
     transport_root = env["fake_state"] / "engine-transport"
@@ -1536,6 +1598,8 @@ def _run_executor_contract(env, body, manifest, *, fault="", expected_returncode
         "PYTHONDONTWRITEBYTECODE": "1",
         "TMPDIR": str(transport_root),
     })
+    if initial_config_update:
+        run_env["TEST_EXECUTOR_INITIAL_CONFIG_UPDATE"] = initial_config_update
     if fault:
         fault_dir = env["fake_state"] / "faults"
         fault_dir.mkdir()
@@ -1551,6 +1615,9 @@ _mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 bool
 record="$(mkvutil_capture_source "$PWD/source.mk3d")"
 config='{"category":"mux","operations":["1","2"],"removed_ids":["0"],"order":"0:12","order_ids":["12"],"metadata":"1-6","settings":{"1:11":"0","1:12":"0","2:11":"0","2:12":"0","3:11":"fr-CA","4:11":"@literal $cash: \"quote\"\n\n","5:info":"","6:11":"1"},"expected_types":{"0":"video","11":"audio","12":"audio"},"extract_ids":[]}'
 config="$(jq --arg reference "$PWD/source.mk3d" --argjson signatures "$(mkvutil_removal_signatures "$record" 0)" '.+{reference:$reference,reference_track_count:3,removal_signatures:$signatures}' <<< "$config")"
+if [[ -n "${TEST_EXECUTOR_INITIAL_CONFIG_UPDATE:-}" ]]; then
+  config="$(jq "$TEST_EXECUTOR_INITIAL_CONFIG_UPDATE" <<< "$config")"
+fi
 job="$(mkvutil_plan_job "$record" "$config")"
 ''' + body, "executor-contract", str(env["mkv_utils_script"])],
         cwd=env["workdir"], env=run_env, text=True, capture_output=True, timeout=35,
@@ -1723,7 +1790,7 @@ else:
 
 
 _EXECUTOR_FAULTS = r'''
-import json, os, signal, subprocess
+import json, os, signal, subprocess, sys, shutil
 from pathlib import Path
 fault = os.environ.get("TEST_EXECUTOR_FAULT")
 replace, link, unlink = os.replace, os.link, os.unlink
@@ -1748,6 +1815,37 @@ def patched_replace(src, dst, *args, **kwargs):
         if record["phase"] == "validated" and fault == "candidate_change":
             with Path(record["candidate_path"]).open("ab") as stream:
                 stream.write(b"changed after validation")
+        if record["phase"] == "validation" and fault == "unexpected_stage_entry":
+            Path(record["staging_directory"], "unexpected-entry").write_text("owned by another writer")
+        if record["phase"] == "validation" and fault == "cleanup_candidate_replaced":
+            target = Path(record["candidate_path"])
+            target.unlink()
+            target.write_bytes(b"replacement candidate")
+        if record["phase"] == "validation" and fault == "cleanup_shutdown_unconfirmed":
+            namespace = sys._getframe(1).f_globals
+            namespace["native_stopped"] = False
+            namespace["shutdown_error"] = "injected unconfirmed native shutdown"
+            raise RuntimeError("injected unconfirmed native shutdown")
+        if record["phase"] == "validation" and fault == "cleanup_token_replaced":
+            Path(record["staging_directory"], ".token").write_text("replacement token\n")
+            raise RuntimeError("injected token replacement")
+        if record["phase"] == "validation" and fault == "cleanup_token_symlink":
+            protected = Path(os.environ["TEST_FAKE_STATE_DIR"]) / "protected-token-target"
+            protected.write_text("protected token target")
+            marker = Path(record["staging_directory"], ".token")
+            marker.unlink()
+            marker.symlink_to(protected)
+            raise RuntimeError("injected token symlink")
+        if record["phase"] == "validation" and fault == "cleanup_receipt_replaced":
+            outside = Path(os.environ["TEST_FAKE_STATE_DIR"]) / "protected-receipt-target"
+            outside.write_text("protected")
+            Path(dst).unlink()
+            Path(dst).symlink_to(outside)
+        if record["phase"] == "validation" and fault == "cleanup_stage_symlink":
+            stage = Path(record["staging_directory"])
+            moved = stage.with_name(stage.name + "-owned")
+            stage.rename(moved)
+            stage.symlink_to(moved.name, target_is_directory=True)
         if record["phase"] == "published_complete" and fault == "after_unlink_dest_change":
             Path(record["destination"]).unlink()
             Path(record["destination"]).write_bytes(b"other writer")
@@ -1766,6 +1864,8 @@ def patched_link(src, dst, *args, **kwargs):
 def patched_unlink(path, *args, **kwargs):
     if Path(path).name == "source.mk3d" and fault == "unlink_fail":
         raise PermissionError("injected old-source cleanup failure")
+    if Path(path).name.startswith("candidate.") and fault == "cleanup_unlink_fail":
+        raise PermissionError("injected owned cleanup unlink failure")
     return unlink(path, *args, **kwargs)
 os.replace, os.link, os.unlink = patched_replace, patched_link, patched_unlink
 if fault in ("pre_admission_int", "parent_loss"):
@@ -1794,6 +1894,24 @@ def _executor_manifest(env, *, converted=True):
     tracks[11]["properties"].update(language="fre", language_ietf="fr-CA", track_name='@literal $cash: "quote"\n\n', flag_commentary=True)
     output["container"]["properties"]["title"] = ""
     return source, {"sources": {str(source): original}, "stage": {str(source): output}, "post_edit": {str(source): output}}
+
+
+def _compression_regression_manifest(env):
+    source, manifest = _executor_manifest(env)
+    original = manifest["sources"][str(source)]
+    subtitle = next(track for track in original["tracks"] if track["id"] == 12)
+    subtitle["type"] = "subtitles"
+    subtitle["properties"]["codec_id"] = "S_TEXT/ASS"
+    subtitle["properties"]["content_encoding_algorithms"] = "0"
+
+    output = json.loads(json.dumps(original))
+    by_id = {track["id"]: track for track in output["tracks"]}
+    output["tracks"] = [by_id[12], by_id[11]]
+    for position, track in enumerate(output["tracks"]):
+        track["id"] = position
+    del output["tracks"][0]["properties"]["content_encoding_algorithms"]
+    manifest["stage"][str(source)] = output
+    return source, manifest
 
 
 def test_mkv_utils_executor_grouped_edit_and_literal_observation(env):
@@ -1882,6 +2000,65 @@ print -r -- "$MKVUTIL_RESULT_JSON"
     assert len(calls) == 1 and not _command_argv(env, "mkvpropedit")
     assert calls[0][-1] == str(source) and calls[0][calls[0].index("--title") + 1] == ""
     assert calls[0][calls[0].index("--track-order") + 1] == "0:12,0:11"
+    assert not list(env["workdir"].glob(".mkvutil-*"))
+
+
+def test_mkv_utils_mux_allows_lost_content_encoding_algorithm(env):
+    source, manifest = _compression_regression_manifest(env)
+    output_subtitle = next(track for track in manifest["stage"][str(source)]["tracks"] if track["id"] == 0)
+    output_subtitle["properties"].update(
+        track_name="Remuxed subtitle name", language="fre", language_ietf="fr-FR",
+        default_track=False, forced_track=True,
+    )
+    result = _run_executor_contract(env, r'''
+config="$(jq '.operations=["1"]|.metadata=""|.settings={}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+mkvutil_execute_mux_job "$job"
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, initial_config_update='.expected_types["12"]="subtitles"')
+    record = json.loads(result.stdout)
+    destination = source.with_suffix(".mka")
+    actual = _observed_fake_identification(env, destination)
+    actual_subtitle = actual["tracks"][0]["properties"]
+    source_subtitle = next(track for track in manifest["sources"][str(source)]["tracks"] if track["id"] == 12)["properties"]
+    assert record["status"] == "success" and record["actual_state"] == "published_complete"
+    assert record["publication_committed"] and record["source_unlinked"]
+    assert destination.read_bytes() == b"candidate-data\n" and not source.exists()
+    assert "content_encoding_algorithms" not in actual_subtitle
+    assert actual_subtitle["codec_id"] == source_subtitle["codec_id"]
+    assert actual_subtitle["track_name"] != source_subtitle["track_name"]
+    assert actual_subtitle["language"] != source_subtitle["language"]
+    assert actual_subtitle["language_ietf"] != source_subtitle["language_ietf"]
+    assert actual_subtitle["default_track"] != source_subtitle["default_track"]
+    assert actual_subtitle["forced_track"] != source_subtitle["forced_track"]
+
+
+@pytest.mark.parametrize("field", ("codec_mismatch", "codec_missing", "codec_empty", "type_mismatch"))
+def test_mkv_utils_mux_still_rejects_retained_codec_or_type_changes(env, field):
+    source, manifest = _compression_regression_manifest(env)
+    output_subtitle = next(track for track in manifest["stage"][str(source)]["tracks"] if track["id"] == 0)
+    source_subtitle = next(track for track in manifest["sources"][str(source)]["tracks"] if track["id"] == 12)
+    if field == "type_mismatch":
+        output_subtitle["type"] = "audio"
+    elif field == "codec_mismatch":
+        output_subtitle["properties"]["codec_id"] = "S_TEXT/UTF8"
+    elif field == "codec_missing":
+        del output_subtitle["properties"]["codec_id"]
+    else:
+        source_subtitle["properties"]["codec_id"] = ""
+        output_subtitle["properties"]["codec_id"] = ""
+
+    result = _run_executor_contract(env, r'''
+config="$(jq '.operations=["1"]|.metadata=""|.settings={}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+if mkvutil_execute_mux_job "$job"; then fail 'published changed retained property'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, initial_config_update='.expected_types["12"]="subtitles"')
+    record = json.loads(result.stdout)
+    assert record["status"] == "failed" and record["actual_state"] == "unpublished"
+    assert not record["publication_committed"]
+    assert source.read_bytes() == b"payload" and not source.with_suffix(".mka").exists()
+    assert record["candidate_path"] is None
     assert not list(env["workdir"].glob(".mkvutil-*"))
 
 
@@ -1988,7 +2165,8 @@ print -r -- "$MKVUTIL_RESULT_JSON"
 ''', manifest)
     mux, edit = [json.loads(line) for line in result.stdout.splitlines()]
     assert mux["status"] == edit["status"] == ("warning" if code == 1 else "failed")
-    assert mux["actual_state"] == "unpublished" and Path(mux["candidate_path"]).is_file()
+    assert mux["actual_state"] == "unpublished" and mux["candidate_path"] is None
+    assert mux["temporary_files_cleaned"] is True
     assert edit["edit_changed"] and edit["observed_metadata"]["6:11"] == {"flag_commentary": False}
     assert edit["applied_metadata"]["6:11"] is False and edit["applied_metadata"]["5:info"] is True
     assert not source.with_suffix(".mka").exists()
@@ -2030,15 +2208,277 @@ print -r -- "$MKVUTIL_RESULT_JSON"
     assert not _command_argv(env, "mkvpropedit")
 
 
+@pytest.mark.parametrize("fault", [
+    "unexpected_stage_entry", "cleanup_candidate_replaced", "cleanup_receipt_replaced",
+    "cleanup_stage_symlink", "cleanup_unlink_fail", "cleanup_shutdown_unconfirmed",
+    "cleanup_token_replaced", "cleanup_token_symlink",
+])
+def test_mkv_utils_executor_cleanup_retains_changed_or_unowned_stage(env, fault):
+    source, manifest = _executor_manifest(env)
+    if fault in ("unexpected_stage_entry", "cleanup_unlink_fail"):
+        manifest["stage"][str(source)]["tracks"][0]["properties"]["codec_id"] = "A_WRONG"
+    result = _run_executor_contract(env, r'''
+if mkvutil_execute_mux_job "$job"; then fail 'accepted cleanup fault injection'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, fault=fault)
+    record = json.loads(result.stdout)
+    assert record["status"] == "failed" and record["actual_state"] == "unpublished"
+    assert not record["publication_attempted"] and not record["publication_committed"]
+    assert source.read_bytes() == b"payload" and not source.with_suffix(".mka").exists()
+    if fault in ("unexpected_stage_entry", "cleanup_candidate_replaced", "cleanup_receipt_replaced"):
+        assert record["staging_directory"] is None and record["candidate_path"] is None
+        assert record["phase_receipt"] is None and record["temporary_files_cleaned"] is True
+        assert not list(env["workdir"].glob(".mkvutil-*"))
+        if fault == "cleanup_receipt_replaced":
+            assert (env["fake_state"] / "protected-receipt-target").read_text() == "protected"
+    else:
+        assert record["cleanup_error"] and record.get("temporary_files_cleaned") is not True
+        stage = Path(record["staging_directory"])
+        if fault == "cleanup_stage_symlink":
+            assert "Temporary directory identity changed" in record["cleanup_error"]
+            moved = stage.with_name(stage.name + "-owned")
+            assert stage.is_symlink() and moved.is_dir()
+        elif fault == "cleanup_token_replaced":
+            assert "Temporary ownership token changed" in record["cleanup_error"]
+            assert (stage / ".token").read_text() == "replacement token\n"
+            assert Path(record["candidate_path"]).is_file()
+        elif fault == "cleanup_token_symlink":
+            assert ".token" in record["cleanup_error"] and "symbolic links" in record["cleanup_error"]
+            assert (env["fake_state"] / "protected-token-target").read_text() == "protected token target"
+            assert (stage / ".token").is_symlink()
+            assert Path(record["candidate_path"]).is_file()
+        elif fault == "cleanup_shutdown_unconfirmed":
+            assert "Native shutdown is not confirmed" in record["cleanup_error"]
+            assert Path(record["candidate_path"]).is_file()
+        else:
+            assert "injected owned cleanup unlink failure" in record["cleanup_error"]
+            assert Path(record["candidate_path"]).is_file()
+
+
+def test_mkv_utils_cleanup_stale_mux_requires_finalized_owned_receipt(env):
+    import os
+
+    old_mtime_ns = 1_000_000_000
+    absent_pid = os.getpid() + 10_000_000
+    while True:
+        try:
+            os.kill(absent_pid, 0)
+        except ProcessLookupError:
+            break
+        except PermissionError:
+            absent_pid += 1
+        else:
+            absent_pid += 1
+
+    cases = {}
+
+    def add_case(label, *, owner_pid=None, finalized=True, shutdown_confirmed=True,
+                 publication_attempted=False, publication_committed=False,
+                 schema=1, receipt_form="object", metadata=False, token_form="regular",
+                 token_contents=None, directory_name=None, category="mux", stage_scope="root",
+                 invocation_token="older-test"):
+        source = _mkv_file(env, f"{label}.mkv")
+        destination = source.with_suffix(".mka")
+        if category == "extract":
+            parent = env["workdir"] / "Attachments" if stage_scope == "attachments" else env["workdir"]
+            parent.mkdir(exist_ok=True)
+            destination = parent
+            directory = parent / (directory_name or f".mkvutil-extract-{label}")
+        else:
+            directory = env["workdir"] / (directory_name or f".mkvutil-{label}")
+        directory.mkdir()
+        token = directory / ".token"
+        token.write_bytes(token_contents if token_contents is not None else
+                          f"mkvutil-{category}-stage-v1\n{invocation_token}\n".encode())
+        candidate = directory / "candidate.mka"
+        candidate.write_bytes(b"candidate")
+        receipt = directory / "phase.json"
+        source_stat = source.lstat()
+        candidate_stat = candidate.lstat()
+        token_stat = token.lstat()
+        directory_stat = directory.lstat()
+        record = {
+            "category": category,
+            "status": "success" if category == "extract" else "failed",
+            "actual_state": "sidecars_published" if category == "extract" else "unpublished",
+            "native_code": 2, "phase": "validation", "source": str(source),
+            "destination": str(destination), "candidate_path": str(candidate),
+            "staging_directory": str(directory), "phase_receipt": str(receipt),
+            "source_original_identity": {key: str(value) for key, value in zip(
+                ("dev", "ino", "size", "mtime_ns"),
+                (source_stat.st_dev, source_stat.st_ino, source_stat.st_size, source_stat.st_mtime_ns))},
+            "stage_identity": {key: str(value) for key, value in zip(
+                ("dev", "ino", "size", "mtime_ns"),
+                (candidate_stat.st_dev, candidate_stat.st_ino, candidate_stat.st_size, candidate_stat.st_mtime_ns))},
+            "token_identity": {key: str(value) for key, value in zip(
+                ("dev", "ino", "size", "mtime_ns"),
+                (token_stat.st_dev, token_stat.st_ino, token_stat.st_size, token_stat.st_mtime_ns))},
+            "staging_directory_identity": {"dev": str(directory_stat.st_dev), "ino": str(directory_stat.st_ino)},
+            "engine_pid": owner_pid if owner_pid is not None else absent_pid,
+            "invocation_token": invocation_token,
+            "finalized": finalized, "native_shutdown_confirmed": shutdown_confirmed,
+            "publication_attempted": publication_attempted,
+            "publication_committed": publication_committed, "source_unlinked": False,
+        }
+        if category == "extract":
+            record["cleanup_safe"] = True
+        if schema is not None:
+            record["mkvutil_stage_schema"] = schema
+        if receipt_form == "object":
+            receipt.write_text(json.dumps(record), encoding="utf-8")
+        elif receipt_form == "array":
+            receipt.write_text("[]", encoding="utf-8")
+        elif receipt_form == "symlink":
+            target = env["fake_state"] / f"{label}-receipt-target"
+            target.write_text(json.dumps(record), encoding="utf-8")
+            receipt.symlink_to(target)
+        if not receipt.is_symlink():
+            os.utime(receipt, ns=(old_mtime_ns, old_mtime_ns))
+        if token_form == "missing":
+            token.unlink()
+        elif token_form == "symlink":
+            target = env["fake_state"] / f"{label}-token-target"
+            target.write_bytes(f"mkvutil-mux-stage-v1\n{invocation_token}\n".encode())
+            token.unlink()
+            token.symlink_to(target)
+        elif token_form == "fifo":
+            token.unlink()
+            os.mkfifo(token)
+        if metadata:
+            (directory / ".DS_Store").write_bytes(b"metadata")
+            (directory / "._candidate.mka").write_bytes(b"appledouble")
+            (directory / ".Spotlight-V100").mkdir()
+        cases[label] = {"directory": directory, "source": source, "candidate": candidate,
+                        "receipt": receipt, "token": token}
+        return record
+
+    add_case("clean001", metadata=True)
+    add_case("live0001", owner_pid=os.getpid())
+    add_case("finish01", finalized=False)
+    add_case("publish1", publication_attempted=True)
+    add_case("shutdown", shutdown_confirmed=False)
+    add_case("source01")
+    cases["source01"]["source"].write_bytes(b"changed source bytes")
+    add_case("candid01")
+    cases["candid01"]["candidate"].write_bytes(b"replacement candidate")
+    directory_record = add_case("dirid001")
+    directory_record["staging_directory_identity"]["ino"] = "changed"
+    cases["dirid001"]["receipt"].write_text(json.dumps(directory_record), encoding="utf-8")
+    os.utime(cases["dirid001"]["receipt"], ns=(old_mtime_ns, old_mtime_ns))
+    add_case("unknown1")
+    (cases["unknown1"]["directory"] / "other-writer").write_text("remove with owned folder")
+    add_case("symlink1")
+    outside_target = env["fake_state"] / "stale-cleanup-outside-target"
+    outside_target.write_text("outside protected target")
+    (cases["symlink1"]["directory"] / "other-link").symlink_to(outside_target)
+    add_case("legacy01", schema=None)
+    add_case("recsyml1", receipt_form="symlink")
+    add_case("badjson1", receipt_form="array")
+    add_case("current1", invocation_token="current-test")
+    add_case("missing1", token_form="missing")
+    add_case("faketok1", token_contents=b"not-an-mkvutil-token\n")
+    add_case("toklink1", token_form="symlink")
+    add_case("fifotok1", token_form="fifo")
+    add_case("tokchg01")
+    cases["tokchg01"]["token"].write_bytes(b"replaced token marker\n")
+    add_case("prefix01", directory_name="foreign-mkvutil-stage")
+    output_collection = env["workdir"] / "Attachments"
+    output_collection.mkdir(exist_ok=True)
+    published_attachment = output_collection / "published-from-stale-extract.ttf"
+    published_attachment.write_bytes(b"keep published extract output")
+    add_case("extrrt01", category="extract")
+    add_case("exatt001", category="extract", stage_scope="attachments")
+
+    result = _run_planning_contract(env, r'''
+print -r -- "$(mkvutil_cleanup_stale_mux "$PWD" current-test)"
+''', {})
+    report = json.loads(result.stdout.strip().splitlines()[-1])
+    assert set(report["cleaned"]) == {
+        ".mkvutil-clean001", ".mkvutil-candid01", ".mkvutil-unknown1", ".mkvutil-symlink1",
+        ".mkvutil-extract-extrrt01", ".mkvutil-extract-exatt001",
+    }
+    retained_names = {entry["directory"] for entry in report["retained"]}
+    assert retained_names == {
+        ".mkvutil-finish01", ".mkvutil-publish1", ".mkvutil-shutdown",
+        ".mkvutil-source01", ".mkvutil-dirid001", ".mkvutil-missing1",
+        ".mkvutil-faketok1", ".mkvutil-toklink1", ".mkvutil-fifotok1", ".mkvutil-tokchg01",
+    }
+    assert report["invocation_token"] == "current-test"
+    for label in ("clean001", "candid01", "unknown1", "symlink1", "extrrt01", "exatt001"):
+        assert not cases[label]["directory"].exists(), label
+    for label in cases.keys() - {
+        "clean001", "candid01", "unknown1", "symlink1", "extrrt01", "exatt001",
+    }:
+        assert cases[label]["directory"].is_dir(), label
+    assert cases["legacy01"]["receipt"].is_file()
+    assert cases["recsyml1"]["receipt"].is_symlink()
+    assert cases["current1"]["receipt"].is_file()
+    assert cases["prefix01"]["directory"].is_dir()
+    assert outside_target.read_text() == "outside protected target"
+    assert published_attachment.read_bytes() == b"keep published extract output"
+
+
+def test_mkv_utils_cleanup_primitive_rejects_fifo_token_without_opening(env):
+    result = _run_planning_contract(env, r'''
+program="$(_mkvutil_staging_support)"$'\n''
+import os, stat
+from pathlib import Path
+root = Path.cwd()
+directory = root / ".mkvutil-fifo0001"
+directory.mkdir()
+token = directory / ".token"
+token.write_bytes(b"mkvutil-mux-stage-v1\\ntest-token\\n")
+entry = os.lstat(directory)
+token_identity = staging_file_identity(token)
+token.unlink()
+os.mkfifo(token)
+try:
+    cleanup_owned_staging(directory, (entry.st_dev, entry.st_ino), token_identity)
+except ValueError:
+    pass
+else:
+    raise AssertionError("accepted FIFO replacement for ownership token")
+assert directory.is_dir() and stat.S_ISFIFO(os.lstat(token).st_mode)
+print("FIFO token replacement rejected")
+'
+"$TEST_REAL_PYTHON" -c "$program"
+''', {})
+    assert result.stdout.rstrip().endswith("FIFO token replacement rejected")
+
+
+def test_mkv_utils_main_cleanup_state_is_invocation_local(env):
+    result = _run_planning_contract(env, r'''
+typeset -ga cleanup_calls=()
+cleanup_calls_file="$PWD/cleanup-call-log"
+: > "$cleanup_calls_file"
+mkvutil_cleanup_stale_mux() {
+  print -r -- "$1|${2:-}" >> "$cleanup_calls_file"
+  print -r -- '{"invocation_token":"current-invocation"}'
+}
+_mkvutil_ui_owned() { return 0; }
+_mkvutil_menu_read() { return 2; }
+mkvutil_main "$PWD"
+mkvutil_main --help >/dev/null
+mkvutil_main --dry-run "$PWD" >/dev/null
+if mkvutil_main "$PWD/missing-directory"; then fail 'accepted missing directory'; fi
+cleanup_calls=("${(@f)$(< "$cleanup_calls_file")}")
+eq "${#cleanup_calls}" 2 'normal invocation startup and exit cleanup only'
+eq "${cleanup_calls[1]}" "$PWD|" 'startup has no excluded invocation token'
+eq "${cleanup_calls[2]}" "$PWD|current-invocation" 'exit excludes current invocation receipts'
+print -r -- 'main cleanup invocation scope passed'
+''', {})
+    assert result.stdout.rstrip().endswith("main cleanup invocation scope passed")
+
+
 def test_mkv_utils_executor_preflight_skip_wildcard_collision_and_empty_result(env):
     source, manifest = _executor_manifest(env)
     result = _run_executor_contract(env, r'''
 # A changed source listing keeps file identity but fails the shared signature guard.
-"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_WRONG"; json.dump(m,open(p,"w"))'
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["type"]="audio"; json.dump(m,open(p,"w"))'
 if mkvutil_execute_mux_job "$job"; then fail 'accepted late mismatch'; fi
 eq "$(jq -r '.status' <<< "$MKVUTIL_RESULT_JSON")" skipped 'late signature skip'
 print -r -- "$MKVUTIL_RESULT_JSON"
-"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_MPEG4/ISO/AVC"; m["tags_default"]="<Tags><Tag><Targets><TrackUID>0</TrackUID></Targets><Simple><Name>USER</Name><String>  payload  </String></Simple></Tag></Tags>"; json.dump(m,open(p,"w"))'
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["type"]="video"; m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_MPEG4/ISO/AVC"; m["tags_default"]="<Tags><Tag><Targets><TrackUID>0</TrackUID></Targets><Simple><Name>USER</Name><String>  payload  </String></Simple></Tag></Tags>"; json.dump(m,open(p,"w"))'
 if mkvutil_execute_mux_job "$job"; then fail 'accepted wildcard loss'; fi
 eq "$(jq -r '.phase' <<< "$MKVUTIL_RESULT_JSON")" preflight 'wildcard early refusal'
 print -r -- "$MKVUTIL_RESULT_JSON"
@@ -2124,15 +2564,33 @@ print -r -- "$MKVUTIL_RESULT_JSON"
 @pytest.mark.parametrize("ambiguous", [False, True])
 def test_mkv_utils_executor_regenerated_uid_mapping_evidence(env, ambiguous):
     source, manifest = _executor_manifest(env)
-    for track in manifest["stage"][str(source)]["tracks"]:
-        track["properties"]["uid"] += 2000
     body = ""
     if ambiguous:
-        for track in manifest["sources"][str(source)]["tracks"][1:]:
-            track["properties"]["track_name"] = "identical"
-        for track in manifest["stage"][str(source)]["tracks"]:
-            track["properties"].update(track_name="new", language="fre", language_ietf="fr-CA", flag_commentary=True)
-        body += 'config="$(jq \'.settings["4:11"]="new"|.settings["4:12"]="new"|.settings["3:12"]="fr-CA"|.settings["6:12"]="1"\' <<< "$config")"\njob="$(mkvutil_plan_job "$record" "$config")"\n'
+        original = manifest["sources"][str(source)]
+        by_id = {track["id"]: track for track in original["tracks"]}
+        output = json.loads(json.dumps(original))
+        output_by_id = {track["id"]: track for track in output["tracks"]}
+        output["tracks"] = [output_by_id[12], output_by_id[11]]
+        for position, track in enumerate(output["tracks"]):
+            track["id"] = position
+            track["properties"]["uid"] += 2000
+        manifest["stage"][str(source)] = output
+        assert by_id[11]["type"] == by_id[12]["type"]
+        assert by_id[11]["properties"]["codec_id"] == by_id[12]["properties"]["codec_id"]
+        assert by_id[11]["properties"]["track_name"] != by_id[12]["properties"]["track_name"]
+        body = 'config="$(jq \'.operations=["1"]|.metadata=""|.settings={}\' <<< "$config")"\njob="$(mkvutil_plan_job "$record" "$config")"\n'
+    else:
+        original = manifest["sources"][str(source)]
+        output = manifest["stage"][str(source)]
+        original_by_id = {track["id"]: track for track in original["tracks"]}
+        output_by_id = {track["id"]: track for track in output["tracks"]}
+        original_by_id[12]["properties"]["codec_id"] = "A_FLAC"
+        output_by_id[12]["properties"]["codec_id"] = "A_FLAC"
+        for track in output["tracks"]:
+            track["properties"]["uid"] += 2000
+        original_pairs = {(track["type"], track["properties"]["codec_id"]) for track in original["tracks"][1:]}
+        output_pairs = {(track["type"], track["properties"]["codec_id"]) for track in output["tracks"]}
+        assert len(original_pairs) == len(output_pairs) == 2
     result = _run_executor_contract(env, body + r'''
 code=0
 mkvutil_execute_mux_job "$job" || code=$?
@@ -2144,7 +2602,7 @@ print -r -- "$MKVUTIL_RESULT_JSON"
         assert source.exists() and not result["publication_committed"]
     else:
         assert result["status"] == "success"
-        assert "unique unchanged properties" in result["validation_notes"][0]
+        assert "unique track-kind/codec matches" in result["validation_notes"][0]
 
 def test_mkv_utils_executor_large_records_and_independent_queue_outcomes(env):
     source, manifest = _executor_manifest(env)
@@ -2163,13 +2621,16 @@ second="$(mkvutil_capture_source "$PWD/bad-stage.mk3d")"
 secondjob="$(mkvutil_plan_job "$second" "$config")"
 third="$(mkvutil_capture_source "$PWD/successful.mk3d")"
 thirdjob="$(mkvutil_plan_job "$third" "$config")"
-"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["properties"]["codec_id"]="V_WRONG"; json.dump(m,open(p,"w"))'
+"$TEST_REAL_PYTHON" -c 'import json,os; p=os.environ["TEST_FAKE_EXECUTION_JSON"]; m=json.load(open(p)); m["sources"][os.getcwd()+"/source.mk3d"]["tracks"][0]["type"]="audio"; json.dump(m,open(p,"w"))'
 if mkvutil_execute_queue "$job" "$secondjob" "$thirdjob"; then fail 'accepted incomplete queue'; fi
 eq "${#MKVUTIL_RESULTS}" 3 'all independent jobs reported'
 for record in "${MKVUTIL_RESULTS[@]}"; do print -r -- "$record"; done
 ''', manifest)
     records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
-    assert [record["status"] for record in records] == ["skipped", "failed", "success"]
+    assert [record["status"] for record in records] == ["skipped", "failed", "success"], [
+        (record["status"], record.get("reason"), record.get("phase"), record.get("failure_reason"))
+        for record in records
+    ]
     assert all(record["source"].startswith(str(env["workdir"])) for record in records)
     assert records[2]["elapsed_seconds"] >= 0
     assert len([args for args in _command_argv(env, "mkvmerge") if "-o" in args]) == 2
@@ -2262,7 +2723,7 @@ config='{"category":"extract","operations":["1","2"],"removed_ids":[],"order":""
 
 
 _EXTRACT_FAULTS = r'''
-import json, os, signal, subprocess, sys
+import json, os, signal, subprocess, sys, shutil
 from pathlib import Path
 fault=os.environ.get("TEST_EXTRACT_FAULT", "")
 replace,link,rmdir=os.replace,os.link,os.rmdir
@@ -2270,6 +2731,8 @@ def patched_replace(src,dst,*args,**kwargs):
     staged=Path(src).name.startswith("attachments-")
     if staged and fault=="second_attachment_fail" and Path(src).name.startswith("attachments-000001"):
         raise PermissionError("injected second attachment publication failure")
+    if Path(src).name.startswith("tracks-") and fault=="second_vobsub_fail" and Path(src).suffix==".idx":
+        raise PermissionError("injected index publication failure")
     value=replace(src,dst,*args,**kwargs)
     if staged and fault=="after_replace_interrupt":os.kill(os.getpid(),signal.SIGINT)
     if staged and fault=="after_replace_changed":
@@ -2277,8 +2740,6 @@ def patched_replace(src,dst,*args,**kwargs):
         raise RuntimeError("injected changed destination after replacement")
     return value
 def patched_link(src,dst,*args,**kwargs):
-    if Path(src).name.startswith("tracks-") and fault=="second_vobsub_fail" and Path(src).suffix==".idx":
-        raise PermissionError("injected index publication failure")
     return link(src,dst,*args,**kwargs)
 def patched_rmdir(path,*args,**kwargs):
     target=Path(path)
@@ -2374,6 +2835,76 @@ mkvutil_final_report
     assert len(list(env["workdir"].glob("*.srt")))==2 and all(p.stat().st_size==0 for p in env["workdir"].glob("*.srt"))
 
 
+@pytest.mark.parametrize("mode", ["attachments", "tracks", "both"])
+def test_mkv_utils_extract_terminal_cleanup_and_existing_output_overwrite(env, mode):
+    manifest = _extract_manifest(env)
+    source = next(iter(manifest["sources"]))
+    # Leave the optional WavPack correction absent; a pre-existing companion
+    # must remain untouched and must not be reported as published.
+    manifest["extraction"][source]["tracks"]["outputs"]["1"] = {"data": "wave"}
+    body = r'''
+record="$(mkvutil_capture_source "$PWD/First source.mkv")"
+[[ -n "$record" ]] || fail 'source capture failed'
+full_job="$(mkvutil_plan_job "$record" "$config")"
+[[ -n "$full_job" ]] || fail 'full planning failed'
+case "__MODE__" in
+  attachments) selected_config="$(jq '.operations=["1"]|.extract_ids=[]' <<< "$config")" ;;
+  tracks) selected_config="$(jq '.operations=["2"]' <<< "$config")" ;;
+  both) selected_config="$(jq '.operations=["1","2"]' <<< "$config")" ;;
+esac
+job="$(mkvutil_plan_job "$record" "$selected_config")"
+[[ -n "$job" ]] || fail 'selected planning failed'
+while IFS= read -r output_path; do
+  [[ -n "$output_path" ]] || continue
+  "$TEST_REAL_PYTHON" -c 'import os,sys;os.makedirs(os.path.dirname(sys.argv[1]),exist_ok=True)' "$output_path"
+  print -r -- "pre-existing:$output_path" > "$output_path"
+done <<< "$(jq -r '.outputs[].artifacts[].path' <<< "$full_job")"
+mkvutil_execute_extract_job "$job" || { print -r -- "RESULT $MKVUTIL_RESULT_JSON"; fail 'extract execution failed'; }
+print -r -- "FULL $full_job"
+print -r -- "RESULT $MKVUTIL_RESULT_JSON"
+'''.replace("__MODE__", mode)
+    result = _run_extract_contract(env, body, manifest)
+    full_job = json.loads(next(line[5:] for line in result.stdout.splitlines() if line.startswith("FULL ")))
+    record = json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
+    source_path = Path(source)
+    assert record["status"] == "success" and record["actual_state"] == "sidecars_published"
+    assert record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"]
+    assert not record["scratch_paths"] and not record["unexpected_paths"]
+    assert not record["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in record["staging_directories"])
+    assert source_path.read_bytes() == b"payload"
+
+    selected_kinds = {"attachment", "track"} if mode == "both" else {
+        "attachment" if mode == "attachments" else "track"
+    }
+    expected_paths = {
+        artifact["path"]
+        for output in full_job["outputs"]
+        if output["kind"] in selected_kinds
+        for artifact in output["artifacts"]
+        if artifact.get("required", True)
+    }
+    published_paths = {artifact["path"] for artifact in record["published_artifacts"]}
+    assert published_paths == expected_paths
+    assert all(Path(path).is_file() for path in published_paths)
+    for output in full_job["outputs"]:
+        for artifact in output["artifacts"]:
+            path = Path(artifact["path"])
+            if output["kind"] not in selected_kinds or not artifact.get("required", True):
+                assert path.read_bytes() == f"pre-existing:{path}\n".encode()
+    if "attachment" in selected_kinds:
+        assert (source_path.parent / "Attachments" / "Font.ttf").read_bytes() == b"BBB"
+        assert (source_path.parent / "Attachments" / "Empty.txt").read_bytes() == b""
+    if "track" in selected_kinds:
+        by_suffix = {path.suffix: path for path in map(Path, expected_paths)}
+        assert by_suffix[".sub"].read_bytes() == b"data"
+        assert by_suffix[".idx"].read_bytes() == b"index"
+        assert by_suffix[".wv"].read_bytes() == b"wave"
+        assert by_suffix[".srt"].read_bytes() == b""
+        assert by_suffix[".tta"].read_bytes() == b"tta"
+
+
 def test_mkv_utils_extract_warning_preserves_winner_and_track_timing(env):
     manifest=_extract_manifest(env,("First source.mkv","Later source.mks"))
     second=str(env["workdir"]/"Later source.mks");manifest["extraction"][second]["attachments"]["code"]=1
@@ -2388,7 +2919,10 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
     assert [r["status"] for r in records]==["success","warning"]
     warning=records[1]
     assert warning["stages"][1]==dict(kind="tracks",status="not_attempted",attempted=False,native_code=None,elapsed_seconds=None,validated_count=0)
-    assert warning["track_stage_seconds"] is None and not warning["published_artifacts"] and len(warning["staged_paths"])==3
+    assert warning["track_stage_seconds"] is None and not warning["published_artifacts"]
+    assert warning["temporary_files_cleaned"] is True
+    assert not warning["staged_paths"] and not warning["phase_receipts"] and not warning["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in warning["staging_directories"])
     summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
     assert summary["batches"][0]["track_stages_attempted"]==1
     assert summary["attachments"]["uncertain_names"]==0 and summary["attachments"]["unique_names"]==2
@@ -2412,7 +2946,9 @@ print -r -- "RESULT $MKVUTIL_RESULT_JSON"
     assert all(a["publication_confirmed"] for a in record["published_artifacts"])
     assert record["stages"][0]["status"]=="complete" and record["stages"][1]["status"]=="failed"
     assert (env["workdir"]/"Attachments"/"Font.ttf").read_bytes()==b"BBB" and Path(source).read_bytes()==b"payload"
-    assert len(record["staged_paths"])==6 and not list(env["workdir"].glob("*.sub"))
+    assert record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert not list(env["workdir"].glob("*.sub"))
 
 
 @pytest.mark.parametrize("fault,expected",[("second_attachment_fail","partial"),("after_replace_interrupt","interrupted"),("after_replace_changed","partial"),("second_vobsub_fail","partial")])
@@ -2424,7 +2960,9 @@ reject mkvutil_execute_extract_job "$job"
 print -r -- "RESULT $MKVUTIL_RESULT_JSON"
 ''',manifest,fault=fault)
     record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
-    assert record["status"]==expected and record["staged_paths"] and record["phase_receipts"]
+    assert record["status"]==expected and record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in record["staging_directories"])
     if fault=="after_replace_changed":
         assert record["uncertain_artifacts"] and record["actual_state"]=="publication_uncertain"
         assert (collection/"Font.ttf").read_bytes()==b"other writer"
@@ -2438,8 +2976,7 @@ print -r -- "RESULT $MKVUTIL_RESULT_JSON"
         assert len(_command_argv(env,"mkvextract"))==1
         assert record["track_stage_seconds"] is None
     for path in manifest["sources"]:assert Path(path).read_bytes()==b"payload"
-    receipt=json.loads(Path(record["phase_receipts"][0]).read_text())
-    assert any(a["publication_attempted"] and a["stage_identity"] and a["previous_identity"] for a in receipt["artifacts"])
+    assert any(a["publication_attempted"] and a["stage_identity"] and a["previous_identity"] for a in record["artifacts"])
 
 
 def test_mkv_utils_extract_symlink_parent_zero_outputs_and_interruption(env):
@@ -2460,7 +2997,9 @@ print -r -- "RESULT ${MKVUTIL_RESULTS[1]}"
     assert summary["counts"]["interrupted"]==1 and summary["counts"]["not_attempted"]==1
     record=json.loads(next(line[7:] for line in result.stdout.splitlines() if line.startswith("RESULT ")))
     assert record["status"]=="interrupted" and not record["published_artifacts"]
-    assert all(Path(p).parent==target for p in record["staging_directories"])
+    assert record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert all(Path(p).parent==target and not Path(p).exists() for p in record["staging_directories"])
     assert "Track stage: not attempted" in result.stdout and "unavailable (no track stages attempted)" in result.stdout
     _ascii_box_contains(result.stdout, "File progress", "Track stage: not attempted", "Estimated Time Remaining: unavailable (no track stages attempted)")
     assert len(_command_argv(env,"mkvextract"))==1
@@ -2482,9 +3021,13 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
     assert record["status"]=="interrupted" and record["stages"][1]["native_code"] is None
     assert record["stages"][1]["status"]=="interrupted"
     assert record["stages"][1]["attempted"] and record["track_stage_seconds"]>=0
-    assert len(record["scratch_paths"])==1 and len(record["unexpected_paths"])==1
-    assert all(Path(p).is_file() for p in record["scratch_paths"]+record["unexpected_paths"])
-    assert len(record["staged_paths"])==6 and len(record["published_artifacts"])==3
+    assert record["temporary_files_cleaned"] is True
+    assert not record["scratch_paths"] and not record["unexpected_paths"]
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in record["staging_directories"])
+    assert len(record["published_artifacts"])==3
+    assert all(Path(item["path"]).is_file() for item in record["published_artifacts"])
+    assert not list(env["workdir"].glob("*.sub")) and not list(env["workdir"].glob("*.idx"))
     assert all(a["stage_identity"] for a in record["artifacts"] if a["present"])
     summary=json.loads(next(line[8:] for line in result.stdout.splitlines() if line.startswith("SUMMARY ")))
     assert summary["interrupted"] and summary["counts"]["not_attempted"]==1
@@ -2510,7 +3053,13 @@ print -r -- "$MKVUTIL_RESULT_JSON"
     else:
         assert record["status"] == "warning" and not record.get("discarded_partial_tracks")
         tracks = [a for a in record["artifacts"] if a["kind"] == "track"]
-        assert len(tracks) == 6 and all(Path(a["stage_path"]).is_file() for a in tracks)
+        assert len(tracks) == 6 and all(not Path(a["stage_path"]).exists() for a in tracks)
+    assert record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in record["staging_directories"])
+    assert len(record["published_artifacts"]) == 3
+    assert all(Path(item["path"]).is_file() for item in record["published_artifacts"])
+    assert all(Path(path).read_bytes() == b"payload" for path in manifest["sources"])
 
 
 def test_mkv_utils_extract_leader_exit_stops_owned_descendant(env):
@@ -2533,7 +3082,13 @@ print -r -- "$MKVUTIL_RESULT_JSON"
     record = json.loads(result.stdout)
     assert "surviving process group" in record["reason"]
     assert not record.get("discarded_partial_tracks")
-    assert all(Path(a["stage_path"]).exists() for a in record["artifacts"] if a["kind"] == "track")
+    assert record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in record["staging_directories"])
+    assert all(not Path(a["stage_path"]).exists() for a in record["artifacts"] if a["kind"] == "track")
+    assert len(record["published_artifacts"]) == 3
+    assert all(Path(item["path"]).is_file() for item in record["published_artifacts"])
+    assert all(Path(path).read_bytes() == b"payload" for path in manifest["sources"])
     with pytest.raises(ProcessLookupError): os.kill(int((env["fake_state"] / "descendant-pid").read_text()), 0)
 
 
@@ -2600,6 +3155,9 @@ print -r -- "RESULT $MKVUTIL_RESULT_JSON"
     assert record["stages"][1]["status"]=="failed" and record["stages"][1]["native_code"]==0
     assert "Required staged artifact missing" in record["reason"] and len(record["published_artifacts"])==3
     assert not any(a["kind"]=="track" and a["publication_attempted"] for a in record["artifacts"])
+    assert record["temporary_files_cleaned"] is True
+    assert not record["staged_paths"] and not record["phase_receipts"] and not record["remaining_staging_directories"]
+    assert all(not Path(directory).exists() for directory in record["staging_directories"])
     assert not list(env["workdir"].glob("*.sub")) and all(Path(p).read_bytes()==b"payload" for p in manifest["sources"])
 
 
@@ -2616,6 +3174,7 @@ mkvutil_final_report
     assert record["cleanup_error"] and "Cleanup failed:" in record["reason"] and "Cleanup failed:" in result.stdout
     assert record["actual_state"]=="sidecars_published" and len(record["published_artifacts"])==9
     assert not record["staged_paths"] and not record["phase_receipts"] and not record["scratch_paths"]
+    assert record["temporary_files_cleaned"] is False
     assert len(record["remaining_staging_directories"])==1
     directory=Path(record["remaining_staging_directories"][0]);assert directory.is_dir() and not list(directory.iterdir())
     assert f"Retained staging directory: {directory.name}" in result.stdout
@@ -3289,7 +3848,7 @@ def test_mkv_utils_analyze_uses_first_usable_full_id_signature_reference(env):
     assert "Current Work Dir: " + str(env["workdir"]) in result.stdout
     assert "Analysis reference file: Reference library.mkv" in result.stdout
     assert "Reference file: Reference library.mkv" in result.stdout
-    assert "Files analyzed: 6; Matching: 2; Mismatched: 4; Failed: 1; Not attempted: 0" in result.stdout
+    assert "Files analyzed: 6; Matching: 3; Mismatched: 3; Failed: 1; Not attempted: 0" in result.stdout
     assert "Analysing" not in result.stdout + result.stderr and "\x1b" not in result.stdout + result.stderr
     before_report, separator, final_report = result.stdout.partition("Final report")
     assert separator and result.stdout.count("Final report") == 1
@@ -3310,15 +3869,16 @@ def test_mkv_utils_analyze_uses_first_usable_full_id_signature_reference(env):
     assert all("[Original " in line and "[eng]" in line for line in track_lines)
     assert "Track ID 777" not in before_report
     assert "literal/name/value" not in before_report and "jpn" not in before_report
-    mismatch_names = names[0:1] + names[3:]
+    mismatch_names = names[0:1] + names[4:]
     for name in mismatch_names:
         assert name not in before_report
         assert name in final_report
     assert "Reordered metadata.mkv" not in result.stdout
+    assert "Codec changed.mkv" not in final_report
     assert all(str(env["workdir"] / name) not in result.stdout for name in names)
     assert all(name not in result.stderr for name in names)
     _ascii_box_contains(final_report, "Errors", "Unusable first.mkv")
-    _ascii_box_contains(final_report, "Track ID/type/codec mismatch", *names[3:])
+    _ascii_box_contains(final_report, "Track ID/type/codec mismatch", *names[4:])
     assert "[literal/name/value]" not in result.stdout and "jpn" not in result.stdout
     assert "S_TEXT/ASS" in track_lines[2]
     assert "Actions: " not in result.stdout + result.stderr
@@ -4046,13 +4606,12 @@ def test_mkv_utils_option7_video_removal_converts_to_mka_and_keeps_other_tracks(
 
 
 def test_mkv_utils_option7_failure_cleans_temporary_file(env):
-    # The approved safety policy retains failed candidates; the old legacy
-    # stem_temp output remains absent and the original is still preserved.
+    # Failed native output is removed when the source remains unchanged.
     source=_mkv_file(env,"remove_fail.mkv");original=_integration_model()
     extra=_integration_manifest(env,{source:original},stage={str(source):_integration_output(original,[1,2,3])},merge_code=2)
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n1\n0\n\n",extra_env=extra)
     assert result.returncode==1,result.stdout+result.stderr
-    assert "Failed: 1" in result.stdout and "Candidate:" in result.stdout
+    assert "Failed: 1" in result.stdout and "Candidate:" not in result.stdout
     report = result.stdout[result.stdout.index("Final report"):]
     assert report.count("Final report") == 1
     _ascii_box_contains(report, "Errors", f"{source.name} => {source.with_suffix('.mka').name}")
@@ -4060,7 +4619,7 @@ def test_mkv_utils_option7_failure_cleans_temporary_file(env):
     assert source.read_bytes()==b"payload" and not source.with_suffix(".mka").exists()
     assert not (env["workdir"]/"remove_fail_temp.mka").exists()
     assert len([a for a in _command_argv(env,"mkvmerge") if "-o" in a])==1
-    assert len(list(env["workdir"].glob(".mkvutil-*/candidate.mka")))==1
+    assert not list(env["workdir"].glob(".mkvutil-*"))
 
 
 @pytest.mark.parametrize("extra_env",[
@@ -4158,9 +4717,9 @@ def test_mkv_utils_option8_reorder_failure_cleans_temp_file(env):
     extra=_integration_manifest(env,{source:original},stage={str(source):_integration_output(original,[1,0,2,3])},merge_code=1)
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="2\n2\n1,0\n\n",extra_env=extra)
     assert result.returncode==1,result.stdout+result.stderr
-    assert "Warning: 1" in result.stdout and "Candidate:" in result.stdout
+    assert "Warning: 1" in result.stdout and "Candidate:" not in result.stdout
     assert source.read_bytes()==b"payload" and not (env["workdir"]/"reorder_fail_temp.mkv").exists()
-    assert len(list(env["workdir"].glob(".mkvutil-*/candidate.mkv")))==1
+    assert not list(env["workdir"].glob(".mkvutil-*"))
 
 
 def test_mkv_utils_option9_extract_track_extension_from_override(env):

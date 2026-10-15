@@ -1856,7 +1856,9 @@ mkvutil_analyze_files() {
         reference="$file"; expected="$signature"
       fi
       analyzed=$((analyzed + 1))
-      if jq -en --argjson expected "$expected" --argjson actual "$signature" '$expected==$actual' >/dev/null 2>/dev/null; then
+      if jq -en --argjson expected "$expected" --argjson actual "$signature" '
+        def comparable: with_entries(if .value.type=="video" then .value |= del(.codec_id) else . end);
+        ($expected|comparable)==($actual|comparable)' >/dev/null 2>/dev/null; then
         matching=$((matching + 1))
       else
         mismatched+=("$file"); result=1
@@ -2155,8 +2157,8 @@ mkvutil_configure_category() {
     {category:$category, operations:($operations|split(",")), removed_ids:($removal|split(",")|map(select(length>0))),
      order:$order, order_ids:$order_ids, metadata:$metadata, settings:$settings, expected_types:$expected_types,
      extract_ids:($extract|split(",")|map(select(length>0))), reference:$reference, removal_signatures:$signatures,
-     reference_track_count:$track_count,bypass_track_count:($bypass==1)}
-     + (if $category=="mux" then {metadata_output_map:$output_map,expected_codecs:$expected_codecs} else {} end)')" || return 1
+     reference_track_count:$track_count,bypass_track_count:($bypass==1),expected_codecs:$expected_codecs}
+     + (if $category=="mux" then {metadata_output_map:$output_map} else {} end)')" || return 1
   MKVUTIL_REMOVAL_SKIPS=()
 }
 
@@ -2189,7 +2191,7 @@ mkvutil_removal_mismatch() {
          reason:(if $track==null then "missing-id"
            elif $actual.type!=$expected.type and $actual.codec_id!=$expected.codec_id then "type-and-codec-mismatch"
            elif $actual.type!=$expected.type then "type-mismatch"
-           elif $actual.codec_id!=$expected.codec_id then "codec-mismatch" else null end)} |
+           elif $expected.type!="video" and $actual.codec_id!=$expected.codec_id then "codec-mismatch" else null end)} |
         select(.reason!=null)] as $reasons |
       (if $config.bypass_track_count!=true and ($record.model.tracks|length)!=$config.reference_track_count then
          {expected:$config.reference_track_count,actual:($record.model.tracks|length)} else null end) as $count_mismatch |
@@ -2223,10 +2225,14 @@ mkvutil_target_mismatch() {
     then error("invalid source track model") else . end |
     [(if ($config|has("metadata_output_map")) then empty else $ids[] end) as $id |
       ([$record.model.tracks[]|select((.id|tostring)==$id)]|first) as $track |
-      {original_id:$id,expected:{type:$config.expected_types[$id]},
-       actual:(if $track==null then null else {type:$track.type} end),
+      {original_id:$id,expected:({type:$config.expected_types[$id]} +
+         (if $config|has("expected_codecs") then {codec_id:$config.expected_codecs[$id]} else {} end)),
+       actual:(if $track==null then null else {type:$track.type} +
+         (if $config|has("expected_codecs") then {codec_id:$track.properties.codec_id} else {} end) end),
        reason:(if $track==null then "missing-id"
-         elif $track.type!=$config.expected_types[$id] then "type-mismatch" else null end)} |
+         elif $track.type!=$config.expected_types[$id] then "type-mismatch"
+         elif $track.type!="video" and ($config|has("expected_codecs")) and
+           $track.properties.codec_id!=$config.expected_codecs[$id] then "codec-mismatch" else null end)} |
       select(.reason!=null)] as $target_reasons |
     ([$record.model.tracks[]|.id|tostring] as $actual_ids |
       ($config.order_ids + [$actual_ids[] as $id |
@@ -2246,7 +2252,7 @@ mkvutil_target_mismatch() {
          reason:(if $track==null then "missing-id"
            elif $track.type!=$type and $track.properties.codec_id!=$codec then "type-and-codec-mismatch"
            elif $track.type!=$type then "type-mismatch"
-           elif $track.properties.codec_id!=$codec then "codec-mismatch" else null end)} |
+           elif $type!="video" and $track.properties.codec_id!=$codec then "codec-mismatch" else null end)} |
         select(.reason!=null)] +
       (if ($config.removed_ids|length)>0 and $config.bypass_track_count==true then [] else
         [$record.model.tracks[] | . as $track | (.id|tostring) as $id |
@@ -2327,6 +2333,9 @@ mkvutil_validate_config() {
     (.removed_ids|type)=="array" and (.order_ids|type)=="array" and (.extract_ids|type)=="array" and
     (.order|type)=="string" and (.settings|type)=="object" and (.expected_types|type)=="object" and
     all(.settings[]; type=="string") and
+    (if has("expected_codecs") then (.expected_codecs|type)=="object" and
+      (.expected_codecs|keys)==(.expected_types|keys) and
+      all(.expected_codecs[]; type=="string" and test("[^[:space:]]")) else true end) and
     all(.removed_ids[],.order_ids[],.extract_ids[]; type=="string" and test("^[0-9]+$")) and
     all(targeted_ids[]; . as $id | type=="string" and test("^[0-9]+$") and
       ($config.expected_types[$id] as $type | $type=="video" or $type=="audio" or $type=="subtitles")) and
@@ -2514,7 +2523,7 @@ mkvutil_load_job() {
 }
 
 # Validate every destination before offering Run. Same-source Edit/Mux is
-# intentional; cross-job collisions, existing sidecars and other inputs reject.
+# intentional; Extract replaces regular sidecars, while aliases/collisions reject.
 mkvutil_check_destinations() {
   local protected='[]'
   (( ! MKVUTIL_LEDGER_ENABLED )) || protected="$(_mkvutil_json_array "${MKVUTIL_SCOPE_KEYS[@]}")" || return 1
@@ -2584,10 +2593,10 @@ try:
                     raise ValueError(f"Destination aliases input media: {path.name}")
                 if os.path.lexists(path):
                     item = path.lstat()
-                    if kind != "attachment" or not stat.S_ISREG(item.st_mode):
+                    if job["config"]["category"] != "extract" or kind not in ("attachment", "track") or not stat.S_ISREG(item.st_mode):
                         raise ValueError(f"Destination already exists or is unsafe: {path.name}")
                     if (item.st_dev, item.st_ino) in input_inodes:
-                        raise ValueError(f"Attachment destination inode aliases input media: {path.name}")
+                        raise ValueError(f"Extract destination inode aliases input media: {path.name}")
 except (OSError, ValueError, KeyError, TypeError) as error:
     if isinstance(error, OSError):
         names = [Path(value).name for value in (error.filename, error.filename2) if value]
@@ -3303,7 +3312,7 @@ _mkvutil_launch_engine() {
       MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Stopped before execution' not_attempted)"
       return 1
     fi
-    "$python_bin" -c "$program" "$category" "$$" "$transport" < "$transport/request" 3>&1 > "$transport/result" 2> "$transport/errors" &
+    MKVUTIL_CLEANUP_TOKEN="${MKVUTIL_CLEANUP_TOKEN:-}" "$python_bin" -c "$program" "$category" "$$" "$transport" < "$transport/request" 3>&1 > "$transport/result" 2> "$transport/errors" &
     MKVUTIL_ENGINE_PID=$!
     # A trapped signal interrupts wait without necessarily terminating its child.
     # Reap that same PID before inspecting results or touching any staging file.
@@ -3350,12 +3359,186 @@ _mkvutil_launch_engine() {
   }
 }
 
+_mkvutil_staging_support() {
+  cat <<'PYSTAGING'
+import json, os, shutil, stat
+from pathlib import Path
+
+def staging_file_identity(path):
+    item = os.lstat(path)
+    if not stat.S_ISREG(item.st_mode):
+        raise ValueError("Temporary entry is not a regular file")
+    return staging_stat_identity(item)
+
+def staging_stat_identity(item):
+    return {key: str(value) for key, value in zip(("dev", "ino", "size", "mtime_ns"),
+            (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns))}
+
+def staging_directory_guard(directory, expected):
+    current = os.lstat(directory)
+    if not stat.S_ISDIR(current.st_mode) or (current.st_dev, current.st_ino) != expected:
+        raise ValueError("Temporary directory identity changed")
+
+def write_staging_receipt(directory, expected_directory, files, record):
+    staging_directory_guard(directory, expected_directory)
+    temporary, receipt = directory / "phase.new", directory / "phase.json"
+    if os.path.lexists(receipt) and staging_file_identity(receipt) != files.get(receipt.name):
+        raise ValueError("Temporary receipt identity changed")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "w") as stream:
+        stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+    files[temporary.name] = staging_file_identity(temporary)
+    os.replace(temporary, receipt)
+    files[receipt.name] = files.pop(temporary.name)
+    return receipt
+
+def cleanup_owned_staging(directory, expected_directory, token_identity):
+    if not directory.name.startswith(".mkvutil-"):
+        raise ValueError("Temporary directory prefix differs")
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise ValueError("Safe recursive temporary cleanup is unavailable")
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        current = os.fstat(descriptor)
+        if (current.st_dev, current.st_ino) != expected_directory:
+            raise ValueError("Temporary directory identity changed")
+        marker = os.open(".token", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=descriptor)
+        try:
+            current = os.fstat(marker)
+            if not stat.S_ISREG(current.st_mode) or staging_stat_identity(current) != token_identity:
+                raise ValueError("Temporary ownership token changed")
+        finally:
+            os.close(marker)
+        # The marker owns this entire namespace. Pin its original directory,
+        # unlink descendant symlinks, and keep receipts/token until the end.
+        names = sorted(os.listdir(descriptor), key=lambda name:
+                       2 if name == ".token" else 1 if name == "phase.json" else 0)
+        for name in names:
+            current = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+            if stat.S_ISDIR(current.st_mode):
+                shutil.rmtree(name, dir_fd=descriptor)
+            else:
+                os.unlink(name, dir_fd=descriptor)
+        staging_directory_guard(directory, expected_directory)
+        directory.rmdir()
+    finally:
+        os.close(descriptor)
+PYSTAGING
+}
+
+# Only finalized, inactive jobs bearing our ownership receipt are launch-cleaned.
+# No generic .tmp scan is used. Dry-run remains read-only.
+mkvutil_cleanup_stale_mux() {
+  local directory="$1" exclude_token="${2:-}" python_bin="${VENV_PATH}/bin/python3" program=""
+  if (( MKVUTIL_DRY_RUN )); then print -r -- '{"cleaned":[],"retained":[],"dry_run":true}'; return 0; fi
+  [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
+  program="$(_mkvutil_staging_support)"$'\n'"$(cat <<'PYCLEANUP'
+import json, re, sys, uuid
+root = Path(sys.argv[1]).resolve(strict=True)
+exclude_token = sys.argv[2]
+invocation_token = exclude_token or uuid.uuid4().hex
+cleaned, retained = [], []
+scan_parents = [root]
+collection = root / "Attachments"
+try:
+    if stat.S_ISDIR(os.lstat(collection).st_mode):
+        scan_parents.append(collection)
+except FileNotFoundError:
+    pass
+for directory in (entry for parent in scan_parents for entry in parent.iterdir()):
+    if not re.fullmatch(r"\.mkvutil-(?:extract-)?[a-z0-9_]{8}", directory.name):
+        continue
+    recognized = False
+    try:
+        entry = os.lstat(directory)
+        if not stat.S_ISDIR(entry.st_mode):
+            continue
+        directory_identity = (entry.st_dev, entry.st_ino)
+        receipt = directory / "phase.json"
+        receipt_identity = staging_file_identity(receipt)
+        if int(receipt_identity["size"]) > 8 * 1024 * 1024:
+            continue
+        descriptor = os.open(receipt, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as stream:
+            raw = stream.read(8 * 1024 * 1024 + 1)
+        if len(raw) > 8 * 1024 * 1024:
+            continue
+        record = json.loads(raw)
+        if not isinstance(record, dict) or record.get("mkvutil_stage_schema") != 1 or record.get("category") not in ("mux", "extract"):
+            continue
+        recognized = True
+        token = record.get("invocation_token")
+        if not isinstance(token, str) or not token:
+            raise ValueError("invocation ownership is unavailable")
+        if exclude_token and token == exclude_token:
+            continue
+        marker = directory / ".token"
+        marker_identity = staging_file_identity(marker)
+        if marker_identity != record.get("token_identity"):
+            raise ValueError("ownership token differs")
+        descriptor = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as stream:
+            if stream.read(513) != f"mkvutil-{record['category']}-stage-v1\n{token}\n".encode():
+                raise ValueError("ownership token is not mkvutil")
+        if record.get("staging_directory_identity") != {"dev": str(entry.st_dev), "ino": str(entry.st_ino)}:
+            raise ValueError("directory ownership differs")
+        source, destination = Path(record["source"]), Path(record["destination"])
+        if (source.parent != root or record.get("staging_directory") != str(directory) or
+                record.get("phase_receipt") != str(receipt)):
+            raise ValueError("ownership paths differ")
+        if record["category"] == "mux":
+            candidate = directory / ("candidate" + destination.suffix)
+            if (directory.parent != root or destination.parent != root or destination.suffix not in (".mkv", ".mka", ".mks", ".mk3d") or
+                    record.get("candidate_path") != str(candidate)):
+                raise ValueError("Mux ownership paths differ")
+        engine_pid = record.get("engine_pid")
+        if type(engine_pid) is not int or engine_pid <= 1:
+            raise ValueError("owner identity is unavailable")
+        try:
+            os.kill(engine_pid, 0)
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            continue
+        else:
+            continue
+        if record.get("finalized") is not True or record.get("native_shutdown_confirmed") is not True:
+            raise ValueError("publication or shutdown needs review")
+        if record["category"] == "mux":
+            if (record.get("status") not in ("failed", "warning", "interrupted") or
+                    record.get("actual_state") != "unpublished" or
+                    record.get("publication_attempted") is not False or record.get("publication_committed") is not False or
+                    record.get("source_unlinked") is not False):
+                raise ValueError("Mux publication needs review")
+        elif record.get("cleanup_safe") is not True or record.get("status") not in ("success", "failed", "warning", "interrupted", "partial"):
+            raise ValueError("Extract cleanup needs review")
+        if staging_file_identity(source) != record.get("source_original_identity"):
+            raise ValueError("original source changed")
+        if record["category"] == "mux" and destination != source and os.path.lexists(destination):
+            raise ValueError("destination already exists")
+        # A valid marker makes the whole folder disposable; its contents do
+        # not need an inventory or platform-specific metadata exceptions.
+        if staging_file_identity(receipt) != receipt_identity:
+            raise ValueError("receipt changed during cleanup checks")
+        cleanup_owned_staging(directory, directory_identity, marker_identity)
+        cleaned.append(directory.name)
+    except (OSError, ValueError, KeyError, TypeError, OverflowError) as error:
+        if recognized:
+            detail = error.strerror if isinstance(error, OSError) else str(error)
+            retained.append({"directory": directory.name, "reason": detail})
+            print(f"Temporary folder retained: {directory.name} ({detail})", file=sys.stderr)
+print(json.dumps({"cleaned": cleaned, "retained": retained, "invocation_token": invocation_token}))
+PYCLEANUP
+)"
+  "$python_bin" -c "$program" "$directory" "$exclude_token"
+}
+
 _mkvutil_execution_engine() {
   local action="$1" job="$2" fresh="$3" registry="$4" python_bin="" program="" aliases=""
   aliases="$(_mkvutil_json_map "${(@kv)MKVUTIL_LANGUAGE_NATIVE_ALIASES}")" || return 1
   python_bin="${VENV_PATH}/bin/python3"
   [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
-  program="$(_mkvutil_execution_support)"$'\n'"$(cat <<'PYCODE'
+  program="$(_mkvutil_execution_support)"$'\n'"$(_mkvutil_staging_support)"$'\n'"$(cat <<'PYCODE'
 import copy, json, os, re, signal, stat, subprocess, sys, tempfile, time, xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -3371,8 +3554,11 @@ result = dict(source=str(source), destination=str(destination), category=action,
               reason="", candidate_path=None, staging_directory=None, validation_notes=[])
 stage_dir = candidate = None
 candidate_identity = None
+stage_identity = None
+stage_files = {}
 publication_attempted = publication_committed = source_unlinked = False
 source_tags = ""
+invocation_token = os.environ.get("MKVUTIL_CLEANUP_TOKEN") or f"engine-{os.getpid()}"
 
 
 class ValidationFailure(Exception):
@@ -3385,16 +3571,28 @@ def source_unchanged():
     if identity(source) != job["identity"]:
         raise ValueError("Source identity changed since planning")
 
-def phase(name):
+def stage_guard():
+    staging_directory_guard(stage_dir, stage_identity)
+
+def phase(name, finalized=False):
     result["phase"] = name
     if stage_dir:
+        stage_guard()
         record = dict(result, source_original_identity=job["identity"], stage_identity=candidate_identity,
                       publication_attempted=publication_attempted, publication_committed=publication_committed,
-                      source_unlinked=source_unlinked)
-        temporary = stage_dir / "phase.new"
-        temporary.write_text(json.dumps(record, ensure_ascii=False) + "\n")
-        os.replace(temporary, stage_dir / "phase.json")
-        result["phase_receipt"] = str(stage_dir / "phase.json")
+                      source_unlinked=source_unlinked, mkvutil_stage_schema=1, finalized=finalized,
+                      engine_pid=os.getpid(), native_shutdown_confirmed=native_stopped and not shutdown_error,
+                      invocation_token=invocation_token, token_identity=stage_files.get(".token"),
+                      staging_directory_identity={"dev": str(stage_identity[0]), "ino": str(stage_identity[1])})
+        receipt = write_staging_receipt(stage_dir, stage_identity, stage_files, record)
+        result["phase_receipt"] = str(receipt)
+
+def cleanup_stage():
+    if not native_stopped or shutdown_error:
+        raise ValueError("Native shutdown is not confirmed")
+    cleanup_owned_staging(stage_dir, stage_identity, stage_files.get(".token"))
+    result.update(candidate_path=None, phase_receipt=None, staging_directory=None,
+                  temporary_files_cleaned=True)
 
 
 
@@ -3477,32 +3675,14 @@ def property_matches(item, value, properties):
         return type(actual) is bool and actual == (value == "1")
     return ("" if actual is None else actual) == value
 
-volatile_properties = {"uid", "id", "number", "minimum_timestamp", "num_index_entries"}
-
-def unchanged_matches(before, after, tid):
-    if before["type"] != after["type"]:
-        return False
-    changed = {item["json"] for item, value in track_settings(tid)}
-    changed |= {item["json_ietf"] for item, value in track_settings(tid) if item["json_ietf"]}
-    previous, actual = before.get("properties", {}), after.get("properties", {})
-    marker = previous.get("tag__statistics_tags")
-    generated = {"tag_" + name.lower() for name in marker.split()} | {"tag__statistics_tags", "tag__statistics_writing_app", "tag__statistics_writing_date_utc"} if isinstance(marker, str) else set()
-    for key, expected in previous.items():
-        if key in volatile_properties or key in changed or key in generated:
-            continue
-        observed = actual.get(key)
-        if key == "language":
-            if not equivalent_iso(expected, observed):
-                return False
-        elif key == "language_ietf":
-            if not isinstance(observed, str) or observed.casefold() != expected.casefold():
-                return False
-        elif type(expected) is bool:
-            if type(observed) is not bool or observed != expected:
-                return False
-        elif observed != expected:
-            return False
-    return True
+def track_type_matches(before, after):
+    # Compatibility is track kind plus native codec, including ASS versus SRT.
+    # Compression and descriptive flags are not track identity. Requested edits
+    # are checked separately below, after the original-ID/order mapping.
+    expected = before.get("properties", {}).get("codec_id")
+    actual = after.get("properties", {}).get("codec_id")
+    return (before["type"] == after["type"] and
+            (before["type"] == "video" or isinstance(expected, str) and bool(expected.strip()) and expected == actual))
 
 def tag_signature(text, uid_map, retained_uids, source_document):
     root = ET.fromstring(text)
@@ -3550,8 +3730,8 @@ def oracle(actual, actual_tags):
         raise ValidationFailure("Output track count differs from retained plan")
     applied = {}
     for position, (tid, expected, observed) in enumerate(zip(retained, ordered, output)):
-        if not unchanged_matches(expected, observed, tid):
-            raise ValidationFailure(f"Track {tid} at output position {position+1}: type/codec/unrequested properties differ")
+        if not track_type_matches(expected, observed):
+            raise ValidationFailure(f"Track {tid} at output position {position+1}: type/codec differs")
         for item, value in track_settings(tid):
             ok = property_matches(item, value, observed.get("properties", {}))
             applied[item["choice"] + ":" + tid] = ok
@@ -3563,21 +3743,21 @@ def oracle(actual, actual_tags):
     if action == "edit" and not preserved_uids:
         raise ValidationFailure("In-place Edit changed or cannot establish track UID mapping")
     if not preserved_uids:
-        # Solve only mappings uniquely established by unchanged source fields.
-        # Requested names/flags/languages are not circular identity evidence.
+        # With regenerated UIDs, only a unique track-kind/codec mapping is safe.
+        # Names, flags and languages are not identity evidence.
         remaining = set(range(len(output)))
         pending = set(range(len(ordered)))
         while pending:
             progress = False
             for index in list(pending):
-                candidates = [position for position in remaining if unchanged_matches(ordered[index], output[position], retained[index])]
+                candidates = [position for position in remaining if track_type_matches(ordered[index], output[position])]
                 if len(candidates) == 1:
                     if candidates[0] != index:
                         raise ValidationFailure("Unique source mapping contradicts planned order")
                     remaining.remove(candidates[0]); pending.remove(index); progress = True
             if not progress:
-                raise ValidationFailure("Regenerated/missing UIDs and identical properties leave track mapping ambiguous")
-        result["validation_notes"].append("Track mapping established by unique unchanged properties; UIDs were regenerated/missing")
+                raise ValidationFailure("Regenerated/missing UIDs leave track-kind/codec mapping ambiguous")
+        result["validation_notes"].append("Track mapping established by unique track-kind/codec matches; UIDs were regenerated/missing")
     uid_map = {old: new for old, new in zip(original_uids, output_uids) if type(old) is int and type(new) is int}
     container = actual.get("container", {}).get("properties", {})
     old_container = original.get("container", {}).get("properties", {})
@@ -3726,9 +3906,16 @@ try:
         if destination != source and os.path.lexists(destination):
             raise FileExistsError(f"Destination exists: {destination}")
         stage_dir = Path(tempfile.mkdtemp(prefix=".mkvutil-", dir=destination.parent))
+        created = os.lstat(stage_dir)
+        stage_identity = (created.st_dev, created.st_ino)
         result["staging_directory"] = str(stage_dir)
         candidate = stage_dir / ("candidate" + destination.suffix)
         result["candidate_path"] = str(candidate)
+        token = stage_dir / ".token"
+        descriptor = os.open(token, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "w") as stream:
+            stream.write(f"mkvutil-mux-stage-v1\n{invocation_token}\n")
+        stage_files[token.name] = identity(token)
         phase("staging")
         if destination != source:
             # Fail unsupported hard links before the potentially expensive remux.
@@ -3749,11 +3936,16 @@ try:
         code, stdout, stderr = run(argv, display_paths=native_display_paths([(source, source.name), (candidate, destination.name),
                                                                            (destination, destination.name)]))
         result.update(native_code=code, native_stdout=stdout, native_stderr=stderr)
+        stage_guard()
+        if os.path.lexists(candidate):
+            candidate_identity = identity(candidate)
+            stage_files[candidate.name] = candidate_identity
         if code != 0:
             result["status"] = "interrupted" if code < 0 else ("warning" if code == 1 else "failed")
-            result["reason"] = "Native Mux warning; candidate retained without publication" if code == 1 else "Native Mux failed; source retained"
+            result["reason"] = "Native Mux warning; source retained" if code == 1 else "Native Mux failed; source retained"
         else:
-            candidate_identity = identity(candidate)
+            if candidate_identity is None:
+                raise ValidationFailure("Staged output is missing")
             if candidate_identity["size"] == "0":
                 raise ValidationFailure("Staged output is empty")
             phase("validation")
@@ -3766,17 +3958,7 @@ try:
             phase("validated")
             publish()
             result["status"] = "success"
-            # Only this uniquely owned directory is eligible for cleanup.
-            if candidate.exists():
-                if identity(candidate) != candidate_identity:
-                    raise ValueError("Candidate changed before owned cleanup")
-                candidate.unlink()
-            for entry in (stage_dir / "phase.json", stage_dir / "phase.new"):
-                if entry.exists():
-                    entry.unlink()
-            stage_dir.rmdir()
-            result["candidate_path"] = None
-            result["phase_receipt"] = None
+            cleanup_stage()
 except BaseException as error:
     stop_child()
     result["reason"] = str(error)
@@ -3803,10 +3985,28 @@ finally:
         if result["status"] != "success" and candidate and not os.path.lexists(candidate):
             result["candidate_path"] = str(destination) if result["actual_state"] != "unpublished" else None
         try:
-            if stage_dir and stage_dir.exists():
-                phase(result["phase"])
+            if stage_dir and os.path.lexists(stage_dir):
+                stage_guard()
+                if native_stopped and not shutdown_error and candidate and os.path.lexists(candidate) and candidate_identity is None:
+                    candidate_identity = identity(candidate)
+                    stage_files[candidate.name] = candidate_identity
+                phase(result["phase"], finalized=True)
         except BaseException as error:
             result["receipt_error"] = str(error)
+        if stage_dir and os.path.lexists(stage_dir) and not publication_attempted and not publication_committed:
+            try:
+                if result["actual_state"] != "unpublished" or identity(source) != job["identity"]:
+                    raise ValueError("Source changed; temporary output retained")
+                if not native_stopped or shutdown_error:
+                    raise ValueError("Native shutdown is not confirmed")
+                stage_guard()
+                cleanup_stage()
+            except BaseException as error:
+                result["cleanup_error"] = f"Temporary files retained: {error}"
+                if candidate and not os.path.lexists(candidate):
+                    result["candidate_path"] = None
+                if not os.path.lexists(stage_dir / "phase.json"):
+                    result["phase_receipt"] = None
     finish_native_display()
     print(json.dumps(result, ensure_ascii=False))
     sys.exit(0 if result["status"] == "success" else 1)
@@ -3844,7 +4044,7 @@ _mkvutil_execute_job() {
 _mkvutil_extract_engine() {
   local job="$1" fresh="$2" protected="$3" python_bin="${VENV_PATH}/bin/python3" program=""
   [[ -x "$python_bin" ]] || python_bin="$(command -v python3)"
-  program="$(_mkvutil_execution_support)"$'\n'"$(cat <<'PYEXTRACT'
+  program="$(_mkvutil_execution_support)"$'\n'"$(_mkvutil_staging_support)"$'\n'"$(cat <<'PYEXTRACT'
 import json, re, sys, tempfile, time, unicodedata
 from pathlib import Path
 job, fresh, protected = [json.loads(value) for value in sys.stdin.buffer.read().decode().split("\0")[:-1]]
@@ -3856,7 +4056,8 @@ result = dict(source=str(source),destination=job["destination"],category="extrac
               artifacts=[],staging_directories=[],phase_receipts=[],unexpected_paths=[],scratch_paths=[],track_stage_seconds=None)
 for kind in ("attachments","tracks"):
     result["stages"].append(dict(kind=kind,status="not_attempted",attempted=False,native_code=None,elapsed_seconds=None,validated_count=0))
-parents = {}; directories = {}; directory_identities = {}; leaves = {}; active_stage = None
+parents = {}; directories = {}; directory_identities = {}; directory_files = {}; leaves = {}; active_stage = None
+invocation_token = os.environ.get("MKVUTIL_CLEANUP_TOKEN") or f"engine-{os.getpid()}"
 source_inode = (job["identity"]["dev"],job["identity"]["ino"])
 input_inodes = {source_inode}
 input_paths = {str(Path(path).resolve()) for path in protected} | {str(source.resolve())}
@@ -3924,13 +4125,21 @@ def owned_directory_guard(directory):
     if not stat.S_ISDIR(value.st_mode) or (value.st_dev,value.st_ino)!=directory_identities[str(directory)]:
         raise ValueError(f"Owned staging directory changed: {directory}")
 
+def directory_receipt(directory, finalized=False, cleanup_safe=False):
+    key = str(directory)
+    record = dict(result, mkvutil_stage_schema=1, staging_directory=key,
+                  phase_receipt=str(directory/"phase.json"),
+                  staging_directory_identity={"dev":str(directory_identities[key][0]),"ino":str(directory_identities[key][1])},
+                  source_original_identity=job["identity"], engine_pid=os.getpid(),
+                  invocation_token=invocation_token, token_identity=directory_files[key].get(".token"),
+                  finalized=finalized, native_shutdown_confirmed=native_stopped and not shutdown_error,
+                  cleanup_safe=cleanup_safe)
+    write_staging_receipt(directory, directory_identities[key], directory_files[key], record)
+
 def receipt(phase):
     result["phase"]=phase
     for directory in directories.values():
-        owned_directory_guard(directory)
-        temporary=directory/"phase.new"
-        temporary.write_text(json.dumps(result,ensure_ascii=False)+"\n")
-        os.replace(temporary,directory/"phase.json")
+        directory_receipt(directory)
 
 def directory_for(parent):
     name=str(parent)
@@ -3938,6 +4147,11 @@ def directory_for(parent):
         directory=Path(tempfile.mkdtemp(prefix=".mkvutil-extract-",dir=parent))
         directories[name]=directory
         value=directory.lstat();directory_identities[str(directory)]=(value.st_dev,value.st_ino)
+        token=directory/".token"
+        descriptor=os.open(token,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+        with os.fdopen(descriptor,"w") as stream:
+            stream.write(f"mkvutil-extract-stage-v1\n{invocation_token}\n")
+        directory_files[str(directory)]={".token":identity(token)}
         result["staging_directories"].append(str(directory))
         result["phase_receipts"].append(str(directory/"phase.json"))
     return directories[name]
@@ -3967,8 +4181,7 @@ def publish(artifact):
     source_guard();parent_guard(destination.parent)
     if identity(staged)!=artifact["stage_identity"]:raise ValueError(f"Staged artifact changed: {staged}")
     if leaf(destination)!=expected:raise ValueError(f"Output changed before publication: {destination}")
-    if artifact["kind"]=="attachment":os.replace(staged,destination)
-    else:os.link(staged,destination,follow_symlinks=False)
+    os.replace(staged,destination)
     artifact["publication_returned"]=True
     if identity(destination)!=artifact["stage_identity"]:raise ValueError(f"Published identity differs: {destination}")
     parent_guard(destination.parent)
@@ -3979,7 +4192,7 @@ def publish(artifact):
 def inventory(directory,expected,kind):
     owned_directory_guard(directory)
     for entry in directory.iterdir():
-        if entry.name in ("phase.json","phase.new") or str(entry) in expected:continue
+        if entry.name in ("phase.json","phase.new",".token") or str(entry) in expected:continue
         if kind=="tracks" and re.fullmatch(r"mkvextract-\d+-temp-tta-\d+",entry.name):
             if str(entry) not in result["scratch_paths"]:result["scratch_paths"].append(str(entry))
         elif str(entry) not in result["unexpected_paths"]:result["unexpected_paths"].append(str(entry))
@@ -4040,7 +4253,6 @@ def execute_stage(stage,outputs):
             if physical_parent!=parent:raise ValueError("Artifact family spans unexpected directories")
             if str(physical.resolve()) in input_paths:raise ValueError(f"Output aliases input path: {physical}")
             namespace=key(parent,physical);existing=leaf(physical)
-            if output["kind"]!="attachment" and existing is not None:raise FileExistsError(f"Protected track output exists: {physical}")
             if namespace not in leaves:leaves[namespace]=existing
             staged=request.with_suffix(".sub") if family["role"]=="vobsub_data" else request.with_suffix(".idx") if family["role"]=="vobsub_index" else request.with_suffix(".wvc") if family["role"]=="wavpack_correction" else request
             artifact=dict(logical_index=logical_index,kind=output["kind"],id=output["id"],role=family["role"],required=family["required"],
@@ -4067,9 +4279,9 @@ def execute_stage(stage,outputs):
             if os.path.lexists(path):
                 artifact["stage_identity"]=identity(path);artifact["present"]=True
         if code!=0:
-            raise RuntimeError(f"Native {stage['kind']} returned {code}; staged outputs retained without stage publication")
+            raise RuntimeError(f"Native {stage['kind']} returned {code}; no stage publication")
         source_guard()
-        if result["unexpected_paths"]:raise ValueError("Unexpected native artifacts; candidates retained")
+        if result["unexpected_paths"]:raise ValueError("Unexpected native artifacts")
         attachments={str(item["id"]):item for item in original.get("attachments",[])}
         for artifact in stage_artifacts:
             if not artifact["present"]:
@@ -4140,22 +4352,31 @@ finally:
     refresh_recovery_inventory()
     result["actual_state"]="publication_uncertain" if result["uncertain_artifacts"] else "sidecars_published" if result["published_artifacts"] else "staged_unpublished" if result["staged_paths"] else "no_outputs"
     result["attachments_processed"]=next(s["validated_count"] for s in result["stages"] if s["kind"]=="attachments")
-    try:
-        if result["status"]=="success":
-            for directory in directories.values():
-                owned_directory_guard(directory)
-                for path in directory.iterdir():
-                    if str(path) in result["staged_paths"]:
-                        artifact=next(a for a in result["artifacts"] if a["stage_path"]==str(path))
-                        if identity(path)!=artifact["stage_identity"]:raise ValueError("Owned candidate changed before cleanup")
-                    if path.name in ("phase.json","phase.new") or str(path) in result["staged_paths"] or str(path) in result["scratch_paths"]:path.unlink()
-                directory.rmdir()
-        elif directories:receipt(result["phase"])
-    except BaseException as error:
-        result["cleanup_error"]=str(error)
-        result["reason"]=(result["reason"]+"; " if result["reason"] else "")+"Cleanup failed: "+str(error)
+    cleanup_safe=False
+    if native_stopped and not shutdown_error:
+        try:cleanup_safe=identity(source)==job["identity"]
+        except (OSError,ValueError):pass
+    cleanup_errors=[]
+    for directory in directories.values():
+        if not os.path.lexists(directory):continue
+        try:directory_receipt(directory,finalized=True,cleanup_safe=cleanup_safe)
+        except BaseException as error:result.setdefault("receipt_errors",[]).append(str(error))
+        try:
+            if not cleanup_safe:raise ValueError("Source or native shutdown is not safe for temporary cleanup")
+            if identity(source)!=job["identity"]:raise ValueError("Source changed before temporary cleanup")
+            cleanup_owned_staging(directory,directory_identities[str(directory)],directory_files[str(directory)].get(".token"))
+        except BaseException as error:cleanup_errors.append(str(error))
+    if cleanup_errors:
+        result["cleanup_error"]="; ".join(cleanup_errors)
+        result["reason"]=(result["reason"]+"; " if result["reason"] else "")+"Cleanup failed: "+result["cleanup_error"]
         if result["status"]=="success":result["status"]="partial";result["phase"]="cleanup_failed"
+    else:
+        result.pop("cleanup_error",None)
+    result["temporary_files_cleaned"]=all(not os.path.lexists(directory) for directory in directories.values())
     refresh_recovery_inventory()
+    result["actual_state"]="publication_uncertain" if result["uncertain_artifacts"] else "sidecars_published" if result["published_artifacts"] else "staged_unpublished" if result["staged_paths"] else "no_outputs"
+    for artifact in result["artifacts"]:
+        if not os.path.lexists(artifact["stage_path"]):artifact["present"]=False
     finish_native_display()
     print(json.dumps(result,ensure_ascii=False))
     sys.exit(0 if result["status"]=="success" else 1)
@@ -4514,7 +4735,7 @@ mkvutil_close_scope() {
 _mkvutil_main_body() {
   setopt localtraps
   local directory="$PWD" category="" operations="" result=0 resolved_directory="" sticky_code=0 selected=0
-  local argument="" directory_set=0 main_error="" action_error=""
+  local argument="" directory_set=0 main_error="" action_error="" cleanup_record=""
   MKVUTIL_LEDGER_ENABLED=0
   MKVUTIL_INTERRUPTED=0
   MKVUTIL_BYPASS_TRACK_COUNT=0
@@ -4533,6 +4754,11 @@ _mkvutil_main_body() {
   done
   resolved_directory="$(mkvutil_resolve_directory "$directory")" || return 1
   cd "$resolved_directory" || return 1
+  if (( ! MKVUTIL_DRY_RUN )); then
+    MKVUTIL_CLEANUP_DIRECTORY="$PWD"
+    cleanup_record="$(mkvutil_cleanup_stale_mux "$PWD")" || return 1
+    MKVUTIL_CLEANUP_TOKEN="$(jq -er '.invocation_token' <<< "$cleanup_record")" || return 1
+  fi
   _mkvutil_ui_owned || print -r -- "Current Work Dir: $resolved_directory"
   while true; do
     (( MKVUTIL_INTERRUPTED == 0 )) || return 1
@@ -4636,14 +4862,19 @@ _mkvutil_main_body() {
   done
 }
 
-# Cleanup owns only terminal presentation; never reset outcome/signal state.
+# Finish presentation and retry older owned staging without changing outcomes.
 mkvutil_main() {
   local result=0
+  local MKVUTIL_CLEANUP_DIRECTORY=""
+  local MKVUTIL_CLEANUP_TOKEN=""
   {
     _mkvutil_main_body "$@" || result=$?
   } always {
     _mkvutil_indicator_stop
     _mkvutil_ui_leave
+    if [[ -n "$MKVUTIL_CLEANUP_DIRECTORY" ]]; then
+      mkvutil_cleanup_stale_mux "$MKVUTIL_CLEANUP_DIRECTORY" "$MKVUTIL_CLEANUP_TOKEN" >/dev/null || result=1
+    fi
   }
   return "$result"
 }

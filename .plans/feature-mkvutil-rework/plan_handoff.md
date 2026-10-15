@@ -14,6 +14,69 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted format matching, owned cleanup and Extract overwrite
+
+- All9tasks/4checkpoints are accepted after the approved follow-up. Same Scripts
+  checkout on develop; baseline develop/master/origin refs ba627f5. No feature
+  branch or extra worktree. Final source SHA-256:
+  `d297104974b370ed82945d5eb80b5d27b77abfb4f2afdc82aef6e09bcafb8c44`;
+  tests SHA-256:
+  `f423e28fdbb35dfaada5eac8895e5556f1b4a1ae0ff7fa00c71a9ea20dd636ee`.
+- Verified real failure: mkvmerge v93 removes ASS zlib compression metadata, and
+  the old broad property oracle rejected that harmless change. All categories
+  now use original ID plus audio/subtitle native format; ASS versus SRT skips,
+  video codec differences do not. Unrequested compression/bitrate/descriptive
+  fields do not decide matching. Requested metadata, original tree/count/bypass,
+  UID/order, source identity and publication checks remain.
+- Branded .token ownership makes each .mkvutil-* stage disposable as a whole.
+  Shared descriptor-pinned deletion does not follow outside symlink targets;
+  missing/replaced/root-or-token-symlink ownership prevents cleanup. Native stop
+  and unchanged source are required. Mux preserves uncertain publication
+  recovery; Extract clears safe private staging on every terminal outcome while
+  leaving published/uncertain external outputs intact. Launch/exit scans only
+  finalized dead-owner receipts in the working directory and real Attachments
+  child, excludes the current invocation by token, and stays disabled for help,
+  invalid startup and dry-run. Generic unmarked legacy folders are not adopted.
+- User explicitly requested Extract overwrite on later passes. Regular same-name
+  track and attachment files now replace atomically; input aliases, nonregular
+  entries, changed destinations and queue track conflicts remain protected.
+  Optional companions not produced remain untouched and unclaimed.
+- Final serial focused gate:23passed/58.13s, covering all four category consumers,
+  three-mode overwrite, warning/failure/publication/stop cleanup and stale Extract
+  stages at both scan roots. Source did not change during the Extract test phase.
+  Initial failures were obsolete retention assertions and invalid fixture suffix
+  lengths; all attempts/logs are preserved, not counted as passes. No source bug
+  was found in that final phase.
+- Installed MKVToolNix v93: final-source combined removal/reorder/forced/default/
+  language/name succeeds with compressed ASS; all three Extract modes succeed
+  twice over existing outputs, with source unchanged and no private staging.
+  Earlier31-case and16-case Mux/guard/terminal groups remain revision-bound;
+  exact matching/oracle/cleanup AST reconciliation plus final consumer/native
+  checks establish reuse. Both zsh syntax, embedded Python AST/compilation,
+  documentation, mirrored requirements and unchanged session ledger pass.
+  Independent Astra actual-source static audit PASS; no execution claim for it.
+  No new full suite, broad IA or CI campaign is claimed.
+- All four specifically supplied old folders were safely deleted after refreshed
+  identities and no-writer checks; original identities remained unchanged. Proof:
+  remux-validation/legacy-cleanup/execute.json. No native writer touched user media.
+- Proof root: .tmp/mkvutil-rework/remux-validation/. Start with receipt.json and
+  parent-final.json, extract-tests/final-focused.receipt.txt,
+  native/run-06-shared-writer/receipt.json, extract-native/run-02/receipt.json and
+  pre-extract-reconciliation.json. Pre-Extract source/tests and pre-acceptance
+  records are preserved there. readonly-candidate-checks.json and diagnostic
+  baseline.log retain the original investigation; baseline.log is a failed new
+  fixture setup, not a behavioral baseline pass.
+- Route B completed: shared foundation -> focused/native checks -> docs and
+  parent integration. Parent owns all tracked work; compression_tests handed
+  tests back and cleanup_audit completed review. No active workers or jobs remain.
+  Menus, picker, terminal rendering and final formatter are unchanged; earlier
+  user verification and unaffected receipts remain valid.
+- Standing permission covers a signed develop commit/push and master fast-forward
+  plus push, returning this checkout to develop. Inspect the actual outcome in
+  remux-validation/publication.json and current refs before repeating Git work.
+  No pending behavior decision or required test remains. Future work starts from
+  the user's next request; preserve these records and the private proof root.
+
 ### Accepted Extract report selection scope
 
 - User tracks-only report exposed two formatter bugs: any Extract batch enabled
