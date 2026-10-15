@@ -252,7 +252,7 @@ Once processing starts, Ctrl+C requests the category-specific stop described abo
 
 Reports use the directory's basename and filenames; full paths appear only for the working directory. Edit, Mux and Extract show action headings, filenames and indented native messages. Mux and Extract add between-file progress/ETA boxes; Edit reports timing only at the end. Analyze prints its reference listing and final mismatch report.
 
-The final report identifies the actions, outcomes and skipped or failed filenames. Empty groups are omitted, and filenames do not repeat status prefixes. Dry-run results appear under **Simulated**. Warnings, failures, partial/interrupted runs, unresolved skips and Analyze mismatches or inspection failures return a nonzero status. Retry reported files in a fresh invocation, and review any recovery details first.
+The final report identifies the actions, outcomes and skipped or failed filenames. Empty groups are omitted, and filenames do not repeat status prefixes. Attachment totals appear only when Extract attachments was selected, alone or in a combined batch. Dry-run results appear under **Simulated**. Warnings, failures, partial/interrupted runs, unresolved skips and Analyze mismatches or inspection failures return a nonzero status. Retry reported files in a fresh invocation, and review any recovery details first.
 
 <details>
 <summary>Example: report names and dry-run results</summary>

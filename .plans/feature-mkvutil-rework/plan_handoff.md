@@ -14,6 +14,37 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted Extract report selection scope
+
+- User tracks-only report exposed two formatter bugs: any Extract batch enabled
+  zero attachment totals, and unselected initialized stages printed as missed.
+  Final formatting now gates attachment totals on attachment action1 and omits
+  unselected benign not-attempted stages using the result's requested actions.
+- Applied symmetrically for unselected track stages in attachment-only reports.
+  Selected stages not attempted after interruption remain visible, as do real
+  warnings/failures and recovery information. Older results without action IDs
+  conservatively retain stage diagnostics. Attachment-selected zero totals remain.
+- Only mkvutil_format_final_report changed. All other source functions, native
+  extract engines, raw stage records, guards and stop behavior are unchanged.
+  Updated the guide sentence and existing tracks-only/attachments-only assertions;
+  one stale old-style track-output assertion was aligned with the existing clean
+  Outputs/Track format. No new runtime logic or media operation was introduced.
+- Seven final-source checks pass in15.75s: controlled tracks-only (both extension
+  paths), attachments-only and combined entrypoints; selected-stage/zero/legacy/
+  interruption formatter cases; existing error/history/recovery and timing cases.
+  Baseline test reproduced the tracks-only defect. Both zsh syntax/Python AST,
+  independent read-only cause review and parent exact-function/diff review pass.
+- Source SHA-256 `137f133719221d4ae6aae88b11ef22f57cec8d19a6e0f57cbf00ab832a0148b1`;
+  tests SHA-256 `e31072997f2cf839bf10c3c4a6b59368d52a85b4a9e0fed84e16328b8218d6f9`.
+  Proof: `.tmp/mkvutil-rework/extract-report-scope/run-01/receipt.json`,
+  `parent-review.json` and `baseline.log`. All9tasks/4checkpoints remain accepted;
+  no broad native/IA/full-suite/CI result is claimed for this formatter-only fix.
+- Parent owns tracked work; all workers/checks are complete. Same Scripts checkout
+  on develop, baseline69ca3b9 on develop/master. Standing approval covers signed
+  commit/develop push and master fast-forward/push, returning checkout to develop.
+  Actual outcome belongs to `extract-report-scope/publication.json`; inspect it and
+  refs before repeating Git. Prior evidence/permissions/session ledger persist.
+
 ### Accepted batch-selection wording follow-up
 
 - Display-only user request: shared Edit IDs now say `Set track IDs for batch

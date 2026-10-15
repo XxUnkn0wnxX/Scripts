@@ -2895,6 +2895,49 @@ print -r -- "SUMMARY $(mkvutil_final_summary)"
     if stop_on_failure:
         assert summary["batches"][0]["stop"]["not_started_sources"] == [str(env["workdir"] / name) for name in (["pending.mkv"] if done else ["first.mkv", "pending.mkv"])]
 
+def test_mkv_utils_extract_final_report_only_lists_selected_actions(env):
+    result = _run_planning_contract(env, r'''
+for operations in '["2"]' '["1"]' '["1","2"]'; do
+  for status_name in success interrupted; do
+    summary="$(jq -cn --argjson actions "$operations" --arg status "$status_name" '
+      {directory:"workdir",elapsed_seconds:1,interrupted:($status=="interrupted"),selected:1,required:1,
+       counts:{done:(if $status=="success" then 1 else 0 end),failed:0,warning:0,partial:0,skipped:0,excluded:0,not_attempted:0,interrupted:(if $status=="interrupted" then 1 else 0 end)},
+       batches:[{id:1,state:"executed",category:"extract",action_ids:$actions,metadata_ids:"",sources:["Episode.mkv"],eligible:1,attempted:1,completed:0,elapsed_seconds:1,outcomes:{},stop:null}],
+       attachments:{processed:0,published:0,unique_names:0,superseded:0,uncertain_names:0,publications:[]},
+       files:[{source:"Episode.mkv",destination:"Episode.mkv",status:$status,skip_history:[],attempts:[{batch_id:1,result:{category:"extract",action_ids:$actions,status:$status,
+         stages:[{kind:"attachments",status:(if $status=="success" and ($actions|index("1"))!=null then "complete" else "not_attempted" end),attempted:false},
+                 {kind:"tracks",status:(if $status=="success" and ($actions|index("2"))!=null then "complete" else "not_attempted" end),attempted:false}],
+         artifacts:(if $status=="success" and ($actions|index("2"))!=null then [{kind:"track",id:"3",path:"Episode - Track [3].ass",publication_state:"confirmed"}] else [] end)}}]}]}')"
+    report="$(mkvutil_format_final_report "$summary")"
+    if [[ "$operations" == '["2"]' ]]; then
+      [[ "$report" != *'| Attachments'* && "$report" != *'Attachments processed:'* && "$report" != *'attachments: not_attempted'* ]] || fail 'tracks-only includes attachment reporting'
+    else
+      [[ "$report" == *'| Attachments'* && "$report" == *'Attachments processed: 0;'* ]] || fail 'selected zero-attachment summary missing'
+    fi
+    if [[ "$status_name" == interrupted ]]; then
+      if [[ "$operations" != '["2"]' ]]; then
+        [[ "$report" == *'attachments: not_attempted'* ]] || fail 'selected missed attachment stage hidden'
+      fi
+      if [[ "$operations" == '["1"]' ]]; then
+        [[ "$report" != *'tracks: not_attempted'* ]] || fail 'attachments-only includes unselected tracks'
+      else
+        [[ "$report" == *'tracks: not_attempted'* ]] || fail 'selected missed track stage hidden'
+      fi
+    elif [[ "$operations" != '["1"]' ]]; then
+      [[ "$report" == *'Track 3: Episode - Track [3].ass'* ]] || fail 'published track output missing'
+    fi
+    eq "$(jq '.files[0].attempts[0].result.stages|length' <<< "$summary")" 2 'raw stage records preserved'
+  done
+done
+# Older stored results without selection metadata retain stage diagnostics.
+legacy="$(jq 'del(.files[0].attempts[0].result.action_ids)|.batches[0].action_ids=["2"]' <<< "$summary")"
+legacy_report="$(mkvutil_format_final_report "$legacy")"
+[[ "$legacy_report" == *'attachments: not_attempted'* && "$legacy_report" == *'tracks: not_attempted'* ]] || fail 'legacy stage diagnostics hidden'
+print -r -- 'selected Extract report contracts passed'
+''', {})
+    assert result.stdout.rstrip().endswith('selected Extract report contracts passed')
+
+
 def test_mkv_utils_reporting_progress_and_extract_formatter_contract(env):
     result = _run_planning_contract(env, r'''
 eq "$(mkvutil_format_progress edit 1,2 9 1 1 2 9)" '' 'all Edit progress silent'
@@ -3966,6 +4009,7 @@ def test_mkv_utils_option6_extracts_all_attachments(env):
     assert (env["workdir"]/"Attachments"/embedded[0]["file_name"]).read_bytes()==b"one"
     assert (env["workdir"]/"Attachments"/"note.txt").read_bytes()==b"note"
     assert source.read_bytes()==b"payload" and "Attachments processed: 2; published: 2; final unique published names: 2" in result.stdout
+    assert 'tracks: not_attempted' not in result.stdout.split('Final report', 1)[1]
 
 
 def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(env):
@@ -4128,7 +4172,9 @@ def test_mkv_utils_option9_extract_track_extension_from_override(env):
     assert (env["workdir"]/"extract_codec - Track [1].opus").read_bytes()==b"opus bytes" and source.read_bytes()==b"payload"
     final = result.stdout.split('Final report', 1)[1]
     assert '=> Attachments' not in final
-    assert 'Track output ID 1: extract_codec - Track [1].opus (published)' in final
+    _ascii_box_contains(final, 'Outputs', source.name, 'Track 1: extract_codec - Track [1].opus')
+    assert '| Attachments' not in final and 'Attachments processed:' not in final
+    assert 'attachments: not_attempted' not in final
 
 
 def test_mkv_utils_option9_extract_track_extension_from_python_map(env):
@@ -4137,6 +4183,9 @@ def test_mkv_utils_option9_extract_track_extension_from_python_map(env):
     result=_run_mkv_utils(env,fzf_responses=[[str(source)]],input_data="3\n2\n0\n",extra_env=extra)
     assert result.returncode==0,result.stdout+result.stderr
     assert (env["workdir"]/"extract_unknown - Track [0].thd").read_bytes()==b"truehd bytes" and source.read_bytes()==b"payload"
+    final = result.stdout.split('Final report', 1)[1]
+    assert '| Attachments' not in final and 'Attachments processed:' not in final
+    assert 'attachments: not_attempted' not in final
 
 
 @pytest.mark.parametrize("workflow",("edit-flags","reorder-metadata","remove-reorder-metadata"))

@@ -1345,6 +1345,10 @@ mkvutil_format_final_report() {
       elif .=="warning" then "Warning" elif .=="partial" then "Partial"
       elif .=="failed" then "Failed" elif .=="skipped" then "Skipped"
       elif .=="excluded" then "Excluded" elif .=="interrupted" then "Interrupted" else . end;
+    def requested_extract_stage($result):
+      (if .kind=="attachments" then "1" elif .kind=="tracks" then "2" else null end) as $action |
+      $result.category!="extract" or $action==null or
+      ((($result.action_ids // ["1","2"])|index($action))!=null);
     def file_lines:
       (if .attempts[-1].result.simulated==true then "\(.source)"
        elif .status=="success" then
@@ -1362,7 +1366,10 @@ mkvutil_format_final_report() {
           "  Would \(if $result.category=="edit" then "update" elif $result.category=="mux" or .kind=="attachment" then "write" else "extract" end): \(.path)\(if .required==false then " (optional)" else "" end)"),
         (if .result.status!="success" then "  Batch \(.batch_id): \(.result.status|outcome_label)\(if (.result.reason // "")!="" then ": "+.result.reason else "" end)",
           "  \(.result.state_description)" else empty end),
-        (.result.stages[]? | select(.status!="success" and .status!="complete") | "  \(.kind): \(.status)\(if .native_code!=null then " (tool exit "+(.native_code|tostring)+")" else "" end)"),
+        (.result as $result | .result.stages[]? |
+          select(.status!="success" and .status!="complete") |
+          select(.status!="not_attempted" or requested_extract_stage($result)) |
+          "  \(.kind): \(.status)\(if .native_code!=null then " (tool exit "+(.native_code|tostring)+")" else "" end)"),
         (.result.artifacts[]? | select(.kind=="track" and (.publication_state=="confirmed" or .publication_state=="uncertain")) |
           "  Track \(.id): \(.path)\(if .publication_state=="uncertain" then " (publication uncertain)" else "" end)"),
         (.result.staged_paths[]? | "  Staged: \(.)"),
@@ -1377,7 +1384,8 @@ mkvutil_format_final_report() {
     (reduce .files[] as $file ({Simulated:[],Outputs:[],Completed:[],Errors:[],Warnings:[],"Partial results":[],Skipped:[],Excluded:[],Interrupted:[],"Not attempted":[],Attachments:[]};
       ($file|outcome_group) as $group | if $group==null then . else .[$group] += [$file|file_lines] end)) as $groups |
     ($groups | if $summary.dry_run then .Simulated += ["Files were not changed."] else . end) as $groups |
-    if ($summary.dry_run|not) and any($summary.batches[];.category=="extract") then
+    if ($summary.dry_run|not) and any($summary.batches[];
+      .category=="extract" and (((.action_ids // [])|index("1"))!=null)) then
       $groups | .Attachments += ["Attachments processed: \($summary.attachments.processed); published: \($summary.attachments.published); final unique published names: \($summary.attachments.unique_names); superseded: \($summary.attachments.superseded); uncertain names: \($summary.attachments.uncertain_names)"] |
       .Attachments += [$summary.attachments.publications[]|"  Attachment \(.outcome): \(.path); source \(.source); ID \(.id)"]
     else $groups end
