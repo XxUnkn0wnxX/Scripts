@@ -1386,8 +1386,8 @@ mkvutil_format_final_report() {
     ($groups | if $summary.dry_run then .Simulated += ["Files were not changed."] else . end) as $groups |
     if ($summary.dry_run|not) and any($summary.batches[];
       .category=="extract" and (((.action_ids // [])|index("1"))!=null)) then
-      $groups | .Attachments += [$summary.attachments.publications[] |
-        select(.publication_confirmed==true) | "\(.path); source \(.source)"]
+      $groups | .Attachments += ([$summary.attachments.publications[] |
+        select(.publication_confirmed==true) | .path] | unique)
     else $groups end
   ' <<< "$display")" || return 1
   for section in "${sections[@]}"; do

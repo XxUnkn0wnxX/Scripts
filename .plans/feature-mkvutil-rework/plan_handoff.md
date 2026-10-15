@@ -14,6 +14,25 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted unique attachment filenames
+
+- User asked the final Attachments block to deduplicate filenames, keep their
+  extensions, and drop source filenames. Only final formatter data changed;
+  extraction, overwrite behavior, raw history and errors are unchanged.
+- T02.03/T04.01/T04.02 accepted;9/9 tasks and4/4 checkpoints. Same Scripts
+  checkout on develop, baselinec23ca6d. Final source SHA-256 `725f9615026918ac3fb4f02e0a5e35753de79431e4ba81799a9dbf61a5f931ae`;
+  tests SHA-256 `e657bcc998f552fb186724f97c488c0f9897d7d1c16ad44d9148ebc244fca968`.
+- Three focused Extract formatter/entrypoint cases pass in11.59s. A real
+  loaded-alias/installed-fzf/v93 attachment PTY journey passes in3.33s using
+  disposable media, verifying the filename-only list and normal overwrite/
+  cleanup. No broad or other-category runtime campaign. Syntax/compilation,
+  exact scope, docs, mirrored requirements and unchanged session ledger pass.
+- Proof: .tmp/mkvutil-rework/attachment-report-dedup/receipt.json, tests.log,
+  ia/receipt.json and ia/run-02/attachments raw/readable logs. Parent owns all
+  work; no agents/jobs remain. Standing signed develop commit/push and master
+  fast-forward/push apply; actual outcome is publication.json in that proof
+  root. Return develop; inspect receipt/refs before repeating publication.
+
 ### Accepted Extract-only ID checks and attachment output
 
 - User requested attachment overwrite without cohort comparisons or audit noise,

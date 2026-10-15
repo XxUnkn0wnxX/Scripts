@@ -3503,10 +3503,14 @@ confirmed="$(jq '.batches[0].action_ids=["1"] | .files[0].status="success" |
   .files[0].attempts[0].result.status="success" |
   .attachments.publications=[
     {id:"7",path:"Font.ttf",source:"First source.mkv",publication_confirmed:true,outcome:"winner"},
+    {id:"8",path:"Font.ttf",source:"Second source.mkv",publication_confirmed:true,outcome:"superseded"},
+    {id:"10",path:"Font.otf",source:"Second source.mkv",publication_confirmed:true,outcome:"winner"},
     {id:"9",path:"Attachments/Other.ttf",source:"Later source.mkv",publication_confirmed:false,outcome:"superseded"}]' <<< "$summary")"
 report="$(mkvutil_format_final_report "$confirmed")"
-[[ "$report" == *'| Attachments'* && "$report" == *'| Font.ttf; source First source.mkv'* ]] || fail 'confirmed attachment row missing'
+[[ "$report" == *'| Attachments'* && "$report" == *'| Font.ttf'* ]] || fail 'confirmed attachment row missing'
 [[ "$report" != *'Other.ttf'* && "$report" != *'winner'* && "$report" != *'superseded'* && "$report" != *'Attachments processed:'* ]] || fail 'internal attachment audit details leaked'
+[[ "$report" != *'; source '* ]] || fail 'attachment source leaked'
+print -r -- "$report"
 # Older stored results without selection metadata retain stage diagnostics.
 legacy="$(jq 'del(.files[0].attempts[0].result.action_ids)|.batches[0].action_ids=["2"]' <<< "$summary")"
 legacy_report="$(mkvutil_format_final_report "$legacy")"
@@ -3514,6 +3518,8 @@ legacy_report="$(mkvutil_format_final_report "$legacy")"
 print -r -- 'selected Extract report contracts passed'
 ''', {})
     assert result.stdout.rstrip().endswith('selected Extract report contracts passed')
+    _, _, rows = _ascii_box_contains(result.stdout, "Attachments", "Font.otf", "Font.ttf")
+    assert rows[1:] == ["Font.otf", "Font.ttf"]
 
 
 def test_mkv_utils_reporting_progress_and_extract_formatter_contract(env):
@@ -3743,15 +3749,15 @@ def test_mkv_utils_category_extract_run_grouped_entrypoint(env: dict[str, Path])
     final = result.stdout.split('Final report', 1)[1]
     assert '=> Attachments' not in final
     _, _, attachment_rows = _ascii_box_contains(
-        final, "Font.ttf; source First source.mkv", "Empty.txt; source First source.mkv",
+        final, "Attachments", "Font.ttf", "Empty.txt",
     )
     assert attachment_rows[1:] == [
-        "Font.ttf; source First source.mkv",
-        "Font.ttf; source First source.mkv",
-        "Empty.txt; source First source.mkv",
+        "Empty.txt",
+        "Font.ttf",
     ]
     assert "Attachments processed:" not in final and "superseded" not in final
     assert "winner" not in final and "attachment ID" not in final
+    assert "; source " not in final
     _ascii_box_contains(final, "Outputs", "First source.mkv",
                         "Track 0: First source - Track [0].idx",
                         "Track 0: First source - Track [0].sub")
@@ -4621,15 +4627,14 @@ def test_mkv_utils_option6_extracts_heterogeneous_attachment_ids_and_overwrites(
     assert "Track configuration" not in result.stdout and "Track IDs:" not in result.stderr and "Extract IDs:" not in result.stderr
     final=result.stdout.split("Final report",1)[1]
     _,_,attachment_rows=_ascii_box_contains(final,
-        "Font.ttf; source First attachments.mkv", "first-only.txt; source First attachments.mkv",
-        "Font.ttf; source Second attachments.mka", "second-only.txt; source Second attachments.mka")
+        "Attachments", "Font.ttf", "first-only.txt", "second-only.txt")
     assert attachment_rows[1:]==[
-        "Font.ttf; source First attachments.mkv",
-        "first-only.txt; source First attachments.mkv",
-        "Font.ttf; source Second attachments.mka",
-        "second-only.txt; source Second attachments.mka",
+        "Font.ttf",
+        "first-only.txt",
+        "second-only.txt",
     ]
     assert "Attachments processed:" not in final and "superseded" not in final and "winner" not in final
+    assert "; source " not in final
     assert 'tracks: not_attempted' not in final
 
 

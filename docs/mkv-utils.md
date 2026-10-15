@@ -178,11 +178,11 @@ Track output: Episode 01 - Track [3].ass
 
 The attachment folder is shared. Same-name attachments replace earlier regular files; tracks also replace existing regular outputs on repeat passes. Queue collisions and input aliases remain protected. In this combined job, between-file progress covers track extraction.
 
-The final **Attachments** block lists the files extracted, without attachment IDs or overwrite-history labels:
+The final **Attachments** block lists each extracted filename once, including its extension. Source filenames, attachment IDs and overwrite-history labels are omitted:
 
 ```text
-Font.ttf; source Episode 01.mkv
-Font.ttf; source Episode 02.mkv
+Font.ttf
+OtherFont.otf
 ```
 
 </details>
