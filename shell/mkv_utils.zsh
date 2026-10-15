@@ -706,7 +706,7 @@ _mkvutil_metadata_collect() {
   local choices="" choice="" selection="" targets_csv="" target="" value=""
   local mode="${2:-independent}" preset="${3-}" shared_targets="" projection="${4-}" context="${5-}"
   local domain="${(j:,:)MKVUTIL_RETAINED_IDS}" display_id="" context_id="" context_row=""
-  local -a chosen_targets=() output_ids=()
+  local -a chosen_targets=() output_ids=() batch_labels=()
   local -A output_sources=() source_outputs=() context_rows=()
   if [[ -n "$projection" ]]; then
     [[ "$projection" == "${(j:,:)MKVUTIL_RETAINED_IDS}" ]] || return 1
@@ -735,13 +735,26 @@ _mkvutil_metadata_collect() {
       shared_targets="$targets_csv" ;;
     *) return 1 ;;
   esac
+  for choice in "${(@s:,:)choices}"; do
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]] || continue
+    selection="${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
+    selection="${selection#Set }"; selection="${selection% for tracks}"
+    batch_labels+=("${selection#flag-}")
+  done
   _mkvutil_indicator_stop
   print -u2 -r -- 'e) Back'
+  if [[ "$mode" == preset ]] && (( ${#batch_labels} > 1 )); then
+    print -u2 -r -- "Metadata batch: ${(j:, :)batch_labels}"
+  fi
   for choice in "${(@s:,:)choices}"; do
     chosen_targets=(info)
     if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]}" == track ]]; then
       if [[ "$mode" == independent || -z "$shared_targets" ]]; then
-        print -u2 -r -- "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
+        if [[ "$mode" == shared ]] && (( ${#batch_labels} > 1 )); then
+          print -u2 -r -- "Set track IDs for batch operations: ${(j:, :)batch_labels}"
+        else
+          print -u2 -r -- "${MKVUTIL_METADATA_REGISTRY[${choice}:label]}"
+        fi
         _mkvutil_read_track_ids 'Track IDs: ' "$domain" || return $?
         targets_csv="$REPLY"
         if [[ -n "$projection" ]]; then
@@ -1999,6 +2012,9 @@ mkvutil_configure_category() {
       if (( result == 4 )); then mkvutil_batch_metadata_requested '' || return 1; fi
       (( result == 0 )) || return "$result" ;;
     mux)
+      if [[ ",$operations," == *,1,* && ",$operations," == *,2,* ]]; then
+        print -u2 -r -- 'Remove tracks, then reorder retained tracks.'
+      fi
       if [[ ",$operations," == *,1,* ]]; then
         while true; do
           _mkvutil_read_track_ids 'Remove IDs: ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
@@ -2106,6 +2122,9 @@ mkvutil_configure_category() {
       ;;
     extract)
       if [[ ",$operations," == *,2,* ]]; then
+        if [[ ",$operations," == *,1,* ]]; then
+          print -u2 -r -- 'Attachments are automatic; select tracks below.'
+        fi
         _mkvutil_read_track_ids 'Extract IDs: ' "${(j:,:)MKVUTIL_INPUT_IDS}" || return $?
         extract_ids="$REPLY"
       fi

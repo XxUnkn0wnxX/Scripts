@@ -14,6 +14,30 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted batch-selection wording follow-up
+
+- Display-only user request: shared Edit IDs now say `Set track IDs for batch
+  operations: forced, default` (or the actual selected track actions). Metadata
+  display names derive from the shared registry; title is not an ID-scoped action.
+  Single and independent metadata action labels retain existing wording.
+- Preset Mux metadata adds `Metadata batch: ...`; combined Mux says removal then
+  reorder, and combined Extract explains attachments are automatic before track
+  IDs. No changes to selections, values/defaults, mappings, validation or runtime.
+  Updated the collapsed Edit example in the polished guide.
+- Four focused existing checks pass in1.99s, with exact shared/single/preset
+  wording and existing target/value/Back assertions. A pure-function label probe
+  confirms forced/default and unchanged single forced text. Both zsh syntax,
+  Python AST and Markdown review pass. Value-loop bytes and all guards, builders,
+  job/preflight and engine functions are unchanged. No broad IA/native campaign.
+- Source SHA-256 `60c3f3b43190a62517729b37c05e5e017623d1d80f8c519b3a0498adba13e5dd`;
+  tests SHA-256 `217a22ef126cbf311d2581bdb355ad564d9e8158ded791c83db797b60d8e1168`.
+  Proof: `.tmp/mkvutil-rework/batch-wording/receipt.json`, `parent-review.json`
+  and `label-probe.log`. All9tasks/4checkpoints remain accepted; old proof persists.
+- Parent owns all work; no workers or runtime jobs remain. Baseline0bc8a8d on
+  develop/master; same Scripts checkout on develop. Standing approval covers
+  signed commit/push and master sync/push, returning to develop. Actual outcome
+  belongs to `batch-wording/publication.json`; inspect it/refs before repeating Git.
+
 ### Accepted utility-guide presentation rework
 
 - User-requested rewrite changes only docs/mkv-utils.md and these durable records.

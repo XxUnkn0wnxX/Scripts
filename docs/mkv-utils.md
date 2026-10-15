@@ -93,6 +93,7 @@ Edit modifies files in place and groups the chosen metadata changes into one `mk
 ```text
 Category: 1
 Actions: 1,2
+Set track IDs for batch operations: forced, default
 Track IDs: 4,3
 Track ID 4: subtitles (S_TEXT/ASS) [Signs & Songs] [eng]
 Forced (0/1) [0]: 0

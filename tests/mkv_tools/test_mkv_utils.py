@@ -4976,6 +4976,8 @@ print -r -- 'shared target contracts passed'
     assert result.stderr.count('Track IDs:') == 4
     assert result.stderr.count('Original track ID 12 — Language:') == 2
     assert result.stderr.count('Original track ID 11 — Language:') == 2
+    assert result.stderr.count('Set track IDs for batch operations: language, name\nTrack IDs:') == 2
+    assert 'Set name for tracks\nTrack IDs:' in result.stderr
     assert 'Track name:' in result.stderr and 'e) Back' in result.stderr
     assert 'use \\e/\\E' not in result.stderr
 
@@ -5030,6 +5032,7 @@ print -r -- 'preset contracts passed'
     for action in ('Forced', 'Default', 'Language', 'Track name'):
         prompts = [result.stderr.index(f'Original track ID {tid} — {action}') for tid in (0, 4, 3)]
         assert prompts == sorted(prompts)
+    assert 'Metadata batch: forced, default, language, name' in result.stderr
     assert 'Set language for tracks\nTrack IDs: ' in result.stderr
     assert 'Set name for tracks\nTrack IDs: ' in result.stderr
     assert result.stderr.count('Track IDs:') == 5  # invalid removed target retries, plus independent choices
