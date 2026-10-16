@@ -436,5 +436,11 @@ observed global grid utilities. There are no per-endpoint matches, fixed image
 dimensions, global avatar overrides or geometry polling. Version remains
 1.0.4; the existing collapsible changelog is the only ongoing release history.
 
-Implementation and browser acceptance are complete. C03 publication verification
-remains pending until the tested source is pushed to develop and retrieved back.
+Implementation, browser acceptance and C03 publication verification are complete.
+Source commit `60043404062967a31ca4f6b5981d05f390ad02bd` is published to
+develop only. The literal raw develop URL returned HTTP 200, the exact tested
+digest above, version 1.0.4 and only the two requested host-wide matches.
+`published-native-rails-source.json` is the ignored publication receipt. Remote
+master remains at `781e876a5a3eba40e15c4a67ace50a80e114b9fd`. Syntax,
+whitespace, metadata, changed-file privacy and product-guide disclosure checks
+pass. The final record commit follows this verified source publication.

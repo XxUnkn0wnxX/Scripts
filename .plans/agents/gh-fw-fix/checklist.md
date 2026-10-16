@@ -71,7 +71,7 @@ runtime equivalence, docs/privacy and final evidence review pass.
 - [x] C02 — Explicit size, live settings, responsive and affected-page checks,
   including fresh main-GitHub image/avatar growth comparisons and repair of
   demonstrated unintended avatar growth.
-- [ ] C03 — Changelog, acceptance records and develop-only publication verified.
+- [x] C03 — Changelog, acceptance records and develop-only publication verified.
 
 C01/C02 final evidence: `native-rails-acceptance.json` under the existing ignored
 evidence root reconciles final-source reports `native-rails-focused-final/`,
@@ -87,3 +87,12 @@ are cleaned up. Attachments and other content images keep native automatic
 sizing by explicit user instruction. OpenUserJS official description/disclosure
 guidance was checked and reflected in the product guide's domain-wide scope,
 behavior, permissions, data and update-source descriptions.
+
+C03 evidence: source commit `60043404062967a31ca4f6b5981d05f390ad02bd`
+published to develop. `published-native-rails-source.json` records HTTP 200
+from the literal raw develop URL, exact tested digest, version 1.0.4 and only
+the two host-wide matches. Remote master remains at
+`781e876a5a3eba40e15c4a67ace50a80e114b9fd`. Syntax, whitespace, metadata,
+product-guide disclosure and changed-file privacy checks pass. This receipt
+is committed after verified source publication; the final documentation commit
+is identified by Git history.

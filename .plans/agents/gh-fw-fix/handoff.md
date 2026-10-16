@@ -11,10 +11,9 @@
   and all disposable browser campaigns have finished and cleaned up.
 - Initial repair and site-wide follow-up implementation/browser acceptance are
   complete. Version remains `1.0.4` under the user's explicit follow-up override.
-  C01/C02 implementation and browser acceptance are complete; C03 publication
-  remains pending.
-  Last published source SHA-256:
-  `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
+  C01–C03 implementation, acceptance and publication are complete.
+  Current validated and published source SHA-256:
+  `208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`.
 - Publication is authorized to `develop` only; the user explicitly waived a
   further version increment for the Gist follow-up.
   Do not update `master` or install into a live userscript manager.
@@ -24,8 +23,12 @@
   version `1.0.4`, and initial repair digest
   `34152b61b2b5c27c0265d58828bd15b0ec73887bb9ded31552617b5fd2bb4659`.
   Follow-up commit `a2c0733c9b02e8d9ced1dd1cb71b5b1e267dbab2` is published to
-  `develop`. The raw develop URL matches the current validated digest, version
-  1.0.4 and exactly the two requested host patterns. Master remains at the base.
+  `develop`. Its then-current raw digest was
+  `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
+- Native-column repair commit `60043404062967a31ca4f6b5981d05f390ad02bd`
+  is published to develop. The raw develop URL returns the current validated
+  digest, version 1.0.4 and exactly the two requested host patterns. Master
+  remains at the original base. Final receipt: `published-native-rails-source.json`.
 
 ## Accepted behavior
 
@@ -119,7 +122,8 @@ individual match rules. Leave `docs.github.com` excluded. No live installation.
   hiding/clipping, nested owners or added horizontal overflow.
 - Gist coverage includes home, Discover, Forked, Starred, owner profile, the
   owner's Starred listing, selected gist, revisions, and forks. Capped owners
-  grow to 1945.6px at 2048px. No Gist-specific selector was added.
+  grow to 1945.6px at 2048px. No Gist-specific selector was added at this
+  host-enablement stage; the later native-column adapter is recorded below.
 - `sitewide-responsive/report.json`: profile/revisions at 1280/2048/2560px and
   live 95→80→95 settings pass. Commits graph data loaded on the bounded retry;
   the rendered graph also passes responsive checks.
@@ -143,9 +147,9 @@ individual match rules. Leave `docs.github.com` excluded. No live installation.
 - No implementation or acceptance work remains. This completion receipt follows
   verified source publication; the final documentation commit is in Git history.
 
-## Previous release completion
+## Native-column correction completion
 
-Current follow-up: C01–C03 in audit/checklist are active after user screenshots
+C01–C03 in audit/checklist are complete after user screenshots
 showed Gist avatar/profile column growth. The prior clipping oracle missed
 proportional sizing. Fresh `gist-avatar-native-probe/report.json` proves native
 profile rail 312px/avatar 280px; the widened flex column grows with its 25%
@@ -153,15 +157,15 @@ width. Preserve the measured native rail and let only the adjacent main lane
 absorb added width. Keep 1.0.4, two host-wide matches, and develop-only authority.
 The source adapter is implemented and the native owner-profile geometry,
 responsive/live changes and column replacement/removal probes pass. Broader
-asset and clipping acceptance is still running; this correction is not yet
-published. Gist-only probe source SHA-256 before the Explore delta:
+asset and clipping acceptance is complete; this correction is published.
+Gist-only probe source SHA-256 before the Explore delta:
 `e0654933e4ca88ca444eece80aefae2c138eebee515dd781a6e318c33784ba8c`.
 The user also requested a fresh main-GitHub audit for unintended image/avatar
 growth across the affected page families. This is part of C02; prior visibility
 and clipping reports alone do not establish that image sizes were preserved.
 The first size campaign captured all 63 cases (54 GitHub, nine Gist), measuring
-657 images and 3,482 SVG icons. Five Explore avatars still grow because its two
-25% side columns also widen. Fresh parent DOM proves the observed direct-owner
+657 images and 3,482 SVG icons. Five Explore avatars initially grew because its
+two 25% side columns also widened. Fresh parent DOM proves the direct-owner
 3/6/3 global-grid layout. Astra accepted preserving both measured native rails
 and giving the center the remainder, subject to a final eligible-row census,
 focused responsive/replacement acceptance and shared-role cleanup. The user
@@ -178,8 +182,11 @@ zero new avatar/icon size changes, and exactly one three-column match on
 Explore. Three early hydration-sensitive cases passed fresh native-quiet
 rechecks; no early detached references are counted as preserved. All profiles
 are removed and browser/driver processes stopped. Source and product docs are
-ready for the authorized develop-only commit/push, raw-source retrieval and
-remote-master verification. Version stays 1.0.4.
+published on develop; raw-source retrieval matches the tested bytes and remote
+master remains at the original base. Version stays 1.0.4. The product guide
+also records the exact host-wide matches and runtime/data/update behavior after
+checking official OpenUserJS description/disclosure guidance. No OpenUserJS
+listing was published or changed.
 
 A01–A03 are complete. No implementation or acceptance work remains. This final
 record update follows the verified release publication and is committed on
