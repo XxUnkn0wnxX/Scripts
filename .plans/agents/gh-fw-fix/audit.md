@@ -628,3 +628,23 @@ five final-source regressions verify the previous ownership and toggle choices.
 Together the follow-up records 68 earlier and 28 final responsive/live
 comparisons. Earlier 63-case site-wide evidence remains a distinct prior-source
 campaign, rather than being represented as a rerun of the new source.
+
+## Final follow-up publication
+
+D01–D03 and E01/E02 are complete. Source/docs commit
+`f7b1639f3ef6839f9892316256387138ca10af25` is published to develop only.
+Both literal raw develop URLs return HTTP 200 and exact validated bytes:
+source digest `34cfdc4b74b7706fade9e8d7bc3cf2e91f3f95a41485cfb7055ca771b3e8300f`,
+guide digest `44e5c3135a9bd273b774ddc1b2f047c2c8e9e3e715452686e6147b1b65399770`.
+Version remains 1.0.4 by user direction; the two matches remain
+`https://github.com/*` and `https://gist.github.com/*`. The sole ongoing
+changelog is the guide's collapsible section. Remote master remains at
+`781e876a5a3eba40e15c4a67ace50a80e114b9fd`.
+
+Independent final prepublication review passes source/docs consistency,
+source-digest receipts, metadata, current endpoint classification, four changed
+Markdown files' relative links, and privacy. No credential values, private
+notification identifiers, personal paths or private hosts enter these records.
+The ignored `published-final-followup.json` contains the publication receipt.
+Live userscript-manager installation and an OpenUserJS listing update were not
+performed. This documentation receipt follows the verified source publication.

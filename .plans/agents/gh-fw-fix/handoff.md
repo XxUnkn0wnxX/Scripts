@@ -4,8 +4,8 @@
 
 - Task folder: `.plans/agents/gh-fw-fix/`. New sessions may identify this work by
   the folder name `gh-fw-fix` and read this handoff, `audit.md`, and `checklist.md`.
-- Active follow-up: D01/D02 and E01/E02 implementation and acceptance are
-  complete. D03 publication/receipt is pending. A–C are completed historical
+- Latest follow-up: D01–D03 and E01/E02 implementation, acceptance and
+  publication are complete. A–C are completed historical
   checkpoints. The requested MCP, Feed, Copilot, Search landing, Notifications
   and Saved-filter outcomes are reconciled in the current audit tables.
 - The user added E01/E02: recheck full-width override and optional floating
@@ -32,7 +32,7 @@
   `fc83bdd91065eef33efb68c79b1224d3a010dfe38e77465a7a10073192d04e9e`.
   `followup-assets-final/` passes responsive assets and insertion behavior.
   Its native Notifications case identified another E01 full-width miss.
-  No new publication yet.
+  The completed Notifications follow-up is published as recorded below.
 - Notifications follow-up: Astra's bounded review passed with notes. The
   final guarded root list now includes `main > .js-notifications-container`,
   using the existing eligibility/fill checks and native proportional columns.
@@ -44,6 +44,14 @@
   `final-followup-acceptance.json` reconciles current and unchanged-group
   evidence without relabelling earlier source campaigns. Final source digest:
   `34cfdc4b74b7706fade9e8d7bc3cf2e91f3f95a41485cfb7055ca771b3e8300f`.
+- Final source/docs commit `f7b1639f3ef6839f9892316256387138ca10af25` is
+  published to develop. Both raw develop source/guide URLs returned HTTP 200
+  and exact validated bytes. Guide digest:
+  `44e5c3135a9bd273b774ddc1b2f047c2c8e9e3e715452686e6147b1b65399770`.
+  Version remains 1.0.4 and the only matches are the two named hosts. Master
+  remains at the original base. Receipt: `published-final-followup.json`.
+  No required task work remains; the final documentation receipt is identified
+  by Git history. Live manager installation/OpenUserJS publication were not done.
 - Branch/base: `develop`, `781e876a5a3eba40e15c4a67ace50a80e114b9fd`.
 - Product contract: `.plans/project-plans/completed/github-fluid-width-plan.md`.
   The current user-requested scope and endpoint findings are in `audit.md`.

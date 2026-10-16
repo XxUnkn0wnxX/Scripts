@@ -99,7 +99,7 @@ is identified by Git history.
 
 - [x] D01 — Fresh MCP, Copilot, Feed and Search-landing DOM/native findings.
 - [x] D02 — Evidence-backed width treatment and affected-layout acceptance.
-- [ ] D03 — Endpoint report, behavior/changelog docs and develop publication.
+- [x] D03 — Endpoint report, behavior/changelog docs and develop publication.
 - [x] E01 — Full-width override restores/reapplies applicable workspaces and
   has the correct scope on newly checked pages, including Notifications and
   its user-requested Saved filter.
@@ -155,3 +155,14 @@ navigation; the harness reinjects the actual source to simulate manager startup
 and verifies one style/owner. It is not credited as retained-instance SPA proof.
 Both native proportional inbox columns and padding are preserved. Final browser
 and driver shutdown and disposable profile removal are verified.
+
+D03 publication: source/docs commit
+`f7b1639f3ef6839f9892316256387138ca10af25` is published to develop.
+`published-final-followup.json` records HTTP 200 from both literal raw develop
+URLs, exact tested source digest above, exact guide digest
+`44e5c3135a9bd273b774ddc1b2f047c2c8e9e3e715452686e6147b1b65399770`,
+version 1.0.4, and only the two host-wide matches. Remote master remains at
+`781e876a5a3eba40e15c4a67ace50a80e114b9fd`. Syntax, whitespace, current
+endpoint tables, four changed Markdown files' relative links and privacy,
+and independent final source/docs review pass. This receipt follows verified
+publication; Git history identifies its final documentation commit.
