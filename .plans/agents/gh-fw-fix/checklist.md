@@ -66,3 +66,24 @@ commit `a2c0733c9b02e8d9ced1dd1cb71b5b1e267dbab2` is published to `develop`;
 the raw develop URL returns exact tested bytes, version 1.0.4, and two host
 matches. Master remains at its original base. Syntax, whitespace, metadata and
 runtime equivalence, docs/privacy and final evidence review pass.
+
+- [x] C01 — Preserve the measured native Gist profile column and avatar size.
+- [x] C02 — Explicit size, live settings, responsive and affected-page checks,
+  including fresh main-GitHub image/avatar growth comparisons and repair of
+  demonstrated unintended avatar growth.
+- [ ] C03 — Changelog, acceptance records and develop-only publication verified.
+
+C01/C02 final evidence: `native-rails-acceptance.json` under the existing ignored
+evidence root reconciles final-source reports `native-rails-focused-final/`,
+`native-rails-sitewide-final/`, `native-rails-hydration-recheck/` and
+`native-rails-clipping-final/`. Source SHA-256:
+`208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`.
+63 cases (54 GitHub, nine Gist), 658 images, 3,482 SVG icons, no avatar/icon
+size changes. The new three-column signature matches only Explore. Six
+affected-view comparisons find no new hiding/clipping or document overflow;
+64 responsive/live comparisons and three insertion tests with deliberately
+stripped markers pass. All disposable profiles and browser/driver processes
+are cleaned up. Attachments and other content images keep native automatic
+sizing by explicit user instruction. OpenUserJS official description/disclosure
+guidance was checked and reflected in the product guide's domain-wide scope,
+behavior, permissions, data and update-source descriptions.

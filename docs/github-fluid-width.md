@@ -28,6 +28,7 @@ Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/
 - keeps the captured native workspace floor while it fits inside the available parent, and otherwise fills that parent without overflow
 - preserves native in-page rails, source trees, Symbols panels, diff/file rails, workflow navigation, and log scrolling; repository-rendered document previews fill their owning panel while retaining native padding and renderer-local behavior; the legacy Discussion thread keeps its captured `320px` metadata rail while its main column grows, and the dashboard keeps its captured `312px` right rail once its wide-shell rule activates
 - keeps Settings feature-card primary CTAs at the widened row's trailing edge without changing the button's intrinsic size
+- preserves the measured native Gist profile column and Explore side columns while their adjacent feeds receive additional width
 - leaves GitHub's global navigation drawer as an overlay; opening or closing it does not switch width modes or move the page
 - with `overrideFullWidthPages: true` (the default), applies the configured target to naturally fullwidth file, folder, source-code, text, rendered-document, pull-request diff, completed Actions, and search workspaces using the same sidebar-aware parent math while preserving local scrolling
 - with `overrideFullWidthPages: false`, leaves those naturally fullwidth workspaces at GitHub's native width while capped-owner expansion and nested rendered-document filling remain active
@@ -46,10 +47,23 @@ their intrinsic sizing.
 
 ## Where It Works
 
-The script matches all paths on `github.com` and `gist.github.com`. Individual
-endpoints are validation cases; layout detection uses the rendered page DOM.
+The script targets these two HTTPS hosts with domain-wide path matches:
+
+| Userscript `@match` pattern | Scope |
+| --- | --- |
+| `https://github.com/*` | All paths on the main GitHub website. |
+| `https://gist.github.com/*` | All paths on GitHub Gist. |
+
+The `*` covers the URL path on each named host; it does not include other
+subdomains. The script runs in top-level pages, not embedded frames. Layout
+detection uses the rendered page DOM rather than a list of endpoint paths.
 Gist's capped feeds, profiles, gist files and revisions use the same owner
-rules. Other hosts, including `docs.github.com`, keep their native layout.
+rules. On Gist profile listings, the profile column retains its measured native
+desktop width, including its avatar, status control and profile button; the
+adjacent gist list receives the additional space. Explore likewise retains its
+native side-column widths while the center feed expands. Content images and
+attachments retain GitHub's automatic sizing. Other hosts, including
+`docs.github.com`, keep their native layout.
 
 The owner model covers repository overviews and branch roots, PageLayout and
 legacy capped sections, pull-request and issue workspaces, Discussions,
@@ -231,7 +245,7 @@ adding duplicate history hooks or styles.
 
 1. Install a userscript manager such as Tampermonkey or Violentmonkey.
 2. Open the [userscript](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) and choose the manager's install option.
-3. Visit a GitHub page with a bounded workspace at a viewport width of at least `1472px`.
+3. Open GitHub or Gist in a desktop viewport at least `1472px` wide.
 
 ## Compatibility and Safety
 
@@ -266,6 +280,12 @@ not send page content or preferences anywhere, load remote code, or make API
 requests. Disabling it and reloading returns the page to GitHub's layout. Saved
 preferences remain in the manager until reset or removed there.
 
+The script includes no advertising, analytics, referral monetization, mining or
+paid features, and requires no separate account. GitHub's own sign-in and access
+requirements still apply to its pages. Installation and userscript-manager
+update checks/downloads use the GitHub raw URLs declared in the metadata;
+the running layout script itself makes no network requests.
+
 ## Example
 
 Open a repository source file at a desktop viewport wider than `1472px`.
@@ -284,6 +304,9 @@ Release history for this userscript is maintained only in this section.
 ### 1.0.4 — 2026-10-16
 
 - Enable Gist across `gist.github.com/*`, reusing existing workspace rules for discovery feeds, profiles, gist files and revision views.
+- Preserve the measured native Gist profile-column width so avatars and profile buttons keep their original size while the gist list expands; remeasure when either column is replaced.
+- Preserve Explore's measured native side-column widths so feed-card avatars retain their original size while the center feed expands, leaving content-image and attachment sizing under GitHub's control.
+- Clarify the two domain-wide targets, top-level-page scope, permissions, data use and update source.
 - Restore fluid PageLayout header lanes after GitHub renamed their wrapper classes, keeping Actions workflow headings and controls aligned with the content below.
 - Recognize GitHub's renamed issue-content wrappers so issue headings, metadata, and conversation sections expand again while preserving the native sidebar.
 - Recognize the renamed Search layout inside the Search app, applying the width setting to the results column while preserving both sidebars.

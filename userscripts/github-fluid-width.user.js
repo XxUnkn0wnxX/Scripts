@@ -29,7 +29,10 @@
   const OWNER_ATTR = 'data-github-fluid-width-owner';
   const RELEASE_ATTR = 'data-github-fluid-width-release';
   const FILL_ATTR = 'data-github-fluid-width-fill';
+  const NATIVE_RAIL_ATTR = 'data-github-fluid-width-native-rail';
+  const RAIL_MAIN_ATTR = 'data-github-fluid-width-rail-main';
   const FLOOR_VAR = '--github-fluid-width-native-floor';
+  const RAIL_WIDTH_VAR = '--github-fluid-width-native-rail-width';
   const INSTANCE_FLAG = '__githubFluidWidthInstalled';
   const SYNC_EVENT = 'github-fluid-width:sync';
   const MIN_VIEWPORT_PX = 1472;
@@ -75,7 +78,16 @@
     '[data-component="SplitPageLayout.Content"] [data-width="full"] :has(> [data-testid="issue-header"])',
     '[data-component="SplitPageLayout.Content"] [data-width="full"] :has(> [data-testid="issue-header"]) ~ *',
   ].join(', ');
-  const LAYOUT_LANDMARK_SELECTOR = '[data-testid="issue-header"], [data-testid="search-sub-header"], #dashboard, .pull-discussion-timeline';
+  const GIST_PROFILE_RAIL_SELECTOR = '#gist-pjax-container .h-card[itemtype$="schema.org/Person"]';
+  const THREE_COLUMN_RAIL_INSERTION_SELECTOR = `[${OWNER_ATTR}] > .gutter-md > :is(.col-lg-3, .col-lg-6)`;
+  const LAYOUT_LANDMARK_SELECTOR = [
+    '[data-testid="issue-header"]',
+    '[data-testid="search-sub-header"]',
+    '#dashboard',
+    '.pull-discussion-timeline',
+    GIST_PROFILE_RAIL_SELECTOR,
+    THREE_COLUMN_RAIL_INSERTION_SELECTOR,
+  ].join(', ');
   const CANDIDATE_SELECTOR = [
     '.container-xl',
     '.container-lg',
@@ -282,6 +294,20 @@ ${active} [data-testid="issue-metadata-fixed"] {
     box-sizing: border-box !important;
   }
 
+  /* Preserve measured native rails while the marked content columns absorb
+     the additional width from their fluid owner. */
+  ${active} [${NATIVE_RAIL_ATTR}] {
+    flex: 0 0 var(${RAIL_WIDTH_VAR}) !important;
+    width: var(${RAIL_WIDTH_VAR}) !important;
+    box-sizing: border-box !important;
+  }
+
+  ${active} [${RAIL_MAIN_ATTR}] {
+    flex: 1 1 0 !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+
   /* Keep HTML image-label bodies intrinsically sized during chart reflow. */
   ${active} [${OWNER_ATTR}] svg.highcharts-root .highcharts-xaxis-labels foreignObject > body:has(img) {
     width: max-content !important;
@@ -345,11 +371,16 @@ ${active} [data-testid="issue-metadata-fixed"] {
   }
 
   function clearOwnedMarkers() {
-    document.querySelectorAll(`[${OWNER_ATTR}], [${RELEASE_ATTR}], [${FILL_ATTR}]`).forEach((element) => {
+    document.querySelectorAll(
+      `[${OWNER_ATTR}], [${RELEASE_ATTR}], [${FILL_ATTR}], [${NATIVE_RAIL_ATTR}], [${RAIL_MAIN_ATTR}]`
+    ).forEach((element) => {
       element.removeAttribute(OWNER_ATTR);
       element.removeAttribute(RELEASE_ATTR);
       element.removeAttribute(FILL_ATTR);
+      element.removeAttribute(NATIVE_RAIL_ATTR);
+      element.removeAttribute(RAIL_MAIN_ATTR);
       element.style.removeProperty(FLOOR_VAR);
+      element.style.removeProperty(RAIL_WIDTH_VAR);
     });
   }
 
@@ -365,6 +396,8 @@ ${active} [data-testid="issue-metadata-fixed"] {
     applyGenericCandidates(candidates);
     applyFullWidthWorkspaceAdapters();
     applyNestedFillAdapters();
+    applyGistProfileAdapter();
+    applyThreeColumnRailAdapter();
   }
 
   function applyDashboardAdapter() {
@@ -519,6 +552,67 @@ ${active} [data-testid="issue-metadata-fixed"] {
       owner.querySelectorAll(NESTED_LIMITER_SELECTOR).forEach((element) => {
         if (element === owner || element.hasAttribute(OWNER_ATTR) || hasBlockedAncestor(element)) return;
         markFillIfCapped(element);
+      });
+    });
+  }
+
+  function applyGistProfileAdapter() {
+    if (!desktopQuery.matches) return;
+
+    document.querySelectorAll(GIST_PROFILE_RAIL_SELECTOR).forEach((rail) => {
+      const row = rail.parentElement;
+      const owner = rail.closest(`[${OWNER_ATTR}]`);
+      if (!row || !owner || row.parentElement !== owner || hasRole(row)) return;
+
+      const rowStyle = window.getComputedStyle(row);
+      if (rowStyle.display !== 'flex' || rowStyle.flexDirection !== 'row') return;
+
+      const visibleChildren = Array.from(row.children).filter(isVisibleLayoutElement);
+      if (visibleChildren.length !== 2 || !visibleChildren.includes(rail)) return;
+      const main = visibleChildren.find((child) => child !== rail);
+      if (!main || hasRole(rail) || hasRole(main) ||
+          rail.querySelector(`[${OWNER_ATTR}]`) || main.querySelector(`[${OWNER_ATTR}]`)) return;
+
+      if (!isVisibleLayoutElement(rail) || !isVisibleLayoutElement(main)) return;
+      const railWidth = rail.getBoundingClientRect().width;
+      const mainWidth = main.getBoundingClientRect().width;
+      if (!Number.isFinite(railWidth) || railWidth <= 0 ||
+          !Number.isFinite(mainWidth) || mainWidth <= railWidth) return;
+
+      rail.setAttribute(NATIVE_RAIL_ATTR, '');
+      main.setAttribute(RAIL_MAIN_ATTR, '');
+      rail.style.setProperty(RAIL_WIDTH_VAR, `${railWidth}px`);
+    });
+  }
+
+  function applyThreeColumnRailAdapter() {
+    if (!desktopQuery.matches) return;
+
+    document.querySelectorAll(`[${OWNER_ATTR}]`).forEach((owner) => {
+      Array.from(owner.children).filter((child) => child.matches('.gutter-md')).forEach((row) => {
+        if (row.parentElement !== owner || hasRole(row) || hasBlockedAncestor(row)) return;
+        const rowStyle = window.getComputedStyle(row);
+        if (rowStyle.display !== 'flex' || rowStyle.flexDirection !== 'row' ||
+            rowStyle.flexWrap !== 'nowrap') return;
+
+        const columns = Array.from(row.children).filter(isVisibleLayoutElement);
+        if (columns.length !== 3 || !columns[0].matches('.col-lg-3') ||
+            !columns[1].matches('.col-lg-6') || !columns[2].matches('.col-lg-3')) return;
+        if (columns.some((column) => hasRole(column) || column.querySelector(`[${OWNER_ATTR}]`))) return;
+
+        const [leftRail, main, rightRail] = columns;
+        const mainWidth = main.getBoundingClientRect().width;
+        const leftWidth = leftRail.getBoundingClientRect().width;
+        const rightWidth = rightRail.getBoundingClientRect().width;
+        if (!Number.isFinite(mainWidth) || mainWidth <= 0 ||
+            !Number.isFinite(leftWidth) || leftWidth <= 0 || leftWidth >= mainWidth ||
+            !Number.isFinite(rightWidth) || rightWidth <= 0 || rightWidth >= mainWidth) return;
+
+        leftRail.setAttribute(NATIVE_RAIL_ATTR, '');
+        rightRail.setAttribute(NATIVE_RAIL_ATTR, '');
+        main.setAttribute(RAIL_MAIN_ATTR, '');
+        leftRail.style.setProperty(RAIL_WIDTH_VAR, `${leftWidth}px`);
+        rightRail.style.setProperty(RAIL_WIDTH_VAR, `${rightWidth}px`);
       });
     });
   }
@@ -684,6 +778,10 @@ ${active} [data-testid="issue-metadata-fixed"] {
         return;
       }
       for (const record of records) {
+        if (isRelevantRailRowMutation(record)) {
+          scheduleSync();
+          return;
+        }
         if (isRelevantSearchSidebarRemoval(record)) {
           scheduleSync();
           return;
@@ -713,6 +811,16 @@ ${active} [data-testid="issue-metadata-fixed"] {
     if (!isSearchTwoColumnWorkspace(record.target)) return false;
     return Array.from(record.removedNodes).some((node) => node.nodeType === Node.ELEMENT_NODE &&
       node.matches(SEARCH_RIGHT_SIDEBAR_SELECTOR));
+  }
+
+  function isRelevantRailRowMutation(record) {
+    const row = record.target;
+    if (row.nodeType !== Node.ELEMENT_NODE) return false;
+    if (Array.from(row.children).some((child) =>
+      child.hasAttribute(NATIVE_RAIL_ATTR) || child.hasAttribute(RAIL_MAIN_ATTR))) return true;
+    return [...record.addedNodes, ...record.removedNodes].some((node) =>
+      node.nodeType === Node.ELEMENT_NODE &&
+      (node.hasAttribute(NATIVE_RAIL_ATTR) || node.hasAttribute(RAIL_MAIN_ATTR)));
   }
 
   function installNavigationHooks() {

@@ -57,7 +57,9 @@ verification. Source and browser verification remain parent-owned acceptance.
 
 Fresh representative pages were fetched before the affected selectors changed.
 The userscript matches GitHub broadly and detects layout primitives; these are
-the 26 page cases audited, rather than an exhaustive list of GitHub routes.
+representative cases, rather than an exhaustive list of GitHub routes. The
+initial audit covered 26 cases; follow-up coverage reached 63. These tables
+include the subsequently demonstrated Explore and Gist profile repairs.
 Source and rendered Markdown share an endpoint pattern but exercise different
 rendering paths.
 
@@ -75,6 +77,9 @@ rendering paths.
 | `/:owner/:repo/pull/:number/files` (redirects to `/changes`) | Optional repeated Changes title hidden while normal commit selector and toolbar controls remain available. |
 | `/dashboard` | Feed expands through its dashboard landmark; right rail retained. |
 | `/:owner/:repo/pulse` | Intrinsic image-label measurement prevents avatar clipping during chart expansion. |
+| `/explore` | Preserve both measured native side columns so card avatars keep their size while the center feed expands. |
+| `gist.github.com/:owner` | Preserve the measured native profile column, avatar and profile button while the gist list expands. |
+| `gist.github.com/:owner/starred` | Apply the same native profile-column preservation to the owner's starred listing. |
 
 ### Still working without a page-specific repair
 
@@ -179,24 +184,27 @@ these nine cases pass the native-versus-modified visibility/clipping checks.
 | `/discover` | Discovery feed widened. |
 | `/forked` | Forked feed widened. |
 | `/starred` | Starred feed widened. |
-| `/:owner` | Owner profile/listing widened. |
-| `/:owner/starred` | Owner's starred listing widened; responsive/live settings pass. |
+| `/:owner` | Owner listing widened; the later native profile-column repair preserves avatar/button size. |
+| `/:owner/starred` | Owner's starred listing widened with the same native profile-column repair. |
 | `/:owner/:gist` | Gist file/code workspace widened; local scrolling retained. |
 | `/:owner/:gist/revisions` | Revision diff workspace widened; controls retained. |
 | `/:owner/:gist/forks` | Fork listing widened. |
 
 The exact user-selected gist and revision endpoint were tested. Its `container-lg`
-workspace grows to 1945.6px at a 2048px viewport. The profile uses the existing
-`container-xl` owner; no new selector is required. The earlier `/:owner/shared`
+workspace grows to 1945.6px at a 2048px viewport. Host enablement used the existing
+`container-xl` profile owner; the later profile-column correction below fixes
+the proportional rail/avatar growth missed by the initial checks. The earlier `/:owner/shared`
 URL returned not-found; the user corrected it to `/:owner/starred`, which was
 fetched and verified. No Shared endpoint is claimed or left outstanding.
 
 ### Additional GitHub cases requiring no new repair
 
 These are in addition to the initial 26 page cases. The Insights routes were
-read from the current sidebar before capture. All 28 layouts below were usable
-and had no newly hidden/clipped content, nested owners, or added horizontal
-overflow. Data/feature availability is listed separately from layout behavior.
+read from the current sidebar before capture. Explore's subsequently required
+repair is listed above; these other 27 layouts required no new repair. Their
+initial comparisons found no newly hidden/clipped content, nested owners or
+added horizontal overflow. Data/feature availability is listed separately from
+layout behavior.
 
 | Endpoint pattern | Observed treatment |
 | --- | --- |
@@ -208,7 +216,6 @@ overflow. Data/feature availability is listed separately from layout behavior.
 | `/:owner/:repo/pull/:number/commits` | Existing owner widens PR commits. |
 | `/:owner/:repo/pull/:number/checks` | Native full-width layout; no eligible capped owner. |
 | `/notifications` | Native full-width layout; no eligible capped owner. |
-| `/explore` | Existing owner widens the feed. |
 | `/trending` | Existing owners widen content/header lanes. |
 | `/topics` | Existing owners widen content/header lanes. |
 | `/marketplace` | Existing owners widen the marketplace. |
@@ -277,3 +284,157 @@ on `develop` only. The literal raw develop URL returned HTTP 200, the exact
 validated digest, version `1.0.4`, and the two requested host matches. Remote
 `master` remains at `781e876a5a3eba40e15c4a67ace50a80e114b9fd`. The ignored
 publication receipt is `published-gist-source.json` in the evidence root.
+
+## Gist profile-size correction requested by the user
+
+The user supplied native/widened screenshots showing the profile avatar and
+profile button growing with the widened workspace. The previous visibility and
+clipping checks did not test proportional image/rail growth. Continue with:
+
+- C01: Verify fresh native profile DOM and fix only the demonstrated profile
+  column relationship. Preserve its measured native width, avatar size, padding
+  and status control while the adjacent gist list receives added space.
+- C02: Add explicit profile-rail/avatar geometry checks, verify profile and
+  owner-Starred views with live width changes and responsive/native restoration,
+  and retain unaffected Gist file/revision and GitHub profile behavior. Freshly
+  compare rendered image dimensions across the affected main GitHub page
+  families as requested, including avatars, profile pictures and content images;
+  investigate growth with same-DOM native restoration before accepting it.
+- C03: Append the existing collapsible changelog, keep version 1.0.4 under the
+  standing user override, update acceptance records, and publish develop only.
+
+Fresh evidence: `gist-avatar-native-probe/report.json` in the existing ignored
+evidence root. Native profile rail is 312px including 16px padding per side;
+avatar is 280px. Its parent is a two-child flex row. The profile is identified
+by `#gist-pjax-container .h-card[itemtype$="schema.org/Person"]`. Source remains
+unchanged at the start of this probe. No selector change precedes fresh DOM.
+
+Independent Astra review accepted the measured-column approach with three
+requirements: a direct relationship to an actual owning workspace, cleanup of
+both column roles independently, and child-list invalidation for either column
+replacement or rail removal. All three are implemented. The adapter measures
+with fluid styles inactive, preserves the rail's border-box width and padding,
+and lets its direct content sibling absorb additional space. It does not set
+an avatar size, hard-code a rail width or depend on profile URL paths.
+
+`asset-profile-final/report.json` verifies source SHA-256
+`e0654933e4ca88ca444eece80aefae2c138eebee515dd781a6e318c33784ba8c`.
+At a 2048px viewport and 95% width:
+
+| Element | Native | Repaired fluid layout |
+| --- | --- | --- |
+| Gist profile rail, including padding | 312px wide | 312px wide |
+| Gist profile picture | 280 × 280px | 280 × 280px |
+| Gist profile button | 280 × 32px | 280 × 32px |
+| Adjacent gist list | 936px wide | 1601.6px wide |
+| Main GitHub profile picture | 296 × 296px | 296 × 296px |
+
+Both Gist `/:owner` and `/:owner/starred` receive this correction. Gist file
+and revision pages, and the main GitHub profile, receive no profile-column
+markers. Fifty focused settings/viewport comparisons across those five pages
+cover 640/1280/2048/2560px, the return to desktop, and live 80%/95% changes.
+Rendered image/icon sizes match each same-viewport native state, including
+the profile rail, avatar and anchor button. No nested owners or added document
+overflow occur. Rail replacement, main-only replacement, rail removal and
+reinsertion reclassify correctly; the survivor has no stale marker after
+removal. The disposable browser/driver stopped and its profile was removed.
+
+The user explicitly confirmed that content images should retain automatic
+sizing as their content workspace widens. The main-site image audit therefore
+distinguishes native responsive attachments from unintended avatar/logo/icon
+growth. Content images keep their existing CSS sizing and aspect ratios,
+including author-defined percentage sizes. No new image-size override is added.
+
+The first fresh size campaign covers 63 substantive page cases: 54 on GitHub
+and nine on Gist, with 657 rendered images and 3,482 SVG icons measured. See
+`asset-profile-final/report.json` and `asset-sitewide-final/report.json`.
+The campaign found an additional real profile-image case on Explore: five
+percentage-sized feed-card avatars grow with their containers. This initial
+campaign left C02 open for fresh parent-DOM inspection, a bounded repair and
+affected-page checks, subsequently completed below.
+Other reported growth is automatic content-image sizing on Discussion, Wiki,
+Explore and the organization profile. Attachments remain under GitHub control
+by the user's explicit follow-up direction. None of those counts is a claim
+that the remaining Explore avatar defect has passed.
+
+Fresh Explore parent evidence is in `explore-avatar-parent-probe/report.json`
+and its freshly fetched authenticated `fresh.html` (HTTP 200). The actual
+owning container has a direct three-column `.gutter-md` flex row, using the
+stable global `col-lg-3` / `col-lg-6` / `col-lg-3` grid utilities. The native
+side columns are 320px each, with a 640px center feed. Both side columns grow
+with the widened parent, causing the demonstrated avatar and side-card growth.
+The bounded repair preserves those measured side columns and gives the
+center the remaining width. Content images retain GitHub's sizing rules.
+
+Independent Astra review of this delta: PASS WITH NOTES. Keep Gist and the
+three-column discovery functions separate and share only the measured rail/main
+roles, CSS, cleanup and invalidation. Require direct ownership, the complete
+observed grid signature, flex/row/nowrap, exactly three visible children,
+unblocked row, no child-role conflicts or nested owners, valid independent rail
+measurements and a wider center. Add scoped insertion landmarks. The final
+compatibility gate is a census of every eligible/adapted three-column row in a
+fresh native-versus-active page pass; manually reconcile any match outside
+Explore. Focused Gist and Explore acceptance must use the final source.
+
+The user additionally requested domain-wide documentation and an OpenUserJS
+disclosure check. Current official sources reviewed:
+[Terms of Service](https://openuserjs.org/about/Terms-of-Service) (complete
+descriptions are recommended; source licensing and abuse/obfuscation rules)
+and [FAQ](https://openuserjs.org/about/Frequently-Asked-Questions) (relevant
+`@antifeature` disclosures). The product guide now lists exactly
+`https://github.com/*` and `https://gist.github.com/*`, explains the path wildcard
+and top-level-page scope, describes optional title hiding and native image
+behavior, and states storage, network/update-source and monetization behavior.
+Endpoint acceptance tables stay in this audit. The existing OSI-approved
+`AGPL-3.0-or-later` source declaration is retained. No listing was published or
+changed on OpenUserJS; this work updates the repository guide.
+
+### Final native-column and site-wide image acceptance
+
+Final integrated source SHA-256:
+`208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`.
+The ignored `native-rails-acceptance.json` reconciles final-source reports:
+
+- `native-rails-focused-final/`: six views, 64 responsive/live comparisons,
+  Gist column replacements/removal, and Explore column/row replacements/removals.
+- `native-rails-sitewide-final/`: the other 57 page cases, native-versus-active
+  image measurements and the complete eligible three-column-row census.
+- `native-rails-hydration-recheck/`: stable native baselines and final comparisons
+  for PR Changes, repository Issues and global Pull Requests. Earlier transient
+  server-rendered icon references were replaced during page hydration and
+  remained gone with fluid styles disabled. Those early references are
+  superseded, not counted as intact. Fresh baselines were verified quiet with
+  no installed script, style or active flag before injection; all three final
+  comparisons have no hidden/disconnected assets or size changes.
+- `native-rails-clipping-final/`: six affected views have no newly hidden,
+  disconnected or clipped content, nested owners or added document overflow.
+  Explore also passes three remove/reinsert tests with all detached role markers
+  deliberately stripped, proving the new insertion landmark reclassifies each
+  column after survivor cleanup.
+
+| Final check | Result |
+| --- | --- |
+| Page cases | 63: 54 main GitHub, nine Gist. |
+| Rendered image measurements | 658 images; no avatar size changes. |
+| SVG icon measurements | 3,482 icons; no icon size changes. |
+| Three-column census | Exactly one matching/adapted row, on Explore; no unexpected matches. |
+| Explore native side columns | 320px each, retained at all tested desktop widths. |
+| Explore center at 2048px / 95% | 640px native → 1305.6px fluid. |
+| Explore avatars | 95.3167px and 51.5px native widths retained. |
+| Gist native rail/avatar/button | 312px / 280px / 280px widths retained. |
+| Main GitHub profile avatar | 296 × 296px retained. |
+| Narrow fallback | Native 640/1280px layouts; new rail roles cleared. |
+| Content-image resizing | 17 native automatic-size changes across Discussion, Wiki, Explore and organization-profile content; retained by user direction. |
+| Disposable runtime cleanup | All sessions closed, browser/driver processes stopped, profiles removed. |
+
+Explore additionally covers the 1472/1668px desktop boundaries and 2560px, with
+80%/95% settings and return to 2048px. Gist profile/Starred, file/revisions and
+the GitHub profile cover 640/1280/2048/2560px and the return to desktop. No
+native rail width varies unexpectedly across those desktop breakpoints.
+The repairs use actual owner relationships, the Gist profile microformat and
+observed global grid utilities. There are no per-endpoint matches, fixed image
+dimensions, global avatar overrides or geometry polling. Version remains
+1.0.4; the existing collapsible changelog is the only ongoing release history.
+
+Implementation and browser acceptance are complete. C03 publication verification
+remains pending until the tested source is pushed to develop and retrieved back.

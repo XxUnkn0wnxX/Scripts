@@ -7,11 +7,13 @@
 - Branch/base: `develop`, `781e876a5a3eba40e15c4a67ace50a80e114b9fd`.
 - Product contract: `.plans/project-plans/completed/github-fluid-width-plan.md`.
   The current user-requested scope and endpoint findings are in `audit.md`.
-- Execution was serial. Parent owns integration and these records. All delegated
-  work and disposable test browsers have finished; no child writers remain.
+- Execution was serial. Parent owns integration and these records. Child writers
+  and all disposable browser campaigns have finished and cleaned up.
 - Initial repair and site-wide follow-up implementation/browser acceptance are
   complete. Version remains `1.0.4` under the user's explicit follow-up override.
-  Current validated source SHA-256:
+  C01/C02 implementation and browser acceptance are complete; C03 publication
+  remains pending.
+  Last published source SHA-256:
   `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
 - Publication is authorized to `develop` only; the user explicitly waived a
   further version increment for the Gist follow-up.
@@ -142,6 +144,42 @@ individual match rules. Leave `docs.github.com` excluded. No live installation.
   verified source publication; the final documentation commit is in Git history.
 
 ## Previous release completion
+
+Current follow-up: C01–C03 in audit/checklist are active after user screenshots
+showed Gist avatar/profile column growth. The prior clipping oracle missed
+proportional sizing. Fresh `gist-avatar-native-probe/report.json` proves native
+profile rail 312px/avatar 280px; the widened flex column grows with its 25%
+width. Preserve the measured native rail and let only the adjacent main lane
+absorb added width. Keep 1.0.4, two host-wide matches, and develop-only authority.
+The source adapter is implemented and the native owner-profile geometry,
+responsive/live changes and column replacement/removal probes pass. Broader
+asset and clipping acceptance is still running; this correction is not yet
+published. Gist-only probe source SHA-256 before the Explore delta:
+`e0654933e4ca88ca444eece80aefae2c138eebee515dd781a6e318c33784ba8c`.
+The user also requested a fresh main-GitHub audit for unintended image/avatar
+growth across the affected page families. This is part of C02; prior visibility
+and clipping reports alone do not establish that image sizes were preserved.
+The first size campaign captured all 63 cases (54 GitHub, nine Gist), measuring
+657 images and 3,482 SVG icons. Five Explore avatars still grow because its two
+25% side columns also widen. Fresh parent DOM proves the observed direct-owner
+3/6/3 global-grid layout. Astra accepted preserving both measured native rails
+and giving the center the remainder, subject to a final eligible-row census,
+focused responsive/replacement acceptance and shared-role cleanup. The user
+explicitly confirmed automatic content/attachment image sizing stays native.
+The integrated source now has SHA-256
+`208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`.
+`native-rails-focused-final/report.json` passes six pages and 64 responsive/live
+comparisons, plus Gist and Explore column/row replacements and removals. Both
+Explore rails remain 320px; center grows to 1305.6px at 2048px/95%. Main GitHub
+profile avatar remains 296px, Gist avatar 280px. The final other-page census and
+focused clipping/clean-insertion checks now also pass. The final acceptance
+receipt is `native-rails-acceptance.json`: 63 cases, 658 images, 3,482 icons,
+zero new avatar/icon size changes, and exactly one three-column match on
+Explore. Three early hydration-sensitive cases passed fresh native-quiet
+rechecks; no early detached references are counted as preserved. All profiles
+are removed and browser/driver processes stopped. Source and product docs are
+ready for the authorized develop-only commit/push, raw-source retrieval and
+remote-master verification. Version stays 1.0.4.
 
 A01–A03 are complete. No implementation or acceptance work remains. This final
 record update follows the verified release publication and is committed on
