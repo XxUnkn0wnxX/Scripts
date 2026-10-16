@@ -123,3 +123,10 @@ they do not establish every possible GitHub rollout, offscreen interaction, or
 another browser/userscript-manager implementation. No workflow or account form
 was submitted. Final integrated Pulse acceptance and publication are recorded
 in the companion checklist and handoff.
+
+Final acceptance: `pulse-integrated-final/report.json` passes on final source
+SHA-256 `34152b61b2b5c27c0265d58828bd15b0ec73887bb9ded31552617b5fd2bb4659`,
+including image-only label scoping, viewport 2048→1280→2560→2048 and live
+95→80→95 percentage changes. The release is `1.0.4`, published in commit
+`bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` on `develop` only. Published raw
+source matches the accepted bytes; `master` remains at the original base.

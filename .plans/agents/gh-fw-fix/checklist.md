@@ -8,7 +8,7 @@ requirements remain in `.plans/project-plans/completed/github-fluid-width-plan.m
 - [x] A02 — Current affected page-family comparisons reviewed for visibility,
   clipping, overflow, control/rail sizing, nested owners, and missed caps;
   inaccessible or untested surfaces recorded explicitly.
-- [ ] A03 — Evidence-backed integration, version/docs, syntax/diff checks, and
+- [x] A03 — Evidence-backed integration, version/docs, syntax/diff checks, and
   user-facing results with limitations complete.
 
 A01 evidence: `.tmp/github-fluid-width/actions-pageheader-20261016/focused-fixed/report.json`, source SHA-256
@@ -31,3 +31,11 @@ The final Pulse chart and avatar remain aligned at 1280/2048/2560px and after
 live percentage changes to 80 then 95. No new hidden/clipped content, rail/control
 changes or added horizontal overflow remain in the accepted affected captures.
 Disposable browser/driver shutdown and profile removal are verified.
+
+A03 evidence: release commit `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b`
+published to `develop`. Published raw userscript returned HTTP 200, version
+`1.0.4`, and the exact validated source digest above. Remote `master` remains
+`781e876a5a3eba40e15c4a67ace50a80e114b9fd`. Syntax, whitespace, staged privacy,
+13 Markdown-file/33-link checks, and independent relocation/privacy review
+pass. MKV records differ only in moved path references and deeper link prefixes.
+Endpoint tables and validation limits are retained in `audit.md` for reporting.

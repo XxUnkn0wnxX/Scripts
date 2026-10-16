@@ -15,6 +15,9 @@
 - Publication is authorized to `develop` only, after the version increment.
   Do not update `master` or install into a live userscript manager.
   Remote `master` must remain at the base SHA above.
+- Release commit `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` is published to
+  `develop`; remote refs were verified. Published raw source returned HTTP 200,
+  version `1.0.4`, and the exact validated digest above on 2026-10-16.
 
 ## Accepted behavior
 
@@ -65,8 +68,11 @@ All raw evidence is ignored under
   insertion sentinels, direct toolbar targeting and a positive visible clone.
   Final Pulse review: PASS WITH NOTES, accepted image-only scope and integrated
   responsive/percentage-setting checks; those gates now pass.
-- Syntax and whitespace checks pass. Moved Markdown links and privacy were
-  reviewed; final commit/publication verification remains the next operation.
+- Syntax and whitespace checks pass. Independent final organization/privacy
+  review passes: 13 Markdown files, 33 relative links, and all moved MKV records
+  preserved apart from path changes. No literal personal paths, credential
+  values, or private host details were found in the reviewed planning records
+  and generic instructions. Published source bytes match the accepted source.
 - Evidence was collected from current authenticated Firefox pages in disposable
   profiles. This is representative page/layout coverage, not all GitHub
   variants or every browser/userscript-manager runtime. No account forms or
@@ -87,10 +93,12 @@ All raw evidence is ignored under
 - The only ongoing userscript changelog is the collapsible details section in
   `docs/github-fluid-width.md`; source release metadata is `@version`.
 
-## Next action
+## Completion and restart
 
-Complete final review, commit the validated release and repository organization,
-then push only `develop`. Verify remote refs, published source bytes/version,
-clean working tree, and unchanged `master`. Record publication here and close
-A03. Final response must contain separate endpoint tables for repaired and
-still-working page cases, plus verification limits and the folder locations.
+A01–A03 are complete. No implementation or acceptance work remains. This final
+record update follows the verified release publication and is committed on
+`develop`; the Git log identifies the final documentation commit without a
+self-referential hash. Future changes should start from the user's newly stated
+scope, fetch fresh affected endpoint DOM, and update only the dedicated
+collapsible changelog for release history. The endpoint tables and verification
+limits are in `audit.md` for the final user report.
