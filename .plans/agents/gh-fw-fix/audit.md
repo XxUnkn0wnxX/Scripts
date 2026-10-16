@@ -51,7 +51,7 @@ verification. Source and browser verification remain parent-owned acceptance.
 - Keep safe `.plans/` records and generic `AGENTS.md` Git-visible after privacy
   review. Raw captures and cookies remain ignored in `.tmp/`.
 - Keep the only ongoing GitHub Fluid Width changelog in the collapsible details
-  section of `docs/github-fluid-width.md`.
+  section of `docs/userscripts/github-fluid-width.md`.
 
 ## Endpoint findings
 

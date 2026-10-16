@@ -4,6 +4,10 @@
 
 - Task folder: `.plans/agents/gh-fw-fix/`. New sessions may identify this work by
   the folder name `gh-fw-fix` and read this handoff, `audit.md`, and `checklist.md`.
+- Documentation relocation: all eight userscript guides now live under
+  `docs/userscripts/`, with README and project references updated. Guide
+  contents and userscript sources are unchanged. Earlier publication receipts
+  describe the documentation's location at those checkpoints.
 - Latest follow-up: D01–D03 and E01/E02 implementation, acceptance and
   publication are complete. A–C are completed historical
   checkpoints. The requested MCP, Feed, Copilot, Search landing, Notifications
@@ -151,7 +155,7 @@ All raw evidence is ignored under
 - Raw captures and the user-supplied GitHub-only cookie export stay ignored in
   `.tmp/`; no cookie values are printed or published.
 - The only ongoing userscript changelog is the collapsible details section in
-  `docs/github-fluid-width.md`; source release metadata is `@version`.
+  `docs/userscripts/github-fluid-width.md`; source release metadata is `@version`.
 
 ## Site-wide follow-up
 

@@ -6,4 +6,5 @@
 - Treat `.plans/project-plans/` as the broader project todo list: pending additions belong in `todo/` and completed plans in `completed/`.
 - Other existing or future project folders may coexist under `.plans/`; do not treat the project todo list as the active agent task.
 - Keep raw browser captures and credentials in the ignored `.tmp/` evidence directory.
-- Maintain GitHub Fluid Width release history only in the collapsible changelog in `docs/github-fluid-width.md`; update the userscript's `@version` metadata for releases.
+- Keep userscript guides in `docs/userscripts/`.
+- Maintain GitHub Fluid Width release history only in the collapsible changelog in `docs/userscripts/github-fluid-width.md`; update the userscript's `@version` metadata for releases.

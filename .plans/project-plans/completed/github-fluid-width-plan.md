@@ -218,7 +218,7 @@ Do not impose Reddit's fixed rail dimensions on GitHub.
 8. Check representative responsive widths, real client-side navigation,
    back/forward, drawer opening, source-tree toggling, and completed log expansion.
    Fix observed failures before declaring coverage complete.
-9. Add `docs/github-fluid-width.md` and a README entry, update this plan with
+9. Add `docs/userscripts/github-fluid-width.md` and a README entry, update this plan with
    actual verification results and limits, and leave the final percentage
    preferences for the user to tune.
 
@@ -258,7 +258,7 @@ Do not impose Reddit's fixed rail dimensions on GitHub.
 ## Earlier verification
 
 - `node --check userscripts/github-fluid-width.user.js`, `cmark
-  docs/github-fluid-width.md`, and `git diff --check` pass. A local mocked
+  docs/userscripts/github-fluid-width.md`, and `git diff --check` pass. A local mocked
   lifecycle check also covered route transitions, duplicate injection, style
   repair, the 1280px/1332px floors, and the default CSS math.
 - The isolated real-browser repository check passed at 1920px, 1440px, and
