@@ -39,3 +39,21 @@ published to `develop`. Published raw userscript returned HTTP 200, version
 13 Markdown-file/33-link checks, and independent relocation/privacy review
 pass. MKV records differ only in moved path references and deeper link prefixes.
 Endpoint tables and validation limits are retained in `audit.md` for reporting.
+
+- [x] B01 — Fresh site-wide coverage map, including Gist and Insights siblings.
+- [x] B02 — Evidence-backed coverage repairs and affected-page acceptance.
+- [ ] B03 — Reconciled report, release documentation and publication verification.
+
+B01/B02 evidence: `sitewide-followup/report.json` and
+`sitewide-responsive/report.json` under the existing ignored evidence root.
+37 additional cases: 36 usable layouts, one not-found Gist Shared path. All
+usable comparisons have no newly hidden/clipped content, nested owners or added
+horizontal overflow. Gist profile/revisions pass responsive and live percentage
+changes. The initially loading Commits chart rendered on the bounded recheck.
+Feature-disabled Community, empty metric/fork data states and project-listing
+versus board scope are explicitly distinguished in `audit.md`.
+
+Only metadata changes: two host-wide matches, updated description, unchanged
+runtime body and unchanged `@version 1.0.4` by explicit user direction.
+Validated follow-up SHA-256:
+`e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.

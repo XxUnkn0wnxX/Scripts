@@ -1,6 +1,6 @@
 # github-fluid-width.user.js
 
-Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
+Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub and Gist workspace widths on large desktop screens while preserving native rails, split panes, and responsive behavior.
 
 Current documented release: `1.0.4`.
 
@@ -45,6 +45,11 @@ eligible settings or other page sections may contain forms whose controls keep
 their intrinsic sizing.
 
 ## Where It Works
+
+The script matches all paths on `github.com` and `gist.github.com`. Individual
+endpoints are validation cases; layout detection uses the rendered page DOM.
+Gist's capped feeds, profiles, gist files and revisions use the same owner
+rules. Other hosts, including `docs.github.com`, keep their native layout.
 
 The owner model covers repository overviews and branch roots, PageLayout and
 legacy capped sections, pull-request and issue workspaces, Discussions,
@@ -278,6 +283,7 @@ Release history for this userscript is maintained only in this section.
 
 ### 1.0.4 — 2026-10-16
 
+- Enable Gist across `gist.github.com/*`, reusing existing workspace rules for discovery feeds, profiles, gist files and revision views.
 - Restore fluid PageLayout header lanes after GitHub renamed their wrapper classes, keeping Actions workflow headings and controls aligned with the content below.
 - Recognize GitHub's renamed issue-content wrappers so issue headings, metadata, and conversation sections expand again while preserving the native sidebar.
 - Recognize the renamed Search layout inside the Search app, applying the width setting to the results column while preserving both sidebars.

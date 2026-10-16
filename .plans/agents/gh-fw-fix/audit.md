@@ -130,3 +130,137 @@ including image-only label scoping, viewport 2048→1280→2560→2048 and live
 95→80→95 percentage changes. The release is `1.0.4`, published in commit
 `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` on `develop` only. Published raw
 source matches the accepted bytes; `master` remains at the original base.
+
+## Site-wide follow-up requested by the user
+
+The user asked which other pages may be affected or missed, clarified that
+coverage should be site-wide, and identified `https://gist.github.com/` as a
+concrete miss. Continue from the completed 1.0.4 audit with these tasks:
+
+- B01: Fetch current Gist layouts and remaining representative GitHub Insights
+  and site sections. Separate host exclusion, recognized capped workspaces,
+  already-fluid layouts, missed workspace caps, and inaccessible pages. Do not
+  mistake intentional card/control dimensions for page-width defects.
+- B02: Repair demonstrated coverage gaps within the existing owner/rail/gutter
+  contract, using fresh semantic parent/layout evidence before selector changes.
+  Verify affected pages, append the single documentation changelog, and publish
+  only `develop` under standing authority. The user's later explicit override
+  keeps `@version 1.0.4` for this follow-up.
+- B03: Reconcile the coverage report and limitations, update the handoff and
+  checklist, and verify any published source/ref state. Existing A01–A03 evidence
+  remains accepted for unchanged behavior.
+
+Execution remains serial, using disposable browser profiles. Keep captures and
+credentials in ignored `.tmp/`; no account submissions or workflow operations.
+Use only the two host-wide matches `https://github.com/*` and
+`https://gist.github.com/*`; endpoint URLs are test cases, never match rules.
+The user chose to leave `docs.github.com` outside the script's scope.
+
+## Site-wide follow-up findings
+
+The demonstrated source gap was the missing Gist host match. The follow-up adds
+only `https://gist.github.com/*` beside `https://github.com/*` and updates the
+description. The executable userscript body is byte-identical to the accepted
+initial repair. No endpoint-specific matches, route allowlist, Gist selectors,
+or broader cap-removal rules were added. Version stays `1.0.4` by the user's
+explicit override; the existing collapsible changelog entry records the change.
+
+Final follow-up source SHA-256:
+`e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
+
+### Newly enabled Gist coverage
+
+All paths below are on `gist.github.com`. Current authenticated captures of
+these eight cases pass the native-versus-modified visibility/clipping checks.
+
+| Endpoint pattern | Result after host enablement |
+| --- | --- |
+| `/` | Home/create workspace widened with native form/control behavior. |
+| `/discover` | Discovery feed widened. |
+| `/forked` | Forked feed widened. |
+| `/starred` | Starred feed widened. |
+| `/:owner` | Owner profile/listing widened. |
+| `/:owner/:gist` | Gist file/code workspace widened; local scrolling retained. |
+| `/:owner/:gist/revisions` | Revision diff workspace widened; controls retained. |
+| `/:owner/:gist/forks` | Fork listing widened. |
+
+The exact user-selected gist and revision endpoint were tested. Its `container-lg`
+workspace grows to 1945.6px at a 2048px viewport. The profile uses the existing
+`container-xl` owner; no new selector is required. `/:owner/shared` returned a
+not-found page for the expected signed-in owner. The host match covers the path,
+but no content layout is credited for that unavailable endpoint.
+
+### Additional GitHub cases requiring no new repair
+
+These are in addition to the initial 26 page cases. The Insights routes were
+read from the current sidebar before capture. All 28 layouts below were usable
+and had no newly hidden/clipped content, nested owners, or added horizontal
+overflow. Data/feature availability is listed separately from layout behavior.
+
+| Endpoint pattern | Observed treatment |
+| --- | --- |
+| `/:owner/:repo/releases` | Existing owner widens release listing. |
+| `/:owner/:repo/tags` | Existing owner widens tags. |
+| `/:owner/:repo/commit/:sha` | Existing owner widens commit details. |
+| `/:owner/:repo/compare/:base...:head` | Existing owner widens comparison. |
+| `/:owner/:repo/wiki` | Existing owner widens Wiki. |
+| `/:owner/:repo/pull/:number/commits` | Existing owner widens PR commits. |
+| `/:owner/:repo/pull/:number/checks` | Native full-width layout; no eligible capped owner. |
+| `/notifications` | Native full-width layout; no eligible capped owner. |
+| `/explore` | Existing owner widens the feed. |
+| `/trending` | Existing owners widen content/header lanes. |
+| `/topics` | Existing owners widen content/header lanes. |
+| `/marketplace` | Existing owners widen the marketplace. |
+| `/:org` | Organization profile widens. |
+| `/orgs/:org/repositories` | Organization repository listing widens. |
+| `/users/:owner/projects` | Project listing widens; project boards are a separate untested renderer. |
+| `/codespaces` | Codespaces listing widens; external editor hosts remain outside the two matches. |
+| `/:user?tab=repositories` | Profile repository listing widens. |
+| `/:owner/:repo/graphs/contributors` | Rendered contribution charts expand; data and axes visible. |
+| `/:owner/:repo/graphs/community` | Feature-disabled Community page widens; Discussions was not enabled. |
+| `/:owner/:repo/community` | Community standards page widens. |
+| `/:owner/:repo/graphs/traffic` | Four rendered charts remain visible in widened workspace. |
+| `/:owner/:repo/graphs/commit-activity` | Chart loaded on the bounded recheck and passed responsive resizing. |
+| `/:owner/:repo/graphs/code-frequency` | Rendered additions/deletions chart expands with visible axes/legend. |
+| `/:owner/:repo/network/dependencies` | Dependency listing widens. |
+| `/:owner/:repo/network` | Network canvas page widens. |
+| `/:owner/:repo/forks` | Empty fork listing widens. |
+| `/:owner/:repo/actions/metrics/usage` | Metrics page widens; current repository has an empty data state. |
+| `/:owner/:repo/actions/metrics/performance` | Metrics page widens; current repository has an empty data state. |
+
+### Follow-up evidence and limits
+
+`.tmp/github-fluid-width/actions-pageheader-20261016/sitewide-followup/report.json`
+records 37 additional requested/discovered URL cases: 36 substantive layouts and
+one not-found Gist Shared page. Source digest matches the follow-up above.
+Visibility/clipping sentinel self-checks pass. All substantive comparisons have
+zero new hiding/clipping, nested owners, or horizontal overflow. Intrinsic
+buttons are preserved. The sole recorded aside-width change is Explore's inline
+`aside[aria-label="The End"]` feed-ending message, which naturally fills the
+widened feed; it is not a navigation rail. Full-width inputs/textareas retain
+their native filling behavior.
+The native `explore/native.html` and the sanitized `explore-aside-proof.json`
+within `sitewide-followup/` establish that label and its 608→940.8px width change.
+
+The parent regenerated the final Gist evidence after the initial delegated
+capture cleanup removed its saved artifacts. Only the final parent reports
+establish follow-up acceptance; early observations are diagnostic context.
+Gist feed text and screenshots were omitted from saved exports to avoid copying
+unrelated public code contents. No credential values enter tracked records.
+Authenticated identity was verified on both hosts. Browser/driver shutdown and
+profile removal are verified in the report.
+
+`sitewide-responsive/report.json` under the same evidence root verifies current
+Gist profile and exact revisions layouts at 1280/2048/2560px. Below the desktop
+threshold, active/deactivated geometry matches native. At 2560px each owner
+reaches 2432px. Live 95→80→95 changes give 1945.6→1638.4→1945.6px at 2048px,
+without new hiding/clipping. The Commits graph loaded on this bounded recheck
+(one rendered Highcharts graph, no Crunching state) and passed both responsive
+widths with no new visibility/clipping issue. All three focused cases pass;
+driver/Firefox shutdown and temporary profile removal are verified.
+
+Site-wide execution means both hosts and every path are eligible for the
+existing layout engine. It does not force each element to 95%: drawers, menus,
+controls, narrow native forms, and already-fluid custom workspaces retain their
+native behavior unless they expose an eligible owner. Only the two named hosts
+are included; the user explicitly chose to leave `docs.github.com` alone.

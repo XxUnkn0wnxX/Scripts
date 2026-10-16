@@ -9,15 +9,18 @@
   The current user-requested scope and endpoint findings are in `audit.md`.
 - Execution was serial. Parent owns integration and these records. All delegated
   work and disposable test browsers have finished; no child writers remain.
-- Implementation and browser acceptance are complete. Version is `1.0.4`.
-  Final source SHA-256:
-  `34152b61b2b5c27c0265d58828bd15b0ec73887bb9ded31552617b5fd2bb4659`.
+- Initial repair and site-wide follow-up implementation/browser acceptance are
+  complete. Version remains `1.0.4` under the user's explicit follow-up override.
+  Current validated source SHA-256:
+  `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
 - Publication is authorized to `develop` only, after the version increment.
   Do not update `master` or install into a live userscript manager.
   Remote `master` must remain at the base SHA above.
 - Release commit `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` is published to
   `develop`; remote refs were verified. Published raw source returned HTTP 200,
-  version `1.0.4`, and the exact validated digest above on 2026-10-16.
+  version `1.0.4`, and initial repair digest
+  `34152b61b2b5c27c0265d58828bd15b0ec73887bb9ded31552617b5fd2bb4659`.
+  Follow-up publication is pending final review; its base is `b73eb8a`.
 
 ## Accepted behavior
 
@@ -93,7 +96,43 @@ All raw evidence is ignored under
 - The only ongoing userscript changelog is the collapsible details section in
   `docs/github-fluid-width.md`; source release metadata is `@version`.
 
-## Completion and restart
+## Site-wide follow-up
+
+The user requested a broader coverage/gap map and identified Gist as a miss.
+B01/B02 in `audit.md` now pass; A01–A03 remain complete. Gist was excluded by
+the old metadata. The fix adds its host-wide match and updates the description;
+runtime code is byte-identical to the initial repair. Fresh authenticated Gist
+and broader GitHub captures found no additional selector repair requirement.
+The semantic parent, native cap, gutter and rail contract is retained. Publication remains
+`develop` only. The user explicitly chose to keep `@version 1.0.4` and append
+the existing documentation changelog for this follow-up. Use two host-wide
+matches (`github.com/*`, `gist.github.com/*`); test endpoints do not become
+individual match rules. Leave `docs.github.com` excluded. No live installation.
+
+- `sitewide-followup/report.json`: 37 additional URL cases, 36 usable layouts and
+  one not-found signed-in Gist Shared path. All usable comparisons have no new
+  hiding/clipping, nested owners or added horizontal overflow.
+- Gist coverage includes home, Discover, Forked, Starred, owner profile, the
+  exact user-selected gist, its revisions, and its forks. Common capped owners
+  grow to 1945.6px at 2048px. No Gist-specific selector was added.
+- `sitewide-responsive/report.json`: profile/revisions at 1280/2048/2560px and
+  live 95→80→95 settings pass. Commits graph data loaded on the bounded retry;
+  the rendered graph also passes responsive checks.
+- All current Insights sidebar destinations were checked. Community is in its
+  feature-disabled state; Actions metrics and forks have empty data states.
+  Project listings were checked; project boards are a separate untested app.
+  PR Checks and Notifications are native full-width layouts with no eligible cap.
+- Explore's sole recorded aside-width change is its inline feed-ending message,
+  not a navigation rail. Intrinsic buttons remain unchanged; native full-width
+  controls/callouts grow with their owner. `sitewide-followup/explore/native.html`
+  and `sitewide-followup/explore-aside-proof.json` establish the aria-label.
+- The final parent captures supersede deleted delegated raw artifacts. Gist
+  feed content/screenshots are omitted from exports; no secrets are tracked.
+- Both test runs shut down driver/Firefox and removed their disposable profiles.
+- Next: final source/docs/records review, commit and push `develop` only; verify
+  published bytes/version and remote master, close B03, and report coverage.
+
+## Previous release completion
 
 A01–A03 are complete. No implementation or acceptance work remains. This final
 record update follows the verified release publication and is committed on
