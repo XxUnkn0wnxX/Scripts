@@ -2,11 +2,11 @@
 
 # 🎮 BO3 AO-Mod (Version 2.4c) [ZEN].md
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
 This is the docs copy of the original BO3 AO-Mod guide for the Zen script:
 
-- Script: [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](../Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc)
+- Script: [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](../../Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc)
 
 This doc describes how the mods work and how to use them based on the current Zen-ported script logic.
 

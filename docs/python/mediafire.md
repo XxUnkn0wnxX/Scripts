@@ -2,9 +2,9 @@
 
 # 🔗 MediaFire.py
 
-↩️ [Back to repository README](../README.md)
+↩️ [Back to repository README](../../README.md)
 
-[`MediaFire.py`](../python/MediaFire.py) is a tiny interactive helper that combines the quickkey from one MediaFire link you control with the quickkey from a blocked MediaFire link you paste at runtime.
+[`MediaFire.py`](../../python/MediaFire.py) is a tiny interactive helper that combines the quickkey from one MediaFire link you control with the quickkey from a blocked MediaFire link you paste at runtime.
 
 ## What It Does
 

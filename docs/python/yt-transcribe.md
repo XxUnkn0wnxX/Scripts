@@ -2,9 +2,9 @@
 
 # 🎬 yt-transcribe.py
 
-↩️ [Back to repository README](../README.md)
+↩️ [Back to repository README](../../README.md)
 
-[`yt-transcribe.py`](../python/yt-transcribe.py) downloads YouTube captions and saves them as plain text or DOCX. It is meant for quick transcript export without having to manually copy captions from the browser.
+[`yt-transcribe.py`](../../python/yt-transcribe.py) downloads YouTube captions and saves them as plain text or DOCX. It is meant for quick transcript export without having to manually copy captions from the browser.
 
 ## What It Does
 

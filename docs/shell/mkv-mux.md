@@ -2,9 +2,9 @@
 
 # 🎬 mkv_mux.zsh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`mkv_mux.zsh`](../shell/mkv_mux.zsh) is an interactive Matroska helper for quick remuxing and audio-volume jobs. It is menu-driven, so you launch it, pick an option, then follow the prompts.
+[`mkv_mux.zsh`](../../shell/mkv_mux.zsh) is an interactive Matroska helper for quick remuxing and audio-volume jobs. It is menu-driven, so you launch it, pick an option, then follow the prompts.
 
 ## What It Does
 

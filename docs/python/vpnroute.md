@@ -2,9 +2,9 @@
 
 # 🌐 vpnroute
 
-↩️ [Back to repository README](../README.md)
+↩️ [Back to repository README](../../README.md)
 
-[`vpnroute.py`](../python/vpnroute.py) is a local CLI that converts websites/domains into OpenVPN/Viscosity route commands. Dependencies are installed from [`requirements.txt`](../requirements.txt).
+[`vpnroute.py`](../../python/vpnroute.py) is a local CLI that converts websites/domains into OpenVPN/Viscosity route commands. Dependencies are installed from [`requirements.txt`](../../requirements.txt).
 
 ## Features
 

@@ -45,7 +45,7 @@ def resolve_repo_root(start_dir: Path, max_depth: int = 1) -> Path:
 
 REPO_ROOT = resolve_repo_root(SCRIPT_DIR)
 REPO_VENV_DIR = REPO_ROOT / ".venv"
-DOCS_PATH = REPO_ROOT / "docs" / "safari-bookmarks-export.md"
+DOCS_PATH = REPO_ROOT / "docs" / "python" / "safari-bookmarks-export.md"
 
 
 def normalize_platform_path(path: Path) -> str:
@@ -65,7 +65,7 @@ def ensure_repo_venv_or_reexec(argv: Optional[Sequence[str]] = None) -> None:
     active_argv = list(argv if argv is not None else sys.argv[1:])
     repo_venv_python = resolve_repo_venv_python()
     if not REPO_VENV_DIR.exists() or repo_venv_python is None:
-        docs_hint = str(DOCS_PATH.relative_to(REPO_ROOT)) if DOCS_PATH.exists() else "docs/safari-bookmarks-export.md"
+        docs_hint = str(DOCS_PATH.relative_to(REPO_ROOT)) if DOCS_PATH.exists() else "docs/python/safari-bookmarks-export.md"
         raise SystemExit(
             "No local .venv was found for safari_bookmarks_export.py.\n"
             f"Create one in {REPO_ROOT} and install the repo requirements before running the script.\n"

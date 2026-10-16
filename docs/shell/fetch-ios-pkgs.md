@@ -2,9 +2,9 @@
 
 # 📦 fetch-ios-pkgs.zsh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`fetch-ios-pkgs.zsh`](../shell/fetch-ios-pkgs.zsh) finds the newest complete MobileDevice/CoreTypes pair in the Mac's DeveloperSeed catalog. On macOS 13 and later, it also selects `AppleKIS.pkg` when that product contains it. With no arguments it shows the links, downloads the selected packages, installs them, and attempts to restart `usbmuxd`.
+[`fetch-ios-pkgs.zsh`](../../shell/fetch-ios-pkgs.zsh) finds the newest complete MobileDevice/CoreTypes pair in the Mac's DeveloperSeed catalog. On macOS 13 and later, it also selects `AppleKIS.pkg` when that product contains it. With no arguments it shows the links, downloads the selected packages, installs them, and attempts to restart `usbmuxd`.
 
 ## What It Does
 
@@ -141,6 +141,6 @@ python -m pytest tests/fetch_ios_pkgs
 
 The tests require macOS for the real JXA/Foundation parser. Python and pytest are development-only dependencies. Set `FETCH_IOS_PKGS_ZSH` to an absolute zsh executable path to exercise another interpreter.
 
-The [implementation record and remaining live checks](../.plans/project-plans/completed/ios-27-package-script-plan.md) are kept in `.plans/project-plans/completed/`.
+The [implementation record and remaining live checks](../../.plans/project-plans/completed/ios-27-package-script-plan.md) are kept in `.plans/project-plans/completed/`.
 
 </details>

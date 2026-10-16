@@ -2,9 +2,9 @@
 
 # 🎞️ mkv_extract_tracks.sh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`mkv_extract_tracks.sh`](../shell/mkv_extract_tracks.sh) extracts every attachment from every `.mkv` file in the current directory.
+[`mkv_extract_tracks.sh`](../../shell/mkv_extract_tracks.sh) extracts every attachment from every `.mkv` file in the current directory.
 
 ## What It Does
 

@@ -2,7 +2,7 @@
 
 # 💾 Seagate Exos 3.5-inch SATA Model-Code Reference
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
 **Updated:** 7 August 2026 — factory-recertified table expanded  
 **Purpose:** Search exact Seagate Exos model codes when shopping for used, refurbished or recertified SATA drives.

@@ -2,7 +2,7 @@
 
 # 💬 Complete Discord Markdown & Message Formatting Cheat Sheet
 
-[⬅️ Back to README](../README.md) · [📝 Companion: Markdown & GitHub Flavored Markdown Cheat Sheet](md-and-gh-cheat-sheet.md)
+[⬅️ Back to README](../../README.md) · [📝 Companion: Markdown & GitHub Flavored Markdown Cheat Sheet](md-and-gh-cheat-sheet.md)
 
 > **Reviewed against official Discord documentation:** 19 July 2026<br>
 > **Scope:** Discord desktop, web, and mobile message formatting, plus Discord-specific message tokens used by users, bots, and webhooks.

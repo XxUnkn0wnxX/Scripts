@@ -53,7 +53,7 @@ Reuse T01.03/T04.01/T04.02 with focused checks; no broad interactive campaign.
 
 ## Approved utility-guide presentation rework
 
-Rework only docs/mkv-utils.md to match the cleaner toolkit guides, including
+Rework only docs/shell/mkv-utils.md to match the cleaner toolkit guides, including
 restrained emoji styling, shorter task-focused explanations and collapsible
 plain-text examples. Remove repeated implementation narration and per-run test
 history from the user guide; preserve that evidence in existing project records.
@@ -307,7 +307,7 @@ existing ETA arithmetic unchanged. Walk the affected flows with saved transcript
   their own remux.
 - File discovery already includes `.mkv`, `.mka`, `.mks`, and `.mk3d`; preserve
   that set consistently in every new entrypoint and shared file selector.
-- The initial [documentation](../../../docs/mkv-utils.md) described the nine choices and
+- The initial [documentation](../../../docs/shell/mkv-utils.md) described the nine choices and
   queue reporting. [The pytest suite](../../../tests/mkv_tools/test_mkv_utils.py) and
   [shared helpers](../../../tests/mkv_tools/_mkv_helpers.py) provide an existing isolated
   interactive test harness.

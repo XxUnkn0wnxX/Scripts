@@ -2,9 +2,9 @@
 
 # ⚙️ satisfactory_balancer.zsh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`satisfactory_balancer.zsh`](../shell/satisfactory_balancer.zsh) is a CLI helper for Satisfactory splitter and merger layouts. It mirrors the standard layouts from the official Satisfactory Balancer wiki and also supports Nico-style complex ratios.
+[`satisfactory_balancer.zsh`](../../shell/satisfactory_balancer.zsh) is a CLI helper for Satisfactory splitter and merger layouts. It mirrors the standard layouts from the official Satisfactory Balancer wiki and also supports Nico-style complex ratios.
 
 ## Reference Guides
 

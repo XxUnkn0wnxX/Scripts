@@ -2,9 +2,9 @@
 
 # 💬 discord_install_manager.zsh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`discord_install_manager.zsh`](../shell/discord_install_manager.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
+[`discord_install_manager.zsh`](../../shell/discord_install_manager.zsh) is a macOS-only helper that resets Discord's self-managed core installation when its updater fails, without deleting the local login session or settings.
 
 It can also remove or preserve a supported BetterDiscord app wrapper, download a fresh Discord DMG, replace the selected app in `/Applications`, inject OpenAsar into the appropriate ASAR payload, optionally lock OpenAsar to that pinned Discord version, and then run the same App Support cleanup.
 

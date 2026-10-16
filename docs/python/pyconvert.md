@@ -2,9 +2,9 @@
 
 # 🔢 pyconvert.py
 
-↩️ [Back to repository README](../README.md)
+↩️ [Back to repository README](../../README.md)
 
-[`pyconvert.py`](../python/pyconvert.py) converts decimal and hex values between several binary-friendly formats. It is useful when checking save-file values, memory values, or other binary data.
+[`pyconvert.py`](../../python/pyconvert.py) converts decimal and hex values between several binary-friendly formats. It is useful when checking save-file values, memory values, or other binary data.
 
 ## What It Does
 

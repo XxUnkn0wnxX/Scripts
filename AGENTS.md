@@ -6,5 +6,7 @@
 - Treat `.plans/project-plans/` as the broader project todo list: pending additions belong in `todo/` and completed plans in `completed/`.
 - Other existing or future project folders may coexist under `.plans/`; do not treat the project todo list as the active agent task.
 - Keep raw browser captures and credentials in the ignored `.tmp/` evidence directory.
-- Keep userscript guides in `docs/userscripts/`.
+- Group documentation under `docs/shell/`, `docs/python/`, `docs/userscripts/`, `docs/zen-scripts/`, `docs/cheat-sheets/`, and `docs/other/` according to its subject.
+- Use dashes instead of spaces in documentation folder names; Markdown filenames may contain spaces.
+- Use relative links for repository-owned files and images in documentation. Userscript guides may use hardcoded repository URLs; preserve their intended branch targets.
 - Maintain GitHub Fluid Width release history only in the collapsible changelog in `docs/userscripts/github-fluid-width.md`; update the userscript's `@version` metadata for releases.

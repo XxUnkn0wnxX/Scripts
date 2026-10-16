@@ -15,7 +15,7 @@ No arguments     Show links, download selected packages, install CoreTypes then
 
 The system's SeedCatalogs.plist is read only. Requires macOS 10.10 or later
 with JavaScript for Automation and Foundation available through osascript.
-Apple packages have their own macOS requirements; see docs/fetch-ios-pkgs.md.
+Apple packages have their own macOS requirements; see docs/shell/fetch-ios-pkgs.md.
 USAGE
 }
 

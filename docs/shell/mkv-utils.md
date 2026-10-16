@@ -2,9 +2,9 @@
 
 # 🎞️ `mkv_utils.zsh`
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`mkv_utils.zsh`](../shell/mkv_utils.zsh) is a single interactive script for Matroska track analysis, metadata edits, remuxing and extraction. Choose a category, select one or more files, enter the settings, and the batch starts when configuration is complete.
+[`mkv_utils.zsh`](../../shell/mkv_utils.zsh) is a single interactive script for Matroska track analysis, metadata edits, remuxing and extraction. Choose a category, select one or more files, enter the settings, and the batch starts when configuration is complete.
 
 It scans only the chosen directory (not subdirectories) and supports `.mkv`, `.mka`, `.mks` and `.mk3d` files. Examples below use abbreviated transcripts.
 

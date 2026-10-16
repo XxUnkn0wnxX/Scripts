@@ -2,9 +2,9 @@
 
 # 🧼 strip_audio_tags.zsh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`shell/audio/strip_audio_tags.zsh`](../shell/audio/strip_audio_tags.zsh) removes metadata tags from every `.m4a` file in the current directory.
+[`shell/audio/strip_audio_tags.zsh`](../../shell/audio/strip_audio_tags.zsh) removes metadata tags from every `.m4a` file in the current directory.
 
 ## What It Does
 

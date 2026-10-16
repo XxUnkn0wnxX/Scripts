@@ -59,7 +59,7 @@ def resolve_repo_root(start_dir: Path, max_depth: int = 1) -> Path:
 REPO_ROOT = resolve_repo_root(SCRIPT_DIR)
 REPO_VENV_DIR = REPO_ROOT / ".venv"
 REQUIREMENTS_PATH = REPO_ROOT / "requirements.txt"
-DOCS_PATH = REPO_ROOT / "docs" / "vpnroute.md"
+DOCS_PATH = REPO_ROOT / "docs" / "python" / "vpnroute.md"
 
 
 def resolve_repo_venv_python(venv_dir: Path) -> Path | None:
@@ -70,7 +70,7 @@ def resolve_repo_venv_python(venv_dir: Path) -> Path | None:
 
 
 def docs_hint() -> str:
-    return str(DOCS_PATH.relative_to(REPO_ROOT)) if DOCS_PATH.exists() else "docs/vpnroute.md"
+    return str(DOCS_PATH.relative_to(REPO_ROOT)) if DOCS_PATH.exists() else "docs/python/vpnroute.md"
 
 
 def fail_with_docs(reason: str, exit_code: int = 1) -> None:

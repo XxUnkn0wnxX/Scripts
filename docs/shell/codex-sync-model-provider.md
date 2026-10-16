@@ -2,9 +2,9 @@
 
 # 🔄 codex-sync-model-provider.zsh
 
-[← Back to the toolkit](../README.md)
+[← Back to the toolkit](../../README.md)
 
-[`codex-sync-model-provider.zsh`](../shell/codex-sync-model-provider.zsh) is a macOS-only utility that synchronizes the root-level Codex `model_provider` setting into persisted thread and session metadata.
+[`codex-sync-model-provider.zsh`](../../shell/codex-sync-model-provider.zsh) is a macOS-only utility that synchronizes the root-level Codex `model_provider` setting into persisted thread and session metadata.
 
 It updates only:
 

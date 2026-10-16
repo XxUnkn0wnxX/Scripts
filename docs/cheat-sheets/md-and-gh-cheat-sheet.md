@@ -2,7 +2,7 @@
 
 # 📝 Complete Markdown & GitHub Flavored Markdown Cheat Sheet
 
-[⬅️ Back to README](../README.md) · [🏷️ Companion: GitHub Badges & README UI Cheat Sheet](github-badges-and-readme-ui.md)
+[⬅️ Back to README](../../README.md) · [🏷️ Companion: GitHub Badges & README UI Cheat Sheet](github-badges-and-readme-ui.md)
 
 > **Reviewed:** 19 July 2026<br>
 > **Baseline:** CommonMark 0.31.2, GFM 0.29-gfm, and current GitHub.com documentation and rendering behaviour.

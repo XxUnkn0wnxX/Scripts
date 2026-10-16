@@ -21,6 +21,11 @@ Repo layout:
 - Audio shell helpers live under [`shell/audio/`](shell/audio/)
 - Oh My Zsh plugins live under [`shell/oh-my-zsh/`](shell/oh-my-zsh/)
 - Downloadable tools live under [`tools/`](tools/)
+- Python utility guides live under [`docs/python/`](docs/python/)
+- Shell utility guides live under [`docs/shell/`](docs/shell/)
+- Markdown cheat sheets live under [`docs/cheat-sheets/`](docs/cheat-sheets/)
+- Other reference guides live under [`docs/other/`](docs/other/)
+- Zen script guides live under [`docs/zen-scripts/`](docs/zen-scripts/)
 - Userscript guides live under [`docs/userscripts/`](docs/userscripts/)
 
 </details>
@@ -29,41 +34,41 @@ Repo layout:
 
 | Reference | Description |
 | --- | --- |
-| [Discord Markdown & Message Formatting Cheat Sheet](docs/discord-markdown-cheat-sheet.md) | Discord text formatting, mentions, timestamps, emoji markup, message tokens, and client-specific caveats. |
-| [Markdown & GitHub Flavored Markdown Cheat Sheet](docs/md-and-gh-cheat-sheet.md) | Portable Markdown, GFM extensions, and GitHub-specific formatting with source and rendered examples. |
-| [GitHub Badges & README UI Cheat Sheet](docs/github-badges-and-readme-ui.md) | Build, release, download, coverage, and custom badges plus GitHub-safe README layout elements. |
+| [Discord Markdown & Message Formatting Cheat Sheet](docs/cheat-sheets/discord-markdown-cheat-sheet.md) | Discord text formatting, mentions, timestamps, emoji markup, message tokens, and client-specific caveats. |
+| [Markdown & GitHub Flavored Markdown Cheat Sheet](docs/cheat-sheets/md-and-gh-cheat-sheet.md) | Portable Markdown, GFM extensions, and GitHub-specific formatting with source and rendered examples. |
+| [GitHub Badges & README UI Cheat Sheet](docs/cheat-sheets/github-badges-and-readme-ui.md) | Build, release, download, coverage, and custom badges plus GitHub-safe README layout elements. |
 
 ## [Python Utilities](python/)
 
 | Item | Description | Docs |
 | --- | --- | --- |
-| [`yt-transcribe.py`](python/yt-transcribe.py) | Download YouTube captions and export them as text or DOCX. | [Docs](docs/yt-transcribe.md) |
-| [`pyconvert.py`](python/pyconvert.py) | Convert decimal and hex values between common numeric formats. | [Docs](docs/pyconvert.md) |
-| [`MediaFire.py`](python/MediaFire.py) | Combine two MediaFire quickkeys into one shareable link. | [Docs](docs/mediafire.md) |
-| [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) | Browse and download NordVPN OpenVPN configs. | [Docs](docs/nord-ovpn-picker.md) |
-| [`vpnroute.py`](python/vpnroute.py) | Turn domains or URLs into VPN route output. | [Docs](docs/vpnroute.md) |
-| [`safari_bookmarks_export.py`](python/safari_bookmarks_export.py) | Export selected Safari bookmark folders to Firefox/Chrome HTML. | [Docs](docs/safari-bookmarks-export.md) |
+| [`yt-transcribe.py`](python/yt-transcribe.py) | Download YouTube captions and export them as text or DOCX. | [Docs](docs/python/yt-transcribe.md) |
+| [`pyconvert.py`](python/pyconvert.py) | Convert decimal and hex values between common numeric formats. | [Docs](docs/python/pyconvert.md) |
+| [`MediaFire.py`](python/MediaFire.py) | Combine two MediaFire quickkeys into one shareable link. | [Docs](docs/python/mediafire.md) |
+| [`nord_ovpn_picker.py`](python/nord_ovpn_picker.py) | Browse and download NordVPN OpenVPN configs. | [Docs](docs/python/nord-ovpn-picker.md) |
+| [`vpnroute.py`](python/vpnroute.py) | Turn domains or URLs into VPN route output. | [Docs](docs/python/vpnroute.md) |
+| [`safari_bookmarks_export.py`](python/safari_bookmarks_export.py) | Export selected Safari bookmark folders to Firefox/Chrome HTML. | [Docs](docs/python/safari-bookmarks-export.md) |
 
 ## [Shell Utilities](shell/)
 
 | Item | Description | Docs |
 | --- | --- | --- |
-| [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) | Extract every attachment from each MKV in the current folder. | [Docs](docs/mkv-extract-tracks.md) |
-| [`mkv_mux.zsh`](shell/mkv_mux.zsh) | Interactive MKV remux and volume-boost helper. | [Docs](docs/mkv-mux.md) |
-| [`mkv_utils.zsh`](shell/mkv_utils.zsh) | Interactive Matroska Edit, Mux, Extract and Analyze utility with single or batched actions. | [Docs](docs/mkv-utils.md) |
-| [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) | Satisfactory splitter, balancer, and compressor planner. | [Docs](docs/satisfactory-balancer.md) |
-| [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) | macOS-only launcher and updater wrapper for Satisfactory Modeler. | [Docs](docs/satisfactory-modeler.md) |
-| [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) | macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. | [Docs](docs/discord-install-manager.md) |
-| [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) | Compare custom tap formulas against upstream Homebrew versions. | [Docs](docs/brew-custom-compare.md) |
-| [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) | Download and install current Apple mobile-device support packages. | [Docs](docs/fetch-ios-pkgs.md) |
-| [`codex-sync-model-provider.zsh`](shell/codex-sync-model-provider.zsh) | macOS-only guarded sync of the configured Codex model provider into persisted SQLite thread and session metadata. | [Docs](docs/codex-sync-model-provider.md) |
+| [`mkv_extract_tracks.sh`](shell/mkv_extract_tracks.sh) | Extract every attachment from each MKV in the current folder. | [Docs](docs/shell/mkv-extract-tracks.md) |
+| [`mkv_mux.zsh`](shell/mkv_mux.zsh) | Interactive MKV remux and volume-boost helper. | [Docs](docs/shell/mkv-mux.md) |
+| [`mkv_utils.zsh`](shell/mkv_utils.zsh) | Interactive Matroska Edit, Mux, Extract and Analyze utility with single or batched actions. | [Docs](docs/shell/mkv-utils.md) |
+| [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) | Satisfactory splitter, balancer, and compressor planner. | [Docs](docs/shell/satisfactory-balancer.md) |
+| [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) | macOS-only launcher and updater wrapper for Satisfactory Modeler. | [Docs](docs/shell/satisfactory-modeler.md) |
+| [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) | macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. | [Docs](docs/shell/discord-install-manager.md) |
+| [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) | Compare custom tap formulas against upstream Homebrew versions. | [Docs](docs/shell/brew-custom-compare.md) |
+| [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) | Download and install current Apple mobile-device support packages. | [Docs](docs/shell/fetch-ios-pkgs.md) |
+| [`codex-sync-model-provider.zsh`](shell/codex-sync-model-provider.zsh) | macOS-only guarded sync of the configured Codex model provider into persisted SQLite thread and session metadata. | [Docs](docs/shell/codex-sync-model-provider.md) |
 
 ## [Audio Helpers](shell/audio/)
 
 | Item | Description | Docs |
 | --- | --- | --- |
-| [`shell/audio/strip_audio_tags.zsh`](shell/audio/strip_audio_tags.zsh) | Strip metadata from `.m4a` files in the current folder. | [Docs](docs/strip-audio-tags.md) |
-| [`shell/audio/fix_tags.zsh`](shell/audio/fix_tags.zsh) | Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. | [Docs](docs/fix-tags.md) |
+| [`shell/audio/strip_audio_tags.zsh`](shell/audio/strip_audio_tags.zsh) | Strip metadata from `.m4a` files in the current folder. | [Docs](docs/shell/strip-audio-tags.md) |
+| [`shell/audio/fix_tags.zsh`](shell/audio/fix_tags.zsh) | Rebuild `.m4a` metadata by exporting, stripping, and reapplying tags. | [Docs](docs/shell/fix-tags.md) |
 
 ## [Oh My Zsh Plugins](shell/oh-my-zsh/)
 
@@ -77,7 +82,7 @@ Repo layout:
 
 | Item | Description | Docs |
 | --- | --- | --- |
-| [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc) | Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. | [Docs](docs/bo3-ao-mod.md) |
+| [`BO3 AO-Mod (Version 2.4c) [ZEN].gpc`](Zen%20Scripts/BO3%20AO-Mod%20%28Version%202.4c%29%20%5BZEN%5D.gpc) | Cronus Zen Black Ops 3 mod script with in-game toggles and feedback. | [Docs](docs/zen-scripts/bo3-ao-mod.md) |
 
 ## [Tools](tools/)
 
@@ -89,7 +94,7 @@ Repo layout:
 
 | Item | Description |
 | --- | --- |
-| [Seagate Exos 3.5-inch SATA Model-Code Reference](docs/Seagate%20Exos%203.5in%20SATA%20Model%20Codes.md) | Capacity-based lookup for standard, factory-recertified, and excluded Seagate Exos SATA model codes. |
+| [Seagate Exos 3.5-inch SATA Model-Code Reference](docs/other/Seagate%20Exos%203.5in%20SATA%20Model%20Codes.md) | Capacity-based lookup for standard, factory-recertified, and excluded Seagate Exos SATA model codes. |
 
 ## 📝 TODO
 

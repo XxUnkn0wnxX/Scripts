@@ -2,9 +2,9 @@
 
 # 🧭 Nord OVPN Picker
 
-↩️ [Back to repository README](../README.md)
+↩️ [Back to repository README](../../README.md)
 
-[`nord_ovpn_picker.py`](../python/nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the repo root itself. If you run it from anywhere else, it writes straight into your current working directory.
+[`nord_ovpn_picker.py`](../../python/nord_ovpn_picker.py) is a local CLI that finds NordVPN OpenVPN servers by country, optional city, protocol, and group, then downloads chosen `.ovpn` files into `NordOVPNs/` only when you run it from the repo root itself. If you run it from anywhere else, it writes straight into your current working directory.
 
 ## Screenshots
 
@@ -14,19 +14,19 @@
 <p>Click a screenshot to open the full-size image.</p>
 
 <p><strong>1. Country selector</strong></p>
-<p><a href="../.images/nord_ovpn_picker/01-country-selector.png"><img src="../.images/nord_ovpn_picker/01-country-selector.png" alt="Country selector with Australia highlighted in the available country list" width="900"></a></p>
+<p><a href="../../.images/nord_ovpn_picker/01-country-selector.png"><img src="../../.images/nord_ovpn_picker/01-country-selector.png" alt="Country selector with Australia highlighted in the available country list" width="900"></a></p>
 
 <p><strong>2. Country search</strong></p>
-<p><a href="../.images/nord_ovpn_picker/02-country-selector-search.png"><img src="../.images/nord_ovpn_picker/02-country-selector-search.png" alt="Country selector showing filtered matches while typing Uni" width="900"></a></p>
+<p><a href="../../.images/nord_ovpn_picker/02-country-selector-search.png"><img src="../../.images/nord_ovpn_picker/02-country-selector-search.png" alt="Country selector showing filtered matches while typing Uni" width="900"></a></p>
 
 <p><strong>3. City search</strong></p>
-<p><a href="../.images/nord_ovpn_picker/03-city-selector-search.png"><img src="../.images/nord_ovpn_picker/03-city-selector-search.png" alt="United States cities filtered while typing lo" width="900"></a></p>
+<p><a href="../../.images/nord_ovpn_picker/03-city-selector-search.png"><img src="../../.images/nord_ovpn_picker/03-city-selector-search.png" alt="United States cities filtered while typing lo" width="900"></a></p>
 
 <p><strong>4. City selector</strong></p>
-<p><a href="../.images/nord_ovpn_picker/04-city-selector.png"><img src="../.images/nord_ovpn_picker/04-city-selector.png" alt="City selector with Los Angeles highlighted" width="900"></a></p>
+<p><a href="../../.images/nord_ovpn_picker/04-city-selector.png"><img src="../../.images/nord_ovpn_picker/04-city-selector.png" alt="City selector with Los Angeles highlighted" width="900"></a></p>
 
 <p><strong>5. Server results and downloaded configs</strong></p>
-<p><a href="../.images/nord_ovpn_picker/05-server-results-and-downloaded-configs.png"><img src="../.images/nord_ovpn_picker/05-server-results-and-downloaded-configs.png" alt="Ping results, ranked Los Angeles servers, and downloads of results 1, 4, and 7" width="900"></a></p>
+<p><a href="../../.images/nord_ovpn_picker/05-server-results-and-downloaded-configs.png"><img src="../../.images/nord_ovpn_picker/05-server-results-and-downloaded-configs.png" alt="Ping results, ranked Los Angeles servers, and downloads of results 1, 4, and 7" width="900"></a></p>
 
 </details>
 

@@ -2,7 +2,7 @@
 
 # 🏷️ GitHub Badges & README UI Cheat Sheet
 
-[⬅️ Back to README](../README.md) · [📝 Companion: Markdown & GitHub Flavored Markdown Cheat Sheet](md-and-gh-cheat-sheet.md)
+[⬅️ Back to README](../../README.md) · [📝 Companion: Markdown & GitHub Flavored Markdown Cheat Sheet](md-and-gh-cheat-sheet.md)
 
 > **Reviewed:** 19 July 2026<br>
 > **Scope:** GitHub repository and profile READMEs, native workflow badges, Shields.io badges, linked badge-buttons, external cards, and GitHub-safe layout elements.

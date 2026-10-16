@@ -2,9 +2,9 @@
 
 # 🔖 safari_bookmarks_export.py
 
-↩️ [Back to repository README](../README.md)
+↩️ [Back to repository README](../../README.md)
 
-[`safari_bookmarks_export.py`](../python/safari_bookmarks_export.py) exports selected folders from Safari's `$HOME/Library/Safari/Bookmarks.plist` into Netscape bookmarks HTML, which Firefox and Chrome can import.
+[`safari_bookmarks_export.py`](../../python/safari_bookmarks_export.py) exports selected folders from Safari's `$HOME/Library/Safari/Bookmarks.plist` into Netscape bookmarks HTML, which Firefox and Chrome can import.
 
 ## What It Does
 
@@ -31,7 +31,7 @@ This script uses:
 - Python standard library modules for plist parsing, path handling, HTML escaping, and argument parsing
 - [`rich`](https://github.com/Textualize/rich) for terminal tables and trees
 
-`rich` is already listed in the repo [`requirements.txt`](../requirements.txt).
+`rich` is already listed in the repo [`requirements.txt`](../../requirements.txt).
 
 ## Basic Usage
 

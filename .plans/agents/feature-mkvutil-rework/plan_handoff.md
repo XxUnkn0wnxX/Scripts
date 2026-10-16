@@ -196,7 +196,7 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ### Accepted utility-guide presentation rework
 
-- User-requested rewrite changes only docs/mkv-utils.md and these durable records.
+- User-requested rewrite changes only docs/shell/mkv-utils.md and these durable records.
   Guide reduced from665lines/8355words to323lines/2420words (71% fewer words), with
   sibling-aligned emoji headings, compact action/output tables and seven optional
   details sections. Removed repeated control/implementation explanations and
