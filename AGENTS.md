@@ -1,6 +1,9 @@
-# mkvutil rework instructions
+# Project instructions
 
-- Keep `.plans/feature-mkvutil-rework/plan.md` as the authoritative plan and preserve its four checkpoints.
-- Keep `.plans/feature-mkvutil-rework/plan_checklist.md` and `.plans/feature-mkvutil-rework/plan_handoff.md` as durable companion records. These three planning documents may be tracked in Git under the user's approved repository policy.
-- Keep root `AGENTS.md` tracked and synchronize its approved instructions across `feature/mkvutil-rework`, `develop`, and `master`.
-- Before resuming the rework, read the plan, checklist, and handoff in `.plans/feature-mkvutil-rework/`. Follow the plan's approved requirements and the handoff's verified restart state.
+- Keep agent plans, checklists, handoffs, and audits together in the user-selected task folder under `.plans/agents/`.
+- For a new or resumed session, the user can identify an ongoing task by its folder name under `.plans/agents/`. Read its available handoff, plan, checklist, and audit records before continuing. Do not assume another task folder is active.
+- Keep `.plans/` Git-visible; do not add ignore or exclude rules for it. Review documents for credentials, personal paths, and private host details before publication.
+- Treat `.plans/project-plans/` as the broader project todo list: pending additions belong in `todo/` and completed plans in `completed/`.
+- Other existing or future project folders may coexist under `.plans/`; do not treat the project todo list as the active agent task.
+- Keep raw browser captures and credentials in the ignored `.tmp/` evidence directory.
+- Maintain GitHub Fluid Width release history only in the collapsible changelog in `docs/github-fluid-width.md`; update the userscript's `@version` metadata for releases.

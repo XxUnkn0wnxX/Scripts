@@ -141,6 +141,6 @@ python -m pytest tests/fetch_ios_pkgs
 
 The tests require macOS for the real JXA/Foundation parser. Python and pytest are development-only dependencies. Set `FETCH_IOS_PKGS_ZSH` to an absolute zsh executable path to exercise another interpreter.
 
-The [implementation record and remaining live checks](plans/ios-27-package-script-plan.md) are kept in `docs/plans/`.
+The [implementation record and remaining live checks](../.plans/project-plans/completed/ios-27-package-script-plan.md) are kept in `.plans/project-plans/completed/`.
 
 </details>

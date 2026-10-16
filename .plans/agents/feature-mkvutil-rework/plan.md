@@ -301,15 +301,15 @@ existing ETA arithmetic unchanged. Walk the affected flows with saved transcript
 - The inspected host reports macOS Big Sur **11.7.11**, build `20G1443`.
 - Tool upgrades and dependency installation are outside this rework. Version 93.0
   is the compatibility baseline, including its bundled manuals and local help.
-- At the initial review, [the script](../../shell/mkv_utils.zsh) accepted one main-menu choice per
+- At the initial review, [the script](../../../shell/mkv_utils.zsh) accepted one main-menu choice per
   invocation. Metadata helpers collected a value and immediately edited selected
   files before collecting the next value. Removal and reordering each perform
   their own remux.
 - File discovery already includes `.mkv`, `.mka`, `.mks`, and `.mk3d`; preserve
   that set consistently in every new entrypoint and shared file selector.
-- The initial [documentation](../../docs/mkv-utils.md) described the nine choices and
-  queue reporting. [The pytest suite](../../tests/mkv_tools/test_mkv_utils.py) and
-  [shared helpers](../../tests/mkv_tools/_mkv_helpers.py) provide an existing isolated
+- The initial [documentation](../../../docs/mkv-utils.md) described the nine choices and
+  queue reporting. [The pytest suite](../../../tests/mkv_tools/test_mkv_utils.py) and
+  [shared helpers](../../../tests/mkv_tools/_mkv_helpers.py) provide an existing isolated
   interactive test harness.
 
 Version 93's local help and manuals support track selection, `--track-order`,

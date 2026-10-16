@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub workspace widths on large desktop screens while preserving GitHub's native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.3`.
+Current documented release: `1.0.4`.
 
 ## Screenshots
 
@@ -270,3 +270,22 @@ its native width. Change the percentage to `80` for a more visible difference;
 set the toggle to `false` to restore that track's native width. Even `100%`
 stops at the parent boundary and keeps the configured gutter when the minimum
 width permits. Resize below the desktop threshold to use GitHub's native layout.
+
+<details>
+<summary>Changelog</summary>
+
+Release history for this userscript is maintained only in this section.
+
+### 1.0.4 — 2026-10-16
+
+- Restore fluid PageLayout header lanes after GitHub renamed their wrapper classes, keeping Actions workflow headings and controls aligned with the content below.
+- Recognize GitHub's renamed issue-content wrappers so issue headings, metadata, and conversation sections expand again while preserving the native sidebar.
+- Recognize the renamed Search layout inside the Search app, applying the width setting to the results column while preserving both sidebars.
+- Fill the current pull-request conversation wrapper inside its owning workspace, removing its independent reading-width cap.
+- Restore dashboard feed expansion through the `#dashboard` landmark while retaining the native right rail.
+- Keep Pulse chart avatar labels visible during width changes by preserving their intrinsic HTML measurement while the chart expands.
+- Restore the optional floating issue/PR title hiding and issue spacing compensation on current layouts while retaining regular headings and toolbar controls.
+- Use semantic layout components, test IDs, and parent relationships for the current adapters instead of generated module class names.
+- Retain the older selectors for existing GitHub page variants, the desktop breakpoint, and the full-width override setting.
+
+</details>

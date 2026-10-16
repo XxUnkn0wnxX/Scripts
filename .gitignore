@@ -14,9 +14,7 @@ tmp/
 Backup/
 *.html
 
-# Local agent and environment files
-AGENTS.md
-!/AGENTS.md
+# Local environment files
 .venv/
 __pycache__/
 .pytest_cache/

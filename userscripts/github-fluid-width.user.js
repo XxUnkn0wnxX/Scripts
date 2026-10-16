@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.3
+// @version      1.0.4
 // @description  Controls GitHub workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -68,13 +68,22 @@
   // These are GitHub layout primitives, rather than a list of URL routes. The
   // scan intentionally does not treat arbitrary cards or every max-width as a
   // workspace limiter.
+  const ISSUE_CONTENT_CONTAINER_SELECTOR = [
+    '[class*="ContentWrapper-module__contentContainer__"]',
+    // The issue header identifies its capped lane and sibling content lanes.
+    '[data-component="SplitPageLayout.Content"] [data-width="full"] :has(> [data-testid="issue-header"])',
+    '[data-component="SplitPageLayout.Content"] [data-width="full"] :has(> [data-testid="issue-header"]) ~ *',
+  ].join(', ');
+  const LAYOUT_LANDMARK_SELECTOR = '[data-testid="issue-header"], [data-testid="search-sub-header"], #dashboard, .pull-discussion-timeline';
   const CANDIDATE_SELECTOR = [
     '.container-xl',
     '.container-lg',
     '[class*="prc-PageLayout-PageLayoutWrapper-"][data-width="xlarge"]',
     '[class*="prc-PageLayout-Content-"][data-width="xlarge"]',
+    // Current SidebarPage headers keep semantic attributes after class renames.
+    '[data-component="PageLayout.Header"] [data-width="xlarge"]',
     '[class*="SidebarPageLayout-module__HeaderInner__"][data-width="xlarge"]',
-    '[class*="ContentWrapper-module__contentContainer__"]',
+    ISSUE_CONTENT_CONTAINER_SELECTOR,
     '[class*="prc-PageLayout-ContentWrapper-"].px-2.mx-auto',
     '.PageLayout-content-centered-xl',
   ].join(', ');
@@ -83,6 +92,7 @@
     '.container-lg',
     '[class*="prc-PageLayout-Content-"][data-width="large"]',
     '[class*="Conversations-module__content__"]',
+    '[data-component="SplitPageLayout.Content"]:has(> [data-width="large"] > .pull-discussion-timeline)',
     '.Layout-main-centered-xl',
     'article.markdown-body.entry-content.container-lg',
   ].join(', ');
@@ -93,9 +103,23 @@
   ].join(' ');
   const ACTIONS_SPLIT_CONTENT_SELECTOR = '.PageLayout-content[data-target="split-page-layout.content"]';
   const LEGACY_PR_FILES_SELECTOR = '#repo-content-pjax-container #files_bucket.files-bucket';
-  const SEARCH_TWO_COLUMN_SELECTOR = '[class*="Search-module__twoColumnOuter__"]';
-  const SEARCH_MAIN_SELECTOR = '[class*="Search-module__mainColumn__"]';
-  const SEARCH_RIGHT_SIDEBAR_SELECTOR = '[class*="Search-module__rightSidebar__"]';
+  // Anchor the current Search lanes to their results header, independent of
+  // generated module classes. Retain older names for existing page variants.
+  const SEARCH_TWO_COLUMN_LANDMARK_SELECTOR = 'react-app[app-name="blackbird-search"] [data-width="full"] > :has(> * > [data-testid="search-sub-header"])';
+  const SEARCH_TWO_COLUMN_SELECTOR = [
+    '[class*="Search-module__twoColumnOuter__"]',
+    SEARCH_TWO_COLUMN_LANDMARK_SELECTOR,
+  ].join(', ');
+  const SEARCH_MAIN_SELECTOR = [
+    '[class*="Search-module__mainColumn__"]',
+    'react-app[app-name="blackbird-search"] :has(> [data-testid="search-sub-header"])',
+  ].join(', ');
+  const SEARCH_RIGHT_SIDEBAR_SELECTOR = [
+    '[class*="Search-module__rightSidebar__"]',
+    `${SEARCH_TWO_COLUMN_LANDMARK_SELECTOR} > :not(:has(> [data-testid="search-sub-header"]))`,
+  ].join(', ');
+  const PR_FILES_TOOLBAR_SELECTOR = '#diff-comparison-viewer-container section[data-component="Stack"]:has([data-testid="expand-file-tree-button"])';
+  const PR_FILES_TOOLBAR_START_SELECTOR = `${PR_FILES_TOOLBAR_SELECTOR} > [data-component="Stack"][data-direction="horizontal"]`;
   const BLOCKED_ANCESTOR_SELECTOR = [
     'nav',
     'aside',
@@ -198,7 +222,9 @@ ${HideIssuePRHeader ? `
    clones; preserve regular headings, controls, and the normal commit selector. */
 ${active} #issue-viewer-sticky-header,
 ${active} [class*="StickyPullRequestHeader-module__prHeader__"],
+${active} #diff-comparison-viewer-container [data-component="PageHeader"]:has(a[href="#top"]),
 ${active} [class*="PullRequestFilesToolbar-module__toolbar__"] [class*="PullRequestFilesToolbar-module__show-when-stuck__"],
+${active} ${PR_FILES_TOOLBAR_START_SELECTOR} > [data-component="Stack"][data-direction="vertical"]:has(a[href="#top"]),
 ${active} .pr-toolbar .diffbar .show-if-stuck {
   display: none !important;
 }
@@ -206,13 +232,15 @@ ${active} .pr-toolbar .diffbar .show-if-stuck {
 /* The repeated title wrapper also contains a duplicate commit selector.
    Keep its normal copy visible on wide Changes pages after the clone is hidden. */
 @container (min-width: 768px) {
-  ${active} [class*="PullRequestFilesToolbar-module__toolbar__"][class*="PullRequestFilesToolbar-module__is-stuck__"] [class*="PullRequestFilesToolbar-module__hide-when-stuck-large__"] {
+  ${active} [class*="PullRequestFilesToolbar-module__toolbar__"][class*="PullRequestFilesToolbar-module__is-stuck__"] [class*="PullRequestFilesToolbar-module__hide-when-stuck-large__"],
+  ${active} ${PR_FILES_TOOLBAR_START_SELECTOR} > :has(> #changes-selector-button) {
     display: block !important;
   }
 }
 
 /* GitHub offsets the issue copy's 56px height with a -56px metadata margin. */
-${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
+${active} [class*="HeaderMetadata-module__metadataContainerSticky__"],
+${active} [data-testid="issue-metadata-fixed"] {
   margin-bottom: 0 !important;
 }
 ` : ''}
@@ -253,6 +281,11 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
     box-sizing: border-box !important;
   }
 
+  /* Keep HTML image-label bodies intrinsically sized during chart reflow. */
+  ${active} [${OWNER_ATTR}] svg.highcharts-root .highcharts-xaxis-labels foreignObject > body:has(img) {
+    width: max-content !important;
+  }
+
   /* Settings feature cards use a direct trailing primary-CTA wrapper. Keep
      that intrinsic button at the widened row's trailing edge. */
   ${active} #options_bucket .flash > .d-flex.flex-md-row.flex-column.flex-md-items-center.flex-items-start > :has(> .btn.btn-primary),
@@ -273,14 +306,16 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
 /* GitHub's dashboard rail fits beside its native 1332px shell from 1668px.
    Leave the native flex sizing alone below that point. */
 @media (min-width: 1668px) {
-  ${active} .feed-content[${OWNER_ATTR}] > .feed-main {
+  ${active} .feed-content[${OWNER_ATTR}] > .feed-main,
+  ${active} .feed-content[${OWNER_ATTR}] > :has(#dashboard) {
     flex: 1 1 0 !important;
     width: auto !important;
     max-width: none !important;
     min-width: 0 !important;
   }
 
-  ${active} .feed-content[${OWNER_ATTR}] > .feed-right-sidebar {
+  ${active} .feed-content[${OWNER_ATTR}] > .feed-right-sidebar,
+  ${active} .feed-content[${OWNER_ATTR}] > aside {
     flex: 0 0 312px !important;
     width: 312px !important;
   }
@@ -393,7 +428,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
       if (hasRole(element)) return;
       if (!element.matches(
         '[class*="prc-PageLayout-PageLayoutWrapper-"][data-width="xlarge"], ' +
-        '[class*="ContentWrapper-module__contentContainer__"]'
+        ISSUE_CONTENT_CONTAINER_SELECTOR
       )) return;
       if (hasOwnerAncestor(element)) {
         markFillIfCapped(element);
@@ -603,7 +638,7 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
     if (element.matches('.container-xl')) return 1280;
     if (element.matches('.container-lg')) return 1012;
     if (element.matches('[class*="prc-PageLayout-ContentWrapper-"].px-2.mx-auto')) return 1400;
-    if (element.matches('[data-width="xlarge"], [class*="ContentWrapper-module__contentContainer__"]')) return 1280;
+    if (element.matches(`[data-width="xlarge"], ${ISSUE_CONTENT_CONTAINER_SELECTOR}`)) return 1280;
     return null;
   }
 
@@ -665,11 +700,12 @@ ${active} [class*="HeaderMetadata-module__metadataContainerSticky__"] {
   function isRelevantInsertion(node) {
     if (node.nodeType !== Node.ELEMENT_NODE || node === style || node.id === STYLE_ID) return false;
     return node.matches(CANDIDATE_SELECTOR) ||
+      node.matches(LAYOUT_LANDMARK_SELECTOR) ||
       node.matches(NESTED_LIMITER_SELECTOR) ||
       isGlobalIssuesContent(node) ||
       isRelevantFullWorkspaceInsertion(node) ||
       node.matches('.feed-content') ||
-      Boolean(node.querySelector(`${CANDIDATE_SELECTOR}, ${NESTED_LIMITER_SELECTOR}, ${GLOBAL_ISSUES_CONTENT_SELECTOR}, .feed-content`));
+      Boolean(node.querySelector(`${CANDIDATE_SELECTOR}, ${NESTED_LIMITER_SELECTOR}, ${LAYOUT_LANDMARK_SELECTOR}, ${GLOBAL_ISSUES_CONTENT_SELECTOR}, .feed-content`));
   }
 
   function isRelevantSearchSidebarRemoval(record) {

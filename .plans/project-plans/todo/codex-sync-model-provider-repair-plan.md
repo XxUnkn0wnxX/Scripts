@@ -4,7 +4,7 @@ Date: 2026-09-27. Status: planning only; implementation has not started.
 
 ## Requested outcome and execution boundary
 
-Replace `--unlock` in [`shell/codex-sync-model-provider.zsh`](../../shell/codex-sync-model-provider.zsh) with `--repair [sessionID]`. Support full repair when no ID follows `--repair`, targeted session repair when an ID is supplied, database corruption recovery in both modes, and backups containing only files that will change. Preserve `--dry-run` and existing provider-sync safeguards.
+Replace `--unlock` in [`shell/codex-sync-model-provider.zsh`](../../../shell/codex-sync-model-provider.zsh) with `--repair [sessionID]`. Support full repair when no ID follows `--repair`, targeted session repair when an ID is supplied, database corruption recovery in both modes, and backups containing only files that will change. Preserve `--dry-run` and existing provider-sync safeguards.
 
 **Implementation validation is limited to tests and dry runs.** The assistant may exercise write paths only inside disposable test fixtures with an isolated `HOME`, `CODEX_HOME`, SQLite directory, and controlled processes. It must not run a live repair/provider sync, signal real Codex processes, replace live databases, edit live rollouts, or deploy a candidate while testing. Any eventual production repair is a separate user action. This plan itself authorizes no implementation or live repair.
 
@@ -194,7 +194,7 @@ Completion requires evidence that the truncation/checkpoint case is actually rec
 ## Source references
 
 - Incident files named above, especially `HANDOFF.txt`, `recovery-row-comparison.json`, `repair-merge-report.json`, `reprojection-manifest.json`, `final-app-server-validation.json` and `completion-checks.json`.
-- Current script and [`docs/codex-sync-model-provider.md`](../codex-sync-model-provider.md); script line references above describe the planning baseline and will shift during implementation.
+- Current script and [`docs/codex-sync-model-provider.md`](../../../docs/codex-sync-model-provider.md); script line references above describe the planning baseline and will shift during implementation.
 - Exact Codex commit `36650394c5b38c2990ccf2a3457165ca3e9d9726`: `codex-rs/state/src/sqlite.rs` (runtime DB inventory and open modes), `state/src/runtime.rs` (integrity checks), `state/src/runtime/recovery.rs` (DB/companion preservation), `thread-store/src/local/live_writer.rs` (canonical JSONL and persistence), `thread_history.rs` (four-table reset), `thread_history_materialization.rs` (checkpoint/ordinal/lineage semantics), `rollout_migration.rs` (already-paginated handling), and `app-server/src/request_processors/thread_processor.rs` / `thread_input.rs` (resume and child ownership).
 - [Official OpenAI app-server documentation: reading a stored thread](https://learn.chatgpt.com/docs/app-server#read-a-stored-thread-without-resuming) distinguishes reading persisted history from resuming a thread.
 - [SQLite recovery documentation](https://sqlite.org/recovery.html) explains recovery limitations and `.recover` options; [SQLite corruption documentation](https://sqlite.org/howtocorrupt.html) explains journal pairing, live-file replacement and crash behavior; [SQLite integrity checking](https://sqlite.org/pragma.html#pragma_integrity_check) documents structural checks.

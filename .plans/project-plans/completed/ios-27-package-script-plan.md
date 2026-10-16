@@ -2,13 +2,13 @@
 
 # 📋 iOS 27 package script plan
 
-[← Back to the toolkit](../../README.md) · [Usage guide](../fetch-ios-pkgs.md) · [Task index](../../TODO.md)
+[← Back to the toolkit](../../../README.md) · [Usage guide](../../../docs/fetch-ios-pkgs.md) · [Task index](../../../TODO.md)
 
 Status: **complete — implementation and automated validation passed, Big Sur runtime pass reported by the user, and promotion to `master` explicitly authorized on 2026-09-26.** Handoff recorded on 2026-09-23; implementation and runtime confirmation on 2026-09-26. Detailed runtime logs/device outcomes and testing on other OS/architecture combinations remain optional follow-up checks; completion does not imply runtime coverage of those platforms.
 
 Source: [ChatGPT — iOS 27 package update script](https://chatgpt.com/c/6ab38f6a-6608-83ec-a3a5-bd9e856f20eb), last updated 2026-09-23 at 08:50 UTC. Read through MCP, including the final correction after the catalog evidence was supplied.
 
-Implementation: [`shell/fetch-ios-pkgs.zsh`](../../shell/fetch-ios-pkgs.zsh). Current usage: [`fetch-ios-pkgs.md`](../fetch-ios-pkgs.md). Task index: [`TODO.md`](../../TODO.md).
+Implementation: [`shell/fetch-ios-pkgs.zsh`](../../../shell/fetch-ios-pkgs.zsh). Current usage: [`fetch-ios-pkgs.md`](../../../docs/fetch-ios-pkgs.md). Task index: [`TODO.md`](../../../TODO.md).
 
 ## Implementation decisions
 
@@ -25,7 +25,7 @@ The user confirmed that running the script without arguments must retain automat
 - Explain administrator access before any password request: name the selected packages, installation into system locations on `/`, and the subsequent `usbmuxd` restart. Explain service privileges again before recovery. Add the short italic terminal notice: *Password is invisible as you type.* Keep both optional modes free of privilege requests.
 - Service recovery targets `usbmuxd` and must verify that the original processes disappeared and a replacement appeared. The later restart follow-up fixes unchanged-PID false success and strengthens the fallback sequence; it does not add automatic ejection or restart other Apple agents.
 
-The implementation is in the original shell script, with focused tests in `tests/fetch_ios_pkgs/test_fetch_ios_pkgs.py` and updated [usage documentation](../fetch-ios-pkgs.md). Receipt comparison, additional catalogs, and device-specific applicability remain separate follow-ups below.
+The implementation is in the original shell script, with focused tests in `tests/fetch_ios_pkgs/test_fetch_ios_pkgs.py` and updated [usage documentation](../../../docs/fetch-ios-pkgs.md). Receipt comparison, additional catalogs, and device-specific applicability remain separate follow-ups below.
 
 ## Goal
 
@@ -122,7 +122,7 @@ The same distribution activates `AppleKIS.pkg` through `Script1` when `system.ve
 
 Seed-file discovery checks the standard `Seeding.framework/Resources` path, then `Versions/Current/Resources`, then `Versions/A/Resources`, using only the first readable `SeedCatalogs.plist`. Local Apple framework symlinks confirm that topology. The maintained [Munki installer source](https://github.com/munki/macadmin-scripts/blob/main/installinstallmacos.py) also uses the `Versions/Current` path and reads `DeveloperSeed`. These are framework layouts rather than separate Intel/ARM paths. No readable plist or no valid DeveloperSeed entry must stop before catalog fetch; do not synthesize a URL or alter seed configuration. There is no live ARM filesystem verification in this session.
 
-The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/architecture handling from test coverage. Automated script tests exercise simulated platform probes and package/service actions. A real Big Sur dry run checks discovery only; the subsequent Big Sur runtime pass was reported by the user. Other Intel/ARM and OS combinations remain untested end to end.
+The main [usage document](../../../docs/fetch-ios-pkgs.md) must distinguish intended OS/architecture handling from test coverage. Automated script tests exercise simulated platform probes and package/service actions. A real Big Sur dry run checks discovery only; the subsequent Big Sur runtime pass was reported by the user. Other Intel/ARM and OS combinations remain untested end to end.
 
 </details>
 
@@ -145,7 +145,7 @@ The main [usage document](../fetch-ios-pkgs.md) must distinguish intended OS/arc
 - [x] Stop on parse, download, or installer failures before subsequent actions. Keep install success distinct from service status.
 - [x] Add opt-in `--dry-run` and `--download-only`; preserve automatic installation with no arguments.
 - [x] Explain package-installation and service-recovery privileges, with a short italic password-visibility notice before possible authentication.
-- [x] Update [`fetch-ios-pkgs.md`](../fetch-ios-pkgs.md) for both filenames, modes, dependencies, and compatibility limits.
+- [x] Update [`fetch-ios-pkgs.md`](../../../docs/fetch-ios-pkgs.md) for both filenames, modes, dependencies, and compatibility limits.
 - [x] Receive explicit user authorization for `master` promotion and completion of the overall iOS TODO and this plan.
 
 </details>

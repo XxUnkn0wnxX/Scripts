@@ -9,7 +9,7 @@ plus the current user's tracking/AGENTS approval in that same session's log.
 
 [Authoritative plan](plan.md) · [Acceptance checklist](plan_checklist.md)
 
-Canonical tracked records: `.plans/feature-mkvutil-rework/`. Source, test commands
+Canonical tracked records: `.plans/agents/feature-mkvutil-rework/`. Source, test commands
 and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
@@ -1415,7 +1415,7 @@ still name Scripts-dev; their preserved artifacts now live under this checkout's
   verified after the move, including literal symlinks and recovery directories.
   Other retiring-worktree scratch was discarded as the user instructed.
   The existing main `.venv` and unrelated `.tmp` contents remain in place.
-- Tracked plans are in `.plans/feature-mkvutil-rework/`. Approved AGENTS rules
+- Tracked plans are in `.plans/agents/feature-mkvutil-rework/`. Approved AGENTS rules
   match byte-for-byte on feature, develop and master and all were pushed:
   feature policy `fd9bc72492abfabc5fcfdbeefedba23a2c235b48`,
   develop `ce235f88f32acd620c63b4b906158e468f8b7156`,
@@ -1557,7 +1557,7 @@ still name Scripts-dev; their preserved artifacts now live under this checkout's
   rediscovered/reloaded the multi-session skill, all four relevant references
   including updated resumption/audits, and both now-installed validators.
   Those structural checks pass; no record migration or approval change applies.
-- Canonical records are the tracked `.plans/feature-mkvutil-rework/plan.md`,
+- Canonical records are the tracked `.plans/agents/feature-mkvutil-rework/plan.md`,
   `plan_checklist.md`, and `plan_handoff.md`. The user explicitly requested
   this relocation on2026-10-14 while retaining `feature/mkvutil-rework`.
   The corresponding AGENTS-only policy is signed at `fd9bc72`; propagation
@@ -1609,16 +1609,16 @@ still name Scripts-dev; their preserved artifacts now live under this checkout's
 
 | File | Purpose | Git visibility at this checkpoint |
 | --- | --- | --- |
-| `plan.md` | Authoritative requirements, goal/task IDs, dependencies, and four checkpoint identities | Tracked under `.plans/feature-mkvutil-rework/` |
-| `plan_checklist.md` | Mirrored checkpoint and validation acceptance evidence | Tracked companion under `.plans/feature-mkvutil-rework/` |
-| `plan_handoff.md` | Verified current state, approvals, lineage, and next actions | Tracked companion under `.plans/feature-mkvutil-rework/` |
+| `plan.md` | Authoritative requirements, goal/task IDs, dependencies, and four checkpoint identities | Tracked under `.plans/agents/feature-mkvutil-rework/` |
+| `plan_checklist.md` | Mirrored checkpoint and validation acceptance evidence | Tracked companion under `.plans/agents/feature-mkvutil-rework/` |
+| `plan_handoff.md` | Verified current state, approvals, lineage, and next actions | Tracked companion under `.plans/agents/feature-mkvutil-rework/` |
 | `AGENTS.md` | Approved durable project instructions and planning-record locator | Tracked, matching and pushed on feature/develop/master |
 
 On 2026-10-14 the user replied **"for repo plan etc can be tracked & ya
 approved"** to the proposal for project instructions. This approves creating
 `AGENTS.md` and overrides the private `.tmp/` default for the planning companion
 records. The original placement was the repository root; the user now
-explicitly changed it to `.plans/feature-mkvutil-rework/`, still tracked. The original local AGENTS file initially reused the
+explicitly changed it to `.plans/agents/feature-mkvutil-rework/`, still tracked. The original local AGENTS file initially reused the
 existing ignore rule. The user later explicitly requested its publication on
 the feature branch, develop and master. Root `!/AGENTS.md` now overrides that
 ignore; the instructions and ignore change are identical on all three branches.
