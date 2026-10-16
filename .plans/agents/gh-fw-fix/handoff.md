@@ -4,6 +4,12 @@
 
 - Task folder: `.plans/agents/gh-fw-fix/`. New sessions may identify this work by
   the folder name `gh-fw-fix` and read this handoff, `audit.md`, and `checklist.md`.
+- Master promotion authorized on 2026-10-16: the user approved merging the
+  audited develop release and pushing master. This supersedes the earlier
+  develop-only publication restriction. The reviewed source and documentation
+  candidate is `f5c12e899b07a5e8a527e3dceccf4ae3d0c3e8b7`; this handoff update
+  changes no product code. Earlier publication receipts describe their own
+  checkpoints; inspect current Git refs for the latest publication state.
 - Documentation relocation: all eight userscript guides now live under
   `docs/userscripts/`, with README and project references updated. Guide
   contents and userscript sources are unchanged. Earlier publication receipts
@@ -53,7 +59,8 @@
   and exact validated bytes. Guide digest:
   `44e5c3135a9bd273b774ddc1b2f047c2c8e9e3e715452686e6147b1b65399770`.
   Version remains 1.0.4 and the only matches are the two named hosts. Master
-  remains at the original base. Receipt: `published-final-followup.json`.
+  remained at the original base at that checkpoint. Receipt:
+  `published-final-followup.json`.
   No required task work remains; the final documentation receipt is identified
   by Git history. Live manager installation/OpenUserJS publication were not done.
 - Branch/base: `develop`, `781e876a5a3eba40e15c4a67ace50a80e114b9fd`.
@@ -66,10 +73,10 @@
   C01–C03 implementation, acceptance and publication are complete.
   The published source before the D/E follow-up had SHA-256:
   `208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`.
-- Publication is authorized to `develop` only; the user explicitly waived a
-  further version increment for this ongoing follow-up.
-  Do not update `master` or install into a live userscript manager.
-  Remote `master` must remain at the base SHA above.
+- Earlier follow-up publication was authorized to `develop` only; the user
+  subsequently approved master promotion as recorded above. The explicit
+  version-increment waiver remains in effect. Live userscript-manager
+  installation remains outside this task.
 - Release commit `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` is published to
   `develop`; remote refs were verified. Published raw source returned HTTP 200,
   version `1.0.4`, and initial repair digest
