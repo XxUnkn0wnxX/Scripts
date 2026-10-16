@@ -58,8 +58,10 @@ verification. Source and browser verification remain parent-owned acceptance.
 Fresh representative pages were fetched before the affected selectors changed.
 The userscript matches GitHub broadly and detects layout primitives; these are
 representative cases, rather than an exhaustive list of GitHub routes. The
-initial audit covered 26 cases; follow-up coverage reached 63. These tables
-include the subsequently demonstrated Explore and Gist profile repairs.
+initial audit covered 26 cases; broad follow-up coverage reached 63. Subsequent
+MCP/Feed/Copilot/Search-landing and Notifications-filter checks extend that
+coverage. These current tables include all demonstrated repairs and checked
+surfaces; the evidence sections retain their individual source receipts.
 Source and rendered Markdown share an endpoint pattern but exercise different
 rendering paths.
 
@@ -72,14 +74,19 @@ rendering paths.
 | `/:owner/:repo/pulls` | Same renamed header lane recognized. |
 | `/pulls` | Same renamed header lane recognized. |
 | `/:owner/:repo/issues/:number` | Four capped issue lanes recognized; optional sticky metadata spacing restored. |
-| `/search` | Results lane recognized through its header landmark; native sidebars retained. |
+| `/search?q=…` | Results lane recognized through its header landmark; native sidebars retained. |
 | `/:owner/:repo/pull/:number` | Nested conversation cap released; optional repeated floating title recognized. |
-| `/:owner/:repo/pull/:number/files` (redirects to `/changes`) | Optional repeated Changes title hidden while normal commit selector and toolbar controls remain available. |
+| `/:owner/:repo/pull/:number/files` / `/:owner/:repo/pull/:number/changes` | Repeated Changes title hidden while the normal commit selector and toolbar controls remain available. |
+| `/:owner/:repo/pull/:number/checks` | Previously missed full-width comparison root now follows the override checkbox, preserving the native proportional checks grid. |
 | `/dashboard` | Feed expands through its dashboard landmark; right rail retained. |
+| `/feed` | Current Feed landmark shares the dashboard adapter; native rails and boundaries retained. |
+| `/mcp` | Registry results expand separately from the native introduction and search filter. |
+| `/notifications` and `/notifications?query=…` | Previously missed full-width inbox follows the override checkbox, including All and empty Saved; native proportional columns retained. |
 | `/:owner/:repo/pulse` | Intrinsic image-label measurement prevents avatar clipping during chart expansion. |
-| `/explore` | Preserve both measured native side columns so card avatars keep their size while the center feed expands. |
-| `gist.github.com/:owner` | Preserve the measured native profile column, avatar and profile button while the gist list expands. |
-| `gist.github.com/:owner/starred` | Apply the same native profile-column preservation to the owner's starred listing. |
+| `/explore` | Both measured native side columns retained so card avatars keep their size while the center expands. |
+| `gist.github.com/*` | Host-wide execution enabled for the nine checked Gist views listed below. |
+| `gist.github.com/:owner` | Measured native profile column, avatar and profile button retained while the gist list expands. |
+| `gist.github.com/:owner/starred` | Same native profile-column preservation on the owner's starred listing. |
 
 ### Still working without a page-specific repair
 
@@ -87,20 +94,58 @@ rendering paths.
 | --- | --- |
 | `/:owner/:repo` | Repository overview and file listing. |
 | `/:owner/:repo/tree/:ref/:path` | Folder and file-tree workspace. |
-| `/:owner/:repo/blob/:ref/:path` | Source-code view. |
-| `/:owner/:repo/blob/:ref/:path` | Rendered Markdown view. |
+| `/:owner/:repo/blob/:ref/:path` | Source-code and rendered Markdown paths both checked. |
 | `/:owner/:repo/commits/:ref` | Commit history. |
-| `/:owner/:repo/branches` | Branch listing and search. |
-| `/:owner/:repo/actions/runs/:id` | Actions run summary. |
-| `/:owner/:repo/actions/runs/:id/job/:job` | Completed job log. |
+| `/:owner/:repo/commit/:sha` | Commit details. |
+| `/:owner/:repo/compare/:base...:head` | Comparison workspace. |
+| `/:owner/:repo/branches` | Branch listing/search. |
+| `/:owner/:repo/releases` | Release listing. |
+| `/:owner/:repo/tags` | Tag listing. |
+| `/:owner/:repo/wiki` | Wiki content. |
+| `/:owner/:repo/actions/runs/:id` | Actions run summary and live override. |
+| `/:owner/:repo/actions/runs/:id/job/:job` | Completed job log and live override. |
+| `/:owner/:repo/actions/metrics/usage` | Metrics layout; empty data state. |
+| `/:owner/:repo/actions/metrics/performance` | Metrics layout; empty data state. |
 | `/:owner/:repo/issues` | Repository issue listing. |
+| `/:owner/:repo/pull/:number/commits` | Existing capped owner; longer-view floating title also passes the existing header toggle. |
 | `/orgs/:org/discussions` | Discussion listing. |
 | `/orgs/:org/discussions/:number` | Discussion thread and reply rows. |
-| `/:user` | Profile and activity. |
+| `/:user` | User profile/activity; native avatar size retained. |
+| `/:user?tab=repositories` | Profile repository listing. |
+| `/:org` | Organization profile. |
+| `/orgs/:org/repositories` | Organization repository listing. |
+| `/users/:owner/projects` | Project listing; boards remain a separate untested renderer. |
 | `/issues` | Global issue workspace. |
 | `/settings/profile` | Account profile settings. |
 | `/:owner/:repo/settings` | Repository settings. |
 | `/:owner/:repo/security` | Repository security overview. |
+| `/trending` | Header/content lanes. |
+| `/topics` | Topic content/header lanes. |
+| `/marketplace` | Marketplace workspace. |
+| `/codespaces` | Listing only; external editor hosts are outside the matches. |
+| `/:owner/:repo/graphs/contributors` | Rendered contribution charts. |
+| `/:owner/:repo/graphs/community` | Feature-disabled Community layout; Discussions not enabled. |
+| `/:owner/:repo/community` | Community standards. |
+| `/:owner/:repo/graphs/traffic` | Four rendered charts. |
+| `/:owner/:repo/graphs/commit-activity` | Loaded chart and responsive resizing. |
+| `/:owner/:repo/graphs/code-frequency` | Additions/deletions chart, axes and legend. |
+| `/:owner/:repo/network/dependencies` | Dependency listing. |
+| `/:owner/:repo/network` | Network canvas layout. |
+| `/:owner/:repo/forks` | Empty fork listing. |
+
+### Native layout retained by decision
+
+| Endpoint pattern | Reason |
+| --- | --- |
+| `/copilot` | Surrounding workspace already fills its track; the native composer/introduction measures remain intact. |
+| `/search` without a query | Landing input and illustration retain native widths; search results use the configurable target. |
+| `docs.github.com/*` | Outside both host matches, as directed by the user. |
+
+The complete Gist endpoint table below distinguishes host enablement from the
+later profile-column repair. Native proportional Checks/Notifications columns
+can change their pixel widths with their workspace; they retain GitHub's grid
+rules rather than fixed native pixel widths. Gist/Explore measured rails and
+Dashboard/Feed's documented fixed rail handling are separate cases.
 
 ## Evidence and limits
 
@@ -214,8 +259,8 @@ layout behavior.
 | `/:owner/:repo/compare/:base...:head` | Existing owner widens comparison. |
 | `/:owner/:repo/wiki` | Existing owner widens Wiki. |
 | `/:owner/:repo/pull/:number/commits` | Existing owner widens PR commits. |
-| `/:owner/:repo/pull/:number/checks` | Native full-width layout; no eligible capped owner. |
-| `/notifications` | Native full-width layout; no eligible capped owner. |
+| `/:owner/:repo/pull/:number/checks` | Initially native; the later E01 full-width override repair is recorded above. |
+| `/notifications` | Initially native; the later E01 full-width override repair includes filtered inboxes. |
 | `/trending` | Existing owners widen content/header lanes. |
 | `/topics` | Existing owners widen content/header lanes. |
 | `/marketplace` | Existing owners widen the marketplace. |
@@ -444,3 +489,142 @@ digest above, version 1.0.4 and only the two requested host-wide matches.
 master remains at `781e876a5a3eba40e15c4a67ace50a80e114b9fd`. Syntax,
 whitespace, metadata, changed-file privacy and product-guide disclosure checks
 pass. The final record commit follows this verified source publication.
+
+## Additional requested surfaces: MCP, Copilot and Feed
+
+The user requested fresh checks of `/mcp`, `/copilot` (width treatment at our
+discretion), `/feed` and subsequently the `/search` landing page with the same
+discretion as Copilot. Feed was identified as another possible widening
+candidate. Continue the existing task with:
+
+- D01: Fetch all four current pages and inspect native/active workspace
+  boundaries before selecting any new selector. Preserve private Copilot
+  content in ignored evidence only; do not send prompts or change account data.
+- D02: Repair demonstrated missed workspace caps using observed stable
+  components or parent relationships. Preserve native rails, avatar/icon sizes,
+  content-image autosizing, controls, narrow layouts and one percentage owner.
+  Keep Copilot's treatment consistent with its actual workspace structure.
+- D03: Record all four endpoint outcomes, update behavior documentation and
+  the sole collapsible changelog when needed, validate affected behavior, and
+  publish only develop under the standing version-1.0.4 override. Keep only the
+  existing two host-wide matches.
+
+The user also requested renewed acceptance of both optional toggles and any
+missed applicable surfaces. Add E01/E02 to this follow-up: verify the full-width
+override on naturally full-width file/folder/document, PR Changes, Actions and
+Search workspaces, including restoration and re-enabling; verify floating
+issue/PR title hiding with positive visible copies, preserving regular headings
+and controls, and inspect PR Commits/Checks for additional applicable copies.
+Check the new surfaces for correct toggle scope. Repair any demonstrated missed
+target after fresh DOM inspection and reconcile the product documentation.
+
+The user's clarification keeps the full-width option limited to overriding
+GitHub's already-full-width workspaces. It is not the master enable switch for
+capped pages. Header hiding remains limited to issues and pull requests.
+
+Fresh D01 baseline (`new-surfaces-structure/report.json`, published source
+digest `208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`)
+finds no owners on any of the four new surfaces. MCP's results workspace has a
+1280px cap; Feed has a 1332px outer shell and a 900px main lane beside native
+336px/312px rails. These are candidate repairs, pending integration acceptance.
+Copilot already fills the available workspace beside its 296px navigation
+rail; its 768px limits belong to the intro/composer. The Search landing page's
+600px input wrapper and 800px illustration are local content measures. Preserve
+those native Copilot/Search-landing dimensions rather than enlarging individual
+inputs or artwork. Search results remain a separately supported workspace.
+Private Copilot content is confined to ignored captures; no prompt was sent.
+
+Independent Astra D02 review: PASS WITH NOTES. Accepted design: reuse the
+dashboard mechanism with either `#dashboard` or `#feed`; select MCP's results
+through its app, React root, and search-bearing header's direct sibling. No
+generated module class is needed for either addition. Keep native metrics,
+owner guards, the dashboard floor/boundary, and separate insertion landmarks.
+
+Fresh `toggles-current/` (12 views at 2048x600) verifies existing source,
+folder, Markdown, Search-results, Actions-run/job and PR-Changes override
+behavior. Turning it off restores the native workspace dimensions; turning
+it on reapplies the selected target. It also positively checks visible issue,
+PR Conversation and Changes titles before hiding and restoring them. Ordinary
+headings remain rendered; Changes retains one visible commit selector.
+
+`pr-secondary-current/` adds fresh Commits, empty Checks and a populated
+completed Checks view at 2048x400. Both Checks views reveal a native floating
+title and pass visible/hidden/visible with the existing header selector. The
+short Commits sample never reveals its native clone, including with the option
+off; do not credit that as positive hiding proof or add a selector for an
+already-hidden element. A longer Commits view remains a useful final check.
+
+Checks exposes a real full-width override gap: its semantic PR comparison
+root has `max-width: none`, fills its 2048px parent, and keeps 32px native inline
+padding. The populated view contains completed checks, a native proportional
+checks-navigation grid, and an inactive docked side panel. Astra conditionally
+accepted a last-pass fallback for that root, gated by existing eligibility,
+uncapped native width and actual parent-fill geometry. Existing capped PR
+owners and Changes' descendant owner must retain precedence. No new header
+target is required. Final-source browser acceptance remains pending.
+
+Integrated D02 source digest:
+`fc83bdd91065eef33efb68c79b1224d3a010dfe38e77465a7a10073192d04e9e`.
+`followup-final/` passes 17 current layouts, with no newly hidden/clipped
+content, nested owners or added document overflow. Nine full-width case
+targets restore native dimensions off/on/off; capped MCP/Feed/Dashboard owners
+remain active independently. A longer Commits sample supplies the previously
+missing positive title-clone proof. All six issue/PR header cases pass and
+Changes keeps one visible commit selector throughout. Non-issue/PR scope checks
+leave all five newly checked page states unchanged.
+
+`followup-assets-final/` adds seven native-quiet comparisons, 126 images and
+286 SVG icons, with no size changes or hidden/disconnected assets. It includes
+68 viewport/percentage comparisons and five clean insertion tests. Feed and
+Dashboard retain native rails across 1472/1668px; MCP retains its intro/filter;
+Copilot and Search landing retain native local measures. Checks' native grid
+keeps its one-third/two-thirds proportions, with intrinsic controls unchanged.
+Its full-width guard rejects a deliberately partial-width root and reclaims
+the restored full-width root. Both browser campaigns cleaned up completely.
+
+The final native Notifications check demonstrates a second E01 miss:
+`main > .js-notifications-container` fills its 2048px parent with no max-width
+and 16px native inline padding, containing GitHub's proportional inbox columns.
+The existing script leaves it unowned. Its 59 images and 46 icons remain
+unchanged in this baseline. Extend only the guarded full-width handling after
+the focused selector review; preserve native inbox behavior and do not click
+items, submit forms, or change read state. Raw inbox data remains ignored.
+
+Notifications review: Astra PASS WITH NOTES. Accepted the functional direct
+main-child landmark, without requiring a nonempty list. Keep native proportional
+columns; do not describe their pixel widths as fixed. The user explicitly added
+the Saved filter. Its current DOM was fetched in `notifications-saved-current/`
+before the selector was added, confirming the same uncapped inbox root.
+
+Final source digest:
+`34cfdc4b74b7706fade9e8d7bc3cf2e91f3f95a41485cfb7055ca771b3e8300f`.
+`notifications-final/` verifies seven current-source cases: populated All and
+empty Saved, plus five existing-owner regressions (MCP, Feed, PR Commits,
+Changes and Checks). All pass without new hiding/clipping, nested owners or
+added document overflow. The inbox changes from 2048px native to 1945.6px at
+95%; the full-width checkbox restores 2048px off/on/off. Both query variants
+use the same DOM target, with no route or query allowlist.
+
+The two inboxes additionally pass 28 current-viewport native-versus-active
+comparisons across 640/1280/1472/1668/2048/2560px, returning to 2048px, at
+80%/95%. No asset size changes, hidden/disconnected assets or new clipping;
+294 intrinsic-control comparisons pass. Padding and native column proportions
+are retained. At 2048px/95%, the proportional inbox columns are approximately
+318.9px/1594.7px; retaining these rules does not freeze their native pixel widths.
+Two clean root replacements reclassify correctly. A deliberately partial-width
+inbox remains unowned and is reclaimed after native full width returns.
+
+The real Saved-filter link uses full navigation in this capture. The harness
+reinjects the actual source as a manager would on the new matched document,
+then verifies the Saved query, one owner and one style. This is not retained
+SPA-instance proof; clean replacement fixtures separately exercise insertion
+handling. No inbox item was opened, marked read, saved, or otherwise changed.
+All temporary browser processes and profiles were cleaned up.
+
+`final-followup-acceptance.json` reconciles these current-source checks with
+the unchanged MCP/Feed/header/asset groups on the preceding digest. The final
+source adds only Notifications root discovery to the same guarded fallback;
+five final-source regressions verify the previous ownership and toggle choices.
+Together the follow-up records 68 earlier and 28 final responsive/live
+comparisons. Earlier 63-case site-wide evidence remains a distinct prior-source
+campaign, rather than being represented as a rerun of the new source.

@@ -29,8 +29,9 @@ Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/
 - preserves native in-page rails, source trees, Symbols panels, diff/file rails, workflow navigation, and log scrolling; repository-rendered document previews fill their owning panel while retaining native padding and renderer-local behavior; the legacy Discussion thread keeps its captured `320px` metadata rail while its main column grows, and the dashboard keeps its captured `312px` right rail once its wide-shell rule activates
 - keeps Settings feature-card primary CTAs at the widened row's trailing edge without changing the button's intrinsic size
 - preserves the measured native Gist profile column and Explore side columns while their adjacent feeds receive additional width
+- widens the MCP Registry results workspace and both dashboard/feed variants while preserving their native introduction, search controls, and navigation rails
 - leaves GitHub's global navigation drawer as an overlay; opening or closing it does not switch width modes or move the page
-- with `overrideFullWidthPages: true` (the default), applies the configured target to naturally fullwidth file, folder, source-code, text, rendered-document, pull-request diff, completed Actions, and search workspaces using the same sidebar-aware parent math while preserving local scrolling
+- with `overrideFullWidthPages: true` (the default), applies the configured target to naturally fullwidth file, folder, source-code, text, rendered-document, pull-request diff and Checks, Notifications, completed Actions, and search-results workspaces using the same sidebar-aware parent math while preserving local scrolling
 - with `overrideFullWidthPages: false`, leaves those naturally fullwidth workspaces at GitHub's native width while capped-owner expansion and nested rendered-document filling remain active
 - provides a live settings panel and saves preferences separately from the userscript source, so normal script updates retain existing choices
 - optionally hides only GitHub's floating issue and pull-request title headers; regular page headings remain visible
@@ -65,6 +66,13 @@ native side-column widths while the center feed expands. Content images and
 attachments retain GitHub's automatic sizing. Other hosts, including
 `docs.github.com`, keep their native layout.
 
+The MCP Registry's results area expands separately from its native introduction
+and search filter. Dashboard and Feed use the same feed-layout handling.
+On the Copilot page, the native composer and introduction widths are preserved.
+The Search landing page also retains its input and illustration widths; both
+pages' surrounding workspaces already fill the available area. Search results
+use the configurable workspace target.
+
 The owner model covers repository overviews and branch roots, PageLayout and
 legacy capped sections, pull-request and issue workspaces, Discussions,
 Actions, Security, Pulse, Settings, dashboards, profiles, and other rendered
@@ -94,7 +102,7 @@ representative repository-section example:
 width: min(100%, max(1280px, min(95%, calc(100% - 32px - 32px))));
 ```
 
-The dashboard uses its captured `1332px` native floor in the same formula. Once the native shell fits beside GitHub's left rail at `1668px`, the captured `312px` right rail stays fixed while the feed column uses the spare width. Between `1472px` and that boundary, the outer rule is active but the feed's internal flex sizing remains native. Other owners retain their own measured floors; the value is not a universal minimum.
+Dashboard and Feed use their captured `1332px` native floor in the same formula. Once the native shell fits beside GitHub's left rail at `1668px`, the captured `312px` right rail stays fixed while the feed column uses the spare width. Between `1472px` and that boundary, the outer rule is active but the feed's internal flex sizing remains native. Other owners retain their own measured floors; the value is not a universal minimum.
 
 The values are configurable, and decimal percentages are preserved. The
 percentage excludes external rails that occupy a sibling track, then applies
@@ -115,6 +123,17 @@ current full width. A low percentage stops at that minimum. If the available
 track is narrower than the minimum, it uses the full available track instead.
 The `1472px` desktop cutoff applies to both modes.
 
+The override checkbox controls these already-full-width workspaces; it does
+not disable capped-page expansion. In particular, MCP results and capped
+dashboard/feed shells still expand with the checkbox off. Pull-request Checks
+uses the option only when its uncapped comparison root natively fills its
+parent; its native checks grid, navigation and controls keep their own layout
+rules. Capped PR views and Changes workspaces retain their existing owners.
+Notifications uses the same guarded handling for its inbox container, including
+filtered views such as Saved and empty results. Its native proportional columns,
+filter controls and avatar sizes remain governed by GitHub. Detection does not
+depend on the notification query string and does not change read or saved state.
+
 Inner caps demonstrated to belong to the same workspace are removed so nested `95%` limits do not compound. Repository-rendered document previews additionally remove only their independent `1012px` `container-lg` cap and use the available owner width; they do not receive a second percentage or viewport width rule. Native preview padding, typography, images, tables, and local scrolling remain governed by GitHub.
 
 At widths below `1472px`, the desktop CSS rules are inactive and GitHub's native
@@ -128,7 +147,7 @@ The global navigation drawer overlays GitHub content and does not reserve a layo
 ## Configuration
 
 Choose **GitHub Fluid Width settings** from the userscript manager's menu.
-The menu is available throughout `github.com`, including the home page and
+The menu is available throughout GitHub and Gist, including home pages and
 pages without a layout that needs widening.
 
 Click outside the panel, press Escape, or choose **Close** to dismiss it.
@@ -303,6 +322,10 @@ Release history for this userscript is maintained only in this section.
 
 ### 1.0.4 — 2026-10-16
 
+- Recognize the MCP Registry results workspace through its semantic app/header structure, preserving the native introduction and search filter.
+- Extend the dashboard adapter to the current Feed variant while preserving its native rails and responsive boundaries.
+- Apply the optional full-width override to current PR Checks and Notifications workspaces when their uncapped roots fill their parents, preserving existing PR owners, native proportional grids and controls; include filtered/empty inbox views without depending on query strings.
+- Preserve native Copilot composer/intro and Search-landing input/illustration measures; keep the header-hiding option limited to issues and pull requests.
 - Enable Gist across `gist.github.com/*`, reusing existing workspace rules for discovery feeds, profiles, gist files and revision views.
 - Preserve the measured native Gist profile-column width so avatars and profile buttons keep their original size while the gist list expands; remeasure when either column is replaced.
 - Preserve Explore's measured native side-column widths so feed-card avatars retain their original size while the center feed expands, leaving content-image and attachment sizing under GitHub's control.

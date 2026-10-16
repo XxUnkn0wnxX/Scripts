@@ -4,6 +4,46 @@
 
 - Task folder: `.plans/agents/gh-fw-fix/`. New sessions may identify this work by
   the folder name `gh-fw-fix` and read this handoff, `audit.md`, and `checklist.md`.
+- Active follow-up: D01/D02 and E01/E02 implementation and acceptance are
+  complete. D03 publication/receipt is pending. A–C are completed historical
+  checkpoints. The requested MCP, Feed, Copilot, Search landing, Notifications
+  and Saved-filter outcomes are reconciled in the current audit tables.
+- The user added E01/E02: recheck full-width override and optional floating
+  issue/PR header hiding, including PR Commits/Checks and new surfaces. Both
+  toggles pass; Checks and Notifications needed additional full-width targets.
+- D01 found missed MCP results and Feed workspace caps. Preserve the native
+  Copilot composer and Search-landing input/artwork dimensions. Their outer
+  workspaces are already fluid. `toggles-current/` and `pr-secondary-current/`
+  captured fresh E01/E02 evidence before any new selector.
+- The full-width option overrides only GitHub's already-full-width workspaces;
+  capped-page widening remains independent. Header hiding covers issues/PRs
+  only. This is the user's explicit clarification for the E01/E02 review.
+- Astra D02 review passed with notes; the source-only worker package is
+  integrated for MCP/Feed and the demonstrated full-width PR Checks gap. The
+  parent corrected the Checks target to the outer comparison root before
+  testing. The parent owns all browser acceptance and records. Header selectors
+  positively pass on issues, PR Conversation/Changes and populated/empty
+  Checks; no header selector change was needed. The short initial Commits
+  sample had no visible clone; the longer final sample supplies positive proof.
+- `followup-final/` completes 17 MCP/Feed/Checks-stage comparisons at 2048x400: no new
+  hiding/clipping, nested owners or added document overflow. Live override
+  off/on/off passes; a longer Commits view now supplies positive floating-title
+  proof alongside issue, Conversation, Changes and Checks. Source digest is
+  `fc83bdd91065eef33efb68c79b1224d3a010dfe38e77465a7a10073192d04e9e`.
+  `followup-assets-final/` passes responsive assets and insertion behavior.
+  Its native Notifications case identified another E01 full-width miss.
+  No new publication yet.
+- Notifications follow-up: Astra's bounded review passed with notes. The
+  final guarded root list now includes `main > .js-notifications-container`,
+  using the existing eligibility/fill checks and native proportional columns.
+  Fresh Saved-filter DOM was fetched before this selector was added.
+  `notifications-final/` passes All/Saved, 28 responsive asset/visibility/clipping
+  comparisons, 294 intrinsic-control comparisons, live settings, root/partial-
+  width fixtures, Saved-filter full navigation with simulated manager startup,
+  and five existing-owner regressions. All campaigns are cleaned up.
+  `final-followup-acceptance.json` reconciles current and unchanged-group
+  evidence without relabelling earlier source campaigns. Final source digest:
+  `34cfdc4b74b7706fade9e8d7bc3cf2e91f3f95a41485cfb7055ca771b3e8300f`.
 - Branch/base: `develop`, `781e876a5a3eba40e15c4a67ace50a80e114b9fd`.
 - Product contract: `.plans/project-plans/completed/github-fluid-width-plan.md`.
   The current user-requested scope and endpoint findings are in `audit.md`.
@@ -12,10 +52,10 @@
 - Initial repair and site-wide follow-up implementation/browser acceptance are
   complete. Version remains `1.0.4` under the user's explicit follow-up override.
   C01–C03 implementation, acceptance and publication are complete.
-  Current validated and published source SHA-256:
+  The published source before the D/E follow-up had SHA-256:
   `208b2a73583be5b90aaa157762aadf8604bdff3b71a9330ce49ebb2a3aefe8e9`.
 - Publication is authorized to `develop` only; the user explicitly waived a
-  further version increment for the Gist follow-up.
+  further version increment for this ongoing follow-up.
   Do not update `master` or install into a live userscript manager.
   Remote `master` must remain at the base SHA above.
 - Release commit `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` is published to
@@ -26,9 +66,10 @@
   `develop`. Its then-current raw digest was
   `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
 - Native-column repair commit `60043404062967a31ca4f6b5981d05f390ad02bd`
-  is published to develop. The raw develop URL returns the current validated
-  digest, version 1.0.4 and exactly the two requested host patterns. Master
-  remains at the original base. Final receipt: `published-native-rails-source.json`.
+  is published to develop. At that checkpoint, the raw develop URL returned
+  the tested native-column digest, version 1.0.4 and exactly the two requested
+  host patterns. Master remained at the original base. Historical receipt:
+  `published-native-rails-source.json`.
 
 ## Accepted behavior
 

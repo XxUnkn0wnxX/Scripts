@@ -80,10 +80,17 @@
   ].join(', ');
   const GIST_PROFILE_RAIL_SELECTOR = '#gist-pjax-container .h-card[itemtype$="schema.org/Person"]';
   const THREE_COLUMN_RAIL_INSERTION_SELECTOR = `[${OWNER_ATTR}] > .gutter-md > :is(.col-lg-3, .col-lg-6)`;
+  const FEED_LANDMARK_SELECTOR = '#dashboard, #feed';
+  const MCP_RESULTS_SELECTOR = 'react-app[app-name="mcp-registry"] [data-target="react-app.reactRoot"] > header:has(#mcp-registry-search-filter) + div';
+  const PR_COMPARISON_LAYOUT_SELECTOR = '#diff-comparison-viewer-container > [data-component="SplitPageLayout"]';
+  const NOTIFICATIONS_WORKSPACE_SELECTOR = 'main > .js-notifications-container';
   const LAYOUT_LANDMARK_SELECTOR = [
     '[data-testid="issue-header"]',
     '[data-testid="search-sub-header"]',
-    '#dashboard',
+    FEED_LANDMARK_SELECTOR,
+    '#mcp-registry-search-filter',
+    PR_COMPARISON_LAYOUT_SELECTOR,
+    NOTIFICATIONS_WORKSPACE_SELECTOR,
     '.pull-discussion-timeline',
     GIST_PROFILE_RAIL_SELECTOR,
     THREE_COLUMN_RAIL_INSERTION_SELECTOR,
@@ -99,6 +106,7 @@
     ISSUE_CONTENT_CONTAINER_SELECTOR,
     '[class*="prc-PageLayout-ContentWrapper-"].px-2.mx-auto',
     '.PageLayout-content-centered-xl',
+    MCP_RESULTS_SELECTOR,
   ].join(', ');
   const NESTED_LIMITER_SELECTOR = [
     '.container-xl',
@@ -334,7 +342,7 @@ ${active} [data-testid="issue-metadata-fixed"] {
    Leave the native flex sizing alone below that point. */
 @media (min-width: 1668px) {
   ${active} .feed-content[${OWNER_ATTR}] > .feed-main,
-  ${active} .feed-content[${OWNER_ATTR}] > :has(#dashboard) {
+  ${active} .feed-content[${OWNER_ATTR}] > :has(${FEED_LANDMARK_SELECTOR}) {
     flex: 1 1 0 !important;
     width: auto !important;
     max-width: none !important;
@@ -402,7 +410,7 @@ ${active} [data-testid="issue-metadata-fixed"] {
 
   function applyDashboardAdapter() {
     document.querySelectorAll('.feed-content').forEach((element) => {
-      if (!element.querySelector('#dashboard') || hasBlockedAncestor(element)) return;
+      if (!element.querySelector(FEED_LANDMARK_SELECTOR) || hasBlockedAncestor(element)) return;
       const metrics = nativeMetrics(element, 1332);
       if (metrics) markOwner(element, metrics.floor, 'dashboard');
     });
@@ -526,6 +534,33 @@ ${active} [data-testid="issue-metadata-fixed"] {
       // Files, folders, rendered Markdown, and PR Files place this direct
       // full Content in the remaining track beside their native pane/rail.
       markOwner(content, FULL_WORKSPACE_FLOOR_PX, 'full-workspace');
+    });
+
+    // Checks and the notifications inbox have uncapped full-width roots.
+    // Claim them only when their measured boxes already fill their parents;
+    // the native grids and their columns remain responsible for sizing.
+    const uncappedRoots = [
+      ...Array.from(document.querySelectorAll(PR_COMPARISON_LAYOUT_SELECTOR), (layout) => layout.parentElement),
+      ...document.querySelectorAll(NOTIFICATIONS_WORKSPACE_SELECTOR),
+    ];
+    uncappedRoots.forEach((root) => {
+      if (!isEligibleFullWorkspace(root) || !root.parentElement) return;
+      const rootStyle = window.getComputedStyle(root);
+      if (rootStyle.maxWidth !== 'none') return;
+
+      const parent = root.parentElement;
+      const parentStyle = window.getComputedStyle(parent);
+      const paddingStart = pixelValue(parentStyle.paddingInlineStart || parentStyle.paddingLeft);
+      const paddingEnd = pixelValue(parentStyle.paddingInlineEnd || parentStyle.paddingRight);
+      const marginStart = pixelValue(rootStyle.marginInlineStart || rootStyle.marginLeft);
+      const marginEnd = pixelValue(rootStyle.marginInlineEnd || rootStyle.marginRight);
+      if (![paddingStart, paddingEnd, marginStart, marginEnd].every(Number.isFinite)) return;
+      const availableWidth = parent.clientWidth - paddingStart - paddingEnd;
+      const occupiedWidth = root.getBoundingClientRect().width + marginStart + marginEnd;
+      if (!Number.isFinite(availableWidth) || !Number.isFinite(occupiedWidth) ||
+          availableWidth <= 0 || Math.abs(occupiedWidth - availableWidth) > 2) return;
+
+      markOwner(root, FULL_WORKSPACE_FLOOR_PX, 'full-workspace');
     });
   }
 
