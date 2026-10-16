@@ -13,14 +13,17 @@
   complete. Version remains `1.0.4` under the user's explicit follow-up override.
   Current validated source SHA-256:
   `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
-- Publication is authorized to `develop` only, after the version increment.
+- Publication is authorized to `develop` only; the user explicitly waived a
+  further version increment for the Gist follow-up.
   Do not update `master` or install into a live userscript manager.
   Remote `master` must remain at the base SHA above.
 - Release commit `bedc9321294ee95ae7c9eb6dad78e0351a80dc6b` is published to
   `develop`; remote refs were verified. Published raw source returned HTTP 200,
   version `1.0.4`, and initial repair digest
   `34152b61b2b5c27c0265d58828bd15b0ec73887bb9ded31552617b5fd2bb4659`.
-  Follow-up publication is pending final review; its base is `b73eb8a`.
+  Follow-up commit `a2c0733c9b02e8d9ced1dd1cb71b5b1e267dbab2` is published to
+  `develop`. The raw develop URL matches the current validated digest, version
+  1.0.4 and exactly the two requested host patterns. Master remains at the base.
 
 ## Accepted behavior
 
@@ -99,7 +102,7 @@ All raw evidence is ignored under
 ## Site-wide follow-up
 
 The user requested a broader coverage/gap map and identified Gist as a miss.
-B01/B02 in `audit.md` now pass; A01–A03 remain complete. Gist was excluded by
+B01–B03 in `audit.md` now pass; A01–A03 remain complete. Gist was excluded by
 the old metadata. The fix adds its host-wide match and updates the description;
 runtime code is byte-identical to the initial repair. Fresh authenticated Gist
 and broader GitHub captures found no additional selector repair requirement.
@@ -113,7 +116,7 @@ individual match rules. Leave `docs.github.com` excluded. No live installation.
   one not-found signed-in Gist Shared path. All usable comparisons have no new
   hiding/clipping, nested owners or added horizontal overflow.
 - Gist coverage includes home, Discover, Forked, Starred, owner profile, the
-  exact user-selected gist, its revisions, and its forks. Common capped owners
+  owner's Starred listing, selected gist, revisions, and forks. Capped owners
   grow to 1945.6px at 2048px. No Gist-specific selector was added.
 - `sitewide-responsive/report.json`: profile/revisions at 1280/2048/2560px and
   live 95→80→95 settings pass. Commits graph data loaded on the bounded retry;
@@ -129,8 +132,14 @@ individual match rules. Leave `docs.github.com` excluded. No live installation.
 - The final parent captures supersede deleted delegated raw artifacts. Gist
   feed content/screenshots are omitted from exports; no secrets are tracked.
 - Both test runs shut down driver/Firefox and removed their disposable profiles.
-- Next: final source/docs/records review, commit and push `develop` only; verify
-  published bytes/version and remote master, close B03, and report coverage.
+- The user corrected the unavailable Shared path to `/:owner/starred`.
+  `gist-owner-starred/report.json` verifies that signed-in page, responsive
+  widths and live percentages. Its browser/profile cleanup passes too. Shared
+  is a discarded URL, not an outstanding requested page.
+- Final follow-up coverage is 37 usable additional cases, plus the discarded
+  URL. Current source is published and matches the tested bytes.
+- No implementation or acceptance work remains. This completion receipt follows
+  verified source publication; the final documentation commit is in Git history.
 
 ## Previous release completion
 

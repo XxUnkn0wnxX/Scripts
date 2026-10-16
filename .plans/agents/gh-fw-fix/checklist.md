@@ -42,7 +42,7 @@ Endpoint tables and validation limits are retained in `audit.md` for reporting.
 
 - [x] B01 — Fresh site-wide coverage map, including Gist and Insights siblings.
 - [x] B02 — Evidence-backed coverage repairs and affected-page acceptance.
-- [ ] B03 — Reconciled report, release documentation and publication verification.
+- [x] B03 — Reconciled report, release documentation and publication verification.
 
 B01/B02 evidence: `sitewide-followup/report.json` and
 `sitewide-responsive/report.json` under the existing ignored evidence root.
@@ -57,3 +57,12 @@ Only metadata changes: two host-wide matches, updated description, unchanged
 runtime body and unchanged `@version 1.0.4` by explicit user direction.
 Validated follow-up SHA-256:
 `e30304c43ef8b26783e3bc4a82588ef913bb0419d097cd1eb86a0947fd05ab7a`.
+
+B03 evidence: the user corrected Shared to owner-specific Starred.
+`gist-owner-starred/report.json` verifies that exact authenticated view,
+responsive widths and live percentages with no new hiding/clipping. The final
+follow-up covers 37 usable additional cases and one discarded URL. Source
+commit `a2c0733c9b02e8d9ced1dd1cb71b5b1e267dbab2` is published to `develop`;
+the raw develop URL returns exact tested bytes, version 1.0.4, and two host
+matches. Master remains at its original base. Syntax, whitespace, metadata and
+runtime equivalence, docs/privacy and final evidence review pass.

@@ -171,7 +171,7 @@ Final follow-up source SHA-256:
 ### Newly enabled Gist coverage
 
 All paths below are on `gist.github.com`. Current authenticated captures of
-these eight cases pass the native-versus-modified visibility/clipping checks.
+these nine cases pass the native-versus-modified visibility/clipping checks.
 
 | Endpoint pattern | Result after host enablement |
 | --- | --- |
@@ -180,15 +180,16 @@ these eight cases pass the native-versus-modified visibility/clipping checks.
 | `/forked` | Forked feed widened. |
 | `/starred` | Starred feed widened. |
 | `/:owner` | Owner profile/listing widened. |
+| `/:owner/starred` | Owner's starred listing widened; responsive/live settings pass. |
 | `/:owner/:gist` | Gist file/code workspace widened; local scrolling retained. |
 | `/:owner/:gist/revisions` | Revision diff workspace widened; controls retained. |
 | `/:owner/:gist/forks` | Fork listing widened. |
 
 The exact user-selected gist and revision endpoint were tested. Its `container-lg`
 workspace grows to 1945.6px at a 2048px viewport. The profile uses the existing
-`container-xl` owner; no new selector is required. `/:owner/shared` returned a
-not-found page for the expected signed-in owner. The host match covers the path,
-but no content layout is credited for that unavailable endpoint.
+`container-xl` owner; no new selector is required. The earlier `/:owner/shared`
+URL returned not-found; the user corrected it to `/:owner/starred`, which was
+fetched and verified. No Shared endpoint is claimed or left outstanding.
 
 ### Additional GitHub cases requiring no new repair
 
@@ -264,3 +265,15 @@ existing layout engine. It does not force each element to 95%: drawers, menus,
 controls, narrow native forms, and already-fluid custom workspaces retain their
 native behavior unless they expose an eligible owner. Only the two named hosts
 are included; the user explicitly chose to leave `docs.github.com` alone.
+
+`gist-owner-starred/report.json` verifies the corrected owner-specific Starred
+view on the same final source: authenticated, native match at 1280px, wide growth
+at 2560px, live 95→80→95 response, and zero new hiding/clipping. This adds one
+usable URL to the first batch: 37 usable additional page cases overall, plus the
+discarded Shared URL. Browser/driver shutdown and profile removal are verified.
+
+Follow-up source commit `a2c0733c9b02e8d9ced1dd1cb71b5b1e267dbab2` is published
+on `develop` only. The literal raw develop URL returned HTTP 200, the exact
+validated digest, version `1.0.4`, and the two requested host matches. Remote
+`master` remains at `781e876a5a3eba40e15c4a67ace50a80e114b9fd`. The ignored
+publication receipt is `published-gist-source.json` in the evidence root.
