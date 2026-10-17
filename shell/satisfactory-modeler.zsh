@@ -33,7 +33,7 @@ set -euo pipefail
 # -----------------------------
 # Locate script directory
 # -----------------------------
-SCRIPT_PATH=${0:A}
+SCRIPT_PATH=${0:a}
 SCRIPT_DIR=${SCRIPT_PATH:h}
 cd "${SCRIPT_DIR}"
 
