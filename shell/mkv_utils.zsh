@@ -648,6 +648,14 @@ mkvutil_metadata_menu() {
   done
 }
 
+_mkvutil_metadata_has_scope() {
+  local choices="$1" scope="$2" choice=""
+  for choice in "${(@s:,:)choices}"; do
+    [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]-}" != "$scope" ]] || return 0
+  done
+  return 1
+}
+
 mkvutil_metadata_reset() {
   MKVUTIL_METADATA_SETTINGS=()
   MKVUTIL_SOURCE_FLAGS=()
@@ -1989,7 +1997,7 @@ mkvutil_configure_category() {
   local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
   local -a order_ids=() removal_ids=()
   local item="" retained_csv="" projection="" track_view="" metadata_context="" metadata_preview="" metadata_targets="" preview_yellow="" order_input="" highlight_ids="" output_map='{}'
-  local item_position=0
+  local item_position=0 track_actions=1
   local metadata_mode=independent result=0 prep_result=0 signature_result=0 signature_diagnostics="" metadata_error=""
   MKVUTIL_CONFIG=""
   MKVUTIL_JOBS=()
@@ -2005,7 +2013,10 @@ mkvutil_configure_category() {
     _mkvutil_indicator_stop
   }
   (( prep_result == 0 )) || return "$prep_result"
-  if [[ "$category" != extract || ",$operations," == *,2,* ]]; then
+  if [[ "$category" == edit ]] && ! _mkvutil_metadata_has_scope "$operations" track; then
+    track_actions=0
+  fi
+  if [[ ( "$category" != extract || ",$operations," == *,2,* ) && ( "$category" != edit || "$track_actions" == 1 ) ]]; then
     local -a track_header=("Current Work Dir: $PWD")
     if [[ "$category" == mux && ",$operations," == *,1,* ]]; then
       track_header+=("Removal reference file: ${source:t}")
@@ -2019,7 +2030,7 @@ mkvutil_configure_category() {
   case "$category" in
     edit)
       result=0
-      track_view="$(_mkvutil_track_view "$raw")" || return 1
+      if (( track_actions )); then track_view="$(_mkvutil_track_view "$raw")" || return 1; fi
       mkvutil_metadata_configure "$operations" shared '' '' "$track_view" || result=$?
       if (( result == 4 )); then mkvutil_batch_metadata_requested '' || return 1; fi
       (( result == 0 )) || return "$result" ;;
@@ -2118,7 +2129,9 @@ mkvutil_configure_category() {
           _mkvutil_ui_leave
           # Value prompts use normal history. Carry the current output layout
           # across instead of exposing only the older source-order listing.
-          printf '\n%s\n\n' "$metadata_preview" || return 1
+          if _mkvutil_metadata_has_scope "$metadata" track; then
+            printf '\n%s\n\n' "$metadata_preview" || return 1
+          fi
         fi
         mkvutil_batch_metadata_requested "$metadata" || return 1
         result=0

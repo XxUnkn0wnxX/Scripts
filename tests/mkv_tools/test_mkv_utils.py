@@ -5864,6 +5864,48 @@ def test_mkv_utils_shared_edit_per_id_values_across_source_listing_positions(env
     assert 'Done: 2; Failed: 0' in result.stdout
 
 
+def test_mkv_utils_title_only_edit_skips_track_matching_across_batch(env):
+    first, second = _mkv_file(env, 'Title only first.mkv'), _mkv_file(env, 'Title only second.mkv')
+    first_model = _integration_model()
+    second_model = _integration_model([(0, 'audio', 'A_OPUS', False), (8, 'video', 'V_VP9', True),
+                                       (12, 'subtitles', 'S_TEXT/ASS', False)])
+    actuals = {}
+    for file, model in ((first, first_model), (second, second_model)):
+        actual = json.loads(json.dumps(model))
+        actual['container']['properties']['title'] = 'Shared title'
+        actuals[str(file)] = actual
+    extra = _integration_manifest(env, {first: first_model, second: second_model}, post_edit=actuals)
+    result = _run_mkv_utils(env, fzf_responses=[[str(first), str(second)]],
+                            input_data='1\n5\nShared title\n', extra_env=extra)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'Track configuration' not in result.stdout and 'Track IDs:' not in result.stderr
+    edits = _command_argv(env, 'mkvpropedit')
+    assert len(edits) == 2 and {call[0] for call in edits} == {str(first), str(second)}
+    assert all(call[1:] == ['--normalize-language-ietf', 'off', '--edit', 'info', '--set',
+                            'title=Shared title'] for call in edits)
+    assert all(_observed_fake_identification(env, file) == actuals[str(file)] for file in (first, second))
+    assert 'Done: 2; Failed: 0' in result.stdout
+
+
+def test_mkv_utils_mux_title_only_optional_metadata_keeps_track_scope_empty(env):
+    source = _mkv_file(env, 'Mux title only.mkv')
+    original = _integration_model()
+    expected = _integration_output(original, [0, 1, 2, 3])
+    expected['container']['properties']['title'] = 'Mux title'
+    extra = _integration_manifest(env, {source: original}, stage={str(source): expected})
+    result = _run_mkv_utils(env, fzf_responses=[[str(source)]],
+                            input_data='2\n2\n0,1,2,3\n5\nMux title\n', extra_env=extra)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'Track IDs:' not in result.stderr
+    assert result.stderr.count('Metadata [none]:') == 1
+    assert len(_command_argv(env, 'mkvpropedit')) == 0
+    writers = [call for call in _command_argv(env, 'mkvmerge') if '-o' in call]
+    assert len(writers) == 1
+    assert writers[0][writers[0].index('--title') + 1] == 'Mux title'
+    assert not any(arg in writers[0] for arg in ('--track-name', '--language'))
+    assert 'Done: 1; Failed: 0' in result.stdout
+
+
 def test_mkv_utils_combined_mux_inherited_per_id_metadata_two_sources(env):
     first, second = _mkv_file(env, 'Combined first.mkv'), _mkv_file(env, 'Combined second.mkv')
     original = _integration_model([(0, 'video', 'V_MPEG4/ISO/AVC', True), (3, 'subtitles', 'S_TEXT/ASS', False),

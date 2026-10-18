@@ -85,6 +85,8 @@ The last required answer starts preflight and then the eligible queue automatica
 
 Select any combination of actions `1-5`. For track actions, enter the target IDs once; each selected action then asks for a value for each ID, and applies those values to the same IDs in every eligible file. Before each value, the complete track description is shown. Title is a single container-wide value and needs no track IDs; leave its value blank to clear it.
 
+Choose `5` alone to go directly to the title prompt, without a track listing or track-ID/type matching requirement. Selected files may have different track layouts. When title is combined with track actions, the listing and checks still apply to those track actions.
+
 Edit modifies files in place and groups the chosen metadata changes into one `mkvpropedit` operation per file. Its report gives final results without between-file elapsed-time blocks.
 
 <details>
@@ -107,6 +109,14 @@ Default (0/1) [1]: 0
 
 The second action reuses the original ID selection. Values are collected once and applied across the selected files.
 
+For a title-only batch:
+
+```text
+Category: 1
+Actions: 5
+Title [clear]: My series
+```
+
 </details>
 
 <a id="mux"></a>
@@ -128,7 +138,9 @@ Enter reorder IDs as a comma list with at least two distinct IDs. Ranges and `0:
 
 The preview shows the complete resulting track list. Dropped tracks appear in soft red without a selectable ID. Explicitly requested tracks whose positions change appear gold; tracks moved automatically and all retained tracks in remove-only mode keep their normal colour. Colour needs no extra dependency. Redirected output, `NO_COLOR=1` and `TERM=dumb` stay plain; oversized previews use normal scrollback.
 
-Optional Mux metadata uses **output IDs** from that final layout. Every option uses the same list and colours, carried into value entry with the current track's description repeated at each prompt. The utility maps output IDs back to their original source tracks internally. With reorder, metadata targets the resolved reorder list, including an automatically prepended `0`; tracks appended automatically are not included. With removal alone, each metadata action asks for its own output IDs. A removed track cannot be selected.
+Optional Mux track metadata uses **output IDs** from that final layout. Track options use the same list and colours, carried into value entry with the current track's description repeated at each prompt. The utility maps output IDs back to their original source tracks internally. With reorder, track metadata targets the resolved reorder list, including an automatically prepended `0`; tracks appended automatically are not included. With removal alone, each track metadata action asks for its own output IDs. A removed track cannot be selected.
+
+Title metadata is container-wide: choosing `5` alone goes directly to its value without another track listing or ID prompt. It adds no track-matching requirement; the checks required by removal/reorder still apply.
 
 At `Metadata [none]:`, press Enter to skip metadata and begin preflight.
 

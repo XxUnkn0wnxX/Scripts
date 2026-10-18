@@ -14,6 +14,49 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted title-only metadata follow-up
+
+- User's final scope: no track listing/IDs or track-match requirement for
+  title-only Edit; title is also container-scoped in optional Mux metadata.
+  Mixed track edits retain their listing/checks; removal/reorder retain their
+  independent guards. User explicitly withdrew source-title/Video Title/NA
+  display because episode titles differ. No such display is implemented.
+- Only configure_category and a pure registry-scope predicate changed. Title-only
+  Edit skips its header/list/view; owned Mux menus do not replay a track layout
+  for container-only value input. Mixed metadata keeps the cached projected list.
+  All guards, metadata collectors/setters, builders, engines, cleanup and final
+  report remain byte-identical to the baseline.
+- Four controlled consumer cases pass in34.84s (36.29s wall,17.85s user,15.81s
+  system): heterogeneous title-only Edit, title-only Mux and existing mixed
+  Edit/Mux. Two installed-fzf/v93 PTY/native journeys pass in5.46s and6.60s via
+  the loaded alias, verifying actual title writes and Mux Back/reselection with
+  no redundant field-stage listing. Only disposable media was modified.
+- Cost review: one final serial selection reuses existing fixture helpers and
+  two existing mixed cases, with only two new tests. No concrete fixture/code
+  bottleneck justified redesign. Earlier worker assertion fixes reran healthy
+  cases; later oracle-only corrections should target only the failed case and
+  reconcile unchanged evidence. No extra timing/full-suite run was added.
+  Runtime title-only configuration now avoids its unused track-view rendering.
+- Parent source/static/docs/contracts/ledger review passes;9/9 tasks and4/4
+  checkpoints reaccepted at T01.03/T02.01/T02.02/T04.01/T04.02. No newly accepted
+  IDs, so this repair does not advance/reset the periodic three-new-ID audit
+  interval. Previous independent-review history and exact-revision receipts stay.
+- Baseline2a3dc93, same Scripts checkout on develop. Source SHA-256
+  `a5b1ccf46937d22b974a278f8072c7b4aed5a2636852f0774a09c5e17891c377`;
+  tests SHA-256 `23c1b95d0afbde55f0cadc7868ffc9156584c48c37a3fa8b50b67cebc9eacda7`.
+  Source stayed frozen after the user clarification. Worker title_context_tests
+  handed tests back; parent owns all work; no running jobs remain.
+- Proof root .tmp/mkvutil-rework/title-context/: receipt.json, parent-review.json,
+  source-review.json, worker/validation.txt and ia/receipt.json. Final raw/readable
+  terminal logs are in ia/run-02/. Initial private IA assertion omitted an
+  existing global language option; worker diagnostics corrected fixture/oracle
+  assumptions only. Failures are preserved and not credited as passes.
+- Canonical records remain .plans/agents/feature-mkvutil-rework/; guide is
+  docs/shell/mkv-utils.md. Unrelated untracked .plans/agents/reddit-fw-audit/
+  remains untouched and unstaged. Standing signed develop/master publication
+  is authorized; actual ref/signature outcome belongs to publication.json under
+  the proof root. Return develop and inspect receipts/refs before repeating Git.
+
 ### Accepted unique attachment filenames
 
 - User asked the final Attachments block to deduplicate filenames, keep their
