@@ -8,6 +8,28 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The title-only preparation optimization is **accepted: 9/9 tasks and 4/4
+checkpoints**, reusing T01.03/T02.01/T02.02/T04.01/T04.02. Standalone Edit →
+Title takes file identity snapshots before the prompt, rechecks before writing
+and verifies the resulting container title, without track-model/tag preparation.
+Mixed Edit and Mux structural analysis retain their existing paths.
+
+Thirteen distinct focused tests pass across recorded runs: eight title-only/
+dry-run/identity/failure/stopping cases, three mixed Edit/Mux consumers and two
+shared-builder compatibility cases. Eight cheap actual-observer checks verify
+set/clear, malformed responses and identity changes during verification. A real
+loaded-alias/fzf/v93 disposable PTY journey passes in 4.53s: one native edit and
+one post-write identification, replacing six native calls on the prior path.
+The sole later source change adds an object check for malformed identification;
+the final observer checks and parent reconciliation cover it. Syntax, compile,
+docs/contracts, unchanged shared machinery and parent/Astra review pass. No
+broad suite or new CI campaign was run. Initial fixture/schema failures remain
+recorded. A test-only optimization removes four unused setup job builds;
+all four affected cases pass in 11.18s after that change. Proof:
+`.tmp/mkvutil-rework/title-fastpath/receipt.json`, `worker/test-results.txt`,
+`worker/optimized-helper.log`, `observer-checks.json`, `ia/receipt.json`,
+`planner-review.json` and `parent-review.json`. Earlier evidence stays below.
+
 The title-only metadata amendment is **accepted: 9/9 tasks and4/4
 checkpoints**. Title-only Edit omits the track header/list/IDs and accepts
 selected files with different track IDs, types and counts. Title metadata has

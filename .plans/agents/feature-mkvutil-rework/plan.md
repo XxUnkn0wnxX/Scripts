@@ -11,6 +11,14 @@ design decisions, implementation integration, and final review.
 
 ## Approved title-only metadata configuration
 
+Standalone Edit → Title uses file identity snapshots rather than identifying
+every file's tracks before asking for a title. Recheck identity before writing
+and verify the resulting container title; keep native outcomes, dry-run, stopping
+and final reports. Mixed Edit retains its existing preparation and checks. Mux
+retains all structural analysis even when optional metadata selects only Title;
+that field asks only for a title without replaying the track list. Reuse the
+existing task IDs and focused identity/title/mixed-operation validation.
+
 Container title edits must introduce no track-target compatibility requirement
 in Edit or optional Mux metadata. Title-only Edit omits the track header/list
 and asks only for the new title. Mixed Edit title/track choices keep the listing

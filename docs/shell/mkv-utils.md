@@ -85,7 +85,7 @@ The last required answer starts preflight and then the eligible queue automatica
 
 Select any combination of actions `1-5`. For track actions, enter the target IDs once; each selected action then asks for a value for each ID, and applies those values to the same IDs in every eligible file. Before each value, the complete track description is shown. Title is a single container-wide value and needs no track IDs; leave its value blank to clear it.
 
-Choose `5` alone to go directly to the title prompt, without a track listing or track-ID/type matching requirement. Selected files may have different track layouts. When title is combined with track actions, the listing and checks still apply to those track actions.
+Choose `5` alone to go directly to the title prompt. Preparation records file identities without scanning their track layouts; each write rechecks the file and verifies the resulting container title. Selected files may have different track layouts. When title is combined with track actions, the existing listing and track checks still apply.
 
 Edit modifies files in place and groups the chosen metadata changes into one `mkvpropedit` operation per file. Its report gives final results without between-file elapsed-time blocks.
 
@@ -140,7 +140,7 @@ The preview shows the complete resulting track list. Dropped tracks appear in so
 
 Optional Mux track metadata uses **output IDs** from that final layout. Track options use the same list and colours, carried into value entry with the current track's description repeated at each prompt. The utility maps output IDs back to their original source tracks internally. With reorder, track metadata targets the resolved reorder list, including an automatically prepended `0`; tracks appended automatically are not included. With removal alone, each track metadata action asks for its own output IDs. A removed track cannot be selected.
 
-Title metadata is container-wide: choosing `5` alone goes directly to its value without another track listing or ID prompt. It adds no track-matching requirement; the checks required by removal/reorder still apply.
+Title metadata is container-wide: choosing `5` alone goes directly to its value without another track listing or ID prompt. Mux still performs its normal removal/reorder analysis and checks; selecting Title adds no track targets.
 
 At `Metadata [none]:`, press Enter to skip metadata and begin preflight.
 

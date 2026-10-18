@@ -821,11 +821,17 @@ mkvutil_metadata_configure() {
 _mkvutil_metadata_validate_settings() {
   local key="" choice="" target=""
   mkvutil_metadata_validate_registry || return 1
-  (( ${#MKVUTIL_INPUT_IDS} > 0 && ${#MKVUTIL_RETAINED_IDS} > 0 )) || return 1
+  if (( ${#MKVUTIL_INPUT_IDS} == 0 || ${#MKVUTIL_RETAINED_IDS} == 0 )); then
+    (( ${#MKVUTIL_METADATA_SETTINGS} > 0 && ${#MKVUTIL_INPUT_IDS} == 0 && ${#MKVUTIL_RETAINED_IDS} == 0 &&
+       ${#MKVUTIL_TRACK_TYPES} == 0 && ${#MKVUTIL_PROPEDIT_SELECTORS} == 0 && ${#MKVUTIL_SOURCE_FLAGS} == 0 )) || return 1
+  fi
   for key in "${(@k)MKVUTIL_METADATA_SETTINGS}"; do
     [[ "$key" == *:* ]] || return 1
     choice="${key%%:*}"
     target="${key#*:}"
+    if [[ "${MKVUTIL_METADATA_REGISTRY[${choice}:scope]-}" == track ]]; then
+      (( ${#MKVUTIL_INPUT_IDS} > 0 && ${#MKVUTIL_RETAINED_IDS} > 0 )) || return 1
+    fi
     _mkvutil_metadata_target_valid "$choice" "$target" || return 1
     _mkvutil_metadata_value_valid "${MKVUTIL_METADATA_REGISTRY[${choice}:validator]}" "${MKVUTIL_METADATA_SETTINGS[$key]}" || return 1
   done
@@ -1475,8 +1481,14 @@ sys.stderr.buffer.write(text)
 }
 
 mkvutil_capture_source() {
-  local file="${1:A}" before="" after="" json="" rows=""
+  local file="${1:A}" scope="${2:-tracks}" before="" after="" json="" rows=""
   before="$(mkvutil_source_identity "$file")" || return 1
+  if [[ "$scope" == container ]]; then
+    jq -cn --arg source "$file" --argjson identity "$before" \
+      '{source:$source,identity:$identity,inspection_scope:"container",model:{tracks:[]}}'
+    return $?
+  fi
+  [[ "$scope" == tracks ]] || return 1
   json="$(
     # Keep JSON on descriptor 3 while the foreground pipeline sanitizes stderr.
     # Waiting for both stages prevents late diagnostics without temporary files
@@ -1899,13 +1911,24 @@ mkvutil_analyze_files() {
   return "$result"
 }
 
+# Title-only requests need an identity snapshot, not a track identification.
+_mkvutil_title_only_request() {
+  [[ "$1" == edit && "$2" == 5 ]]
+}
+
+_mkvutil_title_only_config() {
+  jq -e '.category=="edit" and .operations==["5"] and
+    (.settings|keys)==["5:info"] and (.settings["5:info"]|type)=="string" and
+    .removed_ids==[] and .order_ids==[] and .order=="" and .extract_ids==[]' <<< "$1" >/dev/null
+}
+
 mkvutil_inspect_sources() {
-  local file="" record="" result=0 capture_result=0 diagnostics_file=""
+  local file="" scope="${1:-tracks}" record="" result=0 capture_result=0 diagnostics_file=""
   local -a sources=()
   MKVUTIL_SOURCES=()
   MKVUTIL_JOBS=()
   MKVUTIL_REMOVAL_SKIPS=()
-  if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+  if [[ "$scope" != container && -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
     diagnostics_file="$(mktemp "${TMPDIR:-/tmp}/mkvutil-inspection.XXXXXXXX")" || return 1
   fi
   {
@@ -1919,7 +1942,7 @@ mkvutil_inspect_sources() {
         : > "$diagnostics_file" || return 1
         [[ -n "$MKVUTIL_INDICATOR_PID" ]] || _mkvutil_indicator_start Working || return 1
         {
-          record="$(mkvutil_capture_source "$file" 2>"$diagnostics_file")" || capture_result=$?
+          record="$(mkvutil_capture_source "$file" "$scope" 2>"$diagnostics_file")" || capture_result=$?
         } always {
           (( capture_result == 0 )) || _mkvutil_indicator_stop
         }
@@ -1928,7 +1951,7 @@ mkvutil_inspect_sources() {
           cat "$diagnostics_file" >&2 || return 1
         fi
       else
-        record="$(mkvutil_capture_source "$file")" || capture_result=$?
+        record="$(mkvutil_capture_source "$file" "$scope")" || capture_result=$?
       fi
       if (( capture_result == 0 )); then
         jq -es --arg source "$file" 'length==1 and (.[0]|type)=="object" and .[0].source==$source' <<< "$record" >/dev/null || return 1
@@ -1994,7 +2017,7 @@ mkvutil_normalize_order() {
 
 mkvutil_configure_category() {
   local category="$1" operations="$2" reference="${MKVUTIL_SOURCES[1]}"
-  local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}'
+  local raw="" rows="" source="" removal="" order="" metadata="" extract_ids="" expected="" settings="" signatures='{}' expected_codecs='{}'
   local -a order_ids=() removal_ids=()
   local item="" retained_csv="" projection="" track_view="" metadata_context="" metadata_preview="" metadata_targets="" preview_yellow="" order_input="" highlight_ids="" output_map='{}'
   local item_position=0 track_actions=1
@@ -2002,16 +2025,23 @@ mkvutil_configure_category() {
   MKVUTIL_CONFIG=""
   MKVUTIL_JOBS=()
   mkvutil_metadata_reset
-  {
-    _mkvutil_indicator_start Working || prep_result=$?
-    (( prep_result )) || raw="$(jq -r '.source_json' <<< "$reference")" || prep_result=$?
-    (( prep_result )) || source="$(jq -r '.source' <<< "$reference")" || prep_result=$?
-    (( prep_result )) || rows="$(collect_tracks_for_remux "$source" "$raw")" || prep_result=$?
-    (( prep_result )) || mkvutil_plan_layout "$rows" '' '' "${source:e}" || prep_result=$?
-    (( prep_result )) || expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || prep_result=$?
-  } always {
-    _mkvutil_indicator_stop
-  }
+  if _mkvutil_title_only_request "$category" "$operations"; then
+    _mkvutil_clear_plan_layout
+    source="$(jq -er '.source' <<< "$reference")" || return 1
+    expected='{}'
+  else
+    {
+      _mkvutil_indicator_start Working || prep_result=$?
+      (( prep_result )) || raw="$(jq -r '.source_json' <<< "$reference")" || prep_result=$?
+      (( prep_result )) || source="$(jq -r '.source' <<< "$reference")" || prep_result=$?
+      (( prep_result )) || rows="$(collect_tracks_for_remux "$source" "$raw")" || prep_result=$?
+      (( prep_result )) || mkvutil_plan_layout "$rows" '' '' "${source:e}" || prep_result=$?
+      (( prep_result )) || expected="$(_mkvutil_json_map "${(@kv)MKVUTIL_TRACK_TYPES}")" || prep_result=$?
+      (( prep_result )) || expected_codecs="$(jq -c '[.tracks[]|{key:(.id|tostring),value:.properties.codec_id}]|from_entries' <<< "$raw")" || prep_result=$?
+    } always {
+      _mkvutil_indicator_stop
+    }
+  fi
   (( prep_result == 0 )) || return "$prep_result"
   if [[ "$category" == edit ]] && ! _mkvutil_metadata_has_scope "$operations" track; then
     track_actions=0
@@ -2166,7 +2196,7 @@ mkvutil_configure_category() {
   MKVUTIL_CONFIG="$(jq -cn --arg category "$category" --arg operations "$operations" \
     --arg removal "$removal" --arg order "$order" --arg metadata "$metadata" --arg extract "$extract_ids" \
     --argjson order_ids "$(_mkvutil_json_array "${order_ids[@]}")" \
-    --argjson expected_codecs "$(jq -c '[.tracks[]|{key:(.id|tostring),value:.properties.codec_id}]|from_entries' <<< "$raw")" \
+    --argjson expected_codecs "$expected_codecs" \
     --argjson output_map "$output_map" --argjson settings "$settings" --argjson expected_types "$expected" --arg reference "$source" --argjson signatures "$signatures" \
     --argjson track_count "$(jq '.model.tracks|length' <<< "$reference")" --argjson bypass "$MKVUTIL_BYPASS_TRACK_COUNT" '
     {category:$category, operations:($operations|split(",")), removed_ids:($removal|split(",")|map(select(length>0))),
@@ -2419,11 +2449,18 @@ mkvutil_plan_job() {
     fi
   done
   category="$(jq -r '.category' <<< "$config")" || return 1
-  raw="$(jq -r '.source_json' <<< "$record")" || return 1
-  rows="$(collect_tracks_for_remux "$file" "$raw")" || return 1
-  removal="$(jq -r '.removed_ids|join(",")' <<< "$config")" || return 1
-  order="$(jq -r '.order' <<< "$config")" || return 1
-  mkvutil_plan_layout "$rows" "$removal" "$order" "${file:e}" || return 1
+  if _mkvutil_title_only_config "$config"; then
+    # The ordinary job shape is retained, with no track model or selectors.
+    MKVUTIL_OUTPUT_EXTENSION="${file:e}"
+    record="$(jq -c 'del(.source_json)|.inspection_scope="container"|.model={tracks:[]}' <<< "$record")" || return 1
+  else
+    [[ "$(jq -r '.inspection_scope // "tracks"' <<< "$record")" != container ]] || return 1
+    raw="$(jq -r '.source_json' <<< "$record")" || return 1
+    rows="$(collect_tracks_for_remux "$file" "$raw")" || return 1
+    removal="$(jq -r '.removed_ids|join(",")' <<< "$config")" || return 1
+    order="$(jq -r '.order' <<< "$config")" || return 1
+    mkvutil_plan_layout "$rows" "$removal" "$order" "${file:e}" || return 1
+  fi
   _mkvutil_load_settings "$config" || return 1
   case "$category" in
     edit) mkvutil_build_propedit_args || return 1; args="$(_mkvutil_json_array "${MKVUTIL_PROPEDIT_ARGS[@]}")" || return 1 ;;
@@ -2653,7 +2690,7 @@ _mkvutil_remove_scope_source() {
 mkvutil_plan_queue() {
   local record="" job="" file="" result=0 diagnostics_file=""
   local -a jobs=() scope=()
-  if [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
+  if ! _mkvutil_title_only_config "$MKVUTIL_CONFIG" && [[ -t 1 && -n "${TERM-}" && "$TERM" != dumb ]]; then
     diagnostics_file="$(mktemp "${TMPDIR:-/tmp}/mkvutil-planning.XXXXXXXX")" || return 1
   fi
   {
@@ -2855,7 +2892,16 @@ _mkvutil_preflight_job() {
     return 1
   fi
   file="$(jq -r '.source' <<< "$job")" || return 1
-  if ! _mkvutil_capture_execution_source "$file"; then
+  local capture_result=0
+  if _mkvutil_title_only_config "$config"; then
+    REPLY="$(mkvutil_capture_source "$file" container)" || capture_result=$?
+  else
+    [[ "$(jq -r '.inspection_scope // "tracks"' <<< "$job")" != container ]] || {
+      MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid container-only job')"; return 1;
+    }
+    _mkvutil_capture_execution_source "$file" || capture_result=$?
+  fi
+  if (( capture_result )); then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Source inspection stopped or failed before execution' "$([[ $MKVUTIL_INTERRUPTED == 1 ]] && print not_attempted || print failed)")"
     return 1
   fi
@@ -3562,8 +3608,10 @@ job, fresh, registry, language_aliases = [json.loads(value) for value in sys.std
 action = sys.argv[1]
 started = time.monotonic()
 source, destination = Path(job["source"]), Path(job["destination"])
-original = json.loads(fresh["source_json"])
 config = job["config"]
+title_only = (action == config["category"] == "edit" and config["operations"] == ["5"]
+              and set(config["settings"]) == {"5:info"} and isinstance(config["settings"]["5:info"], str))
+original = None if title_only else json.loads(fresh["source_json"])
 result = dict(source=str(source), destination=str(destination), category=action,
               action_ids=config["operations"], metadata_ids=config["metadata"],
               status="failed", native_code=None, phase="preflight", actual_state="unpublished",
@@ -3619,7 +3667,7 @@ def identify(path):
     if code != 0:
         raise ValidationFailure(f"Identification failed ({code}): {error.strip()}")
     parsed = json.loads(raw)
-    if not isinstance(parsed.get("tracks"), list):
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("tracks"), list):
         raise ValidationFailure("Identification has no track listing")
     return parsed, raw
 
@@ -3821,6 +3869,26 @@ def reconcile():
 
 def inspect_edit():
     try:
+        if title_only:
+            before = identity(source)
+            if (before["dev"], before["ino"]) != (job["identity"]["dev"], job["identity"]["ino"]):
+                raise ValidationFailure("Source file replaced before title verification")
+            actual, raw = identify(source)
+            after = identity(source)
+            if before != after:
+                raise ValidationFailure("Source changed during title verification")
+            container = actual.get("container")
+            if not isinstance(container, dict) or not isinstance(container.get("properties"), dict):
+                raise ValidationFailure("Container title could not be inspected")
+            properties = container["properties"]
+            item = definition("5")
+            matched = property_matches(item, config["settings"]["5:info"], properties)
+            result.update(actual_identity=after, actual_state="edited_observed", validation_ok=matched,
+                          applied_metadata={"5:info": matched},
+                          observed_metadata={"5:info": {item["json"]: properties.get(item["json"])}})
+            if not matched:
+                result["validation_error"] = "Container title differs from the requested value"
+            return
         actual, raw = identify(source)
         result["actual_json"] = raw
         result["actual_identity"] = identity(source)
@@ -3891,11 +3959,19 @@ def publish():
 
 try:
     source_unchanged()
-    if json.loads(job["source_json"]) != original:
+    if title_only:
+        if job.get("inspection_scope") != "container" or fresh.get("inspection_scope") != "container":
+            raise ValidationFailure("Invalid title-only source snapshot")
+        if job["propedit_args"] != (["--edit", "info", "--delete", definition("5")["property"]]
+                if config["settings"]["5:info"] == "" else
+                ["--edit", "info", "--set", definition("5")["property"] + "=" + config["settings"]["5:info"]]):
+            raise ValidationFailure("Invalid title-only Edit arguments")
+    elif json.loads(job["source_json"]) != original:
         raise ValidationFailure("Source identification changed since planning")
     if action not in ("edit", "mux"):
         raise ValueError("Executor category is not available")
-    source_tags = tags(source)
+    if not title_only:
+        source_tags = tags(source)
     if action == "mux" and any(int(target.text or "0") == 0
                                 for target in ET.fromstring(source_tags).findall("Tag/Targets/TrackUID")):
         raise ValidationFailure(f"{source}: MKVToolNix v93 remux drops all-track TrackUID=0 tags; Mux refused before modification")
@@ -4037,6 +4113,17 @@ _mkvutil_execute_job() {
   if ! mkvutil_load_job "$job"; then
     MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid planned job')"
     return 1
+  fi
+  if [[ "$(jq -r '.inspection_scope // "tracks"' <<< "$job")" == container ]]; then
+    # Rebuild through the shared registry before authorizing the reduced oracle.
+    if ! _mkvutil_title_only_config "$(jq -c '.config' <<< "$job")" ||
+       ! jq -e '.input_ids==[] and .retained_ids==[] and .selectors=={} and
+         .track_types=={} and .source_flags=={} and .merge_metadata_args==[]' <<< "$job" >/dev/null ||
+       ! mkvutil_build_propedit_args ||
+       [[ "$(jq -c '.propedit_args' <<< "$job")" != "$(_mkvutil_json_array "${MKVUTIL_PROPEDIT_ARGS[@]}" | jq -c .)" ]]; then
+      MKVUTIL_RESULT_JSON="$(_mkvutil_execution_failure "$job" 'Invalid container-only Edit plan')"
+      return 1
+    fi
   fi
   _mkvutil_preflight_job "$job" || return 1
   fresh="$REPLY"
@@ -4751,7 +4838,7 @@ mkvutil_close_scope() {
 _mkvutil_main_body() {
   setopt localtraps
   local directory="$PWD" category="" operations="" result=0 resolved_directory="" sticky_code=0 selected=0
-  local argument="" directory_set=0 main_error="" action_error="" cleanup_record=""
+  local argument="" directory_set=0 main_error="" action_error="" cleanup_record="" inspection_scope=""
   MKVUTIL_LEDGER_ENABLED=0
   MKVUTIL_INTERRUPTED=0
   MKVUTIL_BYPASS_TRACK_COUNT=0
@@ -4855,7 +4942,9 @@ _mkvutil_main_body() {
       mkvutil_batch_request "$category" "$operations" || return 1
       if (( ${#MKVUTIL_SOURCES} == 0 )); then
         result=0
-        mkvutil_inspect_sources || result=$?
+        inspection_scope=tracks
+        if _mkvutil_title_only_request "$category" "$operations"; then inspection_scope=container; fi
+        mkvutil_inspect_sources "$inspection_scope" || result=$?
         if (( MKVUTIL_INTERRUPTED )); then mkvutil_finish 1; return 1; fi
         if (( result == 4 )); then mkvutil_reset_public_selection || return 1; selected=0; continue; fi
         if (( result )); then

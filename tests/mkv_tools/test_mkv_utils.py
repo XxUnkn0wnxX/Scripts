@@ -1593,7 +1593,9 @@ def _executor_document():
     return document
 
 
-def _run_executor_contract(env, body, manifest, *, fault="", expected_returncode=0, initial_config_update=""):
+def _run_executor_contract(
+    env, body, manifest, *, fault="", expected_returncode=0, initial_config_update="", source_scope="tracks"
+):
     manifest_path = env["fake_state"] / "execution.json"
     manifest_path.write_text(json.dumps(manifest))
     transport_root = env["fake_state"] / "engine-transport"
@@ -1605,6 +1607,7 @@ def _run_executor_contract(env, body, manifest, *, fault="", expected_returncode
         "TEST_REAL_PYTHON": sys.executable, "TEST_USE_REAL_JSON": "1",
         "TEST_COMMAND_LOG": str(env["command_log"]), "TEST_ARGV_LOG_DIR": str(env["argv_log_dir"]),
         "TEST_FAKE_STATE_DIR": str(env["fake_state"]), "TEST_FAKE_EXECUTION_JSON": str(manifest_path),
+        "TEST_EXECUTOR_SOURCE_SCOPE": source_scope,
         "PYTHONDONTWRITEBYTECODE": "1",
         "TMPDIR": str(transport_root),
     })
@@ -1622,13 +1625,18 @@ setopt errexit
 fail() { print -u2 -r -- "executor contract failure: $1"; return 1; }
 eq() { [[ "$1" == "$2" ]] || fail "$3: expected '$2', got '$1'"; }
 _mkvutil_metadata_define 6 'Set commentary flag' track 'Commentary [0]: ' 0 boolean flag-commentary --commentary-flag '' flag_commentary ''
-record="$(mkvutil_capture_source "$PWD/source.mk3d")"
+record="$(mkvutil_capture_source "$PWD/source.mk3d" "$TEST_EXECUTOR_SOURCE_SCOPE")"
+if [[ "$TEST_EXECUTOR_SOURCE_SCOPE" == container ]]; then
+  config='{"category":"edit","operations":["5"],"removed_ids":[],"order":"","order_ids":[],"metadata":"","settings":{"5:info":"Initial title"},"expected_types":{},"extract_ids":[]}'
+  # Container cases build their own configured job below; avoid an unused plan.
+else
 config='{"category":"mux","operations":["1","2"],"removed_ids":["0"],"order":"0:12","order_ids":["12"],"metadata":"1-6","settings":{"1:11":"0","1:12":"0","2:11":"0","2:12":"0","3:11":"fr-CA","4:11":"@literal $cash: \"quote\"\n\n","5:info":"","6:11":"1"},"expected_types":{"0":"video","11":"audio","12":"audio"},"extract_ids":[]}'
 config="$(jq --arg reference "$PWD/source.mk3d" --argjson signatures "$(mkvutil_removal_signatures "$record" 0)" '.+{reference:$reference,reference_track_count:3,removal_signatures:$signatures}' <<< "$config")"
 if [[ -n "${TEST_EXECUTOR_INITIAL_CONFIG_UPDATE:-}" ]]; then
   config="$(jq "$TEST_EXECUTOR_INITIAL_CONFIG_UPDATE" <<< "$config")"
 fi
 job="$(mkvutil_plan_job "$record" "$config")"
+fi
 ''' + body, "executor-contract", str(env["mkv_utils_script"])],
         cwd=env["workdir"], env=run_env, text=True, capture_output=True, timeout=35,
     )
@@ -5883,8 +5891,107 @@ def test_mkv_utils_title_only_edit_skips_track_matching_across_batch(env):
     assert len(edits) == 2 and {call[0] for call in edits} == {str(first), str(second)}
     assert all(call[1:] == ['--normalize-language-ietf', 'off', '--edit', 'info', '--set',
                             'title=Shared title'] for call in edits)
+    # A title-only Edit can use native info editing directly. Its sole
+    # identification is the post-write title verification for each source.
+    merge_calls = _command_argv(env, 'mkvmerge')
+    assert len(merge_calls) == 2
+    assert {tuple(call) for call in merge_calls} == {
+        ('-J', str(first)), ('-J', str(second)),
+    }
+    assert _command_argv(env, 'mkvextract') == []
+    log = _read_command_log(env)
+    for source in (first, second):
+        edit_index = next(i for i, line in enumerate(log)
+                          if line.startswith(f'mkvpropedit\targs={source} '))
+        verify_index = next(i for i, line in enumerate(log)
+                            if line == f'mkvmerge\targs=-J {source}')
+        assert edit_index < verify_index
     assert all(_observed_fake_identification(env, file) == actuals[str(file)] for file in (first, second))
     assert 'Done: 2; Failed: 0' in result.stdout
+
+
+def test_mkv_utils_title_only_edit_dry_run_does_not_inspect_or_write(env):
+    source = _mkv_file(env, 'Title dry run.mkv')
+    extra = _integration_manifest(env, {source: _integration_model()})
+    result = _run_mkv_utils(env, '--dry-run', fzf_responses=[[str(source)]],
+                            input_data='1\n5\nDry title\n', extra_env=extra)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _command_argv(env, 'mkvpropedit') == []
+    assert _command_argv(env, 'mkvmerge') == []
+    assert _command_argv(env, 'mkvextract') == []
+    assert source.read_bytes() == b'payload'
+    assert 'Simulated: 1; Failed: 0' in result.stdout
+
+
+def test_mkv_utils_title_only_builder_sets_and_clears_shared_info_title(env):
+    _, manifest = _executor_manifest(env, converted=False)
+    result = _run_executor_contract(env, r'''
+for title in 'Shared title' ''; do
+  config="$(jq -cn --arg title "$title" '{category:"edit",operations:["5"],metadata:"",removed_ids:[],order:"",order_ids:[],settings:{"5:info":$title},expected_types:{},extract_ids:[]}')"
+  job="$(mkvutil_plan_job "$record" "$config")"
+  jq -c '.propedit_args' <<< "$job"
+done
+config="$(jq -cn '{category:"edit",operations:["5"],metadata:"",removed_ids:[],order:"",order_ids:[],settings:{"5:info":""},expected_types:{},extract_ids:[]}')"
+job="$(mkvutil_plan_job "$record" "$config")"
+bad_job="$(jq '.propedit_args=["--edit","info","--set","title=stale"]' <<< "$job")"
+if mkvutil_execute_edit_job "$bad_job"; then fail 'accepted stale argv for title clear'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, source_scope='container')
+    set_args, clear_args, rejected = [json.loads(line) for line in result.stdout.splitlines()]
+    assert [set_args, clear_args] == [
+        ['--edit', 'info', '--set', 'title=Shared title'],
+        ['--edit', 'info', '--delete', 'title'],
+    ]
+    assert rejected['status'] == 'failed' and rejected['native_code'] is None
+    assert rejected['reason'] == 'Invalid container-only Edit plan'
+    assert _command_argv(env, 'mkvpropedit') == []
+    assert _command_argv(env, 'mkvextract') == []
+
+
+def test_mkv_utils_title_only_edit_skips_source_changed_after_container_snapshot(env):
+    source, manifest = _executor_manifest(env, converted=False)
+    result = _run_executor_contract(env, r'''
+config="$(jq '.category="edit"|.operations=["5"]|.metadata=""|.removed_ids=[]|.order=""|.order_ids=[]|.settings={"5:info":"Requested title"}|.expected_types={}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+printf changed >> "$PWD/source.mk3d"
+if mkvutil_execute_edit_job "$job"; then fail 'accepted source changed after title-only snapshot'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, source_scope='container')
+    record = json.loads(result.stdout)
+    assert record['status'] == 'skipped'
+    assert record['skip_receipt']['kind'] == 'source-changed'
+    assert record['actual_state'] == 'not_modified_by_job'
+    assert source.read_bytes() == b'payloadchanged'
+    assert _command_argv(env, 'mkvpropedit') == []
+    assert _command_argv(env, 'mkvextract') == []
+
+
+@pytest.mark.parametrize('failure', ('verification_mismatch', 'native_error'))
+def test_mkv_utils_title_only_edit_reports_verification_and_native_failures(env, failure):
+    source, manifest = _executor_manifest(env, converted=False)
+    if failure == 'verification_mismatch':
+        manifest['post_edit'][str(source)]['container']['properties']['title'] = 'Unexpected title'
+    else:
+        manifest['edit_code'] = 2
+    result = _run_executor_contract(env, r'''
+config="$(jq '.category="edit"|.operations=["5"]|.metadata=""|.removed_ids=[]|.order=""|.order_ids=[]|.settings={"5:info":"Requested title"}|.expected_types={}' <<< "$config")"
+job="$(mkvutil_plan_job "$record" "$config")"
+if mkvutil_execute_edit_job "$job"; then fail 'accepted title-only failure'; fi
+print -r -- "$MKVUTIL_RESULT_JSON"
+''', manifest, source_scope='container')
+    record = json.loads(result.stdout)
+    assert record['status'] == 'failed'
+    assert record['native_code'] == (0 if failure == 'verification_mismatch' else 2)
+    assert record['actual_state'] == 'edited_observed'
+    assert _command_argv(env, 'mkvpropedit') == [[
+        str(source), '--normalize-language-ietf', 'off', '--edit', 'info', '--set', 'title=Requested title',
+    ]]
+    assert _command_argv(env, 'mkvextract') == []
+    if failure == 'verification_mismatch':
+        assert record['applied_metadata']['5:info'] is False
+        assert record['validation_error'] == 'Container title differs from the requested value'
+    else:
+        assert record['reason'] == 'Native Edit failed; changes may already be present'
 
 
 def test_mkv_utils_mux_title_only_optional_metadata_keeps_track_scope_empty(env):

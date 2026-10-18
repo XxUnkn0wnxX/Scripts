@@ -14,6 +14,44 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted title-only preparation optimization
+
+- User authorized file/container identity-only preparation for standalone
+  Edit → Title. Mixed Edit stays as-is; Mux still performs its structural
+  analysis and optional Title asks only its value without another track list.
+- Same Scripts checkout on develop, baseline37bd79c. Existing route B/task IDs
+  are reaccepted:9/9 tasks and4/4 checkpoints. No newly accepted IDs, so this
+  repair does not advance or reset the three-new-ID audit interval.
+- Stat-only snapshots have an explicit container scope and no source JSON.
+  Exact Title-only config, empty track state and shared-registry argv rebuilding
+  guard the reduced oracle. Post-write verification checks the original device/
+  inode and full identity stability during inspection; malformed observations
+  and native warnings/errors cannot become success. No source-title display.
+- Thirteen distinct controlled tests pass across focused runs, including Edit
+  Ctrl+C finishing the active file and reporting the unattempted suffix. Three
+  mixed consumers pass in34.99s; two shared-builder cases pass in0.77s. Eight
+  actual-observer/helper AST cases pass in0.09s with controlled native/stat
+  boundaries. One real alias/fzf/v93 title Edit PTY passes in4.53s on owned media,
+  with two native calls rather than the prior six. No broad suite/CI campaign.
+- Source SHA e9ffac8b2f9d236ababa6b557e6e24775d2c59046cf28df75eea35f99301fd92;
+  final tests SHA df66afc81a90cbf7b72a521a8e927408fbc4ad5c34ca73aa5bf51b55cd2a8d88.
+  Native proof precedes only the small parsed-object guard; final observer proof
+  and parent reconciliation cover that delta. Astra PASS WITH NOTES is resolved.
+- Cost review: low-load serial groups reused existing fixtures and healthy-run
+  evidence. Initial test fixture/schema failures were corrected without runtime
+  changes. Parent removed four unused setup job builds; only their four affected
+  cases reran, passing in11.18s (12.43s wall,10.39s CPU). No extra broad run was
+  added for timing; no benchmark claim is made across different test selections.
+- Parent owns all work; workers have handed back files, no live jobs remain.
+  Proof root .tmp/mkvutil-rework/title-fastpath/: receipt.json, worker logs,
+  observer-checks.json, ia raw/readable logs, planner-review.json and
+  parent-review.json. Shared runner/transport/queue/report, Extract, Analyze and
+  both argv builders remain byte-identical to baseline.
+- Standing signed develop/master publication applies; actual ref/signature
+  outcome belongs to publication.json under the proof root. Inspect refs and
+  receipt before repeating Git; return develop. Unrelated untracked
+  .plans/agents/reddit-fw-audit/ remains untouched and unstaged.
+
 ### Accepted title-only metadata follow-up
 
 - User's final scope: no track listing/IDs or track-match requirement for
