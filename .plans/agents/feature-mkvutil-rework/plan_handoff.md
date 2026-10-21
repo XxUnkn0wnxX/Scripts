@@ -14,6 +14,51 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted tag-free files and independent queue outcomes
+
+- User supplied a removal report with two attempted/failed matching files and
+  one correctly skipped mismatch. Read-only installed-v93 inspection confirms
+  all three supplied files have no tags: mkvextract succeeds with empty stdout.
+  Shared Edit/Mux tag inspection incorrectly parses that as an XML document.
+  Supplied media remained unchanged; do not write to those originals.
+- Baseline51d9f6c on develop, same Scripts checkout. Existing execution/reporting
+  task gates are reaccepted:9/9 tasks and4/4 checkpoints. No new task IDs, so
+  this repair does not advance/reset the periodic new-ID audit interval.
+- Scope: treat successful empty tag output as no tags; keep malformed XML and
+  native failures visible. Preserve matching guards, independent queue outcomes,
+  interruption/finality, cleanup and the single-script runtime. Reuse route B
+  and current IDs; no broad campaign or dependency/tool upgrades.
+- Additional user scope is implemented: missing/type/format reasons use one
+  readable formatter in planning, final reporting and internal preview; backend
+  receipts are unchanged. Example: Track ID3 missing; expected ASS subtitles.
+- Source SHA f9be7e390c7a3cdba79d847a8f09e64b2ba9e0d2e6c4a3c4eb773a2e8b1f8489;
+  final test SHA b72e8f6f25772515d7a512545cd183dc1e2b95b457c73fbfe8d3d788a17037dc.
+  Eight focused tests pass in47.05s (47.73 wall,44.53 user+system CPU), with
+  parent-tightened malformed-tag reason/native-code and Extract missing-reason
+  assertions revalidated in15.18s (15.67 wall,14.31 CPU). No runtime changes after
+  freezing. Seven actual-helper parser cases and a4.85s installed-v93 native
+  controller run pass; real fzf/PTY or a broad campaign was not rerun.
+- Parent and independent reviewer agree: ordinary mismatch returns a per-file
+  skip and native/XML failure records a per-file failure; eligible later jobs
+  continue in the common queue. Analyze also continues. Deliberately declining
+  an existing Exclude/Back prompt and shared safety/interrupt stops remain;
+  the initial review's conditional preflight concern is clarified, not a change.
+- Cost review: serial focused selection reuses fixtures, disables unrelated
+  pytest plugin loading, and keeps native fixtures tiny. No meaningful setup
+  hotspot requires redesign. Initial test-only ordering/heading assumptions and
+  unsupported time-output flag are retained in worker history; no false pass.
+  One already-started final group repeated healthy nodes; future oracle-only
+  repairs should rerun only affected cases. No timing-only broad run was added.
+- Parent owns all files after test-worker handback; read-only reviewer completed.
+  Source guards/planner/queue/Extract/Analyze/runner/staging11 functions and engine
+  AST outside tags() are unchanged. Both zsh syntax, test compile, docs/records
+  and the exact parent-session ledger pass. No live jobs remain.
+- Proof root .tmp/mkvutil-rework/tagless-batch/. Start with supplied-readonly.json.
+  Actual signed develop/master publication result belongs to publication.json;
+  inspect refs/receipt before repeating Git and return develop. User renewed
+  both-branch push approval after the fix and gates pass. Unrelated
+  .plans/agents/reddit-fw-audit/ stays untouched and unstaged.
+
 ### Accepted title-only preparation optimization
 
 - User authorized file/container identity-only preparation for standalone

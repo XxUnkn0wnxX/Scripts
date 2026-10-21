@@ -1952,6 +1952,7 @@ print -r -- "$MKVUTIL_RESULT_JSON"
 
 def test_mkv_utils_executor_two_file_edit_keeps_source_selectors_and_properties(env):
     first, manifest = _executor_manifest(env, converted=False)
+    manifest["tags_default"] = " \n\t"
     second = _mkv_file(env, "Second source.mk3d")
     original = json.loads(json.dumps(manifest["sources"][str(first)]))
     # Original ID 11 is listing position 2 in the first file and 3 in the
@@ -2656,6 +2657,30 @@ for record in "${MKVUTIL_RESULTS[@]}"; do print -r -- "$record"; done
     assert source.read_text() == "payload"
     assert Path(bad).read_text() == "payload"
     assert not (env["workdir"] / "successful.mk3d").exists()
+
+
+def test_mkv_utils_executor_malformed_tags_do_not_stop_later_job(env):
+    source, manifest = _executor_manifest(env)
+    second = _mkv_file(env, "later-good.mk3d")
+    manifest["sources"][str(second)] = json.loads(json.dumps(manifest["sources"][str(source)]))
+    manifest["stage"][str(second)] = json.loads(json.dumps(manifest["stage"][str(source)]))
+    manifest["tags_default"] = ""
+    manifest["tags"] = {str(source): "<Tags><Tag></Tags>"}
+    result = _run_executor_contract(env, r'''
+second="$(mkvutil_capture_source "$PWD/later-good.mk3d")"
+secondjob="$(mkvutil_plan_job "$second" "$config")"
+code=0
+mkvutil_execute_queue "$job" "$secondjob" || code=$?
+for record in "${MKVUTIL_RESULTS[@]}"; do print -r -- "$record"; done
+''', manifest)
+    records = [json.loads(line) for line in result.stdout.splitlines() if line.startswith("{")]
+    assert [record["status"] for record in records] == ["failed", "success"]
+    assert records[0]["reason"].startswith("Tag inspection returned invalid XML:")
+    assert records[0]["native_code"] is None
+    assert records[0]["source"] == str(source) and records[1]["source"] == str(second)
+    assert len([args for args in _command_argv(env, "mkvmerge") if "-o" in args]) == 1
+    assert source.read_bytes() == b"payload" and not source.with_suffix(".mka").exists()
+    assert not second.exists() and second.with_suffix(".mka").read_bytes() == b"candidate-data\n"
 
 
 
@@ -3669,9 +3694,7 @@ def test_mkv_utils_reporting_mux_skip_ends_run_and_retry_needs_new_invocation(en
     assert "Skip history: unresolved" in result.stdout
     report = result.stdout[result.stdout.index("Final report"):]
     assert report.count("Final report") == 1 and f"| {skipped.name}" in report
-    assert "Original ID 12: codec-mismatch" in report
-    assert 'expected={"type":"subtitles","codec_id":"S_TEXT/ASS"}' in report
-    assert 'actual={"type":"subtitles","codec_id":"S_TEXT/UTF8"}' in report
+    assert "Track ID 12: expected ASS subtitles; found SRT subtitles." in report
     assert "Category: mux; Actions: 1,2" in result.stdout and "Optional Mux metadata: 3,4" in result.stdout
     assert "Mux 1,2: remove + reorder; metadata 3,4" in result.stdout
     assert "Configuration 2" not in result.stdout
@@ -3700,6 +3723,47 @@ def test_mkv_utils_reporting_mux_skip_ends_run_and_retry_needs_new_invocation(en
     assert retries[0][retries[0].index("--title") + 1] == ""
     assert len(_command_argv(env, "fzf")) == 1 and not _command_argv(env, "mkvpropedit")
     assert first.read_bytes() == completed_bytes and skipped.read_bytes() == b"candidate-data\n"
+    assert not list(env["workdir"].glob(".mkvutil-*"))
+
+
+def test_mkv_utils_mux_removal_empty_tags_skips_middle_mismatch_and_continues(env):
+    first, skipped, last = (
+        _mkv_file(env, name)
+        for name in ("First match.mkv", "Middle mismatch.mkv", "Last match.mkv")
+    )
+    original = _integration_model()
+    mismatch = json.loads(json.dumps(original))
+    mismatch["tracks"] = mismatch["tracks"][:3]
+    stage = _integration_output(original, [0, 1, 2])
+    extra = _integration_manifest(
+        env, {first: original, skipped: mismatch, last: original},
+        stage={str(first): stage, str(last): stage}, tags_default="",
+    )
+
+    result = _run_mkv_utils(
+        env, fzf_responses=[[str(first), str(skipped), str(last)]],
+        input_data="2\n1\n3\n\n", extra_env=extra,
+    )
+
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Done: 2; Failed: 0" in result.stdout
+    assert "Skipped: 1; Excluded: 0; Not attempted: 0" in result.stdout
+    assert f"Skipped removal mismatch: {skipped.name}" in result.stdout, result.stdout + result.stderr
+    assert result.stdout.index(f"Skipped removal mismatch: {skipped.name}") < result.stdout.index(f"Processing: {first.name}")
+    assert result.stdout.index(f"Processing: {first.name}") < result.stdout.index(f"Processing: {last.name}")
+    report = result.stdout.split("Final report", 1)[1]
+    assert result.stdout.count("Final report") == 1
+    assert f"| {skipped.name}" in report
+    assert "Track count mismatch: expected 4; actual 3" in report
+    assert "Track ID 3: missing; expected ASS subtitles." in report
+    assert "expected={" not in report and "actual=" not in report and "actual=null" not in report
+    writers = [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
+    assert len(writers) == 2 and [args[-1] for args in writers] == [str(first), str(last)]
+    assert _observed_fake_identification(env, first) == stage
+    assert _observed_fake_identification(env, last) == stage
+    assert skipped.read_bytes() == b"payload"
+    assert first.read_bytes() == last.read_bytes() == b"candidate-data\n"
+    assert all(call[1] == "tags" for call in _command_argv(env, "mkvextract"))
     assert not list(env["workdir"].glob(".mkvutil-*"))
 
 def test_mkv_utils_category_incomplete_final_input_does_not_execute(env: dict[str, Path]):
@@ -4666,8 +4730,8 @@ def test_mkv_utils_extract_track_id_retries_malformed_and_out_of_range_values(en
 
 def test_mkv_utils_extract_accepts_heterogeneous_track_and_skips_missing_id(env):
     first=_mkv_file(env,"First target.mkv")
-    second=_mkv_file(env,"Different layout.mka")
     missing=_mkv_file(env,"Missing target.mks")
+    second=_mkv_file(env,"Different layout.mka")
     first_model=_integration_model([(0,"video","V_MPEG4/ISO/AVC",True),(1,"audio","A_AAC",True)])
     second_model=_integration_model([(1,"subtitles","S_TEXT/ASS",False),(8,"audio","A_OPUS",True)])
     missing_model=_integration_model([(0,"audio","A_AAC",True)])
@@ -4675,7 +4739,7 @@ def test_mkv_utils_extract_accepts_heterogeneous_track_and_skips_missing_id(env)
         str(first):{"tracks":{"outputs":{"1":{"data":"aac payload"}}}},
         str(second):{"tracks":{"outputs":{"1":{"data":"ass payload"}}}},
     })
-    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(second),str(missing)]],
+    result=_run_mkv_utils(env,fzf_responses=[[str(first),str(missing),str(second)]],
                           input_data="3\n2\n1\n",extra_env=extra)
     assert result.returncode==1,result.stdout+result.stderr
     calls=_command_argv(env,"mkvextract")
@@ -4683,7 +4747,7 @@ def test_mkv_utils_extract_accepts_heterogeneous_track_and_skips_missing_id(env)
     assert (env["workdir"]/"First target - Track [1].aac").read_bytes()==b"aac payload"
     assert (env["workdir"]/"Different layout - Track [1].ass").read_bytes()==b"ass payload"
     assert not (env["workdir"]/"Missing target - Track [1].aac").exists()
-    assert "Original ID 1: missing-id" in result.stdout and "Skipped: 1" in result.stdout
+    assert "Track ID 1: missing; expected AAC audio." in result.stdout and "Skipped: 1" in result.stdout
     assert all(path.read_bytes()==b"payload" for path in (first,second,missing))
 
 
@@ -4783,9 +4847,9 @@ def test_mkv_utils_option7_bypass_keeps_original_track_guard(env):
     assert f"File: {first.name}" in result.stdout and f"File: {second.name}" not in result.stdout
     assert f"Skipped track mismatch: {second.name}" in result.stdout
     assert "Track count mismatch:" not in result.stdout
-    assert "Original ID 1: missing-id" in result.stdout
-    assert "Original ID 2: missing-id" in result.stdout
-    assert "Original ID 3: missing-id" in result.stdout
+    assert "Track ID 1: missing; expected AAC audio." in result.stdout
+    assert "Track ID 2: missing; expected OPUS audio." in result.stdout
+    assert "Track ID 3: missing; expected ASS subtitles." in result.stdout
     _assert_readable_outcomes(result.stdout, "Done: 1", "Skipped: 1")
     assert _observed_fake_identification(env,first.with_suffix(".mka"))["tracks"]==_integration_output(a,[1,2,3])["tracks"]
     assert first.with_suffix(".mka").read_bytes()==b"candidate-data\n"
@@ -5209,9 +5273,7 @@ print -r -- 'automatic controller contracts passed'
     assert result.stdout.rstrip().endswith("automatic controller contracts passed")
     report = result.stdout[result.stdout.index("Final report"):]
     assert report.count("Final report") == 1
-    assert f"| {skipped.name}" in report and "Original ID 1: codec-mismatch" in report
-    assert 'expected={"type":"subtitles","codec_id":"S_TEXT/ASS"}' in report
-    assert 'actual={"type":"subtitles","codec_id":"S_TEXT/UTF8"}' in report
+    assert f"| {skipped.name}" in report and "Track ID 1: expected ASS subtitles; found SRT subtitles." in report
     assert not [args for args in _command_argv(env, "mkvmerge") if "-o" in args]
     assert not _command_argv(env, "mkvpropedit") and not _command_argv(env, "mkvextract")
 

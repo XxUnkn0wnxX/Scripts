@@ -1310,6 +1310,34 @@ mkvutil_ascii_box() {
   print -r -- "+${border}+"
 }
 
+# Shared display wording; structured mismatch receipts stay unchanged.
+_mkvutil_mismatch_display_rules() {
+  cat <<'JQ'
+    def track_description:
+      if .==null then "missing"
+      elif .type=="video" then "video"
+      elif .type=="subtitles" then
+        ({"S_TEXT/ASS":"ASS","S_TEXT/SSA":"SSA","S_TEXT/UTF8":"SRT",
+          "S_TEXT/WEBVTT":"WebVTT","S_HDMV/PGS":"PGS","S_VOBSUB":"VobSub"}[.codec_id // ""] //
+          ((.codec_id // "")|sub("^S_";""))) as $format |
+        if $format=="" then "subtitles" else $format+" subtitles" end
+      elif .type=="audio" then
+        ((.codec_id // "")|sub("^A_";"")) as $format |
+        if $format=="" then "audio" else $format+" audio" end
+      else .type // "track" end;
+    def mismatch_line:
+      if .reason=="output-position-mismatch" then
+        "Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
+      elif .actual==null then
+        "Track ID \(.original_id): missing; expected \(.expected|track_description)."
+      elif .expected==null then
+        "Track ID \(.original_id): unexpected \(.actual|track_description)."
+      else
+        "Track ID \(.original_id): expected \(.expected|track_description); found \(.actual|track_description)."
+      end;
+JQ
+}
+
 mkvutil_format_final_report() {
   local display="" summary_text="" details="" section="" section_lines_text=""
   local heading='Final report'
@@ -1342,7 +1370,7 @@ mkvutil_format_final_report() {
   ' <<< "$display")" || return 1
   mkvutil_ascii_box "$heading" || return 1
   print -r -- "$summary_text" || return 1
-  details="$(jq -c '
+  details="$(jq -c "$(_mkvutil_mismatch_display_rules)"$'\n''
     (.dry_run // false) as $dry |
     def outcome_group:
       if (.attempts[-1].result.simulated // false) then "Simulated"
@@ -1373,8 +1401,7 @@ mkvutil_format_final_report() {
       (.skip_history[] | "  Skip history: \(if .resolved then "resolved" else "unresolved" end); configurations \(.batch_ids|map(tostring)|join(",")); reference \(.receipt.reference)",
          (if (.receipt.reason // "")!="" then "    \(.receipt.reason)" else empty end),
          (if .receipt.track_count_mismatch then "    Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
-         (.receipt.reasons[] | (if .reason=="output-position-mismatch" then "    Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
-          else "    Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)" end))),
+         (.receipt.reasons[] | "    "+mismatch_line)),
       (.attempts[] |
         (.result as $result | .result.planned_outputs[]? |
           "  Would \(if $result.category=="edit" then "update" elif $result.category=="mux" or .kind=="attachment" then "write" else "extract" end): \(.path)\(if .required==false then " (optional)" else "" end)"),
@@ -2665,12 +2692,11 @@ mkvutil_report_removal_skips() {
   local receipt="" display=""
   for receipt in "$@"; do
     display="$(_mkvutil_display_record "$receipt")" || return 1
-    jq -r '
+    jq -r "$(_mkvutil_mismatch_display_rules)"$'\n''
       "Skipped \(if .kind=="source-changed" then "source changed" elif .kind=="track-mismatch" then "track mismatch" else "removal mismatch" end): \(.source)", "  Reference: \(.reference)",
       (if (.reason // "")!="" then "  \(.reason)" else empty end),
       (if .track_count_mismatch then "  Track count mismatch: expected \(.track_count_mismatch.expected); actual \(.track_count_mismatch.actual)" else empty end),
-      (.reasons[] | (if .reason=="output-position-mismatch" then "  Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
-          else "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)" end))
+      (.reasons[] | "  "+mismatch_line)
     ' <<< "$display" || return 1
   done
 }
@@ -2825,12 +2851,11 @@ mkvutil_preview_jobs() {
     for source in "${MKVUTIL_SCOPE_KEYS[@]}"; do
       entry="${MKVUTIL_LEDGER[$source]}"
       display="$(_mkvutil_display_record "$entry")" || return 1
-      jq -r '.source as $source | .skip_history[] |
+      jq -r "$(_mkvutil_mismatch_display_rules)"$'\n''.source as $source | .skip_history[] |
         "Previous skip \(if .resolved then "resolved" else "unresolved" end): \($source)",
         (if (.receipt.reason // "")!="" then "  \(.receipt.reason)" else empty end),
         (if .receipt.track_count_mismatch then "  Track count mismatch: expected \(.receipt.track_count_mismatch.expected); actual \(.receipt.track_count_mismatch.actual)" else empty end),
-        (.receipt.reasons[] | (if .reason=="output-position-mismatch" then "  Output ID \(.output_id): expected source ID \(.expected.original_id); actual source ID \(.actual.original_id // "missing")"
-          else "  Original ID \(.original_id): \(.reason); expected=\(.expected|tojson) actual=\(.actual|tojson)" end))' <<< "$display" || return 1
+        (.receipt.reasons[] | "  "+mismatch_line)' <<< "$display" || return 1
     done
   elif (( ${#MKVUTIL_REMOVAL_SKIP_HISTORY} > 0 )); then
     print -r -- 'Previous skipped-scope receipts (execution unresolved):'
@@ -3675,8 +3700,15 @@ def tags(path):
     code, text, error = run(["mkvextract", str(path), "tags"], 60)
     if code != 0:
         raise ValidationFailure(f"Tag inspection failed ({code}): {error.strip()}")
-    # Parse even an empty tag document, instead of accepting arbitrary output.
-    ET.fromstring(text)
+    # v93 writes nothing when the file has no tags; that is a valid empty set.
+    if not text.strip():
+        return "<Tags/>"
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError as error:
+        raise ValidationFailure(f"Tag inspection returned invalid XML: {error}") from error
+    if root.tag != "Tags":
+        raise ValidationFailure("Tag inspection returned an unexpected XML document")
     return text
 
 def definition(choice):

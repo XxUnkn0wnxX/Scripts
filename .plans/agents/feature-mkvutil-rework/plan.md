@@ -9,6 +9,18 @@ For this rework, use the Astra planner for intermittent, focused audits at
 meaningful planning or risk changes. The parent maintains this document and owns
 design decisions, implementation integration, and final review.
 
+## Approved tag-free files and readable skip reasons
+
+Successful empty tag extraction means no tags, not invalid XML. Shared Edit/Mux
+processing must accept ordinary tag-free files while reporting genuine native
+or XML failures. Track mismatches and file-level failures affect that file;
+remaining eligible files continue across all categories. Keep interruption,
+identity, matching and checked-publication guards. Present missing/type/format
+mismatches in readable language rather than raw expected/actual JSON, through
+shared reporting code; internal receipts retain their structured evidence.
+Reuse existing execution/integration tasks and focused normal-input/continuation
+regressions, including matching → mismatch → matching with empty tags.
+
 ## Approved title-only metadata configuration
 
 Standalone Edit → Title uses file identity snapshots rather than identifying

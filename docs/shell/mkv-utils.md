@@ -277,6 +277,27 @@ Reports use the directory's basename and filenames; full paths appear only for t
 
 The final report identifies the actions, outcomes and skipped or failed filenames. Empty groups are omitted, and filenames do not repeat status prefixes. Attachment totals appear only when Extract attachments was selected, alone or in a combined batch. Dry-run results appear under **Simulated**. Warnings, failures, partial/interrupted runs, unresolved skips and Analyze mismatches or inspection failures return a nonzero status. Retry reported files in a fresh invocation, and review any recovery details first.
 
+Track mismatches and file-level processing failures affect that file; remaining eligible files continue. Files without tag records are valid for Edit and Mux. Skip reasons describe the expected and detected tracks in plain language.
+
+<details>
+<summary>Example: a mismatch between two matching files</summary>
+
+```text
+Episode 01.mkv: completed
+Episode 02.mkv: skipped
+  Track ID 3: missing; expected ASS subtitles.
+Episode 03.mkv: completed
+Done: 2; Failed: 0; Skipped: 1
+```
+
+A subtitle-format mismatch reads:
+
+```text
+Track ID 3: expected ASS subtitles; found SRT subtitles.
+```
+
+</details>
+
 <details>
 <summary>Example: report names and dry-run results</summary>
 

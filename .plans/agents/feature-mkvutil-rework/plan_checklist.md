@@ -8,6 +8,25 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The tag-free input/readable-skip repair is **accepted: 9/9 tasks and 4/4
+checkpoints**, reusing the existing execution/integration/reporting tasks.
+Successful empty/whitespace tag output means no tags; real XML/native errors
+remain failures. Eight focused tests pass in47.05s, including a permanent Mux
+regression with a missing-ID-3 file between two matching tag-free files, Edit,
+failure-then-success, Extract continuation, Analyze and affected reports. Two
+strengthened reason/native-code assertions pass separately in15.18s; unaffected
+test bodies are reconciled unchanged. Seven actual-parser cases verify normal
+and erroneous output, and reproduce the old error on the prior source. Native
+v93/controller proof completes2/skips1/fails0 in4.85s using tiny owned media.
+Initial, final and internal preview use one readable mismatch formatter without
+changing receipts. Shared guards, queue, interruption, cleanup, Extract and
+Analyze are unchanged; parent/independent review passes. Existing explicit
+preflight cancellation and queue-safety stops remain. Source syntax, test
+compile, docs and ledger review pass; no broad suite/CI campaign. Proof:
+`.tmp/mkvutil-rework/tagless-batch/receipt.json`, `worker/test-selection.raw`,
+`worker/parent-assertions.raw`, `parser-checks.json`, `native/receipt.json`,
+`preview.log` and `parent-review.json`. Historical acceptance remains below.
+
 The title-only preparation optimization is **accepted: 9/9 tasks and 4/4
 checkpoints**, reusing T01.03/T02.01/T02.02/T04.01/T04.02. Standalone Edit →
 Title takes file identity snapshots before the prompt, rechecks before writing
