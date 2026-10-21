@@ -1,6 +1,6 @@
 # PSPrices companion userscript audit — 2026-10-21
 
-Status: capture-based audit and authorized repairs complete. The user subsequently authorized final documentation/version checks, merge into master and push of the scoped changes. Live availability behavior remains unconfirmed and is documented for follow-up.
+Status: capture-based audit, authorized repairs and release publication complete. Both remote branches were verified after the atomic release push. Live availability behavior remains unconfirmed and is documented for follow-up.
 
 ## Findings and repairs
 
@@ -60,3 +60,7 @@ The user supplied a new HAR in the same ignored evidence folder. It contains onl
 ## User review and final documentation
 
 The user supplied screenshots showing the normal native purchase/SKU layout and normal custom checkout/SKU layout. These observations do not reproduce the live unavailable path. The user reviewed illustrative warning and standalone-SKU mockups, confirmed that the native alert is thinner in reality, and accepted SKU placement below the whole warning/Retry group. Mockups illustrate placement only and are not runtime evidence. The final Checkout guide specifies warning placement between price and Add to Cart; the SKU guide specifies the 12px gap below native warning/Retry. Both guides preserve matching release lines and bottom collapsible changelogs, and both retain the live-state revisit note.
+
+## Publication receipt
+
+On 2026-10-21, following the user's explicit instruction, release commit `e35820c213d3c7c4cb672bff8e744b376dee04af` was created on develop and master was fast-forwarded to it. An atomic push updated both remote branches, and `git ls-remote --heads origin develop master` verified both at that full commit. A records-only follow-up records completion; the production source hashes above remain unchanged. Final guide checks confirmed Checkout Link 1.1.4 and SKU 1.0.1.6 with bottom collapsible changelogs and live-state revisit notes. All eight userscript guide release lines matched their scripts. Source syntax, whitespace, privacy and independent documentation checks passed. Raw captures, illustrative mockups and the unrelated Reddit audit were not staged. No real cart or checkout requests were made.
