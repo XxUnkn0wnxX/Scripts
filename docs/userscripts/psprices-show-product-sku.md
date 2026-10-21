@@ -1,6 +1,10 @@
 # PSPrices-Show-Product-SKU.user.js
 
-[`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, with Avatar SKU, Theme SKU, or generic SKU labels and matching helper text in a native-style panel below buy, checkout, or unavailable-store sections.
+[`PSPrices-Show-Product-SKU.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Show-Product-SKU.user.js) is a Tampermonkey userscript that displays and copies the public PlayStation product SKU on PSPrices product pages, with Avatar SKU, Theme SKU, or generic SKU labels and matching helper text in a native-style panel beneath the product's purchase or availability section.
+
+It adds its card on every supported product page where it can read a valid SKU,
+including themes, games, DLC, and other products where PSPrices shows no native
+SKU panel. An existing native SKU card is not required.
 
 Current documented release: `1.0.1.6`.
 
@@ -13,9 +17,20 @@ after (right). The script shows the public identifier and adds **Copy SKU**.
 
 <a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-product-sku/comparison.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-product-sku/comparison.png" alt="PSPrices Avatar SKU card before and after revealing the product identifier" width="900"></a>
 
+**When PSPrices has no native SKU panel**
+
+The public [**A Barcelona Night Traffic Dynamic Theme**](https://psprices.com/region-au/game/332798/a-barcelona-night-traffic-dynamic-theme) page before (left) and
+after (right). PSPrices shows its purchase cards without a SKU panel; the
+userscript reads the public product data and adds **Theme SKU** underneath.
+These are high-resolution browser captures of the same public page before and
+after enabling the SKU userscript, with matching framing.
+
+<a href="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-product-sku/comparison-2.png"><img src="https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/.images/userscripts/psprices-product-sku/comparison-2.png" alt="PSPrices theme page with no native SKU panel before, and an injected Theme SKU card below the purchase cards after" width="900"></a>
+
 ## What It Does
 
-- shows the product SKU in a block matching PSPrices' native avatar SKU design
+- shows the product SKU on supported product pages whenever a valid public identifier is available, including pages without a native SKU panel
+- uses a block matching PSPrices' native avatar SKU design
 - labels the panel `Avatar SKU` or `Theme SKU` when the product's category is identifiable, with `SKU` as the fallback
 - displays matching helper text below the identifier: `Avatar SKU identifier for third-party utilities.`, `Theme SKU identifier for third-party utilities.`, or `SKU identifier for third-party utilities.`
 - follows the native card typography and responsive copy-button placement while retaining the SKU panel's blue accent
@@ -23,7 +38,7 @@ after (right). The script shows the public identifier and adds **Copy SKU**.
 - works with games, DLC, themes, avatars, and other PlayStation products
 - supports product pages from every PSPrices region
 - prefers its own card over a native SKU block when a valid replacement value is available
-- mounts below the checkout userscript card, or immediately below PSPrices' native avatar/theme availability wrapper when the checkout userscript is disabled
+- mounts below the native purchase controls or availability warning, including its Retry button
 
 ## Where It Works
 
@@ -76,7 +91,11 @@ The label and helper text refresh when the product markup or category link chang
 
 When PSPrices already renders a native locked or unlocked SKU panel, the userscript prefers its own blue card and hides the native panel only after a valid replacement is mounted. The SKU userscript owns this behavior for both the locked access prompt and the unlocked SKU card.
 
-This works with either PSPrices' native purchase block or the checkout userscript's replacement card. If the checkout userscript has replaced a PlayStation Store unavailable warning, this script mounts the SKU panel below that checkout card. When the checkout userscript is disabled and PSPrices renders its avatar/theme availability loader or result in `#avatar-buy-block`, this script mounts immediately after the whole wrapper. That keeps the SKU visible outside its inert purchase cards and protects it from the wrapper's asynchronous replacement. If neither wrapper is present, the existing unavailable-warning and normal purchase-section placement rules apply.
+When PSPrices renders its avatar/theme availability loader or result in
+`#avatar-buy-block`, the standalone SKU card mounts immediately after the whole
+wrapper. That keeps the SKU visible outside its inert purchase cards and
+protects it from the wrapper's asynchronous replacement. Other product pages
+use the normal purchase-section or unavailable-warning placement.
 
 For an unconfirmed-availability result, the SKU card sits below the native
 warning and **Retry** button, with a 12px gap. The native alert and button retain
@@ -97,6 +116,9 @@ This userscript can run alongside:
 - [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js)
 
 The SKU script owns its injected card and suppression of the native locked or unlocked SKU panels. The checkout script replaces supported purchase targets while leaving the SKU mount point available; it does not hide native SKU panels. The collection live-search script owns collection search and product-page fetches used to fill in result details.
+
+When Checkout Link also runs, the SKU card appears below its replacement
+checkout card. The SKU script works independently when used on its own.
 
 ## Good To Know
 
@@ -124,8 +146,9 @@ Release history for this userscript is maintained only in this section.
 
 ### 1.0.1.6 — 2026-10-21
 
-- Mount the SKU card below PSPrices' native avatar/theme availability wrapper when the checkout userscript is not active.
+- Mount the standalone SKU card below PSPrices' native avatar/theme availability wrapper.
 - Keep the standalone SKU card outside the native wrapper's inert content and asynchronous loader/result replacement.
 - Preserve placement below the checkout userscript card when both userscripts are enabled.
+- Document the added SKU card on a theme page with no native SKU panel, with a second before-and-after comparison.
 
 </details>
