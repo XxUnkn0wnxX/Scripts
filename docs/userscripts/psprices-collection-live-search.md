@@ -2,8 +2,6 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.1.3`.
-
 ## Screenshots
 
 Click a preview to open its full-resolution image.
@@ -41,6 +39,7 @@ Light appearance: [top of settings](https://raw.githubusercontent.com/XxUnkn0wnx
 - progressively hydrates visible results with thumbnails, prices, and platform badges from each product page
 - supports light and dark themes by reusing PSPrices utility classes where practical
 - hides the native avatar tablist plus theme platform stripe and Likes/Filter controls on the mounted collection routes before they paint
+- switches off PSPrices' saved **Infinite scrolling** preference and hides both native switches on supported collection routes
 - offers saved advanced settings through the userscript manager's menu, with **Reset defaults**
 
 ## Where It Works
@@ -551,7 +550,7 @@ PSPrices Collection Live Search:
 On startup, the default `info` log includes the userscript version in the same format as the other PSPrices scripts:
 
 ```text
-PSPrices Collection Live Search: has started (v1.1.3)
+PSPrices Collection Live Search: has started (v<version>)
 ```
 
 Logging is designed not to include cookies, credential headers, full response bodies, session data, or raw storage payloads.
@@ -605,3 +604,15 @@ The script does not send its caches or preferences to the author, modify
 PSPrices account settings, or place store orders. Disabling it and reloading
 restores native collection controls. Its stored caches and preferences remain
 until cleared through their respective controls or browser/manager storage.
+
+<details>
+<summary>Changelog</summary>
+
+Release history for this userscript is maintained only in this section.
+
+### 1.1.4 — 2026-10-21
+
+- Disable PSPrices' native infinite scrolling on supported avatar and theme collection pages, saving its preference as off and stopping any active native scroll request.
+- Hide both native Infinite scrolling switches and reapply the off state after initialization, navigation, and page content updates so they do not interfere with live search.
+
+</details>

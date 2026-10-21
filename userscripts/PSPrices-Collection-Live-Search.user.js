@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.3
+// @version      1.1.4
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -26,7 +26,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.1.3';
+  const SCRIPT_VERSION = '1.1.4';
   let LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -243,6 +243,9 @@
   const OWNER_ATTR = 'data-psprices-live-search';
   const RESULTS_ATTR = 'data-psprices-live-search-results';
   const HIDDEN_ATTR = 'data-psprices-live-search-hidden';
+  const NATIVE_INFINITE_SCROLL_KEY = 'infinite-scroll';
+  const NATIVE_INFINITE_SCROLL_TOGGLE_SELECTOR =
+    'input[data-test-id="infinite-scroll-view"], input[data-test-id="infinite-scroll-bottom"]';
   const ROUTE_CLASS_PREFIX = 'pspls-route-';
   const ROUTE_CLASSES = Object.freeze([
     `${ROUTE_CLASS_PREFIX}avatars`,
@@ -3897,6 +3900,8 @@
       html.pspls-route-themes .pagination:has(a[href*="/collection/themes?page="]),
       html.pspls-route-themes [class*="pagination"]:has(a[href*="/collection/themes?page="]) { display: none !important; }
       html.pspls-route-themes a[href*="/collection/themes?page="] { display: none !important; }
+      html.pspls-route-avatars label:has(${NATIVE_INFINITE_SCROLL_TOGGLE_SELECTOR}),
+      html.pspls-route-themes label:has(${NATIVE_INFINITE_SCROLL_TOGGLE_SELECTOR}) { display: none !important; }
       [${OWNER_ATTR}] input[type="search"]::-webkit-search-cancel-button,
       [${OWNER_ATTR}] input[type="search"]::-webkit-search-decoration {
         -webkit-appearance: none;
@@ -3935,6 +3940,26 @@
     }
   }
 
+  function disableNativeInfiniteScroll(route = parseRoute()) {
+    if (!route) return;
+
+    // Set the preference before Alpine initializes, then use its checkbox change
+    // handler for an already-active list so it also aborts any pending request.
+    try {
+      if (localStorage.getItem(NATIVE_INFINITE_SCROLL_KEY) !== 'false') {
+        localStorage.setItem(NATIVE_INFINITE_SCROLL_KEY, 'false');
+      }
+    } catch (error) {
+      logger.verbose('Unable to save the native infinite-scroll preference.', error);
+    }
+
+    for (const toggle of document.querySelectorAll(NATIVE_INFINITE_SCROLL_TOGGLE_SELECTOR)) {
+      if (!toggle.checked) continue;
+      toggle.checked = false;
+      toggle.dispatchEvent(new nativeWindow.Event('change', { bubbles: true }));
+    }
+  }
+
   function updateRouteClass(route = parseRoute()) {
     const root = document.documentElement;
     if (!root) return;
@@ -3942,6 +3967,7 @@
     root.classList.remove(...ROUTE_CLASSES);
     if (route) {
       root.classList.add(`${ROUTE_CLASS_PREFIX}${route.collection}`);
+      disableNativeInfiniteScroll(route);
     }
   }
 
@@ -6530,6 +6556,7 @@
     document.addEventListener('htmx:afterSwap', scheduleRouteRefresh);
 
     const remountObserver = new MutationObserver(() => {
+      disableNativeInfiniteScroll();
       const appNeedsRemount = Boolean(appState && (!appState.ui || !appState.ui.panel || !appState.ui.panel.isConnected));
       const locationChanged = nativeWindow.location.href !== observedNavigationHref;
       if (locationChanged) observedNavigationHref = nativeWindow.location.href;
@@ -6558,6 +6585,7 @@
     });
   });
 
+  document.addEventListener('alpine:initialized', () => disableNativeInfiniteScroll());
   injectStyles();
   updateRouteClass();
 })();
