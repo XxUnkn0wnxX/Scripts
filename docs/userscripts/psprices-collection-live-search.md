@@ -2,6 +2,8 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
+Current documented release: `1.1.4`.
+
 ## Screenshots
 
 Click a preview to open its full-resolution image.
