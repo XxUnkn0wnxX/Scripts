@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.3
+// @version      1.1.4
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -31,7 +31,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.1.3';
+  const SCRIPT_VERSION = '1.1.4';
 
   const DEFAULT_SETTINGS = Object.freeze({
     LOG_LEVEL: 'info',
@@ -117,6 +117,9 @@
   const UNAVAILABLE_STORE_TEXT =
     'This item is no longer available for purchase on the PlayStation Store';
   const THEME_TARGET_SELECTOR = 'div.flex-shrink-0, div.shrink-0';
+  const AVAILABILITY_ROOT_SELECTOR =
+    '#avatar-buy-block[data-test-id="avatar-availability-check"], ' +
+    '#avatar-buy-block[data-test-id="avatar-availability-result"]';
 
   const PRODUCT_PATH =
     /^\/region-([a-z0-9-]+)\/game\/(\d+)(?:\/[^/]+)?\/?$/i;
@@ -1551,14 +1554,28 @@
   function selectUnavailablePurchaseTarget(gameDetail) {
     if (
       activeMount?.targetType === 'unavailable' &&
+      activeTargetIsOwned(activeMount) &&
+      canRestoreNative(activeMount) &&
       activeMount.targetElement?.isConnected &&
       gameDetail.contains(activeMount.targetElement)
     ) {
       return {
         type: 'unavailable',
         element: activeMount.targetElement,
-        buyBlock: activeMount.buyBlock
+        buyBlock: activeMount.buyBlock,
+        availabilityDetected: activeMount.availabilityDetected
       };
+    }
+
+    // The current loader/result owns the whole purchase wrapper. Its nested
+    // Retry button is another request source, not a second purchase target.
+    const availabilityRoots = gameDetail.querySelectorAll(AVAILABILITY_ROOT_SELECTOR);
+    if (availabilityRoots.length > 1) {
+      return { invalid: true, reason: 'multiple-unavailable-targets' };
+    }
+    if (availabilityRoots.length === 1) {
+      const root = availabilityRoots[0];
+      return { type: 'unavailable', element: root, buyBlock: root, availabilityDetected: true };
     }
 
     const targets = [
@@ -1589,7 +1606,22 @@
     ) {
       return { invalid: true, reason: 'unsupported-unavailable-target' };
     }
-    return { type: 'unavailable', element: container, buyBlock: container };
+    return {
+      type: 'unavailable', element: container, buyBlock: container,
+      availabilityDetected: isAvailabilityPlaceholder(target)
+    };
+  }
+
+  function readAvailabilityItemLabel(gameDetail) {
+    const kinds = new Set();
+    for (const link of gameDetail.querySelectorAll('#platform-badges a[href]')) {
+      try {
+        const path = new URL(link.getAttribute('href'), window.location.href).pathname;
+        const kind = path.match(/^\/region-[a-z0-9-]+\/collection\/(avatars|themes)\/?$/i)?.[1];
+        if (kind) kinds.add(kind.toLowerCase() === 'themes' ? 'theme' : 'avatar');
+      } catch (_) {}
+    }
+    return kinds.size === 1 ? [...kinds][0] : 'item';
   }
 
   function sonyLocaleForRegion(regionAlias) {
@@ -1819,6 +1851,8 @@
       buyBlock,
       targetType: target.type,
       targetElement: target.element,
+      availabilityDetected: target.availabilityDetected === true,
+      availabilityItemLabel: readAvailabilityItemLabel(gameDetail),
       baseProductId: metadata.baseProductId,
       offer: metadata.offer,
       priceConflict: metadata.priceConflict,
@@ -1943,6 +1977,37 @@
     if (!mount.ui?.status) return;
     mount.ui.status.textContent = message || '';
     mount.ui.status.hidden = !message;
+  }
+
+  function syncAvailabilityWarning(mount, detected, itemLabel) {
+    mount.availabilityDetected = detected;
+    mount.availabilityItemLabel = itemLabel;
+    if (!mount.ui) return;
+    if (!detected) {
+      mount.ui.availabilityWarning?.remove();
+      mount.ui.availabilityWarning = null;
+      mount.ui.availabilityWarningText = null;
+      return;
+    }
+    if (!mount.ui.availabilityWarning) {
+      const warning = document.createElement('p');
+      warning.dataset.testId = 'psprices-checkout-availability-warning';
+      warning.setAttribute('role', 'note');
+      warning.className = 'flex items-start gap-2 rounded-lg border p-2 text-xs leading-relaxed text-base-content';
+      warning.style.borderColor = 'color-mix(in oklab, var(--color-warning) 40%, transparent)';
+      warning.style.backgroundColor = 'color-mix(in oklab, var(--color-warning) 10%, transparent)';
+      const icon = createTextElement('span', 'material-symbols-outlined text-base text-warning', 'warning_amber');
+      icon.setAttribute('aria-hidden', 'true');
+      const text = document.createElement('span');
+      warning.append(icon, text);
+      mount.ui.button.before(warning);
+      mount.ui.availabilityWarning = warning;
+      mount.ui.availabilityWarningText = text;
+    }
+    const message = `Availability is unverified. Adding this ${itemLabel} to your cart may not work.`;
+    if (mount.ui.availabilityWarningText.textContent !== message) {
+      mount.ui.availabilityWarningText.textContent = message;
+    }
   }
 
   function checkoutFailureStatusMessage(category, error = null) {
@@ -2071,6 +2136,7 @@
 
     section.append(headingRow, button, diagnostics, status);
     mount.ui = { section, button, buttonLabel, diagnostics, sku, status, manualLink: null };
+    syncAvailabilityWarning(mount, mount.availabilityDetected, mount.availabilityItemLabel);
     button.addEventListener('click', () => handleCheckoutClick(mount));
 
     if (mount.clickAttempt) {
@@ -2260,6 +2326,81 @@
     );
   }
 
+  function claimAvailabilityRoot(mount) {
+    if (!mount.targetElement.matches(AVAILABILITY_ROOT_SELECTOR)) return;
+    const root = mount.targetElement;
+    mount.availabilityRootState = ['aria-busy', ':aria-busy', 'x-bind:aria-busy']
+      .map((name) => [name, root.getAttribute(name)]);
+    root.removeAttribute(':aria-busy');
+    root.removeAttribute('x-bind:aria-busy');
+    root.setAttribute('aria-busy', 'false');
+  }
+
+  function restoreAvailabilityRootState(mount) {
+    if (!mount.availabilityRootState || !activeTargetIsOwned(mount)) return;
+    for (const [name, value] of mount.availabilityRootState) {
+      if (value === null) mount.targetElement.removeAttribute(name);
+      else mount.targetElement.setAttribute(name, value);
+    }
+    mount.availabilityRootState = null;
+  }
+
+  function revealNativeAvailabilityRetry(mount) {
+    if (!mount.availabilityCheckIntercepted) return;
+    const root = mount.targetElement;
+    const retry = root.querySelector('[data-test-id="avatar-availability-retry"]');
+    if (!retry) return;
+    // A cancelled one-shot HTMX load will not restart on restoration. Expose
+    // the original Retry action instead of restoring an indefinite spinner.
+    const loading = root.querySelector('[data-test-id="avatar-availability-loading"]');
+    if (loading) {
+      loading.removeAttribute('x-show');
+      loading.hidden = true;
+      loading.style.setProperty('display', 'none', 'important');
+    }
+    for (let parent = retry.parentElement; parent && parent !== root; parent = parent.parentElement) {
+      if (parent.hasAttribute('x-show')) {
+        parent.removeAttribute('x-show');
+        parent.removeAttribute('x-cloak');
+        parent.hidden = false;
+        parent.style.removeProperty('display');
+      }
+    }
+    root.removeAttribute(':aria-busy');
+    root.removeAttribute('x-bind:aria-busy');
+    root.setAttribute('aria-busy', 'false');
+  }
+
+  function blockOwnedAvailabilityEvent(event) {
+    const mount = activeMount;
+    const detail = event.detail;
+    if (
+      !mount || mount.targetType !== 'unavailable' ||
+      !activeTargetIsOwned(mount) || !canRestoreNative(mount) ||
+      !mount.targetElement.matches(AVAILABILITY_ROOT_SELECTOR) ||
+      detail?.target !== mount.targetElement
+    ) return false;
+
+    const source = detail.elt instanceof Element ? detail.elt : event.target;
+    const path = detail.requestConfig?.path || detail.pathInfo?.requestPath ||
+      source?.getAttribute?.('hx-get') || source?.getAttribute?.('data-hx-get');
+    if (typeof path !== 'string' || !path) return false;
+    try {
+      const url = new URL(path, window.location.href);
+      const productId = url.pathname.match(/^\/game\/fragment\/availability\/(\d+)(?:\/|$)/)?.[1];
+      if (url.origin !== window.location.origin || productId !== mount.routeProductId) return false;
+    } catch (_) {
+      return false;
+    }
+
+    event.preventDefault();
+    if (event.type === 'htmx:beforeSwap') detail.shouldSwap = false;
+    mount.availabilityCheckIntercepted = true;
+    syncAvailabilityWarning(mount, true, mount.availabilityItemLabel);
+    logger.verbose('Native availability update suppressed for the owned purchase panel.');
+    return true;
+  }
+
   function teardownMount({ restore = false, reason = 'teardown' } = {}) {
     const mount = activeMount;
     if (!mount) return;
@@ -2267,12 +2408,14 @@
     invalidateMountAsync(mount, true);
     restoreSticky(mount);
     clearBuyBlockFade(mount.buyBlock);
+    restoreAvailabilityRootState(mount);
 
     if (restore && canRestoreNative(mount)) {
       removeChildren(mount.targetElement);
       mount.targetElement.append(mount.savedChildren);
       clearMarkers(mount);
       markBuyBlockReady(mount.buyBlock, 'native');
+      revealNativeAvailabilityRetry(mount);
       logger.info('Native purchase target restored.', reason);
     } else {
       if (activeTargetIsOwned(mount)) removeChildren(mount.targetElement);
@@ -2844,6 +2987,10 @@
     const mount = {
       ownerId,
       targetType: context.targetType,
+      availabilityDetected: context.availabilityDetected,
+      availabilityItemLabel: context.availabilityItemLabel,
+      availabilityRootState: null,
+      availabilityCheckIntercepted: false,
       targetElement: context.targetElement,
       buyBlock: context.buyBlock,
       savedChildren,
@@ -2890,6 +3037,7 @@
       mount.targetElement.setAttribute(TARGET_TYPE_ATTR, mount.targetType);
       mount.targetElement.append(card);
       activeMount = mount;
+      claimAvailabilityRoot(mount);
       transitionActive = false;
       hideSticky(mount);
       fadeInBuyBlock(
@@ -2908,6 +3056,7 @@
       logger.error('Checkout replacement mount failed internally.', error);
       if (activeMount === mount) activeMount = null;
       invalidateMountAsync(mount, true);
+      restoreAvailabilityRootState(mount);
       restoreSticky(mount);
       const restoredNative = canRestoreNative(mount, false);
       if (restoredNative) {
@@ -2979,6 +3128,7 @@
         scheduleLifecycle('post-transition');
         return;
       }
+      syncAvailabilityWarning(activeMount, context.availabilityDetected, context.availabilityItemLabel);
       hideSticky(activeMount);
       if (!activeCardIsIntact(activeMount)) {
         rerenderActiveMount();
@@ -3107,7 +3257,9 @@
       if (settingsDialogPending) openSettingsDialog();
       scheduleLifecycle('DOMContentLoaded');
     });
+    document.addEventListener('htmx:beforeRequest', blockOwnedAvailabilityEvent);
     document.addEventListener('htmx:beforeSwap', (event) => {
+      if (blockOwnedAvailabilityEvent(event)) return;
       if (htmxTargetAffectsProductArea(event)) {
         htmxSwapPending = true;
         enterTransition('htmx-beforeSwap');

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Show Product SKU
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.1.5
+// @version      1.0.1.6
 // @description  Displays and copies the public PlayStation product SKU on PSPrices product pages, with Avatar SKU, Theme SKU, or generic SKU labels and matching helper text in a native-style panel below buy, checkout, or unavailable-store sections. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -25,6 +25,9 @@
   const NATIVE_SKU_PANEL_SELECTOR = 'section[data-test-id="avatar-sku-panel"]';
   const NATIVE_SKU_LOCKED_SELECTOR = '[data-test-id="avatar-sku-locked"]';
   const NATIVE_SKU_UNLOCKED_SELECTOR = '[data-test-id="avatar-sku"]';
+  const AVAILABILITY_ROOT_SELECTOR =
+    '#avatar-buy-block[data-test-id="avatar-availability-check"], ' +
+    '#avatar-buy-block[data-test-id="avatar-availability-result"]';
   const UNAVAILABLE_STORE_TEXT =
     'This item is no longer available for purchase on the PlayStation Store';
   const PRODUCT_PATH = /^\/region-[a-z0-9-]+\/game\/\d+(?:\/[^/]+)?\/?$/i;
@@ -215,6 +218,16 @@
       return { element: checkoutCard.parentElement, position: 'append-spaced' };
     }
 
+    const availabilityRoots = gameDetail.querySelectorAll(AVAILABILITY_ROOT_SELECTOR);
+    if (availabilityRoots.length > 1) {
+      return { ambiguous: true };
+    }
+    if (availabilityRoots.length === 1) {
+      // Keep the SKU outside the native wrapper so its inert contents and
+      // asynchronous outerHTML swap cannot contain or remove this card.
+      return { element: availabilityRoots[0], position: 'after-availability-spaced' };
+    }
+
     const alert = [...gameDetail.querySelectorAll('.alert.alert-warning')].find(
       isUnavailableStoreAlert
     );
@@ -232,6 +245,9 @@
     }
 
     const unavailableTarget = findUnavailableMountTarget(gameDetail);
+    if (unavailableTarget?.ambiguous) {
+      return null;
+    }
     if (unavailableTarget) {
       return unavailableTarget;
     }
@@ -338,11 +354,11 @@
     const isRetainedCard =
       injectedCard?.dataset.sku === sku &&
       injectedCard.dataset.skuLabel === label &&
-      (target.position === 'after-spaced'
+      (target.position === 'after-spaced' || target.position === 'after-availability-spaced'
         ? target.element.nextElementSibling === injectedCard
         : injectedCard.parentElement === target.element);
     if (isRetainedCard) {
-      if (target.position === 'append-spaced') {
+      if (target.position === 'append-spaced' || target.position === 'after-availability-spaced') {
         injectedCard.style.marginTop = '0.75rem';
       }
       hideNativeSkuPanels(gameDetail, injectedCard);
@@ -360,6 +376,9 @@
     } else if (target.position === 'prepend-spaced') {
       card.style.marginBottom = '0.75rem';
       target.element.prepend(card);
+    } else if (target.position === 'after-availability-spaced') {
+      card.style.marginTop = '0.75rem';
+      target.element.insertAdjacentElement('afterend', card);
     } else {
       card.style.margin = '0 1rem 1.5rem';
       target.element.insertAdjacentElement('afterend', card);

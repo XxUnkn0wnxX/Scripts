@@ -2,7 +2,7 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos.
 
-Current documented release: `1.1.3`.
+Current documented release: `1.1.4`.
 
 ## Screenshots
 
@@ -104,6 +104,7 @@ If this happens, return to the signed-in PlayStation Store tab, refresh it, and 
 - uses PSPrices' native `game-detail-card` surface and corners for the replacement panel
 - accepts both current `shrink-0` and legacy `flex-shrink-0` direct theme purchase wrappers
 - also replaces the PlayStation Store availability loading placeholder or unavailable warning column when no native buy block is present
+- detects the current native availability checker for both avatars and themes, blocks its requests and late responses while our panel owns the purchase wrapper, and shows a small availability warning only when that checker is detected
 - keeps the Add to Cart button disabled until a validated checkout URL is ready
 - shows the specific checkout-link failure reason in the card status area when Sony lookup fails
 - supports PSPrices product pages across all configured PlayStation regions
@@ -176,6 +177,32 @@ Only successfully validated full SKUs are cached for the current page session. F
 The script starts at `document-start` to install bootstrap/cosmetic suppression and the global header badge. It defers purchase-target validation, stabilization, and replacement while the initial HTML is still being parsed; `DOMContentLoaded` schedules the normal mounting pass so parser-owned purchase children finish loading before replacement.
 
 The completed wrapper then fades into view, and later DOM, HTMX, and route changes remain event-driven. Related lazy fragments outside the validated product targets leave the checkout card intact.
+
+Some avatar and theme pages now run a native availability check before showing
+their purchase controls. The script mounts directly inside that checker's
+loading or result wrapper, treating its nested Retry control as part of the same
+purchase target. While the replacement owns that wrapper, the native availability
+request and any response already in flight are prevented from replacing it.
+
+Only pages where this checker is detected show the small warning:
+
+> Availability is unverified. Adding this avatar/theme to your cart may not work.
+
+The notice appears inside the checkout card, between the price and the
+**Add to Cart** button.
+
+The wording uses the current product category. Normal purchase panels without
+the checker show no warning. A native unavailable or unconfirmed result does not
+disable the custom checkout flow when Sony returns a valid regional SKU; that SKU
+still does not prove the item can be added to a cart. Lookup failures continue to
+leave the button disabled. If ownership is released after a check was blocked,
+the native Retry action is exposed instead of leaving an indefinite spinner.
+
+> [!NOTE]
+> Revisit the availability bypass and warning when the native loader or
+> unavailable result appears again. These paths were checked against saved
+> page/response captures with simulated requests; live behavior is not yet
+> confirmed because the affected native card resumed appearing during testing.
 
 The bottom sticky Buy Unlocked banner is suppressed by bootstrap CSS as soon as its matching `stickyReveal('#avatar-buy-block')` element is parsed. It remains `display: none` on supported avatar and theme product pages, preventing the native banner from flashing before the JavaScript mount completes.
 
@@ -359,3 +386,16 @@ The manual-link fallback waits for the user to open the displayed link.
 Disabling the script and reloading restores the native PSPrices page. It does
 not undo an item already added to the PlayStation cart. Saved preferences remain
 in the manager until reset or removed there.
+
+<details>
+<summary>Changelog</summary>
+
+Release history for this userscript is maintained only in this section.
+
+### 1.1.4 — 2026-10-21
+
+- Mount through the native avatar/theme availability loader and result wrappers, including their nested Retry controls.
+- Block the owned availability check and late responses so they cannot remove the custom checkout panel; preserve unrelated page updates and native recovery.
+- Show a small product-specific availability warning only when the native checker is detected, while retaining normal regional-SKU validation and user-initiated checkout behavior.
+
+</details>
