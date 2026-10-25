@@ -5747,7 +5747,7 @@ print -r -- 'shared target contracts passed'
     assert result.stderr.count('Original track ID 11 — Language:') == 2
     assert result.stderr.count('Set track IDs for batch operations: language, name\nTrack IDs:') == 2
     assert 'Set name for tracks\nTrack IDs:' in result.stderr
-    assert 'Track name:' in result.stderr and 'e) Back' in result.stderr
+    assert 'Track name:' in result.stderr and 'e) Back' not in result.stderr
     assert 'use \\e/\\E' not in result.stderr
 
 

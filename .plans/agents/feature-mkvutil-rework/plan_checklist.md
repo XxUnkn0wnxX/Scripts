@@ -8,6 +8,12 @@ checkpoint identities remain intact. `plan.md` owns requirements; this file
 records acceptance status and evidence. A commit, planner verdict,
 or passing diagnostic check does not establish implementation acceptance.
 
+The metadata input hint correction is accepted at the existing UI gates:
+shared metadata forms omit the standalone `e) Back` menu line after track
+listings. Menu hints and field Back behavior remain. Two focused prompt/Back
+tests pass in2.91s, both zsh syntax checks and the one-line source review pass.
+Proof: `.tmp/mkvutil-rework/metadata-back-hint/receipt.json` and `tests.log`.
+
 The tag-free input/readable-skip repair is **accepted: 9/9 tasks and 4/4
 checkpoints**, reusing the existing execution/integration/reporting tasks.
 Successful empty/whitespace tag output means no tags; real XML/native errors

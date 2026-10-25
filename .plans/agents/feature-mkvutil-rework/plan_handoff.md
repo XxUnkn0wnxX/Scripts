@@ -14,6 +14,20 @@ and `.tmp` receipt paths below are relative to the repository root.
 
 ## Current state and safe restart point
 
+### Accepted metadata input hint cleanup
+
+- The apparent leaked `e) Back` was a deliberate shared-collector hint printed
+  immediately after the track list. Removed that one output line from metadata
+  forms; actual menus and all e/E cancellation/reset behavior remain unchanged.
+- Two focused existing prompt/Back cases pass in2.91s (5.05s wall,3.82s CPU).
+  No native media/interactive campaign or new dependency; docs remain accurate.
+  Cost is modest and no measured fixture redesign is needed. Existing goal/task
+  contracts and acceptance counts remain; parent owns all work, no live jobs.
+- Same Scripts checkout on develop, baseline11ac891. Proof and source/test hashes:
+  .tmp/mkvutil-rework/metadata-back-hint/receipt.json. Standing signed publication
+  to develop/master applies; actual results belong to publication.json there.
+  Return develop; preserve unrelated untracked .plans/agents/reddit-fw-audit/.
+
 ### Accepted tag-free files and independent queue outcomes
 
 - User supplied a removal report with two attempted/failed matching files and

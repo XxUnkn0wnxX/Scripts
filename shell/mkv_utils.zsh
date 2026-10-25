@@ -750,7 +750,6 @@ _mkvutil_metadata_collect() {
     batch_labels+=("${selection#flag-}")
   done
   _mkvutil_indicator_stop
-  print -u2 -r -- 'e) Back'
   if [[ "$mode" == preset ]] && (( ${#batch_labels} > 1 )); then
     print -u2 -r -- "Metadata batch: ${(j:, :)batch_labels}"
   fi
