@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub and Gist workspace widths on large desktop screens while preserving native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.5`.
+Current documented release: `1.0.6`.
 
 ## Screenshots
 
@@ -119,7 +119,10 @@ GitHub's natural width for those workspaces while retaining the original capped
 workspace expansion and nested document fill. Fullwidth content tracks use a
 `1012px` minimum; Search's main results column uses `768px` because its sidebars
 occupy separate tracks. These are readability minima, not measurements of the
-current full width. A low percentage stops at that minimum. If the available
+current full width. On preview PR pages, the `1012px` minimum applies to the
+whole comparison workspace, including its internal panes and padding; the
+remaining diff or conversation column can therefore be narrower than `1012px`.
+A low percentage stops at that minimum. If the available
 track is narrower than the minimum, it uses the full available track instead.
 The `1472px` desktop cutoff applies to both modes.
 
@@ -128,9 +131,13 @@ not disable capped-page expansion. In particular, MCP results and capped
 dashboard/feed shells still expand with the checkbox off. Pull-request Checks
 uses the option only when its uncapped comparison root natively fills its
 parent; its native checks grid, navigation and controls keep their own layout
-rules. Capped PR views and Changes workspaces retain their existing owners.
-The beta PR Overview also fills its capped header and conversation lane inside
-the overridden workspace, while its Status and details pane retains native sizing.
+rules. Older PR views retain their existing owners. The preview PR layout uses
+one shared comparison-workspace owner across `/OWNER/REPO/pull/NUMBER` and its
+subpaths. Its header and measured, capped route-body surfaces fill that owner,
+including Overview, Commits, Checks, and Changes. Detection follows the shared
+layout rather than a list of PR numbers or endpoint names. Native details,
+file-tree, and side-panel regions keep their own sizing, responsive collapse,
+and scrolling.
 Notifications uses the same guarded handling for its inbox container, including
 filtered views such as Saved and empty results. Its native proportional columns,
 filter controls and avatar sizes remain governed by GitHub. Detection does not
@@ -323,6 +330,13 @@ width permits. Resize below the desktop threshold to use GitHub's native layout.
 <summary>Changelog</summary>
 
 Release history for this userscript is maintained only in this section.
+
+### 1.0.6 — 2026-11-11
+
+- Follow the shared preview PR workspace across PR numbers and subpaths, including the Overview, Commits, Checks, and Changes views, without an endpoint allowlist.
+- Size the shared workspace before its inner content tracks, keeping the header and capped route-body surfaces aligned under one percentage calculation.
+- Discover capped route-body surfaces through their layout position, including later insertions, while preserving older PR adapters, native panes, controls, responsive behavior, and the full-width override setting.
+- Clarify that the preview workspace's minimum width includes its internal panes and padding.
 
 ### 1.0.5 — 2026-11-11
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.5
+// @version      1.0.6
 // @description  Controls GitHub and Gist workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -82,11 +82,18 @@
   const THREE_COLUMN_RAIL_INSERTION_SELECTOR = `[${OWNER_ATTR}] > .gutter-md > :is(.col-lg-3, .col-lg-6)`;
   const FEED_LANDMARK_SELECTOR = '#dashboard, #feed';
   const MCP_RESULTS_SELECTOR = 'react-app[app-name="mcp-registry"] [data-target="react-app.reactRoot"] > header:has(#mcp-registry-search-filter) + div';
-  const PR_COMPARISON_LAYOUT_SELECTOR = '#diff-comparison-viewer-container > [data-component="SplitPageLayout"]';
-  // The heading is server-rendered; the pane's aria-labelledby arrives later
-  // during hydration without a child-list mutation to trigger another scan.
-  const PR_OVERVIEW_LANDMARK_SELECTOR = '#overview-status-and-details';
-  const PR_OVERVIEW_ROOT_SELECTOR = `#diff-comparison-viewer-container:has(${PR_OVERVIEW_LANDMARK_SELECTOR})`;
+  const PR_COMPARISON_ROOT_SELECTOR = '#diff-comparison-viewer-container';
+  const PR_COMPARISON_LAYOUT_SELECTOR = `${PR_COMPARISON_ROOT_SELECTOR} > [data-component="SplitPageLayout"]`;
+  // The preview shell is shared across PR numbers and subpaths. Its sticky
+  // marker is server-rendered, before route-specific accessibility labels.
+  const PR_PREVIEW_MARKER_SELECTOR = '[data-testid="diff-comparison-viewer-sticky-header-bar"]';
+  const PR_PREVIEW_ROOT_SELECTOR = `${PR_COMPARISON_ROOT_SELECTOR}:has(${PR_PREVIEW_MARKER_SELECTOR})`;
+  const PR_PREVIEW_SURFACE_SELECTOR = [
+    `${PR_PREVIEW_ROOT_SELECTOR}[${OWNER_ATTR}] [data-component="SplitPageLayout.Header"] [data-component="PageHeader"]`,
+    `${PR_PREVIEW_ROOT_SELECTOR}[${OWNER_ATTR}] [class*="prc-PageLayout-PageLayoutContent-"] > *`,
+    `${PR_PREVIEW_ROOT_SELECTOR}[${OWNER_ATTR}] [data-component="SplitPageLayout.Content"] > [data-width] > *`,
+  ].join(', ');
+  const SPLIT_PAGE_RAIL_SELECTOR = '[data-component="SplitPageLayout.Pane"], [data-component="SplitPageLayout.Sidebar"]';
   const NOTIFICATIONS_WORKSPACE_SELECTOR = 'main > .js-notifications-container';
   const LAYOUT_LANDMARK_SELECTOR = [
     '[data-testid="issue-header"]',
@@ -94,7 +101,8 @@
     FEED_LANDMARK_SELECTOR,
     '#mcp-registry-search-filter',
     PR_COMPARISON_LAYOUT_SELECTOR,
-    PR_OVERVIEW_LANDMARK_SELECTOR,
+    PR_PREVIEW_ROOT_SELECTOR,
+    PR_PREVIEW_MARKER_SELECTOR,
     NOTIFICATIONS_WORKSPACE_SELECTOR,
     '.pull-discussion-timeline',
     GIST_PROFILE_RAIL_SELECTOR,
@@ -119,10 +127,9 @@
     '[class*="prc-PageLayout-Content-"][data-width="large"]',
     '[class*="Conversations-module__content__"]',
     '[data-component="SplitPageLayout.Content"]:has(> [data-width="large"] > .pull-discussion-timeline)',
-    // Beta Overview caps both its header and the conversation's outer lane.
-    // Fill them inside the existing owner without resizing the details pane.
-    `${PR_OVERVIEW_ROOT_SELECTOR} [data-component="SplitPageLayout.Header"] [data-component="PageHeader"]`,
-    `${PR_OVERVIEW_ROOT_SELECTOR} [data-component="SplitPageLayout.Content"]:has(> [data-width="large"])`,
+    // Inspect route-body positions in the shared preview shell, independently
+    // of endpoint names. The same selectors detect later surface insertions.
+    PR_PREVIEW_SURFACE_SELECTOR,
     '.Layout-main-centered-xl',
     'article.markdown-body.entry-content.container-lg',
   ].join(', ');
@@ -165,6 +172,7 @@
     '[data-target$=".pane"]',
     '[data-component="PageLayout.Pane"]',
     '[data-component="PageLayout.Sidebar"]',
+    SPLIT_PAGE_RAIL_SELECTOR,
     '[class*="Popover-module__"]',
     '[class*="Overlay-module__"]',
     '[class*="Drawer-module__"]',
@@ -406,6 +414,11 @@ ${active} [data-testid="issue-metadata-fixed"] {
     const candidates = Array.from(document.querySelectorAll(CANDIDATE_SELECTOR))
       .filter(isEligibleCandidate);
 
+    // Claim the shared preview shell before a route's full Content can become
+    // a separate percentage owner and leave its sibling header capped.
+    if (overrideFullWidthPages) {
+      document.querySelectorAll(PR_PREVIEW_ROOT_SELECTOR).forEach(applyUncappedFullWorkspaceRoot);
+    }
     applyDashboardAdapter();
     applyGlobalIssuesAdapter(candidates);
     applyCenteredShellAdapters(candidates);
@@ -553,25 +566,27 @@ ${active} [data-testid="issue-metadata-fixed"] {
       ...Array.from(document.querySelectorAll(PR_COMPARISON_LAYOUT_SELECTOR), (layout) => layout.parentElement),
       ...document.querySelectorAll(NOTIFICATIONS_WORKSPACE_SELECTOR),
     ];
-    uncappedRoots.forEach((root) => {
-      if (!isEligibleFullWorkspace(root) || !root.parentElement) return;
-      const rootStyle = window.getComputedStyle(root);
-      if (rootStyle.maxWidth !== 'none') return;
+    uncappedRoots.forEach(applyUncappedFullWorkspaceRoot);
+  }
 
-      const parent = root.parentElement;
-      const parentStyle = window.getComputedStyle(parent);
-      const paddingStart = pixelValue(parentStyle.paddingInlineStart || parentStyle.paddingLeft);
-      const paddingEnd = pixelValue(parentStyle.paddingInlineEnd || parentStyle.paddingRight);
-      const marginStart = pixelValue(rootStyle.marginInlineStart || rootStyle.marginLeft);
-      const marginEnd = pixelValue(rootStyle.marginInlineEnd || rootStyle.marginRight);
-      if (![paddingStart, paddingEnd, marginStart, marginEnd].every(Number.isFinite)) return;
-      const availableWidth = parent.clientWidth - paddingStart - paddingEnd;
-      const occupiedWidth = root.getBoundingClientRect().width + marginStart + marginEnd;
-      if (!Number.isFinite(availableWidth) || !Number.isFinite(occupiedWidth) ||
-          availableWidth <= 0 || Math.abs(occupiedWidth - availableWidth) > 2) return;
+  function applyUncappedFullWorkspaceRoot(root) {
+    if (!isEligibleFullWorkspace(root) || !root.parentElement) return;
+    const rootStyle = window.getComputedStyle(root);
+    if (rootStyle.maxWidth !== 'none') return;
 
-      markOwner(root, FULL_WORKSPACE_FLOOR_PX, 'full-workspace');
-    });
+    const parent = root.parentElement;
+    const parentStyle = window.getComputedStyle(parent);
+    const paddingStart = pixelValue(parentStyle.paddingInlineStart || parentStyle.paddingLeft);
+    const paddingEnd = pixelValue(parentStyle.paddingInlineEnd || parentStyle.paddingRight);
+    const marginStart = pixelValue(rootStyle.marginInlineStart || rootStyle.marginLeft);
+    const marginEnd = pixelValue(rootStyle.marginInlineEnd || rootStyle.marginRight);
+    if (![paddingStart, paddingEnd, marginStart, marginEnd].every(Number.isFinite)) return;
+    const availableWidth = parent.clientWidth - paddingStart - paddingEnd;
+    const occupiedWidth = root.getBoundingClientRect().width + marginStart + marginEnd;
+    if (!Number.isFinite(availableWidth) || !Number.isFinite(occupiedWidth) ||
+        availableWidth <= 0 || Math.abs(occupiedWidth - availableWidth) > 2) return;
+
+    markOwner(root, FULL_WORKSPACE_FLOOR_PX, 'full-workspace');
   }
 
   function applySearchMainOwner(twoColumn) {
@@ -595,7 +610,11 @@ ${active} [data-testid="issue-metadata-fixed"] {
 
     document.querySelectorAll(`[${OWNER_ATTR}]`).forEach((owner) => {
       owner.querySelectorAll(NESTED_LIMITER_SELECTOR).forEach((element) => {
-        if (element === owner || element.hasAttribute(OWNER_ATTR) || hasBlockedAncestor(element)) return;
+        if (element === owner || element.hasAttribute(OWNER_ATTR) || hasBlockedAncestor(element) ||
+            element.matches(CONTROL_SELECTOR)) return;
+        // A structural child may be a native rail's wrapper, not a route body.
+        if (element.closest(PR_PREVIEW_ROOT_SELECTOR) &&
+            Array.from(element.children).some((child) => child.matches(SPLIT_PAGE_RAIL_SELECTOR))) return;
         markFillIfCapped(element);
       });
     });
