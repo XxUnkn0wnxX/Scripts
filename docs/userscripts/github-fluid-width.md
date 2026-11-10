@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub and Gist workspace widths on large desktop screens while preserving native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.4`.
+Current documented release: `1.0.5`.
 
 ## Screenshots
 
@@ -129,6 +129,8 @@ dashboard/feed shells still expand with the checkbox off. Pull-request Checks
 uses the option only when its uncapped comparison root natively fills its
 parent; its native checks grid, navigation and controls keep their own layout
 rules. Capped PR views and Changes workspaces retain their existing owners.
+The beta PR Overview also fills its capped header and conversation lane inside
+the overridden workspace, while its Status and details pane retains native sizing.
 Notifications uses the same guarded handling for its inbox container, including
 filtered views such as Saved and empty results. Its native proportional columns,
 filter controls and avatar sizes remain governed by GitHub. Detection does not
@@ -196,6 +198,8 @@ copies, including the repeated status and title/merge metadata shown in the
 Changes (`/pull/.../changes`) toolbar and the legacy Files changed (`/pull/.../files`)
 toolbar. On issue pages it also cancels GitHub's `-56px` bottom-margin
 compensation on the regular metadata header, preserving the content position.
+On the beta PR Overview, it hides the repeated title metadata while keeping the
+sticky toolbar's merge, review, and side-panel controls available.
 Turning the option off restores the floating headers immediately, without a
 page refresh. Regular issue and pull-request headings stay visible. The Changes
 toolbar's file, review, and other controls remain available, along with its
@@ -319,6 +323,11 @@ width permits. Resize below the desktop threshold to use GitHub's native layout.
 <summary>Changelog</summary>
 
 Release history for this userscript is maintained only in this section.
+
+### 1.0.5 — 2026-11-11
+
+- Support the beta pull-request Overview's capped header and conversation lane from initial page load, preserving its native Status and details pane and older PR layouts. Detect the server-rendered heading before GitHub adds the pane's accessibility label during hydration.
+- Extend **Hide PR & Issue Headers** to the beta sticky title metadata while retaining the toolbar's merge, review, and side-panel controls.
 
 ### 1.0.4 — 2026-10-16
 

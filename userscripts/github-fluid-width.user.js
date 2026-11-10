@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.4
+// @version      1.0.5
 // @description  Controls GitHub and Gist workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -83,6 +83,10 @@
   const FEED_LANDMARK_SELECTOR = '#dashboard, #feed';
   const MCP_RESULTS_SELECTOR = 'react-app[app-name="mcp-registry"] [data-target="react-app.reactRoot"] > header:has(#mcp-registry-search-filter) + div';
   const PR_COMPARISON_LAYOUT_SELECTOR = '#diff-comparison-viewer-container > [data-component="SplitPageLayout"]';
+  // The heading is server-rendered; the pane's aria-labelledby arrives later
+  // during hydration without a child-list mutation to trigger another scan.
+  const PR_OVERVIEW_LANDMARK_SELECTOR = '#overview-status-and-details';
+  const PR_OVERVIEW_ROOT_SELECTOR = `#diff-comparison-viewer-container:has(${PR_OVERVIEW_LANDMARK_SELECTOR})`;
   const NOTIFICATIONS_WORKSPACE_SELECTOR = 'main > .js-notifications-container';
   const LAYOUT_LANDMARK_SELECTOR = [
     '[data-testid="issue-header"]',
@@ -90,6 +94,7 @@
     FEED_LANDMARK_SELECTOR,
     '#mcp-registry-search-filter',
     PR_COMPARISON_LAYOUT_SELECTOR,
+    PR_OVERVIEW_LANDMARK_SELECTOR,
     NOTIFICATIONS_WORKSPACE_SELECTOR,
     '.pull-discussion-timeline',
     GIST_PROFILE_RAIL_SELECTOR,
@@ -114,6 +119,10 @@
     '[class*="prc-PageLayout-Content-"][data-width="large"]',
     '[class*="Conversations-module__content__"]',
     '[data-component="SplitPageLayout.Content"]:has(> [data-width="large"] > .pull-discussion-timeline)',
+    // Beta Overview caps both its header and the conversation's outer lane.
+    // Fill them inside the existing owner without resizing the details pane.
+    `${PR_OVERVIEW_ROOT_SELECTOR} [data-component="SplitPageLayout.Header"] [data-component="PageHeader"]`,
+    `${PR_OVERVIEW_ROOT_SELECTOR} [data-component="SplitPageLayout.Content"]:has(> [data-width="large"])`,
     '.Layout-main-centered-xl',
     'article.markdown-body.entry-content.container-lg',
   ].join(', ');
@@ -244,6 +253,7 @@ ${HideIssuePRHeader ? `
 ${active} #issue-viewer-sticky-header,
 ${active} [class*="StickyPullRequestHeader-module__prHeader__"],
 ${active} #diff-comparison-viewer-container [data-component="PageHeader"]:has(a[href="#top"]),
+${active} #diff-comparison-viewer-container [data-testid="diff-comparison-viewer-sticky-header-bar"] :has(> a[href="#top"]),
 ${active} [class*="PullRequestFilesToolbar-module__toolbar__"] [class*="PullRequestFilesToolbar-module__show-when-stuck__"],
 ${active} ${PR_FILES_TOOLBAR_START_SELECTOR} > [data-component="Stack"][data-direction="vertical"]:has(a[href="#top"]),
 ${active} .pr-toolbar .diffbar .show-if-stuck {
