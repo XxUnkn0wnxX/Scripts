@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub and Gist workspace widths on large desktop screens while preserving native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.6`.
+Current documented release: `1.0.5`.
 
 ## Screenshots
 
@@ -331,17 +331,13 @@ width permits. Resize below the desktop threshold to use GitHub's native layout.
 
 Release history for this userscript is maintained only in this section.
 
-### 1.0.6 — 2026-11-11
-
-- Follow the shared preview PR workspace across PR numbers and subpaths, including the Overview, Commits, Checks, and Changes views, without an endpoint allowlist.
-- Size the shared workspace before its inner content tracks, keeping the header and capped route-body surfaces aligned under one percentage calculation.
-- Discover capped route-body surfaces through their layout position, including later insertions, while preserving older PR adapters, native panes, controls, responsive behavior, and the full-width override setting.
-- Clarify that the preview workspace's minimum width includes its internal panes and padding.
-
 ### 1.0.5 — 2026-11-11
 
-- Support the beta pull-request Overview's capped header and conversation lane from initial page load, preserving its native Status and details pane and older PR layouts. Detect the server-rendered heading before GitHub adds the pane's accessibility label during hydration.
+- Support the shared preview PR workspace across PR numbers and subpaths, including Overview, Commits, Checks, and Changes, from initial page load and during navigation, without an endpoint allowlist.
+- Size the shared workspace before its inner content tracks, keeping the header and capped route-body surfaces aligned under one percentage calculation.
+- Discover capped route-body surfaces through their layout position, including later insertions, while preserving older PR adapters, native panes, controls, responsive behavior, and the full-width override setting.
 - Extend **Hide PR & Issue Headers** to the beta sticky title metadata while retaining the toolbar's merge, review, and side-panel controls.
+- Clarify that the preview workspace's minimum width includes its internal panes and padding.
 
 ### 1.0.4 — 2026-10-16
 

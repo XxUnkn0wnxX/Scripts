@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.6
+// @version      1.0.5
 // @description  Controls GitHub and Gist workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
