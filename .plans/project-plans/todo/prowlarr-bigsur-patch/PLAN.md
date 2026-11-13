@@ -1,8 +1,12 @@
-# Prowlarr Big Sur patch and update script plan
+<a id="prowlarr-big-sur-patch-and-update-script-plan"></a>
+
+# 📋 Prowlarr Big Sur patch and update script plan
 
 [← Task index](../../../../TODO.md) · [Back to the toolkit](../../../../README.md)
 
 Date: 2026-11-13. Status: **rough outline — implementation pending**.
+
+**Browse:** [⌨️ Commands](#proposed-command-contract) · [🔄 Update integration](#launchagent-integration-and-update-sequence) · [🧪 Validation](#failure-recovery-and-validation)
 
 Create one dedicated zsh script that patches an installed Prowlarr app for Big Sur, can automatically download and prepare the full macOS Intel/x64 app with `--dl`, and can also serve as Prowlarr's custom update installer. This document records the proposed behavior; publishing it does not authorize implementation, live app launches, service changes, or automatic-update tests.
 
@@ -54,7 +58,12 @@ Prowlarr downloads the update, verifies it, extracts it, and creates an applicat
 | `$3` | Currently executing application path |
 | `$4` onward | Preserved startup options: currently `/data=…` and `/nobrowser`, when applicable |
 
+<details>
+<summary>📚 Upstream argument and startup references</summary>
+
 Sources: [update preparation](https://github.com/Prowlarr/Prowlarr/blob/a01c7efcf8be603eed8dc76adfd425ea0172803d/src/NzbDrone.Core/Update/InstallUpdateService.cs#L105-L150), [script invocation and arguments](https://github.com/Prowlarr/Prowlarr/blob/a01c7efcf8be603eed8dc76adfd425ea0172803d/src/NzbDrone.Core/Update/InstallUpdateService.cs#L198-L227), and [preserved startup arguments](https://github.com/Prowlarr/Prowlarr/blob/a01c7efcf8be603eed8dc76adfd425ea0172803d/src/NzbDrone.Common/EnvironmentInfo/StartupContext.cs#L61-L79).
+
+</details>
 
 The updater interface requires no special event environment variables, API key, or callback. On macOS, Prowlarr executes the supplied path directly, so the script needs a valid shebang and executable permissions. It launches asynchronously, redirects output, and does not wait for installation completion or check the script's final exit status. Maintain a durable updater log and transaction state rather than relying on Prowlarr to report completion. Sources: [process launch](https://github.com/Prowlarr/Prowlarr/blob/a01c7efcf8be603eed8dc76adfd425ea0172803d/src/NzbDrone.Common/Processes/ProcessProvider.cs#L109-L198) and [platform-specific command handling](https://github.com/Prowlarr/Prowlarr/blob/a01c7efcf8be603eed8dc76adfd425ea0172803d/src/NzbDrone.Common/Processes/ProcessProvider.cs#L355-L373).
 

@@ -1,6 +1,12 @@
-# Codex provider sync: evidence-based repair plan
+<a id="codex-provider-sync-evidence-based-repair-plan"></a>
 
-Date: 2026-09-27. Status: planning only; implementation has not started.
+# 📋 Codex provider sync: evidence-based repair plan
+
+[← Task index](../../../TODO.md) · [Back to the toolkit](../../../README.md)
+
+Date: 2026-09-27. Status: **planning only; implementation has not started.**
+
+**Browse:** [⌨️ Commands](#proposed-command-contract) · [🧩 Implementation](#implementation-structure) · [🧪 Acceptance](#implementation-sequence-and-acceptance-tests)
 
 ## Requested outcome and execution boundary
 
@@ -12,6 +18,9 @@ Replace `--unlock` in [`shell/codex-sync-model-provider.zsh`](../../../shell/cod
 
 Primary incident directory: `$HOME/.codex/backups/thread-history-repair-20260927`.
 
+<details>
+<summary>🔎 Incident evidence and design consequences</summary>
+
 | Evidence | Finding | Design consequence |
 | --- | --- | --- |
 | `HANDOFF.txt`, lines 27–64; original DB header/file size independently inspected during this planning task | `thread_history_1.original.sqlite` declares 286,743 pages of 4,096 bytes, but contains 286,395 pages. It is short by 348 pages / 1,425,408 bytes. Resume failed with SQLite code 11, `database disk image is malformed`. | Clearing process ownership cannot repair this damage. Check the history DB as well as the state DB. |
@@ -22,6 +31,8 @@ Primary incident directory: `$HOME/.codex/backups/thread-history-repair-20260927
 | Script lines 2399–2402 and 2918–2926 | Only `state_5.sqlite` is checked; corrupt state fails preflight. | Move repair diagnosis ahead of provider-only health/schema gates. |
 | Script lines 4035–4079 and 2141–2178 | Backup includes the complete `sessions/` tree and sometimes unchanged `config.toml`. Restore replaces the whole sessions tree. | Change backup and rollback together to use an explicit changed-file manifest. |
 | Script lines 2919, 3763–3788 and 3828 onward | Dry-run exits before intentional writes, but several read queries open SQLite without an explicit read-only mode. | Audit SQLite open modes and sidecar effects, in addition to preserving the dry-run branch. |
+
+</details>
 
 The incident proves truncation, not its cause. Sudden crashes and interrupted repairs are required recovery scenarios, but this evidence does not establish that a crash caused this particular file to become short. The handoff's installation status is historical; this planning task did not determine the current live installation state.
 
@@ -193,8 +204,13 @@ Completion requires evidence that the truncation/checkpoint case is actually rec
 
 ## Source references
 
+<details>
+<summary>📚 Incident records and upstream references</summary>
+
 - Incident files named above, especially `HANDOFF.txt`, `recovery-row-comparison.json`, `repair-merge-report.json`, `reprojection-manifest.json`, `final-app-server-validation.json` and `completion-checks.json`.
 - Current script and [`docs/shell/codex-sync-model-provider.md`](../../../docs/shell/codex-sync-model-provider.md); script line references above describe the planning baseline and will shift during implementation.
 - Exact Codex commit `36650394c5b38c2990ccf2a3457165ca3e9d9726`: `codex-rs/state/src/sqlite.rs` (runtime DB inventory and open modes), `state/src/runtime.rs` (integrity checks), `state/src/runtime/recovery.rs` (DB/companion preservation), `thread-store/src/local/live_writer.rs` (canonical JSONL and persistence), `thread_history.rs` (four-table reset), `thread_history_materialization.rs` (checkpoint/ordinal/lineage semantics), `rollout_migration.rs` (already-paginated handling), and `app-server/src/request_processors/thread_processor.rs` / `thread_input.rs` (resume and child ownership).
 - [Official OpenAI app-server documentation: reading a stored thread](https://learn.chatgpt.com/docs/app-server#read-a-stored-thread-without-resuming) distinguishes reading persisted history from resuming a thread.
 - [SQLite recovery documentation](https://sqlite.org/recovery.html) explains recovery limitations and `.recover` options; [SQLite corruption documentation](https://sqlite.org/howtocorrupt.html) explains journal pairing, live-file replacement and crash behavior; [SQLite integrity checking](https://sqlite.org/pragma.html#pragma_integrity_check) documents structural checks.
+
+</details>
