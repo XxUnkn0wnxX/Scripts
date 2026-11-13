@@ -2,6 +2,24 @@
 
 [← Back to the toolkit](README.md)
 
+## Prowlarr Big Sur patch and update script
+
+<details>
+<summary>🛠️ Planned — standalone patcher and Prowlarr update integration</summary>
+
+- [ ] Create `shell/prowlarr-bigsur-patch.zsh` using the [dedicated project plan](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md).
+  - No arguments target `/Applications/Prowlarr.app`; also support one app-bundle path and `-h` / `--help`.
+  - Stage and back up the bundle, set plist/executable minimums to macOS `11.0`, preserve SDK/tool metadata, apply and verify a local recursive signature, then replace the app and refresh its registration.
+  - Keep manual mode free of app launches and service changes; refuse a running app or matching loaded KeepAlive job.
+  - Support Prowlarr's updater arguments and already-downloaded payload, with no separate downloader or API key.
+  - Hand automatic installation to an independent temporary launchd job so it can prepare the replacement, unload Prowlarr, swap the app, and reload the existing LaunchAgent without being killed with Prowlarr's process group.
+  - Preserve the existing LaunchAgent and its environment, coordinate exclusive locks and payload ownership, and distinguish pre-start bundle recovery from recovery after possible database migration.
+  - Start with disposable fixtures and simulated service actions; native launches/restarts and end-to-end update tests need separate authorization. Declared-version/signature checks do not establish future Big Sur runtime compatibility.
+
+Status: **planning only; no script or updater integration has been implemented.**
+
+</details>
+
 ## iOS 27 mobile-device package discovery
 
 <details>
