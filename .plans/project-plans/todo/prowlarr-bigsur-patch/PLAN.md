@@ -18,7 +18,9 @@ Planned script: `shell/prowlarr_bigsur.zsh`, with `#!/usr/bin/env zsh` and execu
 | --- | --- |
 | No arguments | Patch `/Applications/Prowlarr.app` |
 | One `/path/to/Prowlarr.app` argument | Patch that app bundle |
-| `--dl` | Automatically download the official full macOS Intel/x64 app archive, extract `Prowlarr.app`, and prepare it with the shared Big Sur patch/sign operation |
+| `--dl` | Download the latest stable macOS Intel/x64 app by default, extract `Prowlarr.app`, and prepare it with the shared Big Sur patch/sign operation |
+| `--dl stable` | Explicitly select the same stable download behavior |
+| `--dl pre` | Select the latest prerelease macOS Intel/x64 app, then use the same extraction and Big Sur patch/sign operation |
 | `-h` or `--help` | Explain usage, dependencies, service boundaries, and updater integration without changing anything |
 | Prowlarr's updater arguments | Recognize the validated PID/sandbox/executable contract and hand installation to an independent updater job |
 
@@ -27,11 +29,15 @@ Manual patching must not launch Prowlarr or unload/reload its service. Refuse a 
 ## Automatic app download with `--dl`
 
 - Select the official **Intel macOS App** download for macOS/x64. Download the full app ZIP containing `Prowlarr.app`, not the loose Core `.tar.gz` payload used by the alternative manual install or Prowlarr's updater.
+- Support both stable releases and prereleases. Use the upstream release metadata's `prerelease` flag to distinguish them, and show the actual release/channel when known; do not infer release status from a version's major number or treat every prerelease as nightly.
+- Accept the optional selector `stable` or `pre` immediately after `--dl`. Omitting it means `stable`, including noninteractive invocations; no release-family prompt is required. Reject unknown selectors before downloading. If the selected family has no suitable Intel app asset, fail clearly without silently switching families or substituting the Core package.
 - Resolve the current upstream app download when invoked; do not hardcode a release version or assume that upstream offers a separate Big Sur build. Big Sur is the local patch target, and runtime compatibility remains subject to validation.
-- The [official download page](https://prowlarr.com/#download) selects the app through [`os=osx`, `runtime=netcore`, `arch=x64`, and `installer=true`](https://prowlarr.servarr.com/v1/update/master/updatefile?os=osx&runtime=netcore&arch=x64&installer=true). Preserve the app selector when resolving the archive.
+- Discover eligible app assets through the [official release metadata](https://api.github.com/repos/Prowlarr/Prowlarr/releases), including pagination as needed. Exclude drafts and missing/wrong-platform assets, present stable and prerelease candidates clearly, and download the asset URL belonging to the selected release. GitHub's `releases/latest` endpoint alone does not discover prereleases.
+- The [official download page](https://prowlarr.com/#download) links to the [master-channel Intel app endpoint](https://prowlarr.servarr.com/v1/update/master/updatefile?os=osx&runtime=netcore&arch=x64&installer=true). Its `/master/` path selects **stable**, not the newest version across all channels. If using the Servarr endpoint, retain the selected channel together with `os=osx`, `runtime=netcore`, `arch=x64`, and `installer=true`; never hardcode `master` as the source for every selection.
+- The checked channel example on 2026-11-13 is [stable v2.7.0.5723](https://github.com/Prowlarr/Prowlarr/releases/tag/v2.7.0.5723) versus [develop prerelease v3.0.1.5752](https://github.com/Prowlarr/Prowlarr/releases/tag/v3.0.1.5752). The stable endpoint returning 2.7 is expected; it must not be offered as an unqualified latest download or silently replace an installed 3.0 prerelease. These versions are evidence for channel selection, not pinned download targets.
 - Asset names distinguish the packages: the full Intel app ZIP uses `osx-app-core-x64.zip`; the loose Core package uses `osx-core-x64.tar.gz`. The word `core` also appears in the correct app filename, so rejecting every filename containing `core` would reject the requested app. These asset forms were verified against [an upstream release](https://github.com/Prowlarr/Prowlarr/releases/tag/v2.7.0.5723); that release is evidence for naming, not a pinned download target.
 - Download into staging, check transfer success and any available upstream digest, validate the extracted bundle and x64 executable, then apply and verify the shared macOS `11.0` metadata patch and local recursive signature. Handle interrupted downloads, wrong-platform/Core-only archives, incomplete bundles, and ambiguous release selection before changing an existing installation.
-- Show the selected release/channel, source, and prepared app path. Do not silently downgrade a newer installed version or switch its release channel; settle release-selection policy before implementation.
+- Show the selected version and stable/prerelease label before downloading, then report the actual release/channel, source, and prepared app path. Apply the documented stable default for bare `--dl`; do not silently switch away from the selected family. Downloading an older stable release must not implicitly downgrade a newer installed prerelease.
 - Finalize the download destination and whether `--dl` only prepares a downloaded app or also hands it to the manual replacement flow when the full implementation plan is created. The download flag alone must not imply permission to overwrite an installation, launch Prowlarr, or change its service.
 - Keep this downloader separate from the updater-script handoff: when Prowlarr supplies an already-downloaded payload, use it without downloading the update again. Reject conflicting CLI and updater invocation forms.
 
@@ -91,14 +97,14 @@ When implemented and validated, configure Prowlarr's update mechanism as **Scrip
 - Before attempting to start the new version, installation failures can restore the original bundle and the previously loaded service. Preserve the original loaded/unloaded state.
 - Once bootstrap is about to be attempted, treat the new version as potentially started. Do not blindly restore only the old executable after a possible database migration; retain recovery evidence and use a deliberate procedure with the matching application-data backup.
 - Use bounded waits, clear exit/error reporting, persistent updater logs, and recoverable state for interrupted transactions. Avoid two updater/manual instances changing the same installation.
-- Begin with disposable bundle fixtures and simulated service commands. Cover help/path/`--dl` parsing, app-ZIP versus Core-package selection, x64 validation, failed/interrupted downloads and digest failures, release/channel handling, loaded-but-idle KeepAlive jobs, lock handoff, disappearing/incomplete payloads, patch/signing failures, failure between bundle renames, and bootstrap failure after possible startup. Use metadata/archive fixtures before any real download tests.
+- Begin with disposable bundle fixtures and simulated service commands. Cover help/path parsing, `--dl` defaulting to stable, explicit `--dl stable` / `--dl pre`, invalid selectors, app-ZIP versus Core-package selection, x64 validation, failed/interrupted downloads and digest failures, stable/prerelease discovery, pagination, missing assets without cross-family fallback, a newer prerelease alongside an older stable release, loaded-but-idle KeepAlive jobs, lock handoff, disappearing/incomplete payloads, patch/signing failures, failure between bundle renames, and bootstrap failure after possible startup. Use metadata/archive fixtures before any real download tests.
 - Keep actual app launches, service changes, and end-to-end automatic-update tests separately authorized. Fixture success does not establish native launchd behavior or runtime compatibility.
 
 ## Implementation checklist
 
-- [ ] Recheck the target release's updater arguments, full app ZIP versus Core payload layout, package-version metadata, upstream download selection, and available native tools; settle `--dl` destination and installation/release policy.
+- [ ] Recheck the target release's updater arguments, full app ZIP versus Core payload layout, package-version metadata, stable/prerelease discovery, and available native tools; settle `--dl` destination and installation behavior.
 - [ ] Implement the CLI, preconditions, locking, shared staging/patch/sign operation, and recoverable manual replacement.
-- [ ] Implement `--dl` for the official macOS Intel/x64 app ZIP, with staged download/extraction, artifact validation, and shared Big Sur patch/sign preparation.
+- [ ] Implement `--dl [stable|pre]` with a stable default, using the selected family's official macOS Intel/x64 app ZIP with staged download/extraction, artifact validation, and shared Big Sur patch/sign preparation.
 - [ ] Implement updater argument recognition, stable payload ownership, and confirmed handoff to an independent launchd job.
 - [ ] Implement the service stop/swap/reload sequence, transaction logs, and recovery boundaries.
 - [ ] Add focused disposable-fixture coverage and documentation under `docs/shell/`.

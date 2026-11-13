@@ -11,7 +11,7 @@
 
 - [ ] Create `shell/prowlarr_bigsur.zsh` using the [dedicated project plan](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md).
   - No arguments target `/Applications/Prowlarr.app`; also support one app-bundle path and `-h` / `--help`.
-  - Add `--dl` to fetch the official full macOS Intel/x64 app ZIP (`osx-app-core-x64.zip`, containing `Prowlarr.app`), then prepare it with the Big Sur patch/sign operation; exclude the loose Core `.tar.gz` package. Finalize download destination and installation/release policy before implementation.
+  - Add `--dl [stable|pre]` for the official full macOS Intel/x64 app ZIP (`osx-app-core-x64.zip`, containing `Prowlarr.app`): bare `--dl` defaults to **stable**, `--dl stable` selects stable explicitly, and `--dl pre` selects the latest **prerelease**. Prepare the selected app with the Big Sur patch/sign operation; exclude the loose Core `.tar.gz` package, label version/channel, and avoid silent family changes or installed-version downgrades. Finalize download destination and installation policy before implementation.
   - Stage and back up the bundle, set plist/executable minimums to macOS `11.0`, preserve SDK/tool metadata, apply and verify a local recursive signature, then replace the app and refresh its registration.
   - Keep manual mode free of app launches and service changes; refuse a running app or matching loaded KeepAlive job.
   - Support Prowlarr's updater arguments and already-downloaded payload without re-downloading it or requiring an API key; keep that handoff separate from `--dl`.
