@@ -96,12 +96,6 @@ Repo layout:
 | --- | --- |
 | [Seagate Exos 3.5-inch SATA Model-Code Reference](docs/other/Seagate%20Exos%203.5in%20SATA%20Model%20Codes.md) | Capacity-based lookup for standard, factory-recertified, and excluded Seagate Exos SATA model codes. |
 
-## 📝 TODO
-
-| Planned work | Description |
-| --- | --- |
-| [Cross-platform Discord bundle downloader](TODO.md) | Planned download-only Python CLI for discovering and fetching Stable, PTB, or Canary client bundles for macOS, Linux, and Windows. |
-
 ## [Userscripts (Tampermonkey)](userscripts/)
 
 | Item | Description | Docs |
