@@ -7,11 +7,12 @@
 <details>
 <summary>🛠️ Planned — standalone patcher and Prowlarr update integration</summary>
 
-- [ ] Create `shell/prowlarr-bigsur-patch.zsh` using the [dedicated project plan](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md).
+- [ ] Create `shell/prowlarr_bigsur.zsh` using the [dedicated project plan](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md).
   - No arguments target `/Applications/Prowlarr.app`; also support one app-bundle path and `-h` / `--help`.
+  - Add `--dl` to fetch the official full macOS Intel/x64 app ZIP (`osx-app-core-x64.zip`, containing `Prowlarr.app`), then prepare it with the Big Sur patch/sign operation; exclude the loose Core `.tar.gz` package. Finalize download destination and installation/release policy before implementation.
   - Stage and back up the bundle, set plist/executable minimums to macOS `11.0`, preserve SDK/tool metadata, apply and verify a local recursive signature, then replace the app and refresh its registration.
   - Keep manual mode free of app launches and service changes; refuse a running app or matching loaded KeepAlive job.
-  - Support Prowlarr's updater arguments and already-downloaded payload, with no separate downloader or API key.
+  - Support Prowlarr's updater arguments and already-downloaded payload without re-downloading it or requiring an API key; keep that handoff separate from `--dl`.
   - Hand automatic installation to an independent temporary launchd job so it can prepare the replacement, unload Prowlarr, swap the app, and reload the existing LaunchAgent without being killed with Prowlarr's process group.
   - Preserve the existing LaunchAgent and its environment, coordinate exclusive locks and payload ownership, and distinguish pre-start bundle recovery from recovery after possible database migration.
   - Start with disposable fixtures and simulated service actions; native launches/restarts and end-to-end update tests need separate authorization. Declared-version/signature checks do not establish future Big Sur runtime compatibility.

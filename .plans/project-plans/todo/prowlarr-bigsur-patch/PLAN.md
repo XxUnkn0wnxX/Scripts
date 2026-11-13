@@ -4,20 +4,32 @@
 
 Date: 2026-11-13. Status: **rough outline — implementation pending**.
 
-Create one dedicated zsh script that patches an installed Prowlarr app for Big Sur and can also serve as Prowlarr's custom update installer. This document records the proposed behavior; publishing it does not authorize implementation, live app launches, service changes, or automatic-update tests.
+Create one dedicated zsh script that patches an installed Prowlarr app for Big Sur, can automatically download and prepare the full macOS Intel/x64 app with `--dl`, and can also serve as Prowlarr's custom update installer. This document records the proposed behavior; publishing it does not authorize implementation, live app launches, service changes, or automatic-update tests.
 
 ## Proposed command contract
 
-Planned script: `shell/prowlarr-bigsur-patch.zsh`, with `#!/usr/bin/env zsh` and executable permissions.
+Planned script: `shell/prowlarr_bigsur.zsh`, with `#!/usr/bin/env zsh` and executable permissions.
 
 | Invocation | Proposed behavior |
 | --- | --- |
 | No arguments | Patch `/Applications/Prowlarr.app` |
 | One `/path/to/Prowlarr.app` argument | Patch that app bundle |
+| `--dl` | Automatically download the official full macOS Intel/x64 app archive, extract `Prowlarr.app`, and prepare it with the shared Big Sur patch/sign operation |
 | `-h` or `--help` | Explain usage, dependencies, service boundaries, and updater integration without changing anything |
 | Prowlarr's updater arguments | Recognize the validated PID/sandbox/executable contract and hand installation to an independent updater job |
 
 Manual patching must not launch Prowlarr or unload/reload its service. Refuse a running target or a matching loaded KeepAlive job, even when that job temporarily has no PID; it could respawn during replacement. Require the service to have already been unloaded, and recheck immediately before swapping the bundle.
+
+## Automatic app download with `--dl`
+
+- Select the official **Intel macOS App** download for macOS/x64. Download the full app ZIP containing `Prowlarr.app`, not the loose Core `.tar.gz` payload used by the alternative manual install or Prowlarr's updater.
+- Resolve the current upstream app download when invoked; do not hardcode a release version or assume that upstream offers a separate Big Sur build. Big Sur is the local patch target, and runtime compatibility remains subject to validation.
+- The [official download page](https://prowlarr.com/#download) selects the app through [`os=osx`, `runtime=netcore`, `arch=x64`, and `installer=true`](https://prowlarr.servarr.com/v1/update/master/updatefile?os=osx&runtime=netcore&arch=x64&installer=true). Preserve the app selector when resolving the archive.
+- Asset names distinguish the packages: the full Intel app ZIP uses `osx-app-core-x64.zip`; the loose Core package uses `osx-core-x64.tar.gz`. The word `core` also appears in the correct app filename, so rejecting every filename containing `core` would reject the requested app. These asset forms were verified against [an upstream release](https://github.com/Prowlarr/Prowlarr/releases/tag/v2.7.0.5723); that release is evidence for naming, not a pinned download target.
+- Download into staging, check transfer success and any available upstream digest, validate the extracted bundle and x64 executable, then apply and verify the shared macOS `11.0` metadata patch and local recursive signature. Handle interrupted downloads, wrong-platform/Core-only archives, incomplete bundles, and ambiguous release selection before changing an existing installation.
+- Show the selected release/channel, source, and prepared app path. Do not silently downgrade a newer installed version or switch its release channel; settle release-selection policy before implementation.
+- Finalize the download destination and whether `--dl` only prepares a downloaded app or also hands it to the manual replacement flow when the full implementation plan is created. The download flag alone must not imply permission to overwrite an installation, launch Prowlarr, or change its service.
+- Keep this downloader separate from the updater-script handoff: when Prowlarr supplies an already-downloaded payload, use it without downloading the update again. Reject conflicting CLI and updater invocation forms.
 
 ## Shared patching operation
 
@@ -33,7 +45,7 @@ Manual patching must not launch Prowlarr or unload/reload its service. Refuse a 
 
 The reviewed source is Prowlarr **v3.0.1.5752**, commit `a01c7efcf8be603eed8dc76adfd425ea0172803d`. Recheck the contract when implementing or adapting to a different release.
 
-Prowlarr downloads the update, verifies it, extracts it, and creates an application-data update backup before invoking the script. The script does not need its own downloader. Prowlarr removes the extracted built-in updater and passes these arguments:
+Prowlarr downloads the update, verifies it, extracts it, and creates an application-data update backup before invoking the script. This updater mode does not use the standalone `--dl` downloader. Prowlarr removes the extracted built-in updater and passes these arguments:
 
 | Argument | Meaning |
 | --- | --- |
@@ -70,13 +82,14 @@ When implemented and validated, configure Prowlarr's update mechanism as **Scrip
 - Before attempting to start the new version, installation failures can restore the original bundle and the previously loaded service. Preserve the original loaded/unloaded state.
 - Once bootstrap is about to be attempted, treat the new version as potentially started. Do not blindly restore only the old executable after a possible database migration; retain recovery evidence and use a deliberate procedure with the matching application-data backup.
 - Use bounded waits, clear exit/error reporting, persistent updater logs, and recoverable state for interrupted transactions. Avoid two updater/manual instances changing the same installation.
-- Begin with disposable bundle fixtures and simulated service commands. Cover help/path parsing, loaded-but-idle KeepAlive jobs, lock handoff, disappearing/incomplete payloads, patch/signing failures, failure between bundle renames, and bootstrap failure after possible startup.
+- Begin with disposable bundle fixtures and simulated service commands. Cover help/path/`--dl` parsing, app-ZIP versus Core-package selection, x64 validation, failed/interrupted downloads and digest failures, release/channel handling, loaded-but-idle KeepAlive jobs, lock handoff, disappearing/incomplete payloads, patch/signing failures, failure between bundle renames, and bootstrap failure after possible startup. Use metadata/archive fixtures before any real download tests.
 - Keep actual app launches, service changes, and end-to-end automatic-update tests separately authorized. Fixture success does not establish native launchd behavior or runtime compatibility.
 
 ## Implementation checklist
 
-- [ ] Recheck the target release's updater arguments, payload layout, package-version metadata, and available native tools.
+- [ ] Recheck the target release's updater arguments, full app ZIP versus Core payload layout, package-version metadata, upstream download selection, and available native tools; settle `--dl` destination and installation/release policy.
 - [ ] Implement the CLI, preconditions, locking, shared staging/patch/sign operation, and recoverable manual replacement.
+- [ ] Implement `--dl` for the official macOS Intel/x64 app ZIP, with staged download/extraction, artifact validation, and shared Big Sur patch/sign preparation.
 - [ ] Implement updater argument recognition, stable payload ownership, and confirmed handoff to an independent launchd job.
 - [ ] Implement the service stop/swap/reload sequence, transaction logs, and recovery boundaries.
 - [ ] Add focused disposable-fixture coverage and documentation under `docs/shell/`.
