@@ -84,3 +84,7 @@ Result: **PASS**, updater exit status **0**, using the local `prowlarr-update --
 - Targeted LaunchServices `lsregister -f` completed before restoration. The original matching GUI-domain LaunchAgent returned with a different PID, confirmed running/listening across bounded smoke-check samples. Its plist hash is unchanged, preserving the existing arguments/environment.
 
 This validates that selected release and update/service path on the tested Intel Big Sur host. It does not establish future-release, newer-macOS or full application/indexer behavior. The user-authorized publication condition is satisfied; commit/merge/push may proceed. Raw snapshots and `RESULT.json` are ignored under the directory pointed to by `.tmp/prowlarr-bigsur/live-run-path.txt`; no private paths/configuration are published here.
+
+## 2026-11-15 — publication receipt
+
+Implementation commit `543af95039eb2bc78491380b1c00e30c42327736` was fast-forward merged to `master` and atomically pushed to `develop` and `master` after the live pass. Exact remote refs matched that revision; the checkout returned to `develop`. This documentation-only completion receipt updates project status and the completed-outline location without changing the validated source/tests. No userscript documentation, personal aliases file or ignored evidence was published.

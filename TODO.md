@@ -7,9 +7,9 @@
 ## Prowlarr Big Sur patch and update script
 
 <details>
-<summary>🛠️ In progress — standalone patcher and download/install utility</summary>
+<summary>✅ Completed — standalone older-macOS compatibility utility</summary>
 
-- [ ] Create `shell/prowlarr_bigsur.zsh` using the [active project plan](.plans/agents/prowlarr-bigsur-patch/PLAN.md), [checklist](.plans/agents/prowlarr-bigsur-patch/PLAN_checklist.md), and [handoff](.plans/agents/prowlarr-bigsur-patch/PLAN_handoff.md); retain the [rough outline](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md) as the backlog summary.
+- [x] Implement [`shell/prowlarr_bigsur.zsh`](shell/prowlarr_bigsur.zsh), documented in the [usage guide](docs/shell/prowlarr-bigsur.md), [full plan](.plans/agents/prowlarr-bigsur-patch/PLAN.md), [checklist](.plans/agents/prowlarr-bigsur-patch/PLAN_checklist.md), and [handoff](.plans/agents/prowlarr-bigsur-patch/PLAN_handoff.md). The [completed outline](.plans/project-plans/completed/prowlarr-bigsur-patch/PLAN.md) remains the rough project summary.
   - No arguments target `/Applications/Prowlarr.app`; also support one app-bundle path and `-h` / `--help`.
   - Add `--dl [stable|pre]` to download, patch, sign and install the official full macOS Intel/x64 app ZIP: bare `--dl` defaults to **stable**, while `--dl pre` selects **prereleases**. Support an optional destination app path, exclude the loose Core package and always replace from the selected family regardless of the installed version.
   - Discover versions/assets dynamically and save the full app ZIP under `$HOME/Downloads`, replacing the matching archive after successful validation.
@@ -21,7 +21,7 @@
   - Ctrl+C restores the previous app before startup; retain the new app once startup may have occurred. Preserve recovery material on unresolved failures.
   - Validate with disposable fixtures and simulated service actions, then run the user's explicitly authorized live `--dl pre` smoke test. Declared-version/signature checks do not establish future Big Sur runtime compatibility.
 
-Status: **implementation, Astra review and live prerelease validation passed; publication is being finalized in the active project records.**
+Status: **completed and published to both branches on 2026-11-15**. All 83 focused tests, native Big Sur checks, final Astra review and the live `--dl pre` smoke test passed. The original running/listening LaunchAgent was restored with an unchanged plist; the `prowlarr-update` alias is installed locally.
 
 </details>
 

@@ -2,9 +2,9 @@
 
 # 📋 Prowlarr Big Sur standalone script outline
 
-[← TODO](../../../../TODO.md) · [Active project](../../../agents/prowlarr-bigsur-patch/PLAN.md)
+[← TODO](../../../../TODO.md) · [Execution records](../../../agents/prowlarr-bigsur-patch/PLAN.md)
 
-Status: **implementation started on 2026-11-15**. This is the rough outline; the [active plan](../../../agents/prowlarr-bigsur-patch/PLAN.md), [checklist](../../../agents/prowlarr-bigsur-patch/PLAN_checklist.md), and [handoff](../../../agents/prowlarr-bigsur-patch/PLAN_handoff.md) are authoritative for execution and acceptance.
+Status: **completed and published on 2026-11-15**. Implementation, 83 focused tests, native checks, Astra review and the authorized live prerelease update passed. The [full plan](../../../agents/prowlarr-bigsur-patch/PLAN.md), [checklist](../../../agents/prowlarr-bigsur-patch/PLAN_checklist.md), and [handoff](../../../agents/prowlarr-bigsur-patch/PLAN_handoff.md) hold the execution and acceptance record.
 
 ## Standalone interface
 
@@ -31,3 +31,5 @@ The user dropped Prowlarr custom-update-script integration on 2026-11-15. There 
 ## Compatibility limit
 
 Minimum-version metadata and valid local signatures do not add missing macOS APIs or prove that a .NET/Prowlarr release runs on Big Sur. Native app/service tests remain separate from implementation validation.
+
+The live smoke test passed for prerelease 3.0.1.5752 on the tested Intel Big Sur host. Future releases and broader application behavior still need runtime checks; see the [audit](../../../agents/prowlarr-bigsur-patch/AUDIT.md).

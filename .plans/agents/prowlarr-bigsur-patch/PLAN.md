@@ -1,8 +1,8 @@
 # 📋 Prowlarr Big Sur standalone script
 
-[← TODO](../../../TODO.md) · [Rough outline](../../project-plans/todo/prowlarr-bigsur-patch/PLAN.md)
+[← TODO](../../../TODO.md) · [Completed outline](../../project-plans/completed/prowlarr-bigsur-patch/PLAN.md)
 
-Status: **implementation, final review and live validation complete; publication in progress**, started by the user on 2026-11-15. This folder is authoritative for implementation and acceptance.
+Status: **complete and published**, started and completed on 2026-11-15. This folder is authoritative for implementation and acceptance. Implementation commit: `543af95039eb2bc78491380b1c00e30c42327736`.
 
 ## Approved interface
 

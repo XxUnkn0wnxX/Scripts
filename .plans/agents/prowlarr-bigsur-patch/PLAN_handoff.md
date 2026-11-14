@@ -23,11 +23,13 @@
 - Reuse `.venv` Python 3.14/pytest; no dependency installation required. Add the narrow normal test whitelist for `tests/prowlarr_bigsur/`; `.tmp/prowlarr-bigsur/` remains ignored evidence storage.
 - The actual authorized live test has now stopped/restored the matching originally running GUI agent. Its plist hash stayed unchanged, preserving all arguments/environment including the IPv6 workaround. No direct app launch or app-data/settings edit was performed.
 
-## Next actions
+## Completion and recovery
 
-1. Astra's final audit passed with notes and no blockers. The authorized live `prowlarr-update --dl pre` test passed with exit 0 and independently verified artifacts/service state.
-2. Commit the validated source/docs on `develop`, fast-forward merge to `master` and push both branches. The user's live-success condition is satisfied. Verify exact remote heads and return to `develop`.
-3. Record the implementation commit/publication receipt, mark the TODO complete and move its outline to completed; publish that documentation receipt to both branches and verify a clean checkout.
+- No implementation tasks remain. Astra's final audit passed with notes and no blockers; the authorized live alias update passed with exit 0 and independently verified artifacts/service state.
+- Implementation checkpoint: `543af95039eb2bc78491380b1c00e30c42327736`, fast-forwarded to `master` and atomically published to both branches. Both exact remote heads were verified at that revision and the checkout returned to `develop`.
+- This documentation-only completion receipt follows that checkpoint; source/tests remain unchanged. Resolve `HEAD` for the receipt revision. The completed rough outline is under `.plans/project-plans/completed/prowlarr-bigsur-patch/`.
+- Live app: `/Applications/Prowlarr.app`, version 3.0.1.5752, minimum 11.0, strict signature valid. The single backup is `/Applications/Prowlarr.backup.zip`; local alias `prowlarr-update` is in the existing zsh Scripts section.
+- Do not rerun the live updater for documentation checks. Future release/runtime work should start with fresh actual app/agent state and its applicable authorization; the current scoped live test is complete.
 
 ## Current implementation and evidence
 
