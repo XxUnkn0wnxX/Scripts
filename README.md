@@ -59,6 +59,7 @@ Repo layout:
 | [`satisfactory_balancer.zsh`](shell/satisfactory_balancer.zsh) | Satisfactory splitter, balancer, and compressor planner. | [Docs](docs/shell/satisfactory-balancer.md) |
 | [`satisfactory-modeler.zsh`](shell/satisfactory-modeler.zsh) | macOS-only launcher and updater wrapper for Satisfactory Modeler. | [Docs](docs/shell/satisfactory-modeler.md) |
 | [`discord_install_manager.zsh`](shell/discord_install_manager.zsh) | macOS-only Discord Stable/PTB/Canary updater reset, OS-aware app replacement, and OpenAsar/BetterDiscord wrapper-aware injection helper. | [Docs](docs/shell/discord-install-manager.md) |
+| [`prowlarr_bigsur.zsh`](shell/prowlarr_bigsur.zsh) | Older-macOS compatibility patcher for the Intel Big Sur Prowlarr app, with stable/prerelease downloads and LaunchAgent state preservation. | [Docs](docs/shell/prowlarr-bigsur.md) |
 | [`brew-custom-compare.zsh`](shell/brew-custom-compare.zsh) | Compare custom tap formulas against upstream Homebrew versions. | [Docs](docs/shell/brew-custom-compare.md) |
 | [`fetch-ios-pkgs.zsh`](shell/fetch-ios-pkgs.zsh) | Download and install current Apple mobile-device support packages. | [Docs](docs/shell/fetch-ios-pkgs.md) |
 | [`codex-sync-model-provider.zsh`](shell/codex-sync-model-provider.zsh) | macOS-only guarded sync of the configured Codex model provider into persisted SQLite thread and session metadata. | [Docs](docs/shell/codex-sync-model-provider.md) |

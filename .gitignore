@@ -40,3 +40,5 @@ tests/*
 !tests/codex_profiles/*.py
 !tests/fetch_ios_pkgs/
 !tests/fetch_ios_pkgs/*.py
+!tests/prowlarr_bigsur/
+!tests/prowlarr_bigsur/*.py

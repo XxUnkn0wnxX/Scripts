@@ -7,19 +7,21 @@
 ## Prowlarr Big Sur patch and update script
 
 <details>
-<summary>🛠️ Planned — standalone patcher and Prowlarr update integration</summary>
+<summary>🛠️ In progress — standalone patcher and download/install utility</summary>
 
-- [ ] Create `shell/prowlarr_bigsur.zsh` using the [dedicated project plan](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md).
+- [ ] Create `shell/prowlarr_bigsur.zsh` using the [active project plan](.plans/agents/prowlarr-bigsur-patch/PLAN.md), [checklist](.plans/agents/prowlarr-bigsur-patch/PLAN_checklist.md), and [handoff](.plans/agents/prowlarr-bigsur-patch/PLAN_handoff.md); retain the [rough outline](.plans/project-plans/todo/prowlarr-bigsur-patch/PLAN.md) as the backlog summary.
   - No arguments target `/Applications/Prowlarr.app`; also support one app-bundle path and `-h` / `--help`.
-  - Add `--dl [stable|pre]` for the official full macOS Intel/x64 app ZIP (`osx-app-core-x64.zip`, containing `Prowlarr.app`): bare `--dl` defaults to **stable**, `--dl stable` selects stable explicitly, and `--dl pre` selects the latest **prerelease**. Prepare the selected app with the Big Sur patch/sign operation; exclude the loose Core `.tar.gz` package, label version/channel, and avoid silent family changes or installed-version downgrades. Finalize download destination and installation policy before implementation.
-  - Stage and back up the bundle, set plist/executable minimums to macOS `11.0`, preserve SDK/tool metadata, apply and verify a local recursive signature, then replace the app and refresh its registration.
-  - Keep manual mode free of app launches and service changes; refuse a running app or matching loaded KeepAlive job.
-  - Support Prowlarr's updater arguments and already-downloaded payload without re-downloading it or requiring an API key; keep that handoff separate from `--dl`.
-  - Hand automatic installation to an independent temporary launchd job so it can prepare the replacement, unload Prowlarr, swap the app, and reload the existing LaunchAgent without being killed with Prowlarr's process group.
-  - Preserve the existing LaunchAgent and its environment, coordinate exclusive locks and payload ownership, and distinguish pre-start bundle recovery from recovery after possible database migration.
-  - Start with disposable fixtures and simulated service actions; native launches/restarts and end-to-end update tests need separate authorization. Declared-version/signature checks do not establish future Big Sur runtime compatibility.
+  - Add `--dl [stable|pre]` to download, patch, sign and install the official full macOS Intel/x64 app ZIP: bare `--dl` defaults to **stable**, while `--dl pre` selects **prereleases**. Support an optional destination app path, exclude the loose Core package and always replace from the selected family regardless of the installed version.
+  - Discover versions/assets dynamically and save the full app ZIP under `$HOME/Downloads`, replacing the matching archive after successful validation.
+  - Stage the bundle, set plist/executable minimums to macOS `11.0`, preserve SDK/tool metadata, apply and verify a local recursive signature, then replace the app and refresh its registration.
+  - In either mode, inspect the matching LaunchAgent and restore it only if it was already loaded and this script unloaded it. Never start an initially unloaded agent; preserve its plist/environment.
+  - Expose `PROWLARR_MANAGE_LAUNCH_AGENT` (default `true`) and `PROWLARR_LAUNCH_AGENT` (default `Prowlarr`) as editable/exportable globals. `false` skips all agent handling; resolve names only below `$HOME/Library/LaunchAgents`.
+  - Omit Prowlarr's custom-update-script integration, PID/sandbox arguments and detached updater job. Invoke the utility directly or through an alias.
+  - Use exclusive locking and one `/Applications/Prowlarr.backup.zip`, replacing it after successful archive creation/validation. Clean temporary uncompressed copies after success.
+  - Ctrl+C restores the previous app before startup; retain the new app once startup may have occurred. Preserve recovery material on unresolved failures.
+  - Validate with disposable fixtures and simulated service actions, then run the user's explicitly authorized live `--dl pre` smoke test. Declared-version/signature checks do not establish future Big Sur runtime compatibility.
 
-Status: **planning only; no script or updater integration has been implemented.**
+Status: **implementation, Astra review and live prerelease validation passed; publication is being finalized in the active project records.**
 
 </details>
 
