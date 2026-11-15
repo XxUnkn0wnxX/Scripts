@@ -14,3 +14,4 @@ For installation, updates, or removal, use the plugin-specific README files in t
 
 - [pyactivate](plugins/pyactivate/README.md)
 - [codex-profiles](plugins/codex-profiles/README.md)
+- [bitratecheck](plugins/bitratecheck/README.md)
