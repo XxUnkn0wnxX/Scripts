@@ -36,12 +36,27 @@ function _bitratecheck_help() {
   print -r -- '  --      End options; useful when file names begin with a dash.'
 }
 
+function _bitratecheck_resolve_executable() {
+  emulate -L zsh
+  setopt localoptions
+  local requested=$1 resolved=''
+
+  if [[ $requested == */* ]]; then
+    resolved=$requested
+  else
+    resolved=$(builtin whence -p -- "$requested" 2>/dev/null)
+  fi
+  [[ -n $resolved && -f $resolved && -x $resolved ]] || return 1
+  REPLY=${resolved:A}
+}
+
 function bitratecheck() {
   emulate -L zsh
   setopt localoptions no_shwordsplit no_ksharrays pipefail
   local -x LC_ALL=C
   local REPLY
-  local ffprobe_bin=${BITRATECHECK_FFPROBE:-ffprobe}
+  local ffprobe_requested=${BITRATECHECK_FFPROBE:-ffprobe}
+  local ffprobe_path='' awk_path=''
   local file absolute line key value field scan=0 failed=0 metadata_output
   local type codec rate title lang source index field_lower
   local -a args
@@ -69,10 +84,20 @@ function bitratecheck() {
     print -u 2 -r -- 'bitratecheck: provide at least one file.'
     return 2
   fi
-  if ! (( $+commands[$ffprobe_bin] )) && [[ ! -x $ffprobe_bin ]]; then
-    print -u 2 -r -- "bitratecheck: ffprobe executable not found: $ffprobe_bin"
-    return 127
+  local -i missing_tools=0
+  if _bitratecheck_resolve_executable "$ffprobe_requested"; then
+    ffprobe_path=$REPLY
+  else
+    print -u 2 -r -- "bitratecheck: ffprobe (from FFmpeg) '$ffprobe_requested' not found in PATH or is not a regular executable. Install FFmpeg or add its bin directory to PATH."
+    missing_tools=1
   fi
+  if _bitratecheck_resolve_executable awk; then
+    awk_path=$REPLY
+  else
+    print -u 2 -r -- 'bitratecheck: awk not found in PATH or is not a regular executable; ensure awk is installed and on PATH.'
+    missing_tools=1
+  fi
+  (( missing_tools )) && return 127
 
   for file in "${args[@]}"; do
     if [[ ! -f $file || ! -r $file ]]; then
@@ -81,7 +106,7 @@ function bitratecheck() {
     fi
     absolute=${file:A}
     types=(); codecs=(); rates=(); titles=(); langs=(); sources=(); attached=()
-    if ! metadata_output=$("$ffprobe_bin" -v error -show_entries 'stream=index,codec_type,codec_name,bit_rate:stream_disposition=attached_pic:stream_tags' -of flat=s=_ -i "$absolute" </dev/null 2>/dev/null); then
+    if ! metadata_output=$("$ffprobe_path" -v error -show_entries 'stream=index,codec_type,codec_name,bit_rate:stream_disposition=attached_pic:stream_tags' -of flat=s=_ -i "$absolute" </dev/null 2>/dev/null); then
       print -u 2 -r -- "bitratecheck: ffprobe could not read: $file"
       failed=1; continue
     fi
@@ -145,7 +170,7 @@ function bitratecheck() {
       fi
       print -u 2 -r -- "bitratecheck: scanning packets: $file"
       local packet_result=''
-      packet_result=$("$ffprobe_bin" -v error -show_packets -show_entries packet=stream_index,size,pts_time,dts_time,duration_time -of compact=p=0:nk=0 -i "$absolute" </dev/null 2>/dev/null | awk '
+      packet_result=$("$ffprobe_path" -v error -show_packets -show_entries packet=stream_index,size,pts_time,dts_time,duration_time -of compact=p=0:nk=0 -i "$absolute" </dev/null 2>/dev/null | "$awk_path" '
         {
           delete field
           count=split($0, parts, "|")

@@ -12,6 +12,13 @@ ffprobe-readable files and reports each stream's bitrate in decimal kb/s
 - Standard `awk` for packet calculations (included with macOS).
 - No `jq`, Python, or MKVToolNix dependency.
 
+Before processing files, each run checks that both `ffprobe` and `awk` resolve
+to executable files. If either is missing, its name is reported on stderr and
+the command returns 127 before reading any files. `ffmpeg` itself is not
+invoked. If needed, set
+`BITRATECHECK_FFPROBE` to an ffprobe executable name or path; `awk` must be
+available on `PATH`.
+
 ## Install
 
 From the repository root, copy the plugin:
