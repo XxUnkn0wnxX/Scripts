@@ -77,6 +77,108 @@ def test_parse_args_rejects_conflicting_download_flags() -> None:
         parse_args(["--download-best", "--download-top", "2"])
 
 
+def test_parse_args_legecy_flag_defaults_to_modern_and_selects_legacy() -> None:
+    assert parse_args([]).legacy is False
+    assert parse_args(["--legecy"]).legacy is True
+
+
+@pytest.mark.parametrize("interactive", [False, True], ids=["cli-download", "interactive-download"])
+@pytest.mark.parametrize("legacy", [False, True], ids=["modern", "legacy"])
+def test_main_downloads_selected_config_format_without_changing_filename(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, interactive: bool, legacy: bool
+) -> None:
+    candidate = make_candidate("au001.nordvpn.com")
+    requested_urls: list[str] = []
+    credentials = AuthCredentials("fixture-user", "fixture-password", "test")
+
+    class FakeClient:
+        def __init__(self) -> None:
+            pass
+
+        def get_v2_dataset(self, refresh: bool = False) -> dict[str, object]:
+            return {}
+
+        def get_text(self, url: str) -> str:
+            requested_urls.append(url)
+            auth = "auth-user-pass\n"
+            tls_block = "<tls-auth>\nKEY\n</tls-auth>" if legacy else "<tls-crypt>\nKEY\n</tls-crypt>"
+            return f"client\nremote au001.nordvpn.com 1194\n<ca>\nCERT\n</ca>\n{tls_block}\n{auth}"
+
+    class FakePrompt:
+        @staticmethod
+        def unsafe_ask() -> str:
+            return "1"
+
+    monkeypatch.setattr(picker, "NordApiClient", FakeClient)
+    monkeypatch.setattr(picker, "resolve_auth_credentials", lambda args: credentials)
+    monkeypatch.setattr(picker, "supported_protocol_keys", lambda payload, include_advanced: ["udp"])
+    monkeypatch.setattr(picker, "supported_group_keys", lambda payload, include_advanced: ["standard"])
+    monkeypatch.setattr(
+        picker,
+        "parse_countries",
+        lambda payload: (
+            [picker.Country(id=13, name="Australia", code="AU")],
+            {13: [picker.City(id=1001, name="Melbourne", country_id=13)]},
+        ),
+    )
+    monkeypatch.setattr(picker, "fetch_candidates", lambda **kwargs: [candidate.server])
+    monkeypatch.setattr(picker, "score_candidates", lambda *args, **kwargs: [candidate])
+    monkeypatch.setattr(picker, "print_candidates", lambda candidates: None)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: interactive)
+    if interactive:
+        monkeypatch.setattr(picker.questionary, "text", lambda *args, **kwargs: FakePrompt())
+
+    arguments = [
+        "--country", "Australia",
+        "--city", "Melbourne",
+        "--protocol", "udp",
+        "--group", "standard",
+        "--limit", "1",
+        "--no-ping",
+        "--output-dir", str(tmp_path),
+    ]
+    if not interactive:
+        arguments.append("--download-best")
+    if legacy:
+        arguments.append("--legecy")
+
+    assert picker.main(arguments) == 0
+
+    version_suffix = "" if legacy else "_2.6"
+    assert requested_urls == [
+        f"https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/au001.nordvpn.com.udp{version_suffix}.ovpn"
+    ]
+    destination = tmp_path / "Australia (AU) - Melbourne [UDP] [Standard] - au001.ovpn"
+    contents = destination.read_text(encoding="utf-8")
+    assert ("<tls-auth>" in contents) is legacy
+    assert ("<tls-crypt>" in contents) is not legacy
+    assert "<auth-user-pass>\nfixture-user\nfixture-password\n</auth-user-pass>" in contents
+
+
+def test_download_candidate_does_not_retry_legacy_when_modern_url_fails(tmp_path: Path) -> None:
+    candidate = make_candidate("au001.nordvpn.com")
+    requested_urls: list[str] = []
+
+    class FailedModernClient:
+        def get_text(self, url: str) -> str:
+            requested_urls.append(url)
+            raise CliError("HTTP 404")
+
+    with pytest.raises(CliError, match="HTTP 404"):
+        picker.download_candidate(
+            client=FailedModernClient(),
+            candidate=candidate,
+            output_dir=tmp_path,
+            force=False,
+            dry_run=False,
+        )
+
+    assert requested_urls == [
+        "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/au001.nordvpn.com.udp_2.6.ovpn"
+    ]
+    assert list(tmp_path.glob("*.ovpn")) == []
+
+
 @pytest.mark.parametrize(
     ("factory_name", "prompt_action"),
     [
@@ -272,9 +374,12 @@ def test_main_keyboard_interrupt_exits_130_once_without_later_prompts(tmp_path: 
             ready, _, _ = select.select([master_fd], [], [], 0.1)
             if ready:
                 try:
-                    output.extend(os.read(master_fd, 4096))
+                    chunk = os.read(master_fd, 4096)
                 except OSError:
                     break
+                if not chunk:
+                    break
+                output.extend(chunk)
             if not sent_interrupt and b"City (blank for best country-wide recommendation)" in output:
                 os.write(master_fd, b"\x03")
                 sent_interrupt = True

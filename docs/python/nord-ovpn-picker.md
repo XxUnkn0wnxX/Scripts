@@ -42,6 +42,7 @@
 - Rich results table with hostname, location, protocol, group, load, ping, score, station IP, and the recommended marker.
 - Visible per-host ping progress in TTY sessions before the final ranked table.
 - Direct `.ovpn` downloads for the best candidate, the top N, or an interactive selection.
+- Downloads NordVPN's OpenVPN 2.6 config files by default; `--legecy` selects the older config files.
 - Optional auth-file patching for downloaded OpenVPN configs.
 - Automatic re-exec into the repo-local `.venv` when the script is started from the wrong Python interpreter.
 - Caller-aware default output path so aliases, symlinks, and absolute-path calls still write where you launched them from.
@@ -168,6 +169,12 @@ Run the script with no filter arguments to enter the prompt flow:
 python3 python/nord_ovpn_picker.py
 ```
 
+Downloads use OpenVPN 2.6 configs by default. To run the same interactive flow with older configs:
+
+```bash
+python3 python/nord_ovpn_picker.py --legecy
+```
+
 The prompts run in this order:
 
 1. Country
@@ -235,7 +242,7 @@ Mode notes:
 - `--country` aliases such as `AU`, `USA`, `UK`, and `UAE` are accepted on the CLI argument path. The interactive country prompt filters only against the visible country names.
 - The live autocomplete prompt UI exists only in TTY interactive mode.
 - Listing commands such as `--list-countries` and `--list-cities` are CLI-only and do not enter the prompt flow.
-- Flags such as `--advanced`, `--full-data`, `--refresh-cache`, `--force`, `--dry-run`, and `--verbose` are argument-driven switches. They can still affect a TTY run, but they are not separate interactive prompts.
+- Flags such as `--advanced`, `--full-data`, `--legecy`, `--refresh-cache`, `--force`, `--dry-run`, and `--verbose` are argument-driven switches. They can still affect a TTY run, but they are not separate interactive prompts.
 - `--advanced` controls which optional protocol/group keys appear in interactive prompts. Explicit CLI values are still accepted if Nord's live V2 metadata supports them.
 - Repo-local auth YAML detection works in both interactive runs and argument-only runs. CLI `--auth-username` and `--auth-password` are override-only flags and are not prompt-driven.
 
@@ -271,7 +278,10 @@ python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group st
 python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-top 3 --force
 python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --dry-run
 python3 python/nord_ovpn_picker.py --country Australia --city Melbourne --protocol udp --group p2p --download-top 5
+python3 python/nord_ovpn_picker.py --country Australia --protocol udp --group standard --download-best --legecy
 ```
+
+Downloads use NordVPN's 2.6 config URL by default in both command-line and interactive runs. Add `--legecy` to request the older file format. Some specialty server configs may not be available at the 2.6 URL; a missing file is reported without retrying the legacy URL. Output filenames are the same in either mode.
 
 Custom output directory:
 
@@ -415,6 +425,12 @@ Default output behavior depends on where you launch the command:
       <td>No</td>
       <td>Yes</td>
       <td>CLI-only flag. Skips the recommendation-first shortcut and forces the V2 dataset path.</td>
+    </tr>
+    <tr>
+      <td><nobr><code>--legecy</code></nobr></td>
+      <td>No</td>
+      <td>Yes</td>
+      <td>Uses the older NordVPN OpenVPN config URLs instead of the 2.6 URLs. Applies to interactive downloads too; missing 2.6 files are reported rather than silently falling back.</td>
     </tr>
     <tr>
       <td><nobr><code>--ping-count &lt;number&gt;</code></nobr></td>

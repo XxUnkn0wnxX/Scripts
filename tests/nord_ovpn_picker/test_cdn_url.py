@@ -3,18 +3,17 @@ import pytest
 from nord_ovpn_picker import CliError, build_cdn_url, parse_selection
 
 
-def test_build_udp_cdn_url() -> None:
-    assert (
-        build_cdn_url("au666.nordvpn.com", "udp")
-        == "https://downloads.nordcdn.com/configs/files/ovpn_udp/servers/au666.nordvpn.com.udp.ovpn"
-    )
+@pytest.mark.parametrize(
+    ("protocol", "cdn_dir", "suffix"),
+    [("udp", "ovpn_udp", "udp"), ("tcp", "ovpn_tcp", "tcp"), ("xor_udp", "ovpn_xor_udp", "udp"), ("xor_tcp", "ovpn_xor_tcp", "tcp")],
+)
+def test_build_cdn_url_selects_modern_by_default_and_legacy_when_requested(
+    protocol: str, cdn_dir: str, suffix: str
+) -> None:
+    base = f"https://downloads.nordcdn.com/configs/files/{cdn_dir}/servers/au666.nordvpn.com.{suffix}"
 
-
-def test_build_tcp_cdn_url() -> None:
-    assert (
-        build_cdn_url("au666.nordvpn.com", "tcp")
-        == "https://downloads.nordcdn.com/configs/files/ovpn_tcp/servers/au666.nordvpn.com.tcp.ovpn"
-    )
+    assert build_cdn_url("au666.nordvpn.com", protocol) == f"{base}_2.6.ovpn"
+    assert build_cdn_url("au666.nordvpn.com", protocol, legacy=True) == f"{base}.ovpn"
 
 
 def test_parse_selection_variants() -> None:

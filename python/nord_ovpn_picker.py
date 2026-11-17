@@ -475,11 +475,12 @@ def restore_signal_handlers(previous: dict[int, Any]) -> None:
         signal.signal(signum, handler)
 
 
-def build_cdn_url(hostname: str, protocol_key: str) -> str:
+def build_cdn_url(hostname: str, protocol_key: str, legacy: bool = False) -> str:
     protocol = PROTOCOLS[protocol_key]
+    version_suffix = "" if legacy else "_2.6"
     return (
         f"{DOWNLOAD_BASE}/{protocol.cdn_dir}/servers/"
-        f"{hostname}.{protocol.file_suffix}.ovpn"
+        f"{hostname}.{protocol.file_suffix}{version_suffix}.ovpn"
     )
 
 
@@ -1322,8 +1323,9 @@ def download_candidate(
     force: bool,
     dry_run: bool,
     auth_credentials: Optional[AuthCredentials] = None,
+    legacy: bool = False,
 ) -> Path:
-    url = build_cdn_url(candidate.server.hostname, candidate.protocol)
+    url = build_cdn_url(candidate.server.hostname, candidate.protocol, legacy=legacy)
     filename = format_output_filename(candidate.server, candidate.protocol, candidate.group)
     destination = output_dir / filename
     cleanup_atomic_temp_files(output_dir, destination.name)
@@ -1597,6 +1599,7 @@ def download_selected_candidates(
     force: bool,
     dry_run: bool,
     auth_credentials: Optional[AuthCredentials],
+    legacy: bool = False,
 ) -> tuple[list[Path], list[str]]:
     downloaded: list[Path] = []
     errors: list[str] = []
@@ -1611,6 +1614,7 @@ def download_selected_candidates(
                     force=force,
                     dry_run=dry_run,
                     auth_credentials=auth_credentials,
+                    legacy=legacy,
                 )
             )
         except CliError as exc:
@@ -1635,6 +1639,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     download_group.add_argument("--download-best", action="store_true", help="Download the top candidate.")
     download_group.add_argument("--download-top", type=argparse_positive_int, help="Download the top N candidates.")
     parser.add_argument("--full-data", action="store_true", help="Force the V2 dataset path.")
+    parser.add_argument(
+        "--legecy",
+        dest="legacy",
+        action="store_true",
+        help="Download legacy OpenVPN config files instead of NordVPN 2.6 files.",
+    )
     parser.add_argument("--no-ping", action="store_true", help="Skip ping testing.")
     parser.add_argument(
         "--ping-count",
@@ -1739,6 +1749,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         force=args.force,
         dry_run=args.dry_run,
         auth_credentials=auth_credentials,
+        legacy=args.legacy,
     )
 
     if downloaded:
