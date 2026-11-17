@@ -504,6 +504,13 @@ def build_inline_auth_user_pass_block(credentials: AuthCredentials) -> str:
     return f"<auth-user-pass>\n{credentials.username}\n{credentials.password}\n</auth-user-pass>"
 
 
+def strip_ovpn_verify_x509_name(text: str) -> str:
+    directive_pattern = re.compile(r"^\s*verify-x509-name(?:\s|$)")
+    return "".join(
+        line for line in text.splitlines(keepends=True) if not directive_pattern.match(line)
+    )
+
+
 def patch_ovpn_auth_user_pass(text: str, credentials: AuthCredentials) -> str:
     inline_block = build_inline_auth_user_pass_block(credentials)
     inline_pattern = re.compile(r"(?ms)^<auth-user-pass>\s*\n.*?\n</auth-user-pass>\s*$")
@@ -1356,6 +1363,7 @@ def download_candidate(
     if not validate_ovpn_payload(text):
         raise CliError(f"Downloaded config for {candidate.server.hostname} did not validate.")
 
+    text = strip_ovpn_verify_x509_name(text)
     if auth_credentials:
         patched_text = patch_ovpn_auth_user_pass(text, auth_credentials)
         write_text_atomic(destination, patched_text, encoding="utf-8")

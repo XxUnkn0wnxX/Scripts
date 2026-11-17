@@ -84,8 +84,9 @@ def test_parse_args_legecy_flag_defaults_to_modern_and_selects_legacy() -> None:
 
 @pytest.mark.parametrize("interactive", [False, True], ids=["cli-download", "interactive-download"])
 @pytest.mark.parametrize("legacy", [False, True], ids=["modern", "legacy"])
+@pytest.mark.parametrize("auth_enabled", [False, True], ids=["without-auth", "with-auth"])
 def test_main_downloads_selected_config_format_without_changing_filename(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, interactive: bool, legacy: bool
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, interactive: bool, legacy: bool, auth_enabled: bool
 ) -> None:
     candidate = make_candidate("au001.nordvpn.com")
     requested_urls: list[str] = []
@@ -102,7 +103,11 @@ def test_main_downloads_selected_config_format_without_changing_filename(
             requested_urls.append(url)
             auth = "auth-user-pass\n"
             tls_block = "<tls-auth>\nKEY\n</tls-auth>" if legacy else "<tls-crypt>\nKEY\n</tls-crypt>"
-            return f"client\nremote au001.nordvpn.com 1194\n<ca>\nCERT\n</ca>\n{tls_block}\n{auth}"
+            return (
+                "client\nremote au001.nordvpn.com 1194\nremote-cert-tls server\n"
+                "verify-x509-name CN=au001.nordvpn.com\n<ca>\nCERT\n</ca>\n"
+                f"{tls_block}\n{auth}"
+            )
 
     class FakePrompt:
         @staticmethod
@@ -110,7 +115,7 @@ def test_main_downloads_selected_config_format_without_changing_filename(
             return "1"
 
     monkeypatch.setattr(picker, "NordApiClient", FakeClient)
-    monkeypatch.setattr(picker, "resolve_auth_credentials", lambda args: credentials)
+    monkeypatch.setattr(picker, "resolve_auth_credentials", lambda args: credentials if auth_enabled else None)
     monkeypatch.setattr(picker, "supported_protocol_keys", lambda payload, include_advanced: ["udp"])
     monkeypatch.setattr(picker, "supported_group_keys", lambda payload, include_advanced: ["standard"])
     monkeypatch.setattr(
@@ -152,7 +157,13 @@ def test_main_downloads_selected_config_format_without_changing_filename(
     contents = destination.read_text(encoding="utf-8")
     assert ("<tls-auth>" in contents) is legacy
     assert ("<tls-crypt>" in contents) is not legacy
-    assert "<auth-user-pass>\nfixture-user\nfixture-password\n</auth-user-pass>" in contents
+    assert "verify-x509-name" not in contents
+    assert "remote-cert-tls server" in contents
+    if auth_enabled:
+        assert "<auth-user-pass>\nfixture-user\nfixture-password\n</auth-user-pass>" in contents
+    else:
+        assert "<auth-user-pass>" not in contents
+        assert "auth-user-pass\n" in contents
 
 
 def test_download_candidate_does_not_retry_legacy_when_modern_url_fails(tmp_path: Path) -> None:
@@ -609,6 +620,39 @@ def test_patch_ovpn_auth_user_pass_replaces_existing_inline_block() -> None:
     assert "old-user" not in patched
 
 
+@pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
+def test_strip_ovpn_verify_x509_name_removes_all_directives_and_preserves_other_lines(newline: str) -> None:
+    original = newline.join(
+        [
+            "# verify-x509-name CN=commented.example",
+            "client",
+            "  verify-x509-name CN=first.example",
+            "\tverify-x509-name",
+            "verify-x509-name CN=last.example",
+            "verify-x509-name-extra keep-this",
+            "remote-cert-tls server",
+            "<ca>",
+            "CERTIFICATE",
+            "</ca>",
+            "",
+        ]
+    )
+    expected = newline.join(
+        [
+            "# verify-x509-name CN=commented.example",
+            "client",
+            "verify-x509-name-extra keep-this",
+            "remote-cert-tls server",
+            "<ca>",
+            "CERTIFICATE",
+            "</ca>",
+            "",
+        ]
+    )
+
+    assert picker.strip_ovpn_verify_x509_name(original) == expected
+
+
 def test_build_inline_auth_user_pass_block() -> None:
     assert (
         build_inline_auth_user_pass_block(AuthCredentials("demo-user", "demo-pass", "cli"))
@@ -639,12 +683,15 @@ def test_download_candidate_inlines_auth_credentials_into_config(tmp_path: Path)
     assert ".auth.txt" not in contents
 
 
-def test_download_candidate_without_auth_leaves_config_unpatched(tmp_path: Path) -> None:
+def test_download_candidate_without_auth_still_strips_x509_name(tmp_path: Path) -> None:
     candidate = make_candidate("au001.nordvpn.com")
 
     class FakeClient:
         def get_text(self, url: str) -> str:
-            return "client\nremote au001.nordvpn.com 1194\n<ca>\nCERT\n</ca>\nauth-user-pass\n"
+            return (
+                "client\nremote au001.nordvpn.com 1194\nverify-x509-name\n"
+                "remote-cert-tls server\n<ca>\nCERT\n</ca>\nauth-user-pass\n"
+            )
 
     destination = picker.download_candidate(
         client=FakeClient(),
@@ -658,6 +705,8 @@ def test_download_candidate_without_auth_leaves_config_unpatched(tmp_path: Path)
     contents = destination.read_text(encoding="utf-8")
     assert "auth-user-pass\n" in contents
     assert "<auth-user-pass>" not in contents
+    assert "verify-x509-name" not in contents
+    assert "remote-cert-tls server" in contents
 
 
 def test_download_candidate_dry_run_with_auth_does_not_create_output_dir(tmp_path: Path) -> None:

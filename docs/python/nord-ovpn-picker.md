@@ -113,7 +113,7 @@ Notes:
 
 - the YAML auth config is optional
 - the CLI username/password arguments are optional
-- if neither is present, downloads are left unpatched and stay as plain `.ovpn` files
+- if neither is present, no auth credentials are added to the downloaded `.ovpn` file
 - if both CLI auth arguments are provided, they override the YAML auth config
 - the repo-local YAML auth config filename is git-ignored in this repo
 - when auth is enabled, the downloaded `.ovpn` file itself contains plaintext credentials
@@ -533,6 +533,7 @@ If you request a key that is not currently supported by Nord's live metadata, th
 ## Download Behavior
 
 - Download URLs are built from the selected hostname and protocol.
+- Every downloaded config has all active `verify-x509-name` directives removed, whether it uses the default 2.6 format or `--legecy`, and whether auth credentials are configured. Other TLS checks, including `remote-cert-tls server` and CA verification, are preserved.
 - Output filenames include country, country code, city, protocol, group, and the short server label such as `au654`.
 - The default output directory is `./NordOVPNs` only when your current working directory is the script directory.
 - If you launch the script from any other directory, the default output path is that current working directory itself.
@@ -541,7 +542,7 @@ If you request a key that is not currently supported by Nord's live metadata, th
 - Existing files cause an error in non-interactive mode unless you pass `--force`.
 - In interactive mode, existing files trigger an overwrite prompt.
 - When auth credentials are detected, the script embeds them directly into the downloaded `.ovpn` file as an inline `<auth-user-pass>` block.
-- If no auth file is present and no CLI auth override is provided, downloads are left unpatched.
+- If no auth file is present and no CLI auth override is provided, auth credentials are not added to downloads.
 - `Ctrl+C` and normal termination signals are handled cleanly and exit with a cancellation status instead of a raw traceback.
 - If you selected multiple downloads and one fails, the script continues the rest and reports a partial-failure summary at the end.
 - Downloaded payloads are validated before being written as `.ovpn` files.
