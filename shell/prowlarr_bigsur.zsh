@@ -285,12 +285,11 @@ validate_bundle() {
 }
 
 download_release() {
-  local page=1 all="$txn/releases.json" response="$txn/page.json"
+  local page=1 all="$txn/releases.json" response="$txn/page.json" n
   print '[]' > "$all"
   while (( page <= 20 )); do
     curl --fail --silent --show-error --connect-timeout 15 --max-time 60 "https://api.github.com/repos/Prowlarr/Prowlarr/releases?per_page=100&page=$page" -o "$response" || { fail "GitHub release metadata request failed"; return 1; }
     jq -e 'type == "array"' "$response" >/dev/null || { fail "invalid release metadata response"; return 1; }
-    local n
     n="$(jq 'length' "$response")"
     jq -s '.[0] + .[1]' "$all" "$response" > "$all.next" && mv "$all.next" "$all" || { fail "could not collect release metadata"; return 1; }
     (( n < 100 )) && break

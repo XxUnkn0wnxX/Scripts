@@ -230,6 +230,7 @@ def test_release_enumeration_paginates_and_never_uses_core_tarball(env):
     result = run(env, "--dl", "stable", str(target), extra={"METADATA_DIR": str(metadata), "ARCHIVE_CONTENT": "abc", "DOWNLOAD_APP": str(downloaded)})
     assert result.returncode == 0, result.stderr
     assert "9.0.0" in result.stdout
+    assert "n=100" not in result.stdout
     assert (target / "Contents/MacOS/Prowlarr").read_text() == "from-page-two"
     assert "page=2" in env["log"].read_text()
 
