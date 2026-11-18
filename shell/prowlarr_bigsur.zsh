@@ -122,6 +122,7 @@ restore_service() {
   job_state "$domain" || return 1
   if [[ "$REPLY" == loaded ]]; then return 0; fi
   wait_users || return 1
+  log "Reloading launch agent $domain/$label"
   startup_possible=1
   launchctl bootstrap "$domain" "$plist_path" || { fail "failed to restore LaunchAgent in $domain"; return 1; }
   restore_required=0
@@ -443,6 +444,7 @@ check_macho "$installed_exec" || exit 1
 recheck_agent || exit 1
 
 if (( initial_loaded )); then
+  log "Unloading launch agent $domain/$label"
   restore_required=1
   if ! launchctl bootout "$domain/$label"; then fail "LaunchAgent unload failed"; exit 1; fi
   wait_unloaded || exit 1
@@ -478,6 +480,7 @@ fi
 lsregister="$(command -v lsregister 2>/dev/null || print /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister)"
 "$lsregister" -f "$target" || { fail "Launch Services registration failed"; exit 1; }
 if (( initial_loaded )); then
+  log "Reloading launch agent $domain/$label"
   startup_possible=1
   restore_required=1
   launchctl bootstrap "$domain" "$plist_path" || { fail "LaunchAgent bootstrap failed; Prowlarr may have started. New app and backup retained; inspect service state before manual recovery."; exit 1; }

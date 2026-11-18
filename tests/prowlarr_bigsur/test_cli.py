@@ -79,6 +79,8 @@ def test_exported_configuration_is_honored_and_disabled_skips_service_calls(env)
     calls = env["log"].read_text() if env["log"].exists() else ""
     assert "launchctl" not in calls
     assert "plutil" not in calls
+    assert "Prowlarr patch: Unloading launch agent " not in result.stdout
+    assert "Prowlarr patch: Reloading launch agent " not in result.stdout
 
 
 def test_local_patch_signs_registers_and_retains_original(env):
@@ -132,6 +134,8 @@ def test_correct_local_app_is_noop_without_service_bounce(env, loaded):
     assert not (env["root"] / "Prowlarr.backup.zip").exists()
     calls = env["log"].read_text()
     assert "launchctl bootout" not in calls and "launchctl bootstrap" not in calls
+    assert "Prowlarr patch: Unloading launch agent " not in result.stdout
+    assert "Prowlarr patch: Reloading launch agent " not in result.stdout
     if loaded is None:
         assert "launchctl" not in calls
     else:
@@ -163,6 +167,8 @@ def test_unloaded_agent_stays_unloaded_with_exact_plist(env, program_key):
     calls = env["log"].read_text()
     assert "launchctl print" in calls
     assert "launchctl bootout" not in calls and "launchctl bootstrap" not in calls
+    assert "Prowlarr patch: Unloading launch agent " not in result.stdout
+    assert "Prowlarr patch: Reloading launch agent " not in result.stdout
 
 
 def test_bad_agent_name_is_rejected_without_service_mutation(env):
@@ -180,6 +186,8 @@ def test_missing_agent_is_left_missing(env):
     assert result.returncode == 0, result.stderr
     calls = env["log"].read_text()
     assert "launchctl" not in calls
+    assert "Prowlarr patch: Unloading launch agent " not in result.stdout
+    assert "Prowlarr patch: Reloading launch agent " not in result.stdout
 
 
 def test_local_path_can_be_replaced_when_version_is_older(env):
@@ -247,6 +255,8 @@ def test_loaded_idle_agent_is_restored_after_actual_unload(env):
     assert hashlib.sha256(plist.read_bytes()).hexdigest() == before
     calls = env["log"].read_text()
     assert "launchctl bootout" in calls and "launchctl bootstrap" in calls
+    assert f"Prowlarr patch: Unloading launch agent gui/{os.getuid()}/local.test.prowlarr" in result.stdout
+    assert f"Prowlarr patch: Reloading launch agent gui/{os.getuid()}/local.test.prowlarr" in result.stdout
 
 
 @pytest.mark.parametrize("failure", ["before", "after"])
@@ -260,6 +270,7 @@ def test_unload_error_preserves_agent_and_original(env, failure):
     assert (target / "Contents/MacOS/Prowlarr").read_text() == "preserve-on-unload-error"
     assert state.read_text() == "loaded", result.stdout + result.stderr
     assert ("launchctl bootstrap" in env["log"].read_text()) == (failure == "after")
+    assert ("Prowlarr patch: Reloading launch agent " in result.stdout) == (failure == "after")
 
 
 def test_bootstrap_failure_after_install_does_not_roll_back_candidate(env):
@@ -464,6 +475,11 @@ def test_download_preserves_agent_state_and_custom_plist(env, family, loaded):
     assert ("launchctl bootstrap" in calls) == loaded
     if loaded:
         assert str(custom) in next(line for line in calls.splitlines() if "launchctl bootstrap" in line)
+        assert f"Prowlarr patch: Unloading launch agent gui/{os.getuid()}/local.test.prowlarr" in result.stdout
+        assert f"Prowlarr patch: Reloading launch agent gui/{os.getuid()}/local.test.prowlarr" in result.stdout
+    else:
+        assert "Prowlarr patch: Unloading launch agent " not in result.stdout
+        assert "Prowlarr patch: Reloading launch agent " not in result.stdout
 
 
 @pytest.mark.parametrize("signal_name", ["INT", "TERM"])
@@ -604,6 +620,8 @@ def test_user_domain_restores_exact_agent(env):
     calls = env["log"].read_text()
     assert f"launchctl bootout user/{os.getuid()}/local.test.prowlarr" in calls
     assert f"launchctl bootstrap user/{os.getuid()} {plist}" in calls
+    assert f"Prowlarr patch: Unloading launch agent user/{os.getuid()}/local.test.prowlarr" in result.stdout
+    assert f"Prowlarr patch: Reloading launch agent user/{os.getuid()}/local.test.prowlarr" in result.stdout
 
 
 def test_interrupt_during_bootstrap_keeps_new_app_and_zip(env):
