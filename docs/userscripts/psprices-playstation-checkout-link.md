@@ -2,7 +2,7 @@
 
 [`PSPrices-PlayStation-Checkout-Link.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-PlayStation-Checkout-Link.user.js) is a Tampermonkey userscript that replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos.
 
-Current documented release: `1.1.4`.
+Current documented release: `1.1.5`.
 
 ## Screenshots
 
@@ -127,6 +127,8 @@ https://www.psprices.com/*
 Checkout-panel replacement remains restricted to supported `/region-*/game/*` product pages containing one exact avatar/theme buy structure, or one PlayStation Store availability placeholder/unavailable warning where the buy block would normally be. On other pages, the script maintains the global header badge and cosmetic suppression without inserting a checkout card.
 
 On regional `/collection/*` pages, the script also permanently hides `[data-test-id="avatar-collection-bridge"]`. This covers collection routes such as `/collection/avatars`, `/collection/ps4-avatars`, and equivalent paths in every region.
+
+The cosmetic stylesheet hides the `Can't find avatars in the PS5 store?` banner at the bottom of the Avatars collection and the `Get PSprices Unlocked` strip below `Avatars from this game` on avatar product pages.
 
 The same document-start cosmetic stylesheet permanently hides notices with `data-test-id="notice-tip"` and either `data-notice="ads-free"` or `data-notice="no-ai-slop"` wherever PSPrices mounts them, including collection pages and individual avatar/theme product pages. These identify the ad-free browsing and publisher-filter Pro promos. Other notice types remain visible.
 
@@ -391,6 +393,11 @@ in the manager until reset or removed there.
 <summary>Changelog</summary>
 
 Release history for this userscript is maintained only in this section.
+
+### 1.1.5 — 2026-11-22
+
+- Hide the bottom guide banner on the Avatars collection.
+- Hide the `Get PSprices Unlocked` strip when the related-avatar gallery loads on a product page.
 
 ### 1.1.4 — 2026-10-21
 

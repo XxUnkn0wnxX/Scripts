@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices Collection Live Search
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.4
+// @version      1.1.5
 // @description  Adds a regional live-search UI for PSPrices avatar and theme collections with background indexing, local caching, platform/free filters, product detail hydration, native page cleanup, and same-region collection shortcuts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -26,7 +26,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices Collection Live Search';
-  const SCRIPT_VERSION = '1.1.4';
+  const SCRIPT_VERSION = '1.1.5';
   let LOG_LEVEL = 'info';
   const REGION_PATH = /^\/region-([a-z0-9-]+)(?:\/|$)/i;
   const ROUTE_PATH =
@@ -3902,6 +3902,31 @@
       html.pspls-route-themes a[href*="/collection/themes?page="] { display: none !important; }
       html.pspls-route-avatars label:has(${NATIVE_INFINITE_SCROLL_TOGGLE_SELECTOR}),
       html.pspls-route-themes label:has(${NATIVE_INFINITE_SCROLL_TOGGLE_SELECTOR}) { display: none !important; }
+      [${OWNER_ATTR}] .pspls-search-field {
+        position: relative;
+        display: block;
+        flex: 1;
+        min-inline-size: 0;
+      }
+      [${OWNER_ATTR}] .pspls-search-field > input {
+        display: block;
+        box-sizing: border-box;
+        inline-size: 100%;
+        padding-inline-end: 2.5rem;
+      }
+      [${OWNER_ATTR}] .pspls-clear-search {
+        position: absolute;
+        inset-inline-end: 0.25rem;
+        inset-block-start: 50%;
+        transform: translateY(-50%);
+        display: grid;
+        place-items: center;
+        inline-size: 1.75rem;
+        block-size: 1.75rem;
+        min-inline-size: 0;
+        min-block-size: 0;
+        padding: 0;
+      }
       [${OWNER_ATTR}] input[type="search"]::-webkit-search-cancel-button,
       [${OWNER_ATTR}] input[type="search"]::-webkit-search-decoration {
         -webkit-appearance: none;
@@ -3983,7 +4008,7 @@
     header.className = 'flex flex-col sm:flex-row sm:items-center gap-3';
 
     const inputWrap = document.createElement('label');
-    inputWrap.className = 'relative flex-1 block';
+    inputWrap.className = 'pspls-search-field';
 
     const searchIcon = document.createElement('span');
     searchIcon.className = 'material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-base-content/50 text-[20px]';
@@ -3994,11 +4019,11 @@
     input.autocomplete = 'off';
     input.spellcheck = false;
     input.placeholder = 'Search this collection...';
-    input.className = 'input input-sm w-full pl-10 pr-10';
+    input.className = 'input input-sm pl-10';
 
     const clearButton = iconButton('close', 'Clear search');
     clearButton.type = 'button';
-    clearButton.className += ' pspls-hidden absolute right-1.5 top-1/2 -translate-y-1/2';
+    clearButton.classList.add('pspls-hidden', 'pspls-clear-search');
     clearButton.addEventListener('click', () => {
       input.value = '';
       state.query = '';

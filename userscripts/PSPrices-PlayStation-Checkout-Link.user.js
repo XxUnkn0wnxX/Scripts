@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         PSPrices PlayStation Checkout Link
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.1.4
+// @version      1.1.5
 // @description  Replaces PSPrices paywalled avatar/theme purchase panels, availability placeholders, or unavailable-store warnings with custom regional PS Store checkout-link panels, adds an unlocked badge, and hides unlock prompts and the site-wide ads-free and publisher-filter promos. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -31,7 +31,7 @@
   'use strict';
 
   const SCRIPT_NAME = 'PSPrices-Checkout Script';
-  const SCRIPT_VERSION = '1.1.4';
+  const SCRIPT_VERSION = '1.1.5';
 
   const DEFAULT_SETTINGS = Object.freeze({
     LOG_LEVEL: 'info',
@@ -132,6 +132,8 @@
     style.id = COSMETIC_STYLE_ID;
     style.textContent = `
       [data-test-id="avatar-collection-bridge"],
+      #avatar-related [data-test-id="avatar-related-unlocked"],
+      main section:has(> div > a[href^="/unlocked/?"][href*="utm_medium=bottom_guide"][href*="utm_source=avatar_collection"]),
       [data-notice="ads-free"][data-test-id="notice-tip"],
       [data-notice="no-ai-slop"][data-test-id="notice-tip"] {
         display: none !important;

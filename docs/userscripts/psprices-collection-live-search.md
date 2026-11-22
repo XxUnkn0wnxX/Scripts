@@ -2,7 +2,7 @@
 
 [`PSPrices-Collection-Live-Search.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/master/userscripts/PSPrices-Collection-Live-Search.user.js) is a Tampermonkey userscript that adds cached live substring search to PSPrices avatar and theme collection pages across regions, indexing paginated collection results beyond the current visible page.
 
-Current documented release: `1.1.4`.
+Current documented release: `1.1.5`.
 
 ## Screenshots
 
@@ -198,6 +198,8 @@ Multi-word queries are handled in two passes:
 - if there are multiple terms, all terms may match separately inside the searchable text
 
 Search runs with a small input debounce so fast typing does not rebuild the result grid on every key event.
+
+Use the **Clear search** X inside the search field to clear the query and return focus to the field.
 
 The native PSPrices collection grid and native pagination are hidden on the canonical mounted routes. The userscript keeps its custom result grid empty while the current region cache is still building.
 
@@ -611,6 +613,10 @@ until cleared through their respective controls or browser/manager storage.
 <summary>Changelog</summary>
 
 Release history for this userscript is maintained only in this section.
+
+### 1.1.5 — 2026-11-22
+
+- Keep the clear-search X inside the search field on avatar and theme collection pages and reserve space so the query text does not overlap it.
 
 ### 1.1.4 — 2026-10-21
 
