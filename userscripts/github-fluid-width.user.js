@@ -89,6 +89,10 @@
   // marker is server-rendered, before route-specific accessibility labels.
   const PR_PREVIEW_MARKER_SELECTOR = '[data-testid="diff-comparison-viewer-sticky-header-bar"]';
   const PR_PREVIEW_ROOT_SELECTOR = `${PR_COMPARISON_ROOT_SELECTOR}:has(${PR_PREVIEW_MARKER_SELECTOR})`;
+  const PR_CHANGES_LIST_SELECTOR = '[data-testid="progressive-diffs-list"]';
+  const PR_CHANGES_WORKSPACE_SELECTOR = `${PR_COMPARISON_ROOT_SELECTOR}:has(
+    > [data-component="SplitPageLayout"] [data-component="SplitPageLayout.Content"] > [data-width="full"] ${PR_CHANGES_LIST_SELECTOR}
+  )`;
   const PR_PREVIEW_SURFACE_SELECTOR = [
     `${PR_PREVIEW_ROOT_SELECTOR}[${OWNER_ATTR}] [data-component="SplitPageLayout.Header"] [data-component="PageHeader"]`,
     `${PR_PREVIEW_ROOT_SELECTOR}[${OWNER_ATTR}] [class*="prc-PageLayout-PageLayoutContent-"] > *`,
@@ -105,6 +109,7 @@
     PR_COMPARISON_LAYOUT_SELECTOR,
     PR_PREVIEW_ROOT_SELECTOR,
     PR_PREVIEW_MARKER_SELECTOR,
+    PR_CHANGES_LIST_SELECTOR,
     NOTIFICATIONS_WORKSPACE_SELECTOR,
     '.pull-discussion-timeline',
     GIST_PROFILE_RAIL_SELECTOR,
@@ -416,10 +421,11 @@ ${active} [data-testid="issue-metadata-fixed"] {
     const candidates = Array.from(document.querySelectorAll(CANDIDATE_SELECTOR))
       .filter(isEligibleCandidate);
 
-    // Claim the shared preview shell before a route's full Content can become
-    // a separate percentage owner and leave its sibling header capped.
+    // Claim the shared PR shell before the inner diff track takes ownership
+    // and leaves the header outside the configured workspace.
     if (overrideFullWidthPages) {
-      document.querySelectorAll(PR_PREVIEW_ROOT_SELECTOR).forEach(applyUncappedFullWorkspaceRoot);
+      document.querySelectorAll(`${PR_PREVIEW_ROOT_SELECTOR}, ${PR_CHANGES_WORKSPACE_SELECTOR}`)
+        .forEach(applyUncappedFullWorkspaceRoot);
     }
     applyDashboardAdapter();
     applyIssueCreateAdapter();

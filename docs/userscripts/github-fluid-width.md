@@ -119,8 +119,8 @@ GitHub's natural width for those workspaces while retaining the original capped
 workspace expansion and nested document fill. Fullwidth content tracks use a
 `1012px` minimum; Search's main results column uses `768px` because its sidebars
 occupy separate tracks. These are readability minima, not measurements of the
-current full width. On preview PR pages, the `1012px` minimum applies to the
-whole comparison workspace, including its internal panes and padding; the
+current full width. On shared PR workspaces, the `1012px` minimum applies to the
+whole comparison workspace, including its internal panes and padding. The
 remaining diff or conversation column can therefore be narrower than `1012px`.
 A low percentage stops at that minimum. If the available
 track is narrower than the minimum, it uses the full available track instead.
@@ -131,13 +131,13 @@ not disable capped-page expansion. In particular, MCP results and capped
 dashboard/feed shells still expand with the checkbox off. Pull-request Checks
 uses the option only when its uncapped comparison root natively fills its
 parent; its native checks grid, navigation and controls keep their own layout
-rules. Older PR views retain their existing owners. The preview PR layout uses
-one shared comparison-workspace owner across `/OWNER/REPO/pull/NUMBER` and its
-subpaths. Its header and measured, capped route-body surfaces fill that owner,
-including Overview, Commits, Checks, and Changes. Detection follows the shared
-layout rather than a list of PR numbers or endpoint names. Native details,
-file-tree, and side-panel regions keep their own sizing, responsive collapse,
-and scrolling.
+rules. The preview PR layout uses one shared workspace owner across
+`/OWNER/REPO/pull/NUMBER` and its subpaths, including Overview, Commits, Checks,
+and Changes. Its header and capped route-body surfaces fill that owner. The
+signed-in Changes layout also sizes its header and diff within one workspace.
+Native details, file-tree, and side-panel regions keep their own sizing,
+responsive collapse, and scrolling. The legacy Files bucket keeps its own
+width handling.
 Notifications uses the same guarded handling for its inbox container, including
 filtered views such as Saved and empty results. Its native proportional columns,
 filter controls and avatar sizes remain governed by GitHub. Detection does not
@@ -334,6 +334,7 @@ Release history for this userscript is maintained only in this section.
 ### 1.0.6 — 2026-11-22
 
 - Widen the New issue page on large screens while preserving the native avatar spacing and issue metadata sidebar.
+- Apply the width setting to the header and diff together on signed-in PR Changes while preserving the native file tree.
 
 ### 1.0.5 — 2026-11-11
 
