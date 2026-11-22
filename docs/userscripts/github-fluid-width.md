@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub and Gist workspace widths on large desktop screens while preserving native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.5`.
+Current documented release: `1.0.6`.
 
 ## Screenshots
 
@@ -330,6 +330,10 @@ width permits. Resize below the desktop threshold to use GitHub's native layout.
 <summary>Changelog</summary>
 
 Release history for this userscript is maintained only in this section.
+
+### 1.0.6 — 2026-11-22
+
+- Widen the New issue page on large screens while preserving the native avatar spacing and issue metadata sidebar.
 
 ### 1.0.5 — 2026-11-11
 

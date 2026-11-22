@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.5
+// @version      1.0.6
 // @description  Controls GitHub and Gist workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -78,6 +78,7 @@
     '[data-component="SplitPageLayout.Content"] [data-width="full"] :has(> [data-testid="issue-header"])',
     '[data-component="SplitPageLayout.Content"] [data-width="full"] :has(> [data-testid="issue-header"]) ~ *',
   ].join(', ');
+  const ISSUE_CREATE_PANE_SELECTOR = '[data-testid="issue-create-pane-container"]';
   const GIST_PROFILE_RAIL_SELECTOR = '#gist-pjax-container .h-card[itemtype$="schema.org/Person"]';
   const THREE_COLUMN_RAIL_INSERTION_SELECTOR = `[${OWNER_ATTR}] > .gutter-md > :is(.col-lg-3, .col-lg-6)`;
   const FEED_LANDMARK_SELECTOR = '#dashboard, #feed';
@@ -97,6 +98,7 @@
   const NOTIFICATIONS_WORKSPACE_SELECTOR = 'main > .js-notifications-container';
   const LAYOUT_LANDMARK_SELECTOR = [
     '[data-testid="issue-header"]',
+    ISSUE_CREATE_PANE_SELECTOR,
     '[data-testid="search-sub-header"]',
     FEED_LANDMARK_SELECTOR,
     '#mcp-registry-search-filter',
@@ -420,6 +422,7 @@ ${active} [data-testid="issue-metadata-fixed"] {
       document.querySelectorAll(PR_PREVIEW_ROOT_SELECTOR).forEach(applyUncappedFullWorkspaceRoot);
     }
     applyDashboardAdapter();
+    applyIssueCreateAdapter();
     applyGlobalIssuesAdapter(candidates);
     applyCenteredShellAdapters(candidates);
     applySidebarPageLanes(candidates);
@@ -436,6 +439,31 @@ ${active} [data-testid="issue-metadata-fixed"] {
       if (!element.querySelector(FEED_LANDMARK_SELECTOR) || hasBlockedAncestor(element)) return;
       const metrics = nativeMetrics(element, 1332);
       if (metrics) markOwner(element, metrics.floor, 'dashboard');
+    });
+  }
+
+  function applyIssueCreateAdapter() {
+    if (!desktopQuery.matches) return;
+
+    document.querySelectorAll(ISSUE_CREATE_PANE_SELECTOR).forEach((pane) => {
+      const row = pane.parentElement;
+      if (!row || !isEligibleCandidate(pane) || !isEligibleFullWorkspace(row) ||
+          window.getComputedStyle(row).display !== 'flex') return;
+      const metrics = nativeMetrics(pane);
+      if (!metrics) return;
+
+      // The form is capped inside a centered flex row beside the avatar.
+      // Size the row as a group so the avatar and native margins stay together.
+      let floor = metrics.floor;
+      for (const child of row.children) {
+        if (!child.getClientRects().length) continue;
+        const style = window.getComputedStyle(child);
+        floor += (pixelValue(style.marginLeft) || 0) + (pixelValue(style.marginRight) || 0);
+        if (child !== pane) floor += child.getBoundingClientRect().width;
+      }
+      if (!isReasonableFloor(floor)) return;
+      markOwner(row, floor, 'issue-create');
+      markRelease(pane);
     });
   }
 
@@ -842,7 +870,7 @@ ${active} [data-testid="issue-metadata-fixed"] {
         return;
       }
       for (const record of records) {
-        if (isRelevantRailRowMutation(record)) {
+        if (record.target.getAttribute?.(OWNER_ATTR) === 'issue-create' || isRelevantRailRowMutation(record)) {
           scheduleSync();
           return;
         }
