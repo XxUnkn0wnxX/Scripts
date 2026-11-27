@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         GitHub Fluid Width
 // @namespace    https://github.com/XxUnkn0wnxX/Scripts
-// @version      1.0.6
+// @version      1.0.7
 // @description  Controls GitHub and Gist workspace widths with live settings while preserving native sidebars and responsive layouts. Vibe coded with OpenAI.
 // @homepageURL  https://github.com/XxUnkn0wnxX/Scripts
 // @supportURL   https://discord.gg/slayersicerealm
@@ -581,8 +581,11 @@ ${active} [data-testid="issue-metadata-fixed"] {
       markOwner(element, FULL_WORKSPACE_FLOOR_PX, 'legacy-pr-files');
     });
 
+    const standaloneCommit = /^\/[^/]+\/[^/]+\/commit\/[^/]+\/?$/.test(window.location.pathname);
     document.querySelectorAll(FULL_PRIMER_CONTENT_SELECTOR).forEach((content) => {
       if (!isEligibleFullWorkspace(content) || isGlobalIssuesContent(content)) return;
+      // Standalone commit diffs fill the native track beside the file tree.
+      if (standaloneCommit && content.parentElement.matches('[data-component="SplitPageLayout.Content"]')) return;
       const twoColumn = directChildMatching(content, SEARCH_TWO_COLUMN_SELECTOR);
       if (twoColumn) {
         applySearchMainOwner(twoColumn);

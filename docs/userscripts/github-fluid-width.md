@@ -2,7 +2,7 @@
 
 Install [`github-fluid-width.user.js`](https://raw.githubusercontent.com/XxUnkn0wnxX/Scripts/develop/userscripts/github-fluid-width.user.js) with Tampermonkey or Violentmonkey to control GitHub and Gist workspace widths on large desktop screens while preserving native rails, split panes, and responsive behavior.
 
-Current documented release: `1.0.6`.
+Current documented release: `1.0.7`.
 
 ## Screenshots
 
@@ -33,6 +33,7 @@ Light appearance: [view settings](https://raw.githubusercontent.com/XxUnkn0wnxX/
 - leaves GitHub's global navigation drawer as an overlay; opening or closing it does not switch width modes or move the page
 - with `overrideFullWidthPages: true` (the default), applies the configured target to naturally fullwidth file, folder, source-code, text, rendered-document, pull-request diff and Checks, Notifications, completed Actions, and search-results workspaces using the same sidebar-aware parent math while preserving local scrolling
 - with `overrideFullWidthPages: false`, leaves those naturally fullwidth workspaces at GitHub's native width while capped-owner expansion and nested rendered-document filling remain active
+- keeps standalone commit diffs at GitHub's native width and spacing beside the file tree
 - provides a live settings panel and saves preferences separately from the userscript source, so normal script updates retain existing choices
 - optionally hides only GitHub's floating issue and pull-request title headers; regular page headings remain visible
 - follows GitHub client-side navigation, back/forward navigation, Turbo/PJAX rendering, and document/head replacement without polling
@@ -330,6 +331,10 @@ width permits. Resize below the desktop threshold to use GitHub's native layout.
 <summary>Changelog</summary>
 
 Release history for this userscript is maintained only in this section.
+
+### 1.0.7 — 2026-11-28
+
+- Restore native spacing in standalone commit diffs so the toolbar, file cards, and comments fill their available lane beside the file tree.
 
 ### 1.0.6 — 2026-11-22
 
