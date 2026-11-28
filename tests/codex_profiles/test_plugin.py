@@ -406,6 +406,63 @@ def test_child_exit_status_is_preserved(profile_env: ProfileEnvironment):
     assert profile_env.argv() == ["--yolo", "--search", "-p", "pro"]
 
 
+@pytest.mark.skipif(os.uname().sysname != "Darwin", reason="uses the macOS terminal relay")
+@pytest.mark.parametrize(
+    ("term_program", "under_tmux", "filtered"),
+    (("Apple_Terminal", False, True), ("iTerm.app", False, False), ("Apple_Terminal", True, False)),
+)
+def test_apple_terminal_startup_query(
+    profile_env: ProfileEnvironment, term_program: str, under_tmux: bool, filtered: bool
+):
+    profile_env.profile("ultra")
+    fake = Path(profile_env.env["PATH"].split(os.pathsep)[0]) / "codex"
+    outer_tty = profile_env.root / "input-tty"
+    original = fake.read_text(encoding="utf-8").split("\n", 1)[1]
+    fake.write_text(
+        "#!/usr/bin/env zsh\n"
+        "[[ -t 0 && -t 1 && -t 2 ]] || exit 90\n"
+        f"tty > {_shell_quote(outer_tty)}\n"
+        '/bin/stty -f "$(tty)" -echo\n'
+        "print -u2 -- diagnostic\n"
+        "printf 'startup\\033[?1007'\n"
+        "IFS= read -r -k 1 key || exit 91\n"
+        "printf '$pprofile %s — ready\\033[?1007l\\n' \"$key\"\n"
+        "/usr/bin/ruby -rio/console -e 'puts STDOUT.winsize.join(\" \")'\n"
+        '/bin/stty -f "$(tty)" echo\n'
+        + original,
+        encoding="utf-8",
+    )
+    env = profile_env.env | {"TERM_PROGRAM": term_program, "CODEX_TEST_EXIT": "37"}
+    for variable in ("TMUX", "STY", "ZELLIJ", "ZELLIJ_SESSION_NAME"):
+        env.pop(variable, None)
+    if under_tmux:
+        env["TMUX"] = "fixture"
+
+    def resize_terminal():
+        subprocess.run(
+            ["/bin/stty", "-f", outer_tty.read_text().strip(), "rows", "37", "cols", "101"],
+            check=True,
+            timeout=2,
+        )
+
+    status, output = profile_env.run_terminal(
+        "cxr ultra 'exact argument'",
+        b"",
+        env=env,
+        ready_marker=b"startup",
+        response_stages=(b"", b"q"),
+        stage_checks=(resize_terminal,),
+    )
+
+    query = "" if filtered else "\x1b[?1007$p"
+    assert f"startup{query}profile q — ready\x1b[?1007l\r\n" in output
+    assert "37 101" in output
+    assert "diagnostic" in output
+    assert status == 37
+    assert profile_env.argv() == ["resume", "--yolo", "--search", "-p", "ultra", "exact argument"]
+    assert profile_env.child_home() == str(profile_env.codex_home)
+
+
 @pytest.mark.parametrize(
     ("flags_source", "expected"),
     (

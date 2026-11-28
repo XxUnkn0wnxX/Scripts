@@ -260,6 +260,95 @@ function _codex_profiles_resolve_bin() {
   return 0
 }
 
+function _codex_profiles_run() {
+  if [[ "$OSTYPE" != darwin* || "${TERM_PROGRAM:-}" != Apple_Terminal ||
+        -n "${TMUX:-}${STY:-}${ZELLIJ:-}${ZELLIJ_SESSION_NAME:-}" ||
+        ! -t 0 || ! -t 1 || ! -t 2 || ! -x /usr/bin/ruby ]]; then
+    "$@"
+    return $?
+  fi
+
+  # Apple Terminal displays the final p of the startup DECRQM query.
+  # Relay output through a separate PTY while keeping real input and job control.
+  /usr/bin/ruby --disable=rubyopt,gems -W0 -rio/console -rpty -e '
+    command = [[ARGV.first, ARGV.first], *ARGV.drop(1)]
+    input = STDIN.stat
+    shared_tty = [STDOUT, STDERR].all? do |stream|
+      output = stream.stat
+      output.dev == input.dev && output.ino == input.ino
+    end
+    exec(*command) unless shared_tty
+
+    STDOUT.binmode
+    STDOUT.sync = true
+    query = "\e[?1007$p".b
+    prefixes = (1...query.bytesize).map { |length| query.byteslice(0, length) }.reverse
+    pending = "".b
+    filtering = true
+
+    PTY.open do |reader, writer|
+      writer.raw!
+      reader.winsize = STDOUT.winsize
+      # The child still receives terminal interrupts in the shared process group.
+      Signal.trap("INT") {}
+      suspend_read, suspend_write = IO.pipe
+      request_suspend = proc { suspend_write.write_nonblock(".", exception: false) }
+      Signal.trap("TSTP", request_suspend)
+      # Codex checks that both output descriptors point to the same terminal.
+      child = spawn(*command, out: writer, err: writer)
+      writer.close
+
+      Signal.trap("WINCH") do
+        reader.winsize = STDOUT.winsize
+        # Notify again after the child can read the updated stdout dimensions.
+        Process.kill("WINCH", child)
+      rescue Errno::ESRCH, Errno::EIO
+      end
+
+      suspending = false
+      loop do
+        unless suspending
+          readable, = IO.select([reader, suspend_read])
+          if readable.include?(suspend_read)
+            suspend_read.read_nonblock(4096, exception: false)
+            suspending = true
+          end
+        end
+        chunk = begin
+          reader.read_nonblock(16384, exception: false)
+        rescue Errno::EIO
+          nil
+        end
+        break if chunk.nil?
+        if chunk == :wait_readable
+          if suspending
+            # Deliver Codex terminal cleanup before Zsh redraws its prompt.
+            Signal.trap("TSTP", "DEFAULT")
+            Process.kill("TSTP", Process.pid)
+            Signal.trap("TSTP", request_suspend)
+            suspending = false
+          end
+          next
+        end
+        if filtering
+          chunk = pending + chunk
+          if chunk.sub!(query, "")
+            filtering = false
+            pending = "".b
+          else
+            pending = prefixes.find { |prefix| chunk.end_with?(prefix) } || "".b
+            chunk = chunk.delete_suffix(pending)
+          end
+        end
+        STDOUT.write(chunk)
+      end
+      STDOUT.write(pending)
+      _, status = Process.wait2(child)
+      exit(status.exitstatus || 128 + status.termsig)
+    end
+  ' -- "$@"
+}
+
 function _codex_profiles_execute() {
   emulate -L zsh
   setopt localoptions no_shwordsplit no_ksharrays no_globsubst
@@ -348,7 +437,7 @@ function _codex_profiles_execute() {
 
   # Always pass the resolved home: CODEX_HOME may be set in this shell but not
   # exported, and a relative value must remain anchored to this CWD for --cd.
-  CODEX_HOME="$CODEX_PROFILES_HOME" "${CODEX_PROFILES_ARGV[@]}"
+  CODEX_HOME="$CODEX_PROFILES_HOME" _codex_profiles_run "${CODEX_PROFILES_ARGV[@]}"
   return $?
 }
 
